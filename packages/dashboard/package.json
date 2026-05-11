@@ -2,6 +2,7 @@
 	"name": "@nodecg/dashboard",
 	"version": "experimental",
 	"license": "MIT",
+	"type": "module",
 	"devDependencies": {
 		"@types/node": "24",
 		"@types/react": "^19.2.14",

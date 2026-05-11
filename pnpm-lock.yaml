@@ -53,6 +53,9 @@ importers:
       effect:
         specifier: ^3.21.2
         version: 3.21.2
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: '24'

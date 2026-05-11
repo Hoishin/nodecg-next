@@ -2,13 +2,15 @@
 	"name": "nodecg",
 	"version": "experimental",
 	"license": "MIT",
+	"type": "module",
 	"scripts": {
 		"dev": "node --watch src/main.ts"
 	},
 	"dependencies": {
 		"@effect/platform": "^0.96.1",
 		"@effect/platform-node": "^0.106.0",
-		"effect": "^3.21.2"
+		"effect": "^3.21.2",
+		"ws": "^8.20.0"
 	},
 	"devDependencies": {
 		"@types/node": "24",
