@@ -1,27 +1,15 @@
 import { createServer } from "node:http";
 
 import {
-	HttpApi,
 	HttpApiBuilder,
-	HttpApiEndpoint,
 	HttpApiError,
-	HttpApiGroup,
 	HttpApp,
 	HttpServerRequest,
 	HttpServerResponse,
 } from "@effect/platform";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import { ClientMessage, NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match, Schema } from "effect";
-
-const ClientMessage = Schema.Union(
-	Schema.TaggedStruct("subscribe", { topic: Schema.String }),
-	Schema.TaggedStruct("publish", {
-		topic: Schema.String,
-		value: Schema.Unknown,
-	}),
-	Schema.TaggedStruct("ping", {}),
-);
-type ClientMessage = typeof ClientMessage.Type;
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 
@@ -42,18 +30,6 @@ const wsHandler = Effect.gen(function* () {
 	);
 	return HttpServerResponse.empty();
 });
-
-const NodecgApi = HttpApi.make("NodecgApi")
-	.add(
-		HttpApiGroup.make("Root").add(
-			HttpApiEndpoint.get("root", "/").addError(HttpApiError.NotImplemented),
-		),
-	)
-	.add(
-		HttpApiGroup.make("Api").add(
-			HttpApiEndpoint.get("ping", "/api/ping").addSuccess(Schema.String),
-		),
-	);
 
 const RootGroupLive = HttpApiBuilder.group(NodecgApi, "Root", (handlers) =>
 	handlers.handle("root", () =>
