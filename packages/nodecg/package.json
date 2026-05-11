@@ -4,7 +4,8 @@
 	"license": "MIT",
 	"type": "module",
 	"scripts": {
-		"dev": "node --watch src/main.ts"
+		"dev": "node --watch src/main.ts",
+		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@effect/platform": "^0.96.1",

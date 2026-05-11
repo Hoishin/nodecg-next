@@ -4,7 +4,8 @@
 	"license": "MIT",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev"
+		"dev": "vite dev",
+		"type-check": "tsc --noEmit"
 	},
 	"devDependencies": {
 		"@tanstack/react-router": "^1.169.2",

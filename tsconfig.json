@@ -2,9 +2,7 @@
 	"compilerOptions": {
 		"module": "preserve",
 		"target": "esnext",
-		"lib": [
-			"ESNext"
-		],
+		"lib": ["ESNext"],
 		"types": [],
 		"strict": true,
 		"noUncheckedIndexedAccess": true,

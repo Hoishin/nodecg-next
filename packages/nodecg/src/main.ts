@@ -1,6 +1,15 @@
 import { createServer } from "node:http";
 
-import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform";
+import {
+	HttpApi,
+	HttpApiBuilder,
+	HttpApiEndpoint,
+	HttpApiError,
+	HttpApiGroup,
+	HttpApp,
+	HttpServerRequest,
+	HttpServerResponse,
+} from "@effect/platform";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer, Match, Schema } from "effect";
 
@@ -34,14 +43,49 @@ const wsHandler = Effect.gen(function* () {
 	return HttpServerResponse.empty();
 });
 
-const router = HttpRouter.empty.pipe(
-	HttpRouter.get("/", HttpServerResponse.text("Not Implemented", { status: 501 })),
-	HttpRouter.get("/api/ping", HttpServerResponse.text("pong")),
-	HttpRouter.get("/ws", wsHandler),
+const NodecgApi = HttpApi.make("NodecgApi")
+	.add(
+		HttpApiGroup.make("Root").add(
+			HttpApiEndpoint.get("root", "/").addError(HttpApiError.NotImplemented),
+		),
+	)
+	.add(
+		HttpApiGroup.make("Api").add(
+			HttpApiEndpoint.get("ping", "/api/ping").addSuccess(Schema.String),
+		),
+	);
+
+const RootGroupLive = HttpApiBuilder.group(NodecgApi, "Root", (handlers) =>
+	handlers.handle("root", () =>
+		Effect.fail(new HttpApiError.NotImplemented()),
+	),
 );
 
-HttpServer.serve(router).pipe(
-	Layer.provide(NodeHttpServer.layer(() => createServer(), { port: 3000 })),
-	Layer.launch,
-	NodeRuntime.runMain,
+const ApiGroupLive = HttpApiBuilder.group(NodecgApi, "Api", (handlers) =>
+	handlers.handle("ping", () => Effect.succeed("pong")),
 );
+
+const NodecgApiLive = HttpApiBuilder.api(NodecgApi).pipe(
+	Layer.provide(RootGroupLive),
+	Layer.provide(ApiGroupLive),
+);
+
+const wsMiddleware = (apiApp: HttpApp.Default) =>
+	Effect.gen(function* () {
+		const req = yield* HttpServerRequest.HttpServerRequest;
+		if (new URL(req.url, "http://x").pathname === "/ws") {
+			return yield* wsHandler.pipe(
+				Effect.catchAll(() =>
+					Effect.succeed(HttpServerResponse.empty({ status: 500 })),
+				),
+			);
+		}
+		return yield* apiApp;
+	});
+
+const ServerLive = HttpApiBuilder.serve(wsMiddleware).pipe(
+	Layer.provide(NodecgApiLive),
+	Layer.provide(NodeHttpServer.layer(() => createServer(), { port: 3000 })),
+);
+
+Layer.launch(ServerLive).pipe(NodeRuntime.runMain);
