@@ -3,6 +3,10 @@
 	"license": "MIT",
 	"author": "Keiichiro Amemiya",
 	"type": "module",
+	"scripts": {
+		"dev": "pnpm -r --parallel run dev",
+		"type-check": "tsc"
+	},
 	"devDependencies": {
 		"oxfmt": "^0.47.0",
 		"oxlint": "^1.62.0",
