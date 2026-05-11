@@ -6,6 +6,10 @@ This is an expermental new version of NodeCG.
 
 in develpment
 
+## Development
+
+- Type check: pnpm type-check
+
 ## License
 
 MIT License
