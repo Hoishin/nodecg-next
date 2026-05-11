@@ -1,21 +1,20 @@
 {
-	"name": "nodecg",
+	"name": "@nodecg/internal",
 	"version": "0.0.0-experimental",
+	"private": true,
 	"license": "MIT",
 	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
 	"scripts": {
-		"dev": "node --watch src/main.ts",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@effect/platform": "^0.96.1",
-		"@effect/platform-node": "^0.106.0",
-		"@nodecg/internal": "workspace:*",
-		"effect": "^3.21.2",
-		"ws": "^8.20.0"
+		"effect": "^3.21.2"
 	},
 	"devDependencies": {
-		"@types/node": "24",
 		"typescript": "~6.0.3"
 	}
 }
