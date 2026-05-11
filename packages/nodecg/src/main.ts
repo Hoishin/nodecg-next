@@ -20,7 +20,6 @@ const handleMessage = (
 ) =>
 	Match.value(msg).pipe(
 		Match.tag("subscribe", ({ topic }) => Effect.log(`sub: ${topic}`)),
-		Match.tag("publish", ({ topic }) => Effect.log(`pub: ${topic}`)),
 		Match.tag("ping", () => send({ _tag: "pong" })),
 		Match.exhaustive,
 	);
@@ -42,7 +41,9 @@ const RootGroupLive = HttpApiBuilder.group(NodecgApi, "Root", (handlers) =>
 );
 
 const ApiGroupLive = HttpApiBuilder.group(NodecgApi, "Api", (handlers) =>
-	handlers.handle("ping", () => Effect.succeed("pong")),
+	handlers
+		.handle("ping", () => Effect.succeed("pong"))
+		.handle("publish", ({ payload }) => Effect.log(`pub: ${payload.topic}`)),
 );
 
 const NodecgApiLive = HttpApiBuilder.api(NodecgApi).pipe(

@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	Outlet,
 	RouterProvider,
@@ -8,11 +8,10 @@ import {
 	createRootRoute,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { Effect } from "effect";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
-import { apiClient } from "./api.ts";
+import { usePing, usePublish } from "./api.ts";
 import { sendMessage, useLastMessage, useWsState } from "./ws.ts";
 
 const queryClient = new QueryClient();
@@ -39,10 +38,8 @@ const indexRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
 	component: function Index() {
-		const { data: ping } = useQuery({
-			queryKey: ["ping"],
-			queryFn: async () => Effect.runPromise((await apiClient).Api.ping()),
-		});
+		const { data: ping } = usePing();
+		const publish = usePublish();
 		const wsState = useWsState();
 		const lastMessage = useLastMessage();
 
@@ -55,6 +52,13 @@ const indexRoute = createRoute({
 				<button onClick={() => sendMessage({ _tag: "ping" })} disabled={wsState !== "open"}>
 					send ping
 				</button>
+				<button
+					onClick={() => publish.mutate({ topic: "demo", value: Date.now() })}
+					disabled={publish.isPending}
+				>
+					publish demo
+				</button>
+				<p>publish status → {publish.status}</p>
 			</div>
 		);
 	},
