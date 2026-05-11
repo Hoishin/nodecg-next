@@ -1,11 +1,6 @@
 import { createServer } from "node:http";
 
-import {
-	HttpRouter,
-	HttpServer,
-	HttpServerRequest,
-	HttpServerResponse,
-} from "@effect/platform";
+import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer, Match, Schema } from "effect";
 
@@ -40,7 +35,8 @@ const wsHandler = Effect.gen(function* () {
 });
 
 const router = HttpRouter.empty.pipe(
-	HttpRouter.get("/", HttpServerResponse.text("OK")),
+	HttpRouter.get("/", HttpServerResponse.text("Not Implemented", { status: 501 })),
+	HttpRouter.get("/api/ping", HttpServerResponse.text("pong")),
 	HttpRouter.get("/ws", wsHandler),
 );
 
