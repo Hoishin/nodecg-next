@@ -3,10 +3,12 @@
 	"version": "experimental",
 	"license": "MIT",
 	"type": "module",
+	"scripts": {
+		"dev": "vite dev"
+	},
 	"devDependencies": {
 		"@tanstack/react-router": "^1.169.2",
 		"@tanstack/react-router-devtools": "^1.166.13",
-		"@tanstack/router-plugin": "^1.167.35",
 		"@types/node": "24",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
