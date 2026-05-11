@@ -8,15 +8,19 @@
 		"type-check": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@effect/platform": "catalog:",
+		"@nodecg/internal": "workspace:*",
+		"@tanstack/react-query": "^5.69.0",
 		"@tanstack/react-router": "^1.169.2",
 		"@tanstack/react-router-devtools": "^1.166.13",
-		"@types/node": "24",
+		"@types/node": "catalog:",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"@vitejs/plugin-react": "^6.0.1",
+		"effect": "catalog:",
 		"react": "^19.2.6",
 		"react-dom": "^19.2.6",
-		"typescript": "~6.0.3",
+		"typescript": "catalog:",
 		"vite": "^8.0.11"
 	}
 }

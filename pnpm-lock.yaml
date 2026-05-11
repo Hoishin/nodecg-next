@@ -4,6 +4,24 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@effect/platform':
+      specifier: ^0.96.1
+      version: 0.96.1
+    '@effect/platform-node':
+      specifier: ^0.106.0
+      version: 0.106.0
+    '@types/node':
+      specifier: '24'
+      version: 24.12.2
+    effect:
+      specifier: ^3.21.2
+      version: 3.21.2
+    typescript:
+      specifier: ~6.0.3
+      version: 6.0.3
+
 importers:
 
   .:
@@ -18,11 +36,20 @@ importers:
         specifier: ^0.22.1
         version: 0.22.1
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   packages/dashboard:
     devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.96.1(effect@3.21.2)
+      '@nodecg/internal':
+        specifier: workspace:*
+        version: link:../internal
+      '@tanstack/react-query':
+        specifier: ^5.69.0
+        version: 5.100.9(react@19.2.6)
       '@tanstack/react-router':
         specifier: ^1.169.2
         version: 1.169.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -30,7 +57,7 @@ importers:
         specifier: ^1.166.13
         version: 1.166.13(@tanstack/react-router@1.169.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@tanstack/router-core@1.169.2)(csstype@3.2.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@types/node':
-        specifier: '24'
+        specifier: 'catalog:'
         version: 24.12.2
       '@types/react':
         specifier: ^19.2.14
@@ -41,6 +68,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.11(@types/node@24.12.2))
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -48,7 +78,7 @@ importers:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
         specifier: ^8.0.11
@@ -57,39 +87,39 @@ importers:
   packages/internal:
     dependencies:
       '@effect/platform':
-        specifier: ^0.96.1
+        specifier: 'catalog:'
         version: 0.96.1(effect@3.21.2)
       effect:
-        specifier: ^3.21.2
+        specifier: 'catalog:'
         version: 3.21.2
     devDependencies:
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   packages/nodecg:
     dependencies:
       '@effect/platform':
-        specifier: ^0.96.1
+        specifier: 'catalog:'
         version: 0.96.1(effect@3.21.2)
       '@effect/platform-node':
-        specifier: ^0.106.0
+        specifier: 'catalog:'
         version: 0.106.0(@effect/cluster@0.58.2(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.18.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@nodecg/internal':
         specifier: workspace:*
         version: link:../internal
       effect:
-        specifier: ^3.21.2
+        specifier: 'catalog:'
         version: 3.21.2
       ws:
         specifier: ^8.20.0
         version: 8.20.0
     devDependencies:
       '@types/node':
-        specifier: '24'
+        specifier: 'catalog:'
         version: 24.12.2
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
 packages:
@@ -677,6 +707,14 @@ packages:
   '@tanstack/history@1.161.6':
     resolution: {integrity: sha512-NaOGLRrddszbQj9upGat6HG/4TKvXLvu+osAIgfxPYA+eIvYKv8GKDJOrY2D3/U9MRnKfMWD7bU4jeD4xmqyIg==}
     engines: {node: '>=20.19'}
+
+  '@tanstack/query-core@5.100.9':
+    resolution: {integrity: sha512-SJSFw1S8+kQ0+knv/XGfrbocWoAlT7vDKsSImtLx3ZPQmEcR46hkDjLSvynSy25N8Ms4tIEini1FuBd5k7IscQ==}
+
+  '@tanstack/react-query@5.100.9':
+    resolution: {integrity: sha512-Oa44XkaI3kCNN6ME0KByU3xT3SEUNOMfZpHxL6+wFoTm+OeUFYHKdeYVe0aOXlRDm/f15sgLwEt2HDorIdW8+A==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tanstack/react-router-devtools@1.166.13':
     resolution: {integrity: sha512-6yKRFFJrEEOiGp5RAAuGCYsl81M4XAhJmLcu9PKj+HZle4A3dsP60lwHoqQYWHMK9nKKFkdXR+D8qxzxqtQbEA==}
@@ -1421,6 +1459,13 @@ snapshots:
   '@standard-schema/spec@1.1.0': {}
 
   '@tanstack/history@1.161.6': {}
+
+  '@tanstack/query-core@5.100.9': {}
+
+  '@tanstack/react-query@5.100.9(react@19.2.6)':
+    dependencies:
+      '@tanstack/query-core': 5.100.9
+      react: 19.2.6
 
   '@tanstack/react-router-devtools@1.166.13(@tanstack/react-router@1.169.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@tanstack/router-core@1.169.2)(csstype@3.2.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:

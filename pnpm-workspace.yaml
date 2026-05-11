@@ -1,6 +1,15 @@
 packages:
   - packages/*
 
+catalogMode: strict
+
+catalog:
+  "@effect/platform": ^0.96.1
+  "@effect/platform-node": ^0.106.0
+  "@types/node": "24"
+  effect: ^3.21.2
+  typescript: ~6.0.3
+
 allowBuilds:
   '@parcel/watcher': false
   msgpackr-extract: false

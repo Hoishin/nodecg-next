@@ -10,10 +10,10 @@
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effect/platform": "^0.96.1",
-		"effect": "^3.21.2"
+		"@effect/platform": "catalog:",
+		"effect": "catalog:"
 	},
 	"devDependencies": {
-		"typescript": "~6.0.3"
+		"typescript": "catalog:"
 	}
 }
