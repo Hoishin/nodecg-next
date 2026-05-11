@@ -8,33 +8,37 @@ import {
 	HttpServerResponse,
 } from "@effect/platform";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
-import { ClientMessage, NodecgApi } from "@nodecg/internal";
+import { ClientMessage, NodecgApi, ServerMessage } from "@nodecg/internal";
 import { Effect, Layer, Match, Schema } from "effect";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
+const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
 
-const handleMessage = (msg: ClientMessage) =>
+const handleMessage = (
+	msg: ClientMessage,
+	send: (msg: ServerMessage) => Effect.Effect<void, unknown>,
+) =>
 	Match.value(msg).pipe(
 		Match.tag("subscribe", ({ topic }) => Effect.log(`sub: ${topic}`)),
 		Match.tag("publish", ({ topic }) => Effect.log(`pub: ${topic}`)),
-		Match.tag("ping", () => Effect.log("ping")),
+		Match.tag("ping", () => send({ _tag: "pong" })),
 		Match.exhaustive,
 	);
 
 const wsHandler = Effect.gen(function* () {
 	const socket = yield* HttpServerRequest.upgrade;
+	const write = yield* socket.writer;
+	const send = (msg: ServerMessage) => encodeServerMessage(msg).pipe(Effect.flatMap(write));
 	yield* socket.runRaw((data) =>
 		typeof data === "string"
-			? decodeClientMessage(data).pipe(Effect.flatMap(handleMessage))
+			? decodeClientMessage(data).pipe(Effect.flatMap((msg) => handleMessage(msg, send)))
 			: Effect.void,
 	);
 	return HttpServerResponse.empty();
 });
 
 const RootGroupLive = HttpApiBuilder.group(NodecgApi, "Root", (handlers) =>
-	handlers.handle("root", () =>
-		Effect.fail(new HttpApiError.NotImplemented()),
-	),
+	handlers.handle("root", () => Effect.fail(new HttpApiError.NotImplemented())),
 );
 
 const ApiGroupLive = HttpApiBuilder.group(NodecgApi, "Api", (handlers) =>
@@ -51,9 +55,7 @@ const wsMiddleware = (apiApp: HttpApp.Default) =>
 		const req = yield* HttpServerRequest.HttpServerRequest;
 		if (new URL(req.url, "http://x").pathname === "/ws") {
 			return yield* wsHandler.pipe(
-				Effect.catchAll(() =>
-					Effect.succeed(HttpServerResponse.empty({ status: 500 })),
-				),
+				Effect.catchAll(() => Effect.succeed(HttpServerResponse.empty({ status: 500 }))),
 			);
 		}
 		return yield* apiApp;

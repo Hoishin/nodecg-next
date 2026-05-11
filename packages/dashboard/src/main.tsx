@@ -13,7 +13,7 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
 import { apiClient } from "./api.ts";
-import { sendMessage, useWsState } from "./ws.ts";
+import { sendMessage, useLastMessage, useWsState } from "./ws.ts";
 
 const queryClient = new QueryClient();
 
@@ -44,12 +44,14 @@ const indexRoute = createRoute({
 			queryFn: async () => Effect.runPromise((await apiClient).Api.ping()),
 		});
 		const wsState = useWsState();
+		const lastMessage = useLastMessage();
 
 		return (
 			<div className="p-2">
 				<h3>Welcome Home!</h3>
 				<p>GET /api/ping → {ping ?? "…"}</p>
 				<p>WS /ws → {wsState}</p>
+				<p>last WS message → {lastMessage ? lastMessage._tag : "—"}</p>
 				<button onClick={() => sendMessage({ _tag: "ping" })} disabled={wsState !== "open"}>
 					send ping
 				</button>

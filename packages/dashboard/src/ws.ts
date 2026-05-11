@@ -1,14 +1,17 @@
-import type { ClientMessage } from "@nodecg/internal";
-import { Effect, Fiber, Ref, Stream, SubscriptionRef } from "effect";
+import { type ClientMessage, ServerMessage } from "@nodecg/internal";
+import { Effect, Fiber, Ref, Schema, Stream, SubscriptionRef } from "effect";
 import { useSyncExternalStore } from "react";
 
 type WsState = "connecting" | "open" | "closed";
+
+const decodeServerMessage = Schema.decodeUnknown(Schema.parseJson(ServerMessage));
 
 const resource = Effect.runSync(
 	Effect.gen(function* () {
 		const stateRef = yield* SubscriptionRef.make<WsState>("connecting");
 		const socketRef = yield* Ref.make<WebSocket | null>(null);
-		return { stateRef, socketRef };
+		const messageRef = yield* SubscriptionRef.make<ServerMessage | null>(null);
+		return { stateRef, socketRef, messageRef };
 	}),
 );
 
@@ -17,8 +20,7 @@ const openSocket = Effect.gen(function* () {
 
 	if (
 		current &&
-		(current.readyState === WebSocket.CONNECTING ||
-			current.readyState === WebSocket.OPEN)
+		(current.readyState === WebSocket.CONNECTING || current.readyState === WebSocket.OPEN)
 	) {
 		return current;
 	}
@@ -35,6 +37,17 @@ const openSocket = Effect.gen(function* () {
 				SubscriptionRef.set(resource.stateRef, "closed"),
 				Ref.set(resource.socketRef, null),
 			]),
+		);
+	});
+	ws.addEventListener("message", (event) => {
+		if (typeof event.data !== "string") {
+			return;
+		}
+		Effect.runFork(
+			decodeServerMessage(event.data).pipe(
+				Effect.flatMap((msg) => SubscriptionRef.set(resource.messageRef, msg)),
+				Effect.ignore,
+			),
 		);
 	});
 
@@ -68,4 +81,18 @@ export const useWsState = (): WsState =>
 			};
 		},
 		() => Effect.runSync(SubscriptionRef.get(resource.stateRef)),
+	);
+
+export const useLastMessage = (): ServerMessage | null =>
+	useSyncExternalStore(
+		(cb) => {
+			Effect.runFork(openSocket);
+			const fiber = Effect.runFork(
+				resource.messageRef.changes.pipe(Stream.runForEach(() => Effect.sync(cb))),
+			);
+			return () => {
+				Effect.runFork(Fiber.interrupt(fiber));
+			};
+		},
+		() => Effect.runSync(SubscriptionRef.get(resource.messageRef)),
 	);

@@ -1,9 +1,4 @@
-import {
-	HttpApi,
-	HttpApiEndpoint,
-	HttpApiError,
-	HttpApiGroup,
-} from "@effect/platform";
+import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup } from "@effect/platform";
 import { Schema } from "effect";
 
 export const ClientMessage = Schema.Union(
@@ -15,6 +10,9 @@ export const ClientMessage = Schema.Union(
 	Schema.TaggedStruct("ping", {}),
 );
 export type ClientMessage = typeof ClientMessage.Type;
+
+export const ServerMessage = Schema.Union(Schema.TaggedStruct("pong", {}));
+export type ServerMessage = typeof ServerMessage.Type;
 
 export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(
