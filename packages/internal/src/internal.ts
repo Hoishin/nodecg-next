@@ -26,3 +26,14 @@ export const NodecgApi = HttpApi.make("NodecgApi")
 			.add(HttpApiEndpoint.get("ping", "/api/ping").addSuccess(Schema.String))
 			.add(HttpApiEndpoint.post("publish", "/api/publish").setPayload(PublishPayload)),
 	);
+
+export function mapValues<
+	T extends Record<string, unknown>,
+	R extends { [K in keyof T]: unknown },
+>(obj: T, fn: <K extends keyof T>(value: T[K], key: K) => R[K]): R {
+	const result: Partial<R> = {};
+	for (const key of Object.keys(obj) as (keyof T)[]) {
+		result[key] = fn(obj[key], key);
+	}
+	return result as R;
+}

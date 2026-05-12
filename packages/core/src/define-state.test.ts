@@ -17,19 +17,19 @@ test(
 			});
 
 			expectTypeOf(stateDefinition).toEqualTypeOf<{
-				namespace: string | undefined;
-				states: {
+				namespace: string;
+				definitions: {
 					count: {
-						name: "count";
+						name: string;
 						parse: (value: unknown) => Effect.Effect<number, string>;
 					};
 				};
 			}>();
 
-			const success = yield* stateDefinition.states.count.parse(123);
+			const success = yield* stateDefinition.definitions.count.parse(123);
 			expect(success).toBe(123);
 
-			const failure = yield* stateDefinition.states.count.parse("abc").pipe(Effect.flip);
+			const failure = yield* stateDefinition.definitions.count.parse("abc").pipe(Effect.flip);
 			expect(failure).toBeTruthy();
 		}),
 	),
