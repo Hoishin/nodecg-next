@@ -13,8 +13,6 @@ Expermental new version of NodeCG in active development from scratch
 
 ### Shared State
 
-Status: In Planning
-
 - State is declarative: it is define in a single place with name and schema
 
   ```ts
@@ -172,6 +170,7 @@ Status: In Planning
   ```
 
 - Admin dashboard (view, clear, export, import, freeze)
+- boolean option for persistence
 - Hooks: `beforeUpdate`, `afterUpdate`
 - State in client-side is synchronized on reconnect
 - Revision number
@@ -215,22 +214,14 @@ Status: In Planning
 
 ### Data Persistence
 
-Status: In Planning
-
 - Data persistence is abstracted and can be implemented for any storage backend
 - Default data persistence is SQLite for system data, and JSON files for State
 
 ### Authentication
 
-Status: In Planning
-
 ### Authorization
 
-Status: In Planning
-
 ### Asset storage
-
-- Lookup table
 
 ### Outdated Client Detection
 
