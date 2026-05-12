@@ -9,7 +9,7 @@ interface StateDefinitionConfig {
 	namespace?: string;
 }
 
-interface StateDefinition<Definitions extends Record<string, unknown>> {
+export interface StateDefinition<Definitions extends Record<string, unknown>> {
 	namespace: string | undefined;
 	states: {
 		[K in keyof Definitions]: {

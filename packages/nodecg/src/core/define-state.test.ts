@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
 import z from "zod";
 
-import { defineState } from "./state";
-import { testEffect } from "../test/effect";
+import { defineState } from "./define-state";
+import { testEffect } from "../../test/effect";
 
 test(
 	"base",
