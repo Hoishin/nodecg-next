@@ -1,0 +1,23 @@
+{
+	"name": "@nodecg/client",
+	"version": "0.0.0-experimental",
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		"./load-state": "./src/load-state.ts"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"type-check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@nodecg/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@vitest/browser": "^4.1.5",
+		"@vitest/browser-playwright": "^4.1.5",
+		"playwright": "^1.59.1",
+		"typescript": "catalog:",
+		"vitest": "^4.1.5"
+	}
+}

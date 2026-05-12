@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 import { expect, test } from "vitest";
 
 test("runs in a real browser", () => {

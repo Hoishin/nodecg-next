@@ -1,0 +1,22 @@
+{
+	"name": "@nodecg/core",
+	"version": "0.0.0-experimental",
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		".": "./src/core.ts"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"type-check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"effect": "catalog:",
+		"zod": "~4.0.0"
+	},
+	"devDependencies": {
+		"@nodecg/private": "workspace:*",
+		"typescript": "catalog:",
+		"vitest": "^4.1.5"
+	}
+}

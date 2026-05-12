@@ -2,8 +2,9 @@ import { Effect } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
 import z from "zod";
 
+import { testEffect } from "@nodecg/private";
+
 import { defineState } from "./define-state";
-import { testEffect } from "../../test/effect";
 
 test(
 	"base",
