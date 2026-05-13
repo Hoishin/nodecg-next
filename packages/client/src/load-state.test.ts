@@ -1,5 +1,5 @@
 import { defineState } from "@nodecg/core";
-import { expect, test, vi } from "vitest";
+import { expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 
 import { loadState } from "./load-state";
@@ -17,6 +17,11 @@ test("getValue fetches and returns the response body", async () => {
 	const stateDefinition = defineState({ count: { schema: z.number() } });
 
 	const state = loadState(stateDefinition);
+
+	expectTypeOf(state).toEqualTypeOf<{
+		count: { getValue: () => Promise<number> };
+	}>();
+
 	const value = await state.count.getValue();
 
 	expect(value).toBe(42);
