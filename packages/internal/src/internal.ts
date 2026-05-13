@@ -1,5 +1,5 @@
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup } from "@effect/platform";
-import { Effect, Runtime, Schema } from "effect";
+import { Effect, ManagedRuntime, Schema } from "effect";
 import { err, ok, type Result } from "neverthrow";
 
 export const ClientMessage = Schema.Union(
@@ -40,11 +40,10 @@ export function mapValues<T extends Record<string, unknown>, R extends { [K in k
 }
 
 export async function mapEffectToNeverthrow<A, E, R>(
-	runtime: Runtime.Runtime<R>,
+	runtime: ManagedRuntime.ManagedRuntime<R, never>,
 	effect: Effect.Effect<A, E, R>,
 ): Promise<Result<A, E>> {
-	return Runtime.runPromise(
-		runtime,
+	return runtime.runPromise(
 		Effect.match(effect, {
 			onSuccess: (value) => ok(value),
 			onFailure: (error) => err(error),
@@ -53,7 +52,7 @@ export async function mapEffectToNeverthrow<A, E, R>(
 }
 
 export function mapEffectFnToNeverthrow<A, E, R, Args extends readonly unknown[]>(
-	runtime: Runtime.Runtime<R>,
+	runtime: ManagedRuntime.ManagedRuntime<R, never>,
 	fn: (...args: Args) => Effect.Effect<A, E, R>,
 ) {
 	return (...args: Args) => mapEffectToNeverthrow(runtime, fn(...args));

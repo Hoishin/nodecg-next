@@ -3,7 +3,7 @@ import type { Result } from "neverthrow";
 import { expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 
-import { loadState } from "./load-state";
+import { GetStateError, loadState } from "./load-state";
 
 test("runs in a real browser", () => {
 	expect(typeof window).toBe("object");
@@ -21,7 +21,7 @@ test("getValue fetches and returns the response body", async () => {
 
 	expectTypeOf(state).toEqualTypeOf<{
 		count: {
-			getValue: () => Promise<Result<number, string>>;
+			getValue: () => Promise<Result<number, GetStateError>>;
 			update: (fn: (value: number) => number | Promise<number>) => Promise<Result<void, string>>;
 		};
 	}>();

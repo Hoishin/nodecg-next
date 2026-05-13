@@ -1,10 +1,25 @@
+import { HttpClient, HttpClientRequest } from "@effect/platform";
+import type { HttpClientError } from "@effect/platform/HttpClientError";
 import type { StateDefinition, StateDefinitions } from "@nodecg/core";
-import { mapValues } from "@nodecg/internal";
-import { err, ok, type Result } from "neverthrow";
+import { mapEffectFnToNeverthrow, mapValues } from "@nodecg/internal";
+import { Data, Effect, Match } from "effect";
+import { type Result } from "neverthrow";
 import type { JsonValue } from "type-fest";
 
+import { runtime } from "./runtime";
+
+export class GetStateError extends Data.TaggedError("GetStateError")<{
+	readonly namespace: string;
+	readonly name: string;
+	readonly cause: HttpClientError;
+}> {
+	override get message() {
+		return `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
+	}
+}
+
 interface State<T extends JsonValue> {
-	getValue: () => Promise<Result<T, string>>;
+	getValue: () => Promise<Result<T, GetStateError>>;
 	update: (fn: (value: T) => T | Promise<T>) => Promise<Result<void, string>>;
 }
 
@@ -13,36 +28,48 @@ function implementState<T extends JsonValue>(
 	name: string,
 	definition: StateDefinition<T>,
 ): State<T> {
-	const getValue = async () => {
-		const response = await fetch(`/api/namespaces/${namespace}/state/${name}`);
-		if (!response.ok) {
-			return err(`Failed to get state value for ${name} in ${namespace}: ${response.statusText}`);
-		}
-		const body = await response.json();
-		return ok(body as T);
-	};
+	const getValue = Effect.fn("getValue")(
+		function* () {
+			const client = yield* HttpClient.HttpClient;
+			const data = yield* client
+				.get(`/api/namespaces/${namespace}/state/${name}`)
+				.pipe(Effect.andThen((response) => response.json));
+			return data as T;
+		},
+		Effect.mapError((cause) => new GetStateError({ namespace, name, cause })),
+	);
 
-	const update = async (fn: (value: T) => T | Promise<T>) => {
-		const current = await getValue();
-		if (current.isErr()) {
-			return current;
-		}
-		const next = fn(current.value);
-		const parsedNext = definition.parse(next);
-		const response = await fetch(`/api/namespaces/${namespace}/state/${name}`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(parsedNext),
-		});
-		if (!response.ok) {
-			return err(`Failed to update state "${name}": ${response.statusText}`);
-		}
-		return ok();
-	};
+	const update = Effect.fn("update")(
+		function* (fn: (value: T) => T | Promise<T>) {
+			const client = yield* HttpClient.HttpClient;
+			const current = yield* getValue();
+			const next = yield* Effect.tryPromise(async () => fn(current));
+			const parsed = yield* definition.parse(next);
+			yield* HttpClientRequest.put(`/api/namespaces/${namespace}/state/${name}`).pipe(
+				HttpClientRequest.bodyJson(parsed),
+				Effect.andThen(client.execute),
+			);
+		},
+		Effect.mapError((error) => {
+			const detail = Match.value(error).pipe(
+				Match.when(Match.string, (e) => e),
+				Match.tag("HttpBodyError", (e) => `failed to encode body (${e.reason._tag})`),
+				Match.tag(
+					"RequestError",
+					"ResponseError",
+					"UnknownException",
+					"GetStateError",
+					(e) => e.message,
+				),
+				Match.exhaustive,
+			);
+			return `Failed to update state "${name}": ${detail}`;
+		}),
+	);
 
 	return {
-		getValue,
-		update,
+		getValue: mapEffectFnToNeverthrow(runtime, getValue),
+		update: mapEffectFnToNeverthrow(runtime, update),
 	};
 }
 

@@ -1,3 +1,4 @@
-import { Layer, ManagedRuntime } from "effect";
+import { FetchHttpClient } from "@effect/platform";
+import { ManagedRuntime } from "effect";
 
-export const runtime = ManagedRuntime.make(Layer.empty);
+export const runtime = ManagedRuntime.make(FetchHttpClient.layer);
