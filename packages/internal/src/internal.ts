@@ -1,5 +1,6 @@
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup } from "@effect/platform";
-import { Schema } from "effect";
+import { Effect, Runtime, Schema } from "effect";
+import { err, ok, type Result } from "neverthrow";
 
 export const ClientMessage = Schema.Union(
 	Schema.TaggedStruct("subscribe", { topic: Schema.String }),
@@ -27,13 +28,33 @@ export const NodecgApi = HttpApi.make("NodecgApi")
 			.add(HttpApiEndpoint.post("publish", "/api/publish").setPayload(PublishPayload)),
 	);
 
-export function mapValues<
-	T extends Record<string, unknown>,
-	R extends { [K in keyof T]: unknown },
->(obj: T, fn: <K extends keyof T>(value: T[K], key: K) => R[K]): R {
+export function mapValues<T extends Record<string, unknown>, R extends { [K in keyof T]: unknown }>(
+	obj: T,
+	fn: <K extends keyof T>(value: T[K], key: K) => R[K],
+): R {
 	const result: Partial<R> = {};
 	for (const key of Object.keys(obj) as (keyof T)[]) {
 		result[key] = fn(obj[key], key);
 	}
 	return result as R;
+}
+
+export async function mapEffectToNeverthrow<A, E, R>(
+	runtime: Runtime.Runtime<R>,
+	effect: Effect.Effect<A, E, R>,
+): Promise<Result<A, E>> {
+	return Runtime.runPromise(
+		runtime,
+		Effect.match(effect, {
+			onSuccess: (value) => ok(value),
+			onFailure: (error) => err(error),
+		}),
+	);
+}
+
+export function mapEffectFnToNeverthrow<A, E, R, Args extends readonly unknown[]>(
+	runtime: Runtime.Runtime<R>,
+	fn: (...args: Args) => Effect.Effect<A, E, R>,
+) {
+	return (...args: Args) => mapEffectToNeverthrow(runtime, fn(...args));
 }

@@ -11,7 +11,8 @@
 	},
 	"dependencies": {
 		"@effect/platform": "catalog:",
-		"effect": "catalog:"
+		"effect": "catalog:",
+		"neverthrow": "catalog:"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

@@ -1,4 +1,5 @@
 import { defineState } from "@nodecg/core";
+import type { Result } from "neverthrow";
 import { expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 
@@ -19,11 +20,32 @@ test("getValue fetches and returns the response body", async () => {
 	const state = loadState(stateDefinition);
 
 	expectTypeOf(state).toEqualTypeOf<{
-		count: { getValue: () => Promise<number> };
+		count: {
+			getValue: () => Promise<Result<number, string>>;
+			update: (fn: (value: number) => number | Promise<number>) => Promise<Result<void, string>>;
+		};
 	}>();
 
 	const value = await state.count.getValue();
 
-	expect(value).toBe(42);
+	expect(value.isOk() && value.value).toBe(42);
 	expect(globalThis.fetch).toHaveBeenCalledWith("/api/namespaces/root/state/count");
+});
+
+test("update reads the current value, applies the fn, and PUTs the result", async () => {
+	let stored = 10;
+	vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+		if (init?.method === "PUT") {
+			stored = JSON.parse(init.body as string);
+			return new Response(null, { status: 204 });
+		}
+		return new Response(JSON.stringify(stored), { status: 200 });
+	});
+
+	const stateDefinition = defineState({ count: { schema: z.number() } });
+	const state = loadState(stateDefinition);
+
+	await state.count.update((value) => value + 5);
+
+	expect(stored).toBe(15);
 });
