@@ -3,7 +3,7 @@ import { Data, Effect, type HKT } from "effect";
 import type { JsonValue } from "type-fest";
 import { z } from "zod";
 
-type EnforceJsonValue<T> = Extract<T, JsonValue>;
+type EnforceJsonValue<T> = [T] extends [JsonValue] ? T : never;
 
 interface StateOptions<Decoded> {
 	schema: z.ZodDefault<z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>>;
