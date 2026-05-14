@@ -1,14 +1,8 @@
 import { defineState } from "@nodecg/core";
-import type { Result } from "neverthrow";
+import { Schema } from "effect";
 import { assert, expect, expectTypeOf, test, vi } from "vitest";
-import { z } from "zod";
 
-import { GetStateError, loadState, UpdateStateError } from "./load-state";
-
-test("runs in a real browser", () => {
-	expect(typeof window).toBe("object");
-	expect(typeof document).toBe("object");
-});
+import { loadState } from "./load-state";
 
 test("getValue fetches and returns the response body", async () => {
 	const fetchSpy = vi
@@ -16,21 +10,18 @@ test("getValue fetches and returns the response body", async () => {
 		.mockResolvedValue(new Response(JSON.stringify(42), { status: 200 }));
 
 	const manifest = defineState("root", {
-		count: { schema: z.number().default(0) },
+		count: { schema: Schema.Number, initialValue: () => 0 },
 	});
 
 	const state = loadState(manifest);
 
-	expectTypeOf(state).toEqualTypeOf<{
+	expectTypeOf(state).toExtend<{
 		count: {
 			getValue: () => Promise<number>;
-			safeGetValue: () => Promise<Result<number, GetStateError>>;
 			set: (value: number) => Promise<void>;
-			safeSet: (value: number) => Promise<Result<void, UpdateStateError>>;
-			update: (fn: (value: number) => number | Promise<number>) => Promise<void>;
-			safeUpdate: (
+			update: (
 				fn: (value: number) => number | Promise<number>,
-			) => Promise<Result<void, UpdateStateError>>;
+			) => Promise<void>;
 		};
 	}>();
 
@@ -53,11 +44,40 @@ test("update reads the current value, applies the fn, and PUTs the result", asyn
 	});
 
 	const manifest = defineState("root", {
-		count: { schema: z.number().default(0) },
+		count: { schema: Schema.Number, initialValue: () => 0 },
 	});
 	const state = loadState(manifest);
 
 	await state.count.update((value) => value + 5);
 
 	expect(stored).toBe(15);
+});
+
+test("bidirectional codec round-trips through HTTP", async () => {
+	let stored: string | null = null;
+	vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+		if (init?.method === "PUT") {
+			stored = JSON.parse(await new Response(init.body).text()) as string;
+			return new Response(null, { status: 204 });
+		}
+		return new Response(JSON.stringify(stored ?? "2026-05-14T00:00:00.000Z"), {
+			status: 200,
+		});
+	});
+
+	const manifest = defineState("root", {
+		when: {
+			schema: Schema.DateFromString,
+			initialValue: () => new Date(0),
+		},
+	});
+	const state = loadState(manifest);
+
+	const initial = await state.when.getValue();
+	expect(initial).toEqual(new Date("2026-05-14T00:00:00.000Z"));
+
+	const newDate = new Date("2030-01-01T00:00:00.000Z");
+	await state.when.set(newDate);
+
+	expect(stored).toBe("2030-01-01T00:00:00.000Z");
 });

@@ -4,16 +4,15 @@ import {
 	type StateDefinition,
 	type StateManifest,
 } from "@nodecg/core";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
-import z from "zod";
 
 import { GetStateError, loadState, UpdateStateError } from "./load-state";
 import { store } from "./store";
 
-test("schema .default() seeds the initial value", async () => {
+test("schema seeds the initial value", async () => {
 	const manifest = defineState("test-default", {
-		count: { schema: z.number().default(42) },
+		count: { schema: Schema.Number, initialValue: () => 42 },
 	});
 	const state = loadState(manifest);
 
@@ -22,9 +21,9 @@ test("schema .default() seeds the initial value", async () => {
 	expect(await state.count.getValue()).toBe(42);
 });
 
-test("set overrides the seeded default", async () => {
+test("set overrides the seeded initial value", async () => {
 	const manifest = defineState("test-set", {
-		count: { schema: z.number().default(0) },
+		count: { schema: Schema.Number, initialValue: () => 0 },
 	});
 	const state = loadState(manifest);
 
@@ -34,7 +33,7 @@ test("set overrides the seeded default", async () => {
 
 test("update transforms the current value", async () => {
 	const manifest = defineState("test-update", {
-		count: { schema: z.number().default(10) },
+		count: { schema: Schema.Number, initialValue: () => 10 },
 	});
 	const state = loadState(manifest);
 
@@ -44,7 +43,7 @@ test("update transforms the current value", async () => {
 
 test("safeSet returns Err when value fails schema validation", async () => {
 	const manifest = defineState("test-validate", {
-		count: { schema: z.number().default(0) },
+		count: { schema: Schema.Number, initialValue: () => 0 },
 	});
 	const state = loadState(manifest);
 
@@ -57,7 +56,7 @@ test("safeSet returns Err when value fails schema validation", async () => {
 
 test("getValue fails with validation error when store has bad data", async () => {
 	const manifest = defineState("test-decode-fail", {
-		count: { schema: z.number().default(0) },
+		count: { schema: Schema.Number, initialValue: () => 0 },
 	});
 	const state = loadState(manifest);
 
@@ -70,7 +69,7 @@ test("getValue fails with validation error when store has bad data", async () =>
 
 test("safeGetValue returns Err when store has bad data", async () => {
 	const manifest = defineState("test-safe-decode-fail", {
-		count: { schema: z.number().default(0) },
+		count: { schema: Schema.Number, initialValue: () => 0 },
 	});
 	const state = loadState(manifest);
 
@@ -83,20 +82,38 @@ test("safeGetValue returns Err when store has bad data", async () => {
 	}
 });
 
-test("loadState throws if encode rejects the default", () => {
+test("loadState throws if encode rejects the initial value", () => {
 	const definition: StateDefinition<number> = {
 		name: "broken",
-		getDefault: () => 42,
+		getInitial: () => 42,
 		encode: () =>
 			Effect.fail(
 				new StateValidationError({ name: "broken", cause: "rejected on seed" }),
 			),
 		decode: () => Effect.succeed(0),
 	};
-	const manifest: StateManifest<{ broken: number }> = {
+	const manifest: StateManifest<{ broken: typeof Schema.Number }> = {
 		namespace: "test-encode-seed-fail",
 		definitions: { broken: definition },
 	};
 
 	expect(() => loadState(manifest)).toThrow(/rejected on seed/);
+});
+
+test("bidirectional codec round-trips via wire storage", async () => {
+	const manifest = defineState("test-codec", {
+		when: {
+			schema: Schema.DateFromString,
+			initialValue: () => new Date(0),
+		},
+	});
+	const state = loadState(manifest);
+
+	expect(await state.when.getValue()).toEqual(new Date(0));
+
+	const newDate = new Date("2026-05-14T00:00:00.000Z");
+	await state.when.set(newDate);
+
+	expect(store.get("test-codec", "when")).toBe("2026-05-14T00:00:00.000Z");
+	expect(await state.when.getValue()).toEqual(newDate);
 });

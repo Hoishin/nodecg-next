@@ -1,160 +1,186 @@
 import { testEffect } from "@nodecg/private";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import z from "zod";
 
-import { defineState, StateValidationError } from "./define-state";
+import {
+	defineState,
+	StateValidationError,
+	type StateDefinition,
+} from "./define-state";
 
 test(
-	"base",
+	"base — Schema.Number with thunk initialValue",
 	testEffect(
 		Effect.gen(function* () {
 			const manifest = defineState("test", {
-				count: {
-					schema: z.number().default(0),
-				},
+				count: { schema: Schema.Number, initialValue: () => 0 },
 			});
 
-			expectTypeOf(manifest.definitions.count).toEqualTypeOf<{
-				name: string;
-				getDefault: () => number;
-				encode: (value: number) => Effect.Effect<JsonValue, StateValidationError>;
-				decode: (value: unknown) => Effect.Effect<number, StateValidationError>;
-			}>();
+			expectTypeOf(manifest.definitions.count).toEqualTypeOf<
+				StateDefinition<number>
+			>();
 
-			expect(manifest.definitions.count.getDefault()).toBe(0);
+			expect(manifest.definitions.count.getInitial()).toBe(0);
 
 			const encoded = yield* manifest.definitions.count.encode(123);
 			expect(encoded).toBe(123);
+
+			const decoded = yield* manifest.definitions.count.decode(456);
+			expect(decoded).toBe(456);
 		}),
 	),
 );
 
-test("allows JSON compatible schema", () => {
+test("allows JsonValue-compatible schemas", () => {
 	const manifest = defineState("test", {
-		player: { schema: z.string().default("") },
-		score: { schema: z.number().default(0) },
-		active: { schema: z.boolean().default(false) },
+		player: { schema: Schema.String, initialValue: () => "" },
+		score: { schema: Schema.Number, initialValue: () => 0 },
+		active: { schema: Schema.Boolean, initialValue: () => false },
 		config: {
-			schema: z.object({ name: z.string(), score: z.number() }).default({ name: "", score: 0 }),
+			schema: Schema.Struct({ name: Schema.String, score: Schema.Number }),
+			initialValue: () => ({ name: "", score: 0 }),
 		},
-		tags: { schema: z.array(z.string()).default([]) },
+		tags: {
+			schema: Schema.Array(Schema.String),
+			initialValue: () => [],
+		},
 	});
 
-	expectTypeOf(manifest.definitions.player).toEqualTypeOf<{
-		name: string;
-		getDefault: () => string;
-		encode: (value: string) => Effect.Effect<JsonValue, StateValidationError>;
-		decode: (value: unknown) => Effect.Effect<string, StateValidationError>;
-	}>();
+	expectTypeOf(manifest.definitions.player).toEqualTypeOf<
+		StateDefinition<string>
+	>();
+	expectTypeOf(manifest.definitions.config.getInitial).toEqualTypeOf<
+		() => { readonly name: string; readonly score: number }
+	>();
 });
 
-describe("does not allow JSON incompatible schema", () => {
-	test("Date", () => {
-		expect(() => {
-			defineState("test", {
-				// @ts-expect-error Date is not JsonValue-compatible
-				when: { schema: z.date() },
-			});
-		}).toThrow(/cannot be represented in JSON Schema/);
-	});
-
-	test("BigInt", () => {
-		expect(() => {
-			defineState("test", {
-				// @ts-expect-error BigInt is not JsonValue-compatible
-				big: { schema: z.bigint() },
-			});
-		}).toThrow(/cannot be represented in JSON Schema/);
-	});
-
-	test("Map", () => {
-		expect(() => {
-			defineState("test", {
-				// @ts-expect-error Map is not JsonValue-compatible
-				lookup: { schema: z.map(z.string(), z.number()) },
-			});
-		}).toThrow(/cannot be represented in JSON Schema/);
-	});
-
-	test("Set", () => {
-		expect(() => {
-			defineState("test", {
-				// @ts-expect-error Set is not JsonValue-compatible
-				unique: { schema: z.set(z.string()) },
-			});
-		}).toThrow(/cannot be represented in JSON Schema/);
-	});
-
-	test("Symbol", () => {
-		expect(() => {
-			defineState("test", {
-				// @ts-expect-error Symbol is not JsonValue-compatible
-				token: { schema: z.symbol() },
-			});
-		}).toThrow(/cannot be represented in JSON Schema/);
-	});
-});
-
-describe(".default() enforcement", () => {
-	test("simple — accepted at type and runtime", () => {
-		const manifest = defineState("test", {
-			count: { schema: z.number().default(0) },
-		});
-		expect(manifest.definitions.count.getDefault()).toBe(0);
-	});
-
-	test("top-level .default() with no inner defaults — accepted at type and runtime", () => {
-		const manifest = defineState("test", {
-			conf: {
-				schema: z.object({ a: z.number(), b: z.number() }).default({ a: 1, b: 2 }),
-			},
-		});
-		expect(manifest.definitions.conf.getDefault()).toEqual({ a: 1, b: 2 });
-	});
-
-	test("top-level .prefault({}) with inner .default()s — accepted at type and runtime", () => {
-		const manifest = defineState("test", {
-			conf: {
-				schema: z.object({ a: z.number().default(0), b: z.string().default("") }).prefault({}),
-			},
-		});
-		expect(manifest.definitions.conf.getDefault()).toEqual({ a: 0, b: "" });
-	});
-
-	test("no top-level .default(), inner-only .default() — rejected at type and runtime", () => {
-		expect(() => {
-			defineState("test", {
-				conf: {
-					// @ts-expect-error outer object lacks .default(); inner field default doesn't count
-					schema: z.object({ a: z.number().default(0) }),
+test(
+	"bidirectional codec — DateFromString round-trip",
+	testEffect(
+		Effect.gen(function* () {
+			const manifest = defineState("test", {
+				when: {
+					schema: Schema.DateFromString,
+					initialValue: () => new Date(0),
 				},
 			});
-		}).toThrow(/must provide a default/);
+
+			expectTypeOf(manifest.definitions.when).toEqualTypeOf<
+				StateDefinition<Date>
+			>();
+
+			const encoded = yield* manifest.definitions.when.encode(new Date(0));
+			expect(encoded).toBe("1970-01-01T00:00:00.000Z");
+
+			const decoded = yield* manifest.definitions.when.decode(
+				"1970-01-01T00:00:00.000Z",
+			);
+			expect(decoded).toEqual(new Date(0));
+		}),
+	),
+);
+
+test("nested struct with array of structs", () => {
+	const manifest = defineState("test", {
+		game: {
+			schema: Schema.Struct({
+				id: Schema.String,
+				players: Schema.Array(
+					Schema.Struct({
+						name: Schema.String,
+						stats: Schema.Struct({
+							wins: Schema.Number,
+							losses: Schema.Number,
+						}),
+					}),
+				),
+			}),
+			initialValue: () => ({ id: "", players: [] }),
+		},
+	});
+
+	expect(manifest.definitions.game.getInitial()).toEqual({
+		id: "",
+		players: [],
 	});
 });
 
-describe("does not allow zod schema with .transform()", () => {
-	test("non-JSON-compatible output", () => {
-		expect(() => {
-			defineState("test", {
-				// @ts-expect-error .transform() produces a non-JsonValue output that fails the schema constraint
-				due: { schema: z.string().transform((s) => new Date(s)) },
-			});
-		}).toThrow(/Transforms cannot be represented in JSON Schema/);
+describe("does not allow schemas whose Encoded is not JsonValue-compatible", () => {
+	test("DateFromSelf (Encoded = Date)", () => {
+		defineState("test", {
+			when: {
+				// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not JsonValue
+				schema: Schema.DateFromSelf,
+				initialValue: () => new Date(),
+			},
+		});
 	});
 
-	test("JSON-compatible output", () => {
-		expect(() => {
-			defineState("test", {
-				shout: {
-					schema: z
-						.string()
-						.transform((s) => s.toUpperCase())
-						.default(""),
-				},
-			});
-		}).toThrow(/Transforms cannot be represented in JSON Schema/);
+	test("Struct with bigint field (Encoded contains bigint)", () => {
+		defineState("test", {
+			nested: {
+				// @ts-expect-error BigIntFromSelf Encoded is bigint, not JsonValue
+				schema: Schema.Struct({ count: Schema.BigIntFromSelf }),
+				initialValue: () => ({ count: 0n }),
+			},
+		});
 	});
+});
+
+test("initialValue is required at type level", () => {
+	defineState("test", {
+		// @ts-expect-error initialValue missing
+		count: { schema: Schema.Number },
+	});
+});
+
+test("initialValue type must match schema's Decoded", () => {
+	defineState("test", {
+		count: {
+			schema: Schema.Number,
+			// @ts-expect-error string not assignable to number
+			initialValue: () => "not a number",
+		},
+	});
+});
+
+test("encode returns StateValidationError on bad input", () => {
+	const manifest = defineState("test", {
+		count: { schema: Schema.Number, initialValue: () => 0 },
+	});
+
+	const result = Effect.runSync(
+		Effect.either(
+			manifest.definitions.count.encode("not a number" as unknown as number),
+		),
+	);
+	expect(result._tag).toBe("Left");
+	if (result._tag === "Left") {
+		expect(result.left).toBeInstanceOf(StateValidationError);
+	}
+});
+
+test("decode returns StateValidationError on bad input", () => {
+	const manifest = defineState("test", {
+		count: { schema: Schema.Number, initialValue: () => 0 },
+	});
+
+	const result = Effect.runSync(
+		Effect.either(manifest.definitions.count.decode("not a number")),
+	);
+	expect(result._tag).toBe("Left");
+	if (result._tag === "Left") {
+		expect(result.left).toBeInstanceOf(StateValidationError);
+	}
+});
+
+test("Encoded type flows through StateDefinition.encode return", () => {
+	const manifest = defineState("test", {
+		count: { schema: Schema.Number, initialValue: () => 0 },
+	});
+
+	expectTypeOf(manifest.definitions.count.encode).toEqualTypeOf<
+		(value: number) => Effect.Effect<JsonValue, StateValidationError>
+	>();
 });

@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientRequest } from "@effect/platform";
 import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapEffectFnToNeverthrow, mapValues } from "@nodecg/internal";
-import { Data, Effect, type HKT, Match } from "effect";
+import { Data, Effect, type HKT, Match, type Schema } from "effect";
 import { type Result } from "neverthrow";
 
 import { runtime } from "./runtime";
@@ -116,16 +116,18 @@ function implementState<Decoded>(
 }
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
-	readonly type: StateDefinition<this["Target"]>;
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
 }
 
 interface StateFieldLambda extends HKT.TypeLambda {
-	readonly type: StateField<this["Target"]>;
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: StateField<Schema.Schema.Type<this["Target"]>>;
 }
 
-export function loadState<Definitions extends Record<string, unknown>>(
-	manifest: StateManifest<Definitions>,
-) {
+export function loadState<
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+>(manifest: StateManifest<Definitions>) {
 	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
 		manifest.definitions,
 		(definition, name) => implementState(manifest.namespace, name, definition),

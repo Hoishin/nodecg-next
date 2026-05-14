@@ -1,19 +1,6 @@
 import { mapValues } from "@nodecg/internal";
-import { Data, Effect, type HKT } from "effect";
+import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
-import { z } from "zod";
-
-type EnforceJsonValue<T> = [T] extends [JsonValue] ? T : never;
-
-type ZodPrefaultDefault<T extends z.ZodType> =
-	| z.ZodPrefault<T>
-	| z.ZodDefault<T>;
-
-interface StateOptions<Decoded> {
-	schema: ZodPrefaultDefault<
-		z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>
-	>;
-}
 
 export class StateValidationError extends Data.TaggedError(
 	"StateValidationError",
@@ -26,74 +13,83 @@ export class StateValidationError extends Data.TaggedError(
 	}
 }
 
-export interface StateDefinition<Decoded> {
-	name: string;
-	getDefault: () => EnforceJsonValue<Decoded>;
-	encode: (value: Decoded) => Effect.Effect<JsonValue, StateValidationError>;
-	decode: (value: unknown) => Effect.Effect<Decoded, StateValidationError>;
+interface StateOption<S extends Schema.Schema<any, any, never>> {
+	schema: [Schema.Schema.Encoded<S>] extends [JsonValue] ? S : never;
+	initialValue: () => Schema.Schema.Type<S>;
 }
 
-export interface StateManifest<Values extends Record<string, unknown>> {
+export interface StateDefinition<Decoded> {
+	readonly name: string;
+	readonly getInitial: () => Decoded;
+	readonly encode: (
+		value: Decoded,
+	) => Effect.Effect<JsonValue, StateValidationError>;
+	readonly decode: (
+		value: unknown,
+	) => Effect.Effect<Decoded, StateValidationError>;
+}
+
+export interface StateManifest<
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+> {
 	namespace: string;
 	definitions: {
-		[K in keyof Values & string]: StateDefinition<Values[K]>;
+		[K in keyof Definitions & string]: StateDefinition<
+			Schema.Schema.Type<Definitions[K]>
+		>;
 	};
 }
 
-interface StateOptionsLambda extends HKT.TypeLambda {
-	readonly type: StateOptions<this["Target"]>;
+function implementDefinition<S extends Schema.Schema<any, JsonValue, never>>(
+	name: string,
+	{ schema, initialValue }: StateOption<S>,
+): StateDefinition<Schema.Schema.Type<S>> {
+	return {
+		name,
+		getInitial: initialValue,
+		encode: Effect.fn("encode")(function* (value: Schema.Schema.Type<S>) {
+			return yield* Schema.encode(schema)(value).pipe(
+				Effect.catchTag(
+					"ParseError",
+					(error) => new StateValidationError({ name, cause: error.message }),
+				),
+			);
+		}),
+		decode: Effect.fn("decode")(function* (value: unknown) {
+			return yield* Schema.decodeUnknown(schema)(value).pipe(
+				Effect.catchTag(
+					"ParseError",
+					(error) => new StateValidationError({ name, cause: error.message }),
+				),
+			);
+		}),
+	};
+}
+
+interface StateOptionLambda extends HKT.TypeLambda {
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: StateOption<this["Target"]>;
 }
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
-	readonly type: StateDefinition<this["Target"]>;
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
 }
 
-function implementDefinition<Decoded>(
-	{ schema }: StateOptions<Decoded>,
-	name: string,
-): StateDefinition<Decoded> {
-	z.toJSONSchema(schema);
-	const probe = schema.safeParse(undefined);
-	if (!probe.success) {
-		throw new Error(`Schema for state "${name}" must provide a default`);
-	}
-	return {
-		name,
-		getDefault: () => schema.parse(undefined),
-		encode: Effect.fn("encode")(function* (value: unknown) {
-			const result = schema.safeParse(value);
-			if (result.success) {
-				return result.data;
-			}
-			return yield* new StateValidationError({
-				name,
-				cause: result.error.message,
-			});
-		}),
-		decode: Effect.fn("decode")(function* (value: unknown) {
-			const result = schema.safeParse(value);
-			if (result.success) {
-				return result.data;
-			}
-			return yield* new StateValidationError({
-				name,
-				cause: result.error.message,
-			});
-		}),
-	};
-}
-
-export function defineState<Values extends Record<string, JsonValue>>(
+export function defineState<
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+>(
 	namespace: string,
-	definitions: {
-		[K in keyof Values & string]: StateOptions<Values[K]>;
+	defs: {
+		[K in keyof Definitions & string]: StateOption<Definitions[K]>;
 	},
-): StateManifest<Values> {
+): StateManifest<Definitions> {
 	return {
 		namespace,
-		definitions: mapValues<StateOptionsLambda, StateDefinitionLambda, Values>(
-			definitions,
-			(options, name) => implementDefinition(options, name),
-		),
+		definitions: mapValues<
+			StateOptionLambda,
+			StateDefinitionLambda,
+			Definitions
+		>(defs, (options, name) => implementDefinition(name, options)),
 	};
 }
