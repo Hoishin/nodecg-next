@@ -24,6 +24,8 @@ test("getValue fetches and returns the response body", async () => {
 		count: {
 			getValue: () => Promise<number>;
 			safeGetValue: () => Promise<Result<number, GetStateError>>;
+			set: (value: number) => Promise<void>;
+			safeSet: (value: number) => Promise<Result<void, UpdateStateError>>;
 			update: (fn: (value: number) => number | Promise<number>) => Promise<void>;
 			safeUpdate: (
 				fn: (value: number) => number | Promise<number>,

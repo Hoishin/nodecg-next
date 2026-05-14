@@ -1,0 +1,25 @@
+{
+	"name": "@nodecg/server",
+	"version": "0.0.0-experimental",
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		"./load-state": "./src/load-state.ts"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"type-check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@nodecg/core": "workspace:*",
+		"@nodecg/internal": "workspace:*",
+		"effect": "catalog:",
+		"neverthrow": "catalog:",
+		"type-fest": "catalog:"
+	},
+	"devDependencies": {
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

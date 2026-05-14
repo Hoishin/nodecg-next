@@ -1,10 +1,10 @@
-import { HttpClient, HttpClientRequest } from "@effect/platform";
 import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapEffectFnToNeverthrow, mapValues } from "@nodecg/internal";
 import { Data, Effect, type HKT, Match } from "effect";
 import { type Result } from "neverthrow";
 
 import { runtime } from "./runtime";
+import { store } from "./store";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -42,43 +42,26 @@ function implementState<Decoded>(
 	name: string,
 	definition: StateDefinition<Decoded>,
 ): StateField<Decoded> {
-	const getValue = Effect.fn("getValue")(
-		function* () {
-			const client = yield* HttpClient.HttpClient;
-			const body = yield* client
-				.get(`/api/namespaces/${namespace}/state/${name}`)
-				.pipe(Effect.andThen((response) => response.json));
-			return body as Decoded;
-		},
-		Effect.mapError((error) => new GetStateError({ namespace, name, cause: error.message })),
-	);
-
-	const put = Effect.fn("put")(function* (encoded: unknown) {
-		const client = yield* HttpClient.HttpClient;
-		yield* HttpClientRequest.put(`/api/namespaces/${namespace}/state/${name}`).pipe(
-			HttpClientRequest.bodyJson(encoded),
-			Effect.andThen(client.execute),
-		);
+	const getValue = Effect.fn("getValue")(function* () {
+		const current = store.get(namespace, name);
+		if (current === undefined) {
+			return yield* new GetStateError({
+				namespace,
+				name,
+				cause: "state has not been initialised",
+			});
+		}
+		return current as Decoded;
 	});
 
 	const set = Effect.fn("set")(
 		function* (value: Decoded) {
 			const encoded = yield* definition.encode(value);
-			yield* put(encoded);
+			store.set(namespace, name, encoded);
 		},
-		Effect.mapError((error) => {
-			const cause = Match.value(error).pipe(
-				Match.tag("HttpBodyError", (e) => `failed to encode body (${e.reason._tag})`),
-				Match.tag(
-					"RequestError",
-					"ResponseError",
-					"StateValidationError",
-					(e) => e.message,
-				),
-				Match.exhaustive,
-			);
-			return new UpdateStateError({ namespace, name, cause });
-		}),
+		Effect.mapError(
+			(error) => new UpdateStateError({ namespace, name, cause: error.message }),
+		),
 	);
 
 	const update = Effect.fn("update")(
@@ -86,14 +69,11 @@ function implementState<Decoded>(
 			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
-			yield* put(encoded);
+			store.set(namespace, name, encoded);
 		},
 		Effect.mapError((error) => {
 			const cause = Match.value(error).pipe(
-				Match.tag("HttpBodyError", (e) => `failed to encode body (${e.reason._tag})`),
 				Match.tag(
-					"RequestError",
-					"ResponseError",
 					"UnknownException",
 					"GetStateError",
 					"StateValidationError",
