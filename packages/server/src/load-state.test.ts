@@ -8,7 +8,7 @@ import { Effect, Schema } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
 
 import { GetStateError, loadState, UpdateStateError } from "./load-state";
-import { store } from "./store";
+import { inMemoryStateStorage } from "./state-storage-in-memory";
 
 test("seeds the initial value from the provided thunk", async () => {
 	const manifest = defineState("test-default", {
@@ -92,7 +92,9 @@ test("getValue fails with validation error when store has bad data", async () =>
 		initialValues: { count: () => 0 },
 	});
 
-	store.set("test-decode-fail", "count", "not a number");
+	await Effect.runPromise(
+		inMemoryStateStorage.set("test-decode-fail", "count", "not a number"),
+	);
 
 	await expect(state.count.getValue()).rejects.toThrow(
 		/Failed to get state "count" in "test-decode-fail"/,
@@ -108,7 +110,9 @@ test("safeGetValue returns Err when store has bad data", async () => {
 		initialValues: { count: () => 0 },
 	});
 
-	store.set("test-safe-decode-fail", "count", "not a number");
+	await Effect.runPromise(
+		inMemoryStateStorage.set("test-safe-decode-fail", "count", "not a number"),
+	);
 
 	const result = await state.count.safeGetValue();
 	expect(result.isErr()).toBe(true);
@@ -150,6 +154,9 @@ test("bidirectional codec round-trips via wire storage", async () => {
 	const newDate = new Date("2026-05-14T00:00:00.000Z");
 	await state.when.set(newDate);
 
-	expect(store.get("test-codec", "when")).toBe("2026-05-14T00:00:00.000Z");
+	const wire = await Effect.runPromise(
+		inMemoryStateStorage.get("test-codec", "when"),
+	);
+	expect(wire).toBe("2026-05-14T00:00:00.000Z");
 	expect(await state.when.getValue()).toEqual(newDate);
 });

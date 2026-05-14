@@ -4,7 +4,8 @@ import { Data, Effect, type HKT, Match, type Schema } from "effect";
 import { type Result } from "neverthrow";
 
 import { runtime } from "./runtime";
-import { store } from "./store";
+import type { StateStorageAdapter } from "./state-storage";
+import { inMemoryStateStorage } from "./state-storage-in-memory";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -49,30 +50,22 @@ function implementState<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
+	storage: StateStorageAdapter,
 ): StateField<Decoded> {
 	const getValue = Effect.fn("getValue")(
 		function* () {
-			const current = store.get(namespace, name);
-			if (current === undefined) {
-				return yield* new GetStateError({
-					namespace,
-					name,
-					cause: "state has not been initialised",
-				});
-			}
+			const current = yield* storage.get(namespace, name);
 			return yield* definition.decode(current);
 		},
-		Effect.mapError((error) =>
-			error._tag === "GetStateError"
-				? error
-				: new GetStateError({ namespace, name, cause: error.message }),
+		Effect.mapError(
+			(error) => new GetStateError({ namespace, name, cause: error.message }),
 		),
 	);
 
 	const set = Effect.fn("set")(
 		function* (value: Decoded) {
 			const encoded = yield* definition.encode(value);
-			store.set(namespace, name, encoded);
+			yield* storage.set(namespace, name, encoded);
 		},
 		Effect.mapError(
 			(error) =>
@@ -85,7 +78,7 @@ function implementState<Decoded>(
 			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
-			store.set(namespace, name, encoded);
+			yield* storage.set(namespace, name, encoded);
 		},
 		Effect.mapError((error) => {
 			const cause = Match.value(error).pipe(
@@ -93,6 +86,7 @@ function implementState<Decoded>(
 					"UnknownException",
 					"GetStateError",
 					"StateValidationError",
+					"StateSaveFailed",
 					(e) => e.message,
 				),
 				Match.exhaustive,
@@ -126,14 +120,20 @@ export async function loadState<
 >({
 	manifest,
 	initialValues,
+	storage = inMemoryStateStorage,
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
+	storage?: StateStorageAdapter;
 }) {
 	await Promise.all(
 		Object.entries(initialValues).map(async ([name, thunk]) => {
-			if (store.get(manifest.namespace, name) !== undefined) {
-				return;
+			const existing = await runtime.runPromise(
+				Effect.either(storage.get(manifest.namespace, name)),
+			);
+			if (existing._tag === "Right") return;
+			if (existing.left._tag !== "StateNotFound") {
+				throw existing.left;
 			}
 			const definition = manifest.definitions[name];
 			if (definition === undefined) {
@@ -141,12 +141,13 @@ export async function loadState<
 			}
 			const value = await thunk();
 			const encoded = await runtime.runPromise(definition.encode(value));
-			store.set(manifest.namespace, name, encoded);
+			await runtime.runPromise(storage.set(manifest.namespace, name, encoded));
 		}),
 	);
 
 	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
 		manifest.definitions,
-		(definition, name) => implementState(manifest.namespace, name, definition),
+		(definition, name) =>
+			implementState(manifest.namespace, name, definition, storage),
 	);
 }
