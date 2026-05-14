@@ -44,6 +44,10 @@ function implementDefinition<Decoded>(
 	name: string,
 ): StateDefinition<Decoded> {
 	z.toJSONSchema(schema);
+	const probe = schema.safeParse(undefined);
+	if (!probe.success) {
+		throw new Error(`Schema for state "${name}" must provide a default`);
+	}
 	return {
 		name,
 		getDefault: () => schema.parse(undefined),
