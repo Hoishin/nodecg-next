@@ -7,7 +7,7 @@ import {
 import { Effect, Schema } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
 
-import { GetStateError, loadState, UpdateStateError } from "./load-state";
+import { loadState } from "./load-state";
 import { inMemoryStateStorage } from "./state-storage-in-memory";
 
 test("seeds the initial value from the provided thunk", async () => {
@@ -67,7 +67,7 @@ test("update transforms the current value", async () => {
 	expect(await state.count.getValue()).toBe(13);
 });
 
-test("safeSet returns Err when value fails schema validation", async () => {
+test("set rejects when value fails schema validation", async () => {
 	const manifest = defineState("test-validate", {
 		count: { schema: Schema.Number },
 	});
@@ -76,11 +76,24 @@ test("safeSet returns Err when value fails schema validation", async () => {
 		initialValues: { count: () => 0 },
 	});
 
-	const result = await state.count.safeSet("not a number" as unknown as number);
-	expect(result.isErr()).toBe(true);
-	if (result.isErr()) {
-		expect(result.error).toBeInstanceOf(UpdateStateError);
-	}
+	await expect(
+		state.count.set("not a number" as unknown as number),
+	).rejects.toThrow(/Failed to update state "count" in "test-validate"/);
+});
+
+test("setEffect surfaces UpdateStateError via Effect failure", async () => {
+	const manifest = defineState("test-validate-effect", {
+		count: { schema: Schema.Number },
+	});
+	const state = await loadState({
+		manifest,
+		initialValues: { count: () => 0 },
+	});
+
+	const exit = await Effect.runPromiseExit(
+		state.count.setEffect("not a number" as unknown as number),
+	);
+	expect(exit._tag).toBe("Failure");
 });
 
 test("getValue fails with validation error when store has bad data", async () => {
@@ -101,8 +114,8 @@ test("getValue fails with validation error when store has bad data", async () =>
 	);
 });
 
-test("safeGetValue returns Err when store has bad data", async () => {
-	const manifest = defineState("test-safe-decode-fail", {
+test("getValueEffect surfaces GetStateError via Effect failure", async () => {
+	const manifest = defineState("test-effect-decode-fail", {
 		count: { schema: Schema.Number },
 	});
 	const state = await loadState({
@@ -111,14 +124,11 @@ test("safeGetValue returns Err when store has bad data", async () => {
 	});
 
 	await Effect.runPromise(
-		inMemoryStateStorage.set("test-safe-decode-fail", "count", "not a number"),
+		inMemoryStateStorage.set("test-effect-decode-fail", "count", "not a number"),
 	);
 
-	const result = await state.count.safeGetValue();
-	expect(result.isErr()).toBe(true);
-	if (result.isErr()) {
-		expect(result.error).toBeInstanceOf(GetStateError);
-	}
+	const exit = await Effect.runPromiseExit(state.count.getValueEffect());
+	expect(exit._tag).toBe("Failure");
 });
 
 test("loadState rejects if encode rejects the initial value", async () => {

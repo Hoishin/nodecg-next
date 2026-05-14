@@ -14,12 +14,10 @@
 		"@nodecg/core": "workspace:*",
 		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
-		"neverthrow": "catalog:",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
 		"typescript": "catalog:",
-		"vitest": "catalog:",
-		"zod": "catalog:"
+		"vitest": "catalog:"
 	}
 }

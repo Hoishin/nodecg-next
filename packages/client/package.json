@@ -16,7 +16,6 @@
 		"@nodecg/core": "workspace:*",
 		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
-		"neverthrow": "catalog:",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
@@ -24,7 +23,6 @@
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",
 		"typescript": "catalog:",
-		"vitest": "catalog:",
-		"zod": "catalog:"
+		"vitest": "catalog:"
 	}
 }

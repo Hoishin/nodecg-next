@@ -1,10 +1,7 @@
-import { HttpClient, HttpClientRequest } from "@effect/platform";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
 import type { StateDefinition, StateManifest } from "@nodecg/core";
-import { mapEffectFnToNeverthrow, mapValues } from "@nodecg/internal";
+import { mapValues } from "@nodecg/internal";
 import { Data, Effect, type HKT, Match, type Schema } from "effect";
-import { type Result } from "neverthrow";
-
-import { runtime } from "./runtime";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -28,13 +25,13 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 
 interface StateField<Decoded> {
 	getValue: () => Promise<Decoded>;
-	safeGetValue: () => Promise<Result<Decoded, GetStateError>>;
+	getValueEffect: () => Effect.Effect<Decoded, GetStateError>;
 	set: (value: Decoded) => Promise<void>;
-	safeSet: (value: Decoded) => Promise<Result<void, UpdateStateError>>;
+	setEffect: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
 	update: (fn: (value: Decoded) => Decoded | Promise<Decoded>) => Promise<void>;
-	safeUpdate: (
+	updateEffect: (
 		fn: (value: Decoded) => Decoded | Promise<Decoded>,
-	) => Promise<Result<void, UpdateStateError>>;
+	) => Effect.Effect<void, UpdateStateError>;
 }
 
 function implementState<Decoded>(
@@ -42,7 +39,7 @@ function implementState<Decoded>(
 	name: string,
 	definition: StateDefinition<Decoded>,
 ): StateField<Decoded> {
-	const getValue = Effect.fn("getValue")(
+	const getValueEffect = Effect.fn("getValue")(
 		function* () {
 			const client = yield* HttpClient.HttpClient;
 			const body = yield* client
@@ -50,25 +47,30 @@ function implementState<Decoded>(
 				.pipe(Effect.andThen((response) => response.json));
 			return yield* definition.decode(body);
 		},
-		Effect.mapError((error) => new GetStateError({ namespace, name, cause: error.message })),
+		Effect.mapError(
+			(error) => new GetStateError({ namespace, name, cause: error.message }),
+		),
+		Effect.provide(FetchHttpClient.layer),
 	);
 
 	const put = Effect.fn("put")(function* (encoded: unknown) {
 		const client = yield* HttpClient.HttpClient;
-		yield* HttpClientRequest.put(`/api/namespaces/${namespace}/state/${name}`).pipe(
-			HttpClientRequest.bodyJson(encoded),
-			Effect.andThen(client.execute),
-		);
+		yield* HttpClientRequest.put(
+			`/api/namespaces/${namespace}/state/${name}`,
+		).pipe(HttpClientRequest.bodyJson(encoded), Effect.andThen(client.execute));
 	});
 
-	const set = Effect.fn("set")(
+	const setEffect = Effect.fn("set")(
 		function* (value: Decoded) {
 			const encoded = yield* definition.encode(value);
 			yield* put(encoded);
 		},
 		Effect.mapError((error) => {
 			const cause = Match.value(error).pipe(
-				Match.tag("HttpBodyError", (e) => `failed to encode body (${e.reason._tag})`),
+				Match.tag(
+					"HttpBodyError",
+					(e) => `failed to encode body (${e.reason._tag})`,
+				),
 				Match.tag(
 					"RequestError",
 					"ResponseError",
@@ -79,18 +81,22 @@ function implementState<Decoded>(
 			);
 			return new UpdateStateError({ namespace, name, cause });
 		}),
+		Effect.provide(FetchHttpClient.layer),
 	);
 
-	const update = Effect.fn("update")(
+	const updateEffect = Effect.fn("update")(
 		function* (fn: (value: Decoded) => Decoded | Promise<Decoded>) {
-			const current = yield* getValue();
+			const current = yield* getValueEffect();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
 			yield* put(encoded);
 		},
 		Effect.mapError((error) => {
 			const cause = Match.value(error).pipe(
-				Match.tag("HttpBodyError", (e) => `failed to encode body (${e.reason._tag})`),
+				Match.tag(
+					"HttpBodyError",
+					(e) => `failed to encode body (${e.reason._tag})`,
+				),
 				Match.tag(
 					"RequestError",
 					"ResponseError",
@@ -103,15 +109,16 @@ function implementState<Decoded>(
 			);
 			return new UpdateStateError({ namespace, name, cause });
 		}),
+		Effect.provide(FetchHttpClient.layer),
 	);
 
 	return {
-		getValue: () => runtime.runPromise(getValue()),
-		safeGetValue: mapEffectFnToNeverthrow(runtime, getValue),
-		set: (value) => runtime.runPromise(set(value)),
-		safeSet: mapEffectFnToNeverthrow(runtime, set),
-		update: (fn) => runtime.runPromise(update(fn)),
-		safeUpdate: mapEffectFnToNeverthrow(runtime, update),
+		getValue: () => Effect.runPromise(getValueEffect()),
+		getValueEffect,
+		set: (value) => Effect.runPromise(setEffect(value)),
+		setEffect,
+		update: (fn) => Effect.runPromise(updateEffect(fn)),
+		updateEffect,
 	};
 }
 
