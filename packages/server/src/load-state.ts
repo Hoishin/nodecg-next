@@ -42,6 +42,10 @@ function implementState<Decoded>(
 	name: string,
 	definition: StateDefinition<Decoded>,
 ): StateField<Decoded> {
+	if (store.get(namespace, name) === undefined) {
+		store.set(namespace, name, definition.getDefault());
+	}
+
 	const getValue = Effect.fn("getValue")(function* () {
 		const current = store.get(namespace, name);
 		if (current === undefined) {
@@ -59,9 +63,7 @@ function implementState<Decoded>(
 			const encoded = yield* definition.encode(value);
 			store.set(namespace, name, encoded);
 		},
-		Effect.mapError(
-			(error) => new UpdateStateError({ namespace, name, cause: error.message }),
-		),
+		Effect.mapError((error) => new UpdateStateError({ namespace, name, cause: error.message })),
 	);
 
 	const update = Effect.fn("update")(
@@ -73,12 +75,7 @@ function implementState<Decoded>(
 		},
 		Effect.mapError((error) => {
 			const cause = Match.value(error).pipe(
-				Match.tag(
-					"UnknownException",
-					"GetStateError",
-					"StateValidationError",
-					(e) => e.message,
-				),
+				Match.tag("UnknownException", "GetStateError", "StateValidationError", (e) => e.message),
 				Match.exhaustive,
 			);
 			return new UpdateStateError({ namespace, name, cause });

@@ -3,7 +3,6 @@ import type { Result } from "neverthrow";
 import { assert, expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 
-
 import { GetStateError, loadState, UpdateStateError } from "./load-state";
 
 test("runs in a real browser", () => {
@@ -16,7 +15,9 @@ test("getValue fetches and returns the response body", async () => {
 		.spyOn(globalThis, "fetch")
 		.mockResolvedValue(new Response(JSON.stringify(42), { status: 200 }));
 
-	const manifest = defineState("root", { count: { schema: z.number() } });
+	const manifest = defineState("root", {
+		count: { schema: z.number().default(0) },
+	});
 
 	const state = loadState(manifest);
 
@@ -51,7 +52,9 @@ test("update reads the current value, applies the fn, and PUTs the result", asyn
 		return new Response(JSON.stringify(stored), { status: 200 });
 	});
 
-	const manifest = defineState("root", { count: { schema: z.number() } });
+	const manifest = defineState("root", {
+		count: { schema: z.number().default(0) },
+	});
 	const state = loadState(manifest);
 
 	await state.count.update((value) => value + 5);

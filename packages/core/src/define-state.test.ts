@@ -12,19 +12,17 @@ test(
 		Effect.gen(function* () {
 			const manifest = defineState("test", {
 				count: {
-					schema: z.number(),
+					schema: z.number().default(0),
 				},
 			});
 
-			expectTypeOf(manifest).toEqualTypeOf<{
-				namespace: string;
-				definitions: {
-					count: {
-						name: string;
-						encode: (value: number) => Effect.Effect<JsonValue, StateValidationError>;
-					};
-				};
+			expectTypeOf(manifest.definitions.count).branded.toEqualTypeOf<{
+				name: string;
+				getDefault: () => number;
+				encode: (value: number) => Effect.Effect<JsonValue, StateValidationError>;
 			}>();
+
+			expect(manifest.definitions.count.getDefault()).toBe(0);
 
 			const encoded = yield* manifest.definitions.count.encode(123);
 			expect(encoded).toBe(123);
@@ -34,15 +32,18 @@ test(
 
 test("allows JSON compatible schema", () => {
 	const manifest = defineState("test", {
-		player: { schema: z.string() },
-		score: { schema: z.number() },
-		active: { schema: z.boolean() },
-		config: { schema: z.object({ name: z.string(), score: z.number() }) },
-		tags: { schema: z.array(z.string()) },
+		player: { schema: z.string().default("") },
+		score: { schema: z.number().default(0) },
+		active: { schema: z.boolean().default(false) },
+		config: {
+			schema: z.object({ name: z.string(), score: z.number() }).default({ name: "", score: 0 }),
+		},
+		tags: { schema: z.array(z.string()).default([]) },
 	});
 
-	expectTypeOf(manifest.definitions.player).toEqualTypeOf<{
+	expectTypeOf(manifest.definitions.player).branded.toEqualTypeOf<{
 		name: string;
+		getDefault: () => string;
 		encode: (value: string) => Effect.Effect<JsonValue, StateValidationError>;
 	}>();
 });
@@ -107,7 +108,12 @@ describe("does not allow zod schema with .transform()", () => {
 	test("JSON-compatible output", () => {
 		expect(() => {
 			defineState("test", {
-				shout: { schema: z.string().transform((s) => s.toUpperCase()) },
+				shout: {
+					schema: z
+						.string()
+						.transform((s) => s.toUpperCase())
+						.default(""),
+				},
 			});
 		}).toThrow();
 	});

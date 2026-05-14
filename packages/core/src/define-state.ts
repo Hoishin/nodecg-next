@@ -4,7 +4,7 @@ import type { JsonValue } from "type-fest";
 import { z } from "zod";
 
 interface StateOptions<Decoded> {
-	schema: z.ZodType<Decoded & JsonValue, Decoded & JsonValue>;
+	schema: z.ZodDefault<z.ZodType<Decoded & JsonValue, Decoded & JsonValue>>;
 }
 
 export class StateValidationError extends Data.TaggedError("StateValidationError")<{
@@ -18,6 +18,7 @@ export class StateValidationError extends Data.TaggedError("StateValidationError
 
 export interface StateDefinition<Decoded> {
 	name: string;
+	getDefault: () => Decoded & JsonValue;
 	encode: (value: Decoded) => Effect.Effect<JsonValue, StateValidationError>;
 }
 
@@ -43,6 +44,7 @@ function implementDefinition<Decoded>(
 	z.toJSONSchema(schema);
 	return {
 		name,
+		getDefault: () => schema.parse(undefined),
 		encode: Effect.fn("encode")(function* (value: unknown) {
 			const result = schema.safeParse(value);
 			if (result.success) {
