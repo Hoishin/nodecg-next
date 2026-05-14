@@ -1,7 +1,14 @@
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
 import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapValues } from "@nodecg/internal";
-import { Data, Effect, type HKT, Match, type Schema } from "effect";
+import {
+	Data,
+	Effect,
+	type HKT,
+	ManagedRuntime,
+	Match,
+	type Schema,
+} from "effect";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -25,19 +32,22 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 
 interface StateField<Decoded> {
 	getValue: () => Promise<Decoded>;
-	getValueEffect: () => Effect.Effect<Decoded, GetStateError>;
+	getValueEffect: () => Effect.Effect<Decoded, GetStateError, HttpClient.HttpClient>;
 	set: (value: Decoded) => Promise<void>;
-	setEffect: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
+	setEffect: (
+		value: Decoded,
+	) => Effect.Effect<void, UpdateStateError, HttpClient.HttpClient>;
 	update: (fn: (value: Decoded) => Decoded | Promise<Decoded>) => Promise<void>;
 	updateEffect: (
 		fn: (value: Decoded) => Decoded | Promise<Decoded>,
-	) => Effect.Effect<void, UpdateStateError>;
+	) => Effect.Effect<void, UpdateStateError, HttpClient.HttpClient>;
 }
 
 function implementState<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
+	runtime: ManagedRuntime.ManagedRuntime<HttpClient.HttpClient, never>,
 ): StateField<Decoded> {
 	const getValueEffect = Effect.fn("getValue")(
 		function* () {
@@ -50,7 +60,6 @@ function implementState<Decoded>(
 		Effect.mapError(
 			(error) => new GetStateError({ namespace, name, cause: error.message }),
 		),
-		Effect.provide(FetchHttpClient.layer),
 	);
 
 	const put = Effect.fn("put")(function* (encoded: unknown) {
@@ -81,7 +90,6 @@ function implementState<Decoded>(
 			);
 			return new UpdateStateError({ namespace, name, cause });
 		}),
-		Effect.provide(FetchHttpClient.layer),
 	);
 
 	const updateEffect = Effect.fn("update")(
@@ -109,15 +117,14 @@ function implementState<Decoded>(
 			);
 			return new UpdateStateError({ namespace, name, cause });
 		}),
-		Effect.provide(FetchHttpClient.layer),
 	);
 
 	return {
-		getValue: () => Effect.runPromise(getValueEffect()),
+		getValue: () => runtime.runPromise(getValueEffect()),
 		getValueEffect,
-		set: (value) => Effect.runPromise(setEffect(value)),
+		set: (value) => runtime.runPromise(setEffect(value)),
 		setEffect,
-		update: (fn) => Effect.runPromise(updateEffect(fn)),
+		update: (fn) => runtime.runPromise(updateEffect(fn)),
 		updateEffect,
 	};
 }
@@ -135,8 +142,10 @@ interface StateFieldLambda extends HKT.TypeLambda {
 export function loadState<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
 >(manifest: StateManifest<Definitions>) {
+	const runtime = ManagedRuntime.make(FetchHttpClient.layer);
 	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
 		manifest.definitions,
-		(definition, name) => implementState(manifest.namespace, name, definition),
+		(definition, name) =>
+			implementState(manifest.namespace, name, definition, runtime),
 	);
 }

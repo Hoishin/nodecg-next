@@ -1,6 +1,14 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapValues } from "@nodecg/internal";
-import { Data, Effect, type HKT, Match, type Schema } from "effect";
+import {
+	Data,
+	Effect,
+	type HKT,
+	Layer,
+	ManagedRuntime,
+	Match,
+	type Schema,
+} from "effect";
 
 import type { StateStorageAdapter } from "./state-storage";
 import { inMemoryStateStorage } from "./state-storage-in-memory";
@@ -49,6 +57,7 @@ function implementState<Decoded>(
 	name: string,
 	definition: StateDefinition<Decoded>,
 	storage: StateStorageAdapter,
+	runtime: ManagedRuntime.ManagedRuntime<never, never>,
 ): StateField<Decoded> {
 	const getValueEffect = Effect.fn("getValue")(
 		function* () {
@@ -94,11 +103,11 @@ function implementState<Decoded>(
 	);
 
 	return {
-		getValue: () => Effect.runPromise(getValueEffect()),
+		getValue: () => runtime.runPromise(getValueEffect()),
 		getValueEffect,
-		set: (value) => Effect.runPromise(setEffect(value)),
+		set: (value) => runtime.runPromise(setEffect(value)),
 		setEffect,
-		update: (fn) => Effect.runPromise(updateEffect(fn)),
+		update: (fn) => runtime.runPromise(updateEffect(fn)),
 		updateEffect,
 	};
 }
@@ -124,28 +133,39 @@ export async function loadState<
 	initialValues: InitialValues<Definitions>;
 	storage?: StateStorageAdapter;
 }) {
-	await Promise.all(
-		Object.entries(initialValues).map(async ([name, thunk]) => {
-			const existing = await Effect.runPromise(
-				Effect.either(storage.get(manifest.namespace, name)),
-			);
-			if (existing._tag === "Right") return;
-			if (existing.left._tag !== "StateNotFound") {
-				throw existing.left;
-			}
-			const definition = manifest.definitions[name];
-			if (definition === undefined) {
-				throw new Error(`Manifest is missing definition for state "${name}"`);
-			}
-			const value = await thunk();
-			const encoded = await Effect.runPromise(definition.encode(value));
-			await Effect.runPromise(storage.set(manifest.namespace, name, encoded));
-		}),
+	const runtime = ManagedRuntime.make(Layer.empty);
+
+	await runtime.runPromise(
+		Effect.all(
+			Object.entries(initialValues).map(([name, thunk]) =>
+				Effect.gen(function* () {
+					const existing = yield* Effect.either(
+						storage.get(manifest.namespace, name),
+					);
+					if (existing._tag === "Right") return;
+					if (existing.left._tag !== "StateNotFound") {
+						return yield* existing.left;
+					}
+					const definition = manifest.definitions[name];
+					if (definition === undefined) {
+						return yield* Effect.die(
+							new Error(
+								`Manifest is missing definition for state "${name}"`,
+							),
+						);
+					}
+					const value = yield* Effect.tryPromise(async () => thunk());
+					const encoded = yield* definition.encode(value);
+					yield* storage.set(manifest.namespace, name, encoded);
+				}),
+			),
+			{ concurrency: "unbounded" },
+		),
 	);
 
 	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
 		manifest.definitions,
 		(definition, name) =>
-			implementState(manifest.namespace, name, definition, storage),
+			implementState(manifest.namespace, name, definition, storage, runtime),
 	);
 }
