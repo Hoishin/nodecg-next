@@ -43,27 +43,38 @@ function implementState<Decoded>(
 	definition: StateDefinition<Decoded>,
 ): StateField<Decoded> {
 	if (store.get(namespace, name) === undefined) {
-		store.set(namespace, name, definition.getDefault());
+		const seeded = runtime.runSync(definition.encode(definition.getDefault()));
+		store.set(namespace, name, seeded);
 	}
 
-	const getValue = Effect.fn("getValue")(function* () {
-		const current = store.get(namespace, name);
-		if (current === undefined) {
-			return yield* new GetStateError({
-				namespace,
-				name,
-				cause: "state has not been initialised",
-			});
-		}
-		return current as Decoded;
-	});
+	const getValue = Effect.fn("getValue")(
+		function* () {
+			const current = store.get(namespace, name);
+			if (current === undefined) {
+				return yield* new GetStateError({
+					namespace,
+					name,
+					cause: "state has not been initialised",
+				});
+			}
+			return yield* definition.decode(current);
+		},
+		Effect.mapError((error) =>
+			error._tag === "GetStateError"
+				? error
+				: new GetStateError({ namespace, name, cause: error.message }),
+		),
+	);
 
 	const set = Effect.fn("set")(
 		function* (value: Decoded) {
 			const encoded = yield* definition.encode(value);
 			store.set(namespace, name, encoded);
 		},
-		Effect.mapError((error) => new UpdateStateError({ namespace, name, cause: error.message })),
+		Effect.mapError(
+			(error) =>
+				new UpdateStateError({ namespace, name, cause: error.message }),
+		),
 	);
 
 	const update = Effect.fn("update")(
@@ -75,7 +86,12 @@ function implementState<Decoded>(
 		},
 		Effect.mapError((error) => {
 			const cause = Match.value(error).pipe(
-				Match.tag("UnknownException", "GetStateError", "StateValidationError", (e) => e.message),
+				Match.tag(
+					"UnknownException",
+					"GetStateError",
+					"StateValidationError",
+					(e) => e.message,
+				),
 				Match.exhaustive,
 			);
 			return new UpdateStateError({ namespace, name, cause });

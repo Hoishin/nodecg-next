@@ -1,1 +1,6 @@
-export { defineState, type StateDefinition, type StateManifest } from "./define-state";
+export {
+	defineState,
+	StateValidationError,
+	type StateDefinition,
+	type StateManifest,
+} from "./define-state";

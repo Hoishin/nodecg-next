@@ -5,13 +5,19 @@ import { z } from "zod";
 
 type EnforceJsonValue<T> = [T] extends [JsonValue] ? T : never;
 
-type ZodPrefaultDefault<T extends z.ZodType> = z.ZodPrefault<T> | z.ZodDefault<T>;
+type ZodPrefaultDefault<T extends z.ZodType> =
+	| z.ZodPrefault<T>
+	| z.ZodDefault<T>;
 
 interface StateOptions<Decoded> {
-	schema: ZodPrefaultDefault<z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>>;
+	schema: ZodPrefaultDefault<
+		z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>
+	>;
 }
 
-export class StateValidationError extends Data.TaggedError("StateValidationError")<{
+export class StateValidationError extends Data.TaggedError(
+	"StateValidationError",
+)<{
 	readonly name: string;
 	readonly cause: string;
 }> {
@@ -24,6 +30,7 @@ export interface StateDefinition<Decoded> {
 	name: string;
 	getDefault: () => EnforceJsonValue<Decoded>;
 	encode: (value: Decoded) => Effect.Effect<JsonValue, StateValidationError>;
+	decode: (value: unknown) => Effect.Effect<Decoded, StateValidationError>;
 }
 
 export interface StateManifest<Values extends Record<string, unknown>> {
@@ -58,7 +65,20 @@ function implementDefinition<Decoded>(
 			if (result.success) {
 				return result.data;
 			}
-			return yield* new StateValidationError({ name, cause: result.error.message });
+			return yield* new StateValidationError({
+				name,
+				cause: result.error.message,
+			});
+		}),
+		decode: Effect.fn("decode")(function* (value: unknown) {
+			const result = schema.safeParse(value);
+			if (result.success) {
+				return result.data;
+			}
+			return yield* new StateValidationError({
+				name,
+				cause: result.error.message,
+			});
 		}),
 	};
 }

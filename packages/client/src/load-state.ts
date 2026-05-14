@@ -48,7 +48,7 @@ function implementState<Decoded>(
 			const body = yield* client
 				.get(`/api/namespaces/${namespace}/state/${name}`)
 				.pipe(Effect.andThen((response) => response.json));
-			return body as Decoded;
+			return yield* definition.decode(body);
 		},
 		Effect.mapError((error) => new GetStateError({ namespace, name, cause: error.message })),
 	);

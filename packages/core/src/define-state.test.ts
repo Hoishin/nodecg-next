@@ -20,6 +20,7 @@ test(
 				name: string;
 				getDefault: () => number;
 				encode: (value: number) => Effect.Effect<JsonValue, StateValidationError>;
+				decode: (value: unknown) => Effect.Effect<number, StateValidationError>;
 			}>();
 
 			expect(manifest.definitions.count.getDefault()).toBe(0);
@@ -45,6 +46,7 @@ test("allows JSON compatible schema", () => {
 		name: string;
 		getDefault: () => string;
 		encode: (value: string) => Effect.Effect<JsonValue, StateValidationError>;
+		decode: (value: unknown) => Effect.Effect<string, StateValidationError>;
 	}>();
 });
 
