@@ -37,16 +37,19 @@ interface StateField<Decoded> {
 	) => Promise<Result<void, UpdateStateError>>;
 }
 
+type InitialValues<
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+> = {
+	[K in keyof Definitions & string]: () =>
+		| Schema.Schema.Type<Definitions[K]>
+		| Promise<Schema.Schema.Type<Definitions[K]>>;
+};
+
 function implementState<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
 ): StateField<Decoded> {
-	if (store.get(namespace, name) === undefined) {
-		const seeded = runtime.runSync(definition.encode(definition.getInitial()));
-		store.set(namespace, name, seeded);
-	}
-
 	const getValue = Effect.fn("getValue")(
 		function* () {
 			const current = store.get(namespace, name);
@@ -118,9 +121,30 @@ interface StateFieldLambda extends HKT.TypeLambda {
 	readonly type: StateField<Schema.Schema.Type<this["Target"]>>;
 }
 
-export function loadState<
+export async function loadState<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
->(manifest: StateManifest<Definitions>) {
+>({
+	manifest,
+	initialValues,
+}: {
+	manifest: StateManifest<Definitions>;
+	initialValues: InitialValues<Definitions>;
+}) {
+	await Promise.all(
+		Object.entries(initialValues).map(async ([name, thunk]) => {
+			if (store.get(manifest.namespace, name) !== undefined) {
+				return;
+			}
+			const definition = manifest.definitions[name];
+			if (definition === undefined) {
+				throw new Error(`Manifest is missing definition for state "${name}"`);
+			}
+			const value = await thunk();
+			const encoded = await runtime.runPromise(definition.encode(value));
+			store.set(manifest.namespace, name, encoded);
+		}),
+	);
+
 	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
 		manifest.definitions,
 		(definition, name) => implementState(manifest.namespace, name, definition),

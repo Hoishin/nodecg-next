@@ -10,7 +10,7 @@ test("getValue fetches and returns the response body", async () => {
 		.mockResolvedValue(new Response(JSON.stringify(42), { status: 200 }));
 
 	const manifest = defineState("root", {
-		count: { schema: Schema.Number, initialValue: () => 0 },
+		count: { schema: Schema.Number },
 	});
 
 	const state = loadState(manifest);
@@ -44,7 +44,7 @@ test("update reads the current value, applies the fn, and PUTs the result", asyn
 	});
 
 	const manifest = defineState("root", {
-		count: { schema: Schema.Number, initialValue: () => 0 },
+		count: { schema: Schema.Number },
 	});
 	const state = loadState(manifest);
 
@@ -66,10 +66,7 @@ test("bidirectional codec round-trips through HTTP", async () => {
 	});
 
 	const manifest = defineState("root", {
-		when: {
-			schema: Schema.DateFromString,
-			initialValue: () => new Date(0),
-		},
+		when: { schema: Schema.DateFromString },
 	});
 	const state = loadState(manifest);
 

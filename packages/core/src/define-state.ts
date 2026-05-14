@@ -15,12 +15,10 @@ export class StateValidationError extends Data.TaggedError(
 
 interface StateOption<S extends Schema.Schema<any, any, never>> {
 	schema: [Schema.Schema.Encoded<S>] extends [JsonValue] ? S : never;
-	initialValue: () => Schema.Schema.Type<S>;
 }
 
 export interface StateDefinition<Decoded> {
 	readonly name: string;
-	readonly getInitial: () => Decoded;
 	readonly encode: (
 		value: Decoded,
 	) => Effect.Effect<JsonValue, StateValidationError>;
@@ -42,11 +40,10 @@ export interface StateManifest<
 
 function implementDefinition<S extends Schema.Schema<any, JsonValue, never>>(
 	name: string,
-	{ schema, initialValue }: StateOption<S>,
+	{ schema }: StateOption<S>,
 ): StateDefinition<Schema.Schema.Type<S>> {
 	return {
 		name,
-		getInitial: initialValue,
 		encode: Effect.fn("encode")(function* (value: Schema.Schema.Type<S>) {
 			return yield* Schema.encode(schema)(value).pipe(
 				Effect.catchTag(

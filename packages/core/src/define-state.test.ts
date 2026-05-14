@@ -10,18 +10,16 @@ import {
 } from "./define-state";
 
 test(
-	"base — Schema.Number with thunk initialValue",
+	"base — Schema.Number encode/decode round-trip",
 	testEffect(
 		Effect.gen(function* () {
 			const manifest = defineState("test", {
-				count: { schema: Schema.Number, initialValue: () => 0 },
+				count: { schema: Schema.Number },
 			});
 
 			expectTypeOf(manifest.definitions.count).toEqualTypeOf<
 				StateDefinition<number>
 			>();
-
-			expect(manifest.definitions.count.getInitial()).toBe(0);
 
 			const encoded = yield* manifest.definitions.count.encode(123);
 			expect(encoded).toBe(123);
@@ -34,24 +32,20 @@ test(
 
 test("allows JsonValue-compatible schemas", () => {
 	const manifest = defineState("test", {
-		player: { schema: Schema.String, initialValue: () => "" },
-		score: { schema: Schema.Number, initialValue: () => 0 },
-		active: { schema: Schema.Boolean, initialValue: () => false },
+		player: { schema: Schema.String },
+		score: { schema: Schema.Number },
+		active: { schema: Schema.Boolean },
 		config: {
 			schema: Schema.Struct({ name: Schema.String, score: Schema.Number }),
-			initialValue: () => ({ name: "", score: 0 }),
 		},
-		tags: {
-			schema: Schema.Array(Schema.String),
-			initialValue: () => [],
-		},
+		tags: { schema: Schema.Array(Schema.String) },
 	});
 
 	expectTypeOf(manifest.definitions.player).toEqualTypeOf<
 		StateDefinition<string>
 	>();
-	expectTypeOf(manifest.definitions.config.getInitial).toEqualTypeOf<
-		() => { readonly name: string; readonly score: number }
+	expectTypeOf(manifest.definitions.config).toEqualTypeOf<
+		StateDefinition<{ readonly name: string; readonly score: number }>
 	>();
 });
 
@@ -60,10 +54,7 @@ test(
 	testEffect(
 		Effect.gen(function* () {
 			const manifest = defineState("test", {
-				when: {
-					schema: Schema.DateFromString,
-					initialValue: () => new Date(0),
-				},
+				when: { schema: Schema.DateFromString },
 			});
 
 			expectTypeOf(manifest.definitions.when).toEqualTypeOf<
@@ -96,24 +87,26 @@ test("nested struct with array of structs", () => {
 					}),
 				),
 			}),
-			initialValue: () => ({ id: "", players: [] }),
 		},
 	});
 
-	expect(manifest.definitions.game.getInitial()).toEqual({
-		id: "",
-		players: [],
-	});
+	expectTypeOf(manifest.definitions.game.encode).parameter(0).toEqualTypeOf<{
+		readonly id: string;
+		readonly players: readonly {
+			readonly name: string;
+			readonly stats: {
+				readonly wins: number;
+				readonly losses: number;
+			};
+		}[];
+	}>();
 });
 
 describe("does not allow schemas whose Encoded is not JsonValue-compatible", () => {
 	test("DateFromSelf (Encoded = Date)", () => {
 		defineState("test", {
-			when: {
-				// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not JsonValue
-				schema: Schema.DateFromSelf,
-				initialValue: () => new Date(),
-			},
+			// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not JsonValue
+			when: { schema: Schema.DateFromSelf },
 		});
 	});
 
@@ -122,32 +115,14 @@ describe("does not allow schemas whose Encoded is not JsonValue-compatible", () 
 			nested: {
 				// @ts-expect-error BigIntFromSelf Encoded is bigint, not JsonValue
 				schema: Schema.Struct({ count: Schema.BigIntFromSelf }),
-				initialValue: () => ({ count: 0n }),
 			},
 		});
 	});
 });
 
-test("initialValue is required at type level", () => {
-	defineState("test", {
-		// @ts-expect-error initialValue missing
-		count: { schema: Schema.Number },
-	});
-});
-
-test("initialValue type must match schema's Decoded", () => {
-	defineState("test", {
-		count: {
-			schema: Schema.Number,
-			// @ts-expect-error string not assignable to number
-			initialValue: () => "not a number",
-		},
-	});
-});
-
 test("encode returns StateValidationError on bad input", () => {
 	const manifest = defineState("test", {
-		count: { schema: Schema.Number, initialValue: () => 0 },
+		count: { schema: Schema.Number },
 	});
 
 	const result = Effect.runSync(
@@ -163,7 +138,7 @@ test("encode returns StateValidationError on bad input", () => {
 
 test("decode returns StateValidationError on bad input", () => {
 	const manifest = defineState("test", {
-		count: { schema: Schema.Number, initialValue: () => 0 },
+		count: { schema: Schema.Number },
 	});
 
 	const result = Effect.runSync(
@@ -177,7 +152,7 @@ test("decode returns StateValidationError on bad input", () => {
 
 test("Encoded type flows through StateDefinition.encode return", () => {
 	const manifest = defineState("test", {
-		count: { schema: Schema.Number, initialValue: () => 0 },
+		count: { schema: Schema.Number },
 	});
 
 	expectTypeOf(manifest.definitions.count.encode).toEqualTypeOf<
