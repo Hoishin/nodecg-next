@@ -16,7 +16,7 @@ test(
 				},
 			});
 
-			expectTypeOf(manifest.definitions.count).branded.toEqualTypeOf<{
+			expectTypeOf(manifest.definitions.count).toEqualTypeOf<{
 				name: string;
 				getDefault: () => number;
 				encode: (value: number) => Effect.Effect<JsonValue, StateValidationError>;
@@ -41,7 +41,7 @@ test("allows JSON compatible schema", () => {
 		tags: { schema: z.array(z.string()).default([]) },
 	});
 
-	expectTypeOf(manifest.definitions.player).branded.toEqualTypeOf<{
+	expectTypeOf(manifest.definitions.player).toEqualTypeOf<{
 		name: string;
 		getDefault: () => string;
 		encode: (value: string) => Effect.Effect<JsonValue, StateValidationError>;

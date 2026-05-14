@@ -3,8 +3,10 @@ import { Data, Effect, type HKT } from "effect";
 import type { JsonValue } from "type-fest";
 import { z } from "zod";
 
+type EnforceJsonValue<T> = Extract<T, JsonValue>;
+
 interface StateOptions<Decoded> {
-	schema: z.ZodDefault<z.ZodType<Decoded & JsonValue, Decoded & JsonValue>>;
+	schema: z.ZodDefault<z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>>;
 }
 
 export class StateValidationError extends Data.TaggedError("StateValidationError")<{
@@ -18,7 +20,7 @@ export class StateValidationError extends Data.TaggedError("StateValidationError
 
 export interface StateDefinition<Decoded> {
 	name: string;
-	getDefault: () => Decoded & JsonValue;
+	getDefault: () => EnforceJsonValue<Decoded>;
 	encode: (value: Decoded) => Effect.Effect<JsonValue, StateValidationError>;
 }
 
