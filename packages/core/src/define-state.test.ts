@@ -1,35 +1,34 @@
+import { testEffect } from "@nodecg/private";
 import { Effect } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
 import z from "zod";
 
-import { testEffect } from "@nodecg/private";
-
-import { defineState } from "./define-state";
+import { defineState, StateValidationError } from "./define-state";
 
 test(
 	"base",
 	testEffect(
 		Effect.gen(function* () {
-			const stateDefinition = defineState({
+			const manifest = defineState("test", {
 				count: {
 					schema: z.number(),
 				},
 			});
 
-			expectTypeOf(stateDefinition).toEqualTypeOf<{
+			expectTypeOf(manifest).toEqualTypeOf<{
 				namespace: string;
 				definitions: {
 					count: {
 						name: string;
-						parse: (value: unknown) => Effect.Effect<number, string>;
+						validate: (value: unknown) => Effect.Effect<number, StateValidationError>;
 					};
 				};
 			}>();
 
-			const success = yield* stateDefinition.definitions.count.parse(123);
+			const success = yield* manifest.definitions.count.validate(123);
 			expect(success).toBe(123);
 
-			const failure = yield* stateDefinition.definitions.count.parse("abc").pipe(Effect.flip);
+			const failure = yield* manifest.definitions.count.validate("abc").pipe(Effect.flip);
 			expect(failure).toBeTruthy();
 		}),
 	),

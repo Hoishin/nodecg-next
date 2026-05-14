@@ -1,8 +1,7 @@
 import { HttpClient, HttpClientRequest } from "@effect/platform";
-import type { HttpClientError } from "@effect/platform/HttpClientError";
-import type { StateDefinition, StateDefinitions } from "@nodecg/core";
+import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapEffectFnToNeverthrow, mapValues } from "@nodecg/internal";
-import { Data, Effect, Match } from "effect";
+import { Data, Effect, type HKT, Match } from "effect";
 import { type Result } from "neverthrow";
 import type { JsonValue } from "type-fest";
 
@@ -11,23 +10,35 @@ import { runtime } from "./runtime";
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
 	readonly name: string;
-	readonly cause: HttpClientError;
+	readonly cause: string;
 }> {
 	override get message() {
-		return `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
+		return `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause}`;
 	}
 }
 
-interface State<T extends JsonValue> {
-	getValue: () => Promise<Result<T, GetStateError>>;
-	update: (fn: (value: T) => T | Promise<T>) => Promise<Result<void, string>>;
+export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
+	readonly namespace: string;
+	readonly name: string;
+	readonly cause: string;
+}> {
+	override get message() {
+		return `Failed to update state "${this.name}" in "${this.namespace}": ${this.cause}`;
+	}
 }
 
-function implementState<T extends JsonValue>(
+interface StateField<T> {
+	getValue: () => Promise<T>;
+	safeGetValue: () => Promise<Result<T, GetStateError>>;
+	update: (fn: (value: T) => T | Promise<T>) => Promise<void>;
+	safeUpdate: (fn: (value: T) => T | Promise<T>) => Promise<Result<void, UpdateStateError>>;
+}
+
+function implementState<T>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<T>,
-): State<T> {
+): StateField<T> {
 	const getValue = Effect.fn("getValue")(
 		function* () {
 			const client = yield* HttpClient.HttpClient;
@@ -36,7 +47,7 @@ function implementState<T extends JsonValue>(
 				.pipe(Effect.andThen((response) => response.json));
 			return data as T;
 		},
-		Effect.mapError((cause) => new GetStateError({ namespace, name, cause })),
+		Effect.mapError((error) => new GetStateError({ namespace, name, cause: error.message })),
 	);
 
 	const update = Effect.fn("update")(
@@ -44,41 +55,50 @@ function implementState<T extends JsonValue>(
 			const client = yield* HttpClient.HttpClient;
 			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
-			const parsed = yield* definition.parse(next);
+			const parsed = yield* definition.validate(next);
 			yield* HttpClientRequest.put(`/api/namespaces/${namespace}/state/${name}`).pipe(
 				HttpClientRequest.bodyJson(parsed),
 				Effect.andThen(client.execute),
 			);
 		},
 		Effect.mapError((error) => {
-			const detail = Match.value(error).pipe(
-				Match.when(Match.string, (e) => e),
+			const cause = Match.value(error).pipe(
 				Match.tag("HttpBodyError", (e) => `failed to encode body (${e.reason._tag})`),
 				Match.tag(
 					"RequestError",
 					"ResponseError",
 					"UnknownException",
 					"GetStateError",
+					"StateValidationError",
 					(e) => e.message,
 				),
 				Match.exhaustive,
 			);
-			return `Failed to update state "${name}": ${detail}`;
+			return new UpdateStateError({ namespace, name, cause });
 		}),
 	);
 
 	return {
-		getValue: mapEffectFnToNeverthrow(runtime, getValue),
-		update: mapEffectFnToNeverthrow(runtime, update),
+		getValue: () => runtime.runPromise(getValue()),
+		safeGetValue: mapEffectFnToNeverthrow(runtime, getValue),
+		update: (fn) => runtime.runPromise(update(fn)),
+		safeUpdate: mapEffectFnToNeverthrow(runtime, update),
 	};
 }
 
+interface StateDefinitionLambda extends HKT.TypeLambda {
+	readonly type: StateDefinition<this["Target"]>;
+}
+
+interface StateFieldLambda extends HKT.TypeLambda {
+	readonly type: StateField<this["Target"]>;
+}
+
 export function loadState<Definitions extends Record<string, JsonValue>>(
-	stateDefinition: StateDefinitions<Definitions>,
-): {
-	[K in keyof Definitions]: State<Definitions[K]>;
-} {
-	return mapValues(stateDefinition.definitions, (definition, name) =>
-		implementState(stateDefinition.namespace, String(name), definition),
+	manifest: StateManifest<Definitions>,
+) {
+	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
+		manifest.definitions,
+		(definition, name) => implementState(manifest.namespace, name, definition),
 	);
 }

@@ -1,9 +1,10 @@
 import { defineState } from "@nodecg/core";
 import type { Result } from "neverthrow";
-import { expect, expectTypeOf, test, vi } from "vitest";
+import { assert, expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 
-import { GetStateError, loadState } from "./load-state";
+
+import { GetStateError, loadState, UpdateStateError } from "./load-state";
 
 test("runs in a real browser", () => {
 	expect(typeof window).toBe("object");
@@ -11,39 +12,45 @@ test("runs in a real browser", () => {
 });
 
 test("getValue fetches and returns the response body", async () => {
-	vi.spyOn(globalThis, "fetch").mockResolvedValue(
-		new Response(JSON.stringify(42), { status: 200 }),
-	);
+	const fetchSpy = vi
+		.spyOn(globalThis, "fetch")
+		.mockResolvedValue(new Response(JSON.stringify(42), { status: 200 }));
 
-	const stateDefinition = defineState({ count: { schema: z.number() } });
+	const manifest = defineState("root", { count: { schema: z.number() } });
 
-	const state = loadState(stateDefinition);
+	const state = loadState(manifest);
 
 	expectTypeOf(state).toEqualTypeOf<{
 		count: {
-			getValue: () => Promise<Result<number, GetStateError>>;
-			update: (fn: (value: number) => number | Promise<number>) => Promise<Result<void, string>>;
+			getValue: () => Promise<number>;
+			safeGetValue: () => Promise<Result<number, GetStateError>>;
+			update: (fn: (value: number) => number | Promise<number>) => Promise<void>;
+			safeUpdate: (
+				fn: (value: number) => number | Promise<number>,
+			) => Promise<Result<void, UpdateStateError>>;
 		};
 	}>();
 
 	const value = await state.count.getValue();
 
-	expect(value.isOk() && value.value).toBe(42);
-	expect(globalThis.fetch).toHaveBeenCalledWith("/api/namespaces/root/state/count");
+	expect(value).toBe(42);
+	const [input] = fetchSpy.mock.calls[0] ?? [];
+	assert(input != null);
+	expect(new Request(input).url).toMatch("/api/namespaces/root/state/count");
 });
 
 test("update reads the current value, applies the fn, and PUTs the result", async () => {
 	let stored = 10;
 	vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
 		if (init?.method === "PUT") {
-			stored = JSON.parse(init.body as string);
+			stored = JSON.parse(await new Response(init.body).text());
 			return new Response(null, { status: 204 });
 		}
 		return new Response(JSON.stringify(stored), { status: 200 });
 	});
 
-	const stateDefinition = defineState({ count: { schema: z.number() } });
-	const state = loadState(stateDefinition);
+	const manifest = defineState("root", { count: { schema: z.number() } });
+	const state = loadState(manifest);
 
 	await state.count.update((value) => value + 5);
 
