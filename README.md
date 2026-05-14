@@ -227,8 +227,11 @@ Status: In Planning
 
 ## Development
 
-- Type check: pnpm type-check
-- Start dev server: pnpm dev
+- Type check: `pnpm type-check`
+- Test: `pnpm test`
+- Lint: `pnpm lint`
+- Format: `pnpm format`
+- Start dev server: `pnpm dev`
 
 ## License
 
