@@ -27,6 +27,9 @@ catalogs:
     typescript:
       specifier: ~6.0.3
       version: 6.0.3
+    zod:
+      specifier: ~4.1.13
+      version: 4.1.13
 
 importers:
 
@@ -85,8 +88,8 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@24.12.3)(@vitest/browser-playwright@4.1.5)(vite@8.0.11(@types/node@24.12.3))
       zod:
-        specifier: ~4.0.0
-        version: 4.0.17
+        specifier: 'catalog:'
+        version: 4.1.13
 
   packages/core:
     dependencies:
@@ -99,9 +102,6 @@ importers:
       type-fest:
         specifier: 'catalog:'
         version: 5.6.0
-      zod:
-        specifier: ~4.0.0
-        version: 4.0.17
     devDependencies:
       '@nodecg/private':
         specifier: workspace:*
@@ -112,6 +112,9 @@ importers:
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@24.12.3)(@vitest/browser-playwright@4.1.5)(vite@8.0.11(@types/node@24.12.3))
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
 
   packages/dashboard:
     devDependencies:
@@ -1391,8 +1394,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  zod@4.0.17:
-    resolution: {integrity: sha512-1PHjlYRevNxxdy2JZ8JcNAw7rX8V9P1AKkP+x/xZfxB0K5FYfuV+Ug6P/6NVSR2jHQ+FzDDoDHS04nYUsOIyLQ==}
+  zod@4.1.13:
+    resolution: {integrity: sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==}
 
 snapshots:
 
@@ -2286,4 +2289,4 @@ snapshots:
 
   ws@8.20.0: {}
 
-  zod@4.0.17: {}
+  zod@4.1.13: {}

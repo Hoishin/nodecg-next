@@ -3,8 +3,8 @@ import { Data, Effect, type HKT } from "effect";
 import type { JsonValue } from "type-fest";
 import { z } from "zod";
 
-interface StateOptions<T> {
-	schema: z.ZodType<T, T>;
+interface StateOptions<Decoded> {
+	schema: z.ZodType<Decoded & JsonValue, Decoded & JsonValue>;
 }
 
 export class StateValidationError extends Data.TaggedError("StateValidationError")<{
@@ -12,19 +12,19 @@ export class StateValidationError extends Data.TaggedError("StateValidationError
 	readonly cause: string;
 }> {
 	override get message() {
-		return `Validation failed for state "${this.name}": ${this.cause}`;
+		return `Failed to validate state "${this.name}": ${this.cause}`;
 	}
 }
 
-export interface StateDefinition<T> {
+export interface StateDefinition<Decoded> {
 	name: string;
-	validate: (value: unknown) => Effect.Effect<T, StateValidationError>;
+	encode: (value: Decoded) => Effect.Effect<JsonValue, StateValidationError>;
 }
 
-export interface StateManifest<Definitions extends Record<string, unknown>> {
+export interface StateManifest<Values extends Record<string, unknown>> {
 	namespace: string;
 	definitions: {
-		[K in keyof Definitions & string]: StateDefinition<Definitions[K]>;
+		[K in keyof Values & string]: StateDefinition<Values[K]>;
 	};
 }
 
@@ -36,24 +36,34 @@ interface StateDefinitionLambda extends HKT.TypeLambda {
 	readonly type: StateDefinition<this["Target"]>;
 }
 
+function implementDefinition<Decoded>(
+	{ schema }: StateOptions<Decoded>,
+	name: string,
+): StateDefinition<Decoded> {
+	z.toJSONSchema(schema);
+	return {
+		name,
+		encode: Effect.fn("encode")(function* (value: unknown) {
+			const result = schema.safeParse(value);
+			if (result.success) {
+				return result.data;
+			}
+			return yield* new StateValidationError({ name, cause: result.error.message });
+		}),
+	};
+}
+
 export function defineState<Values extends Record<string, JsonValue>>(
 	namespace: string,
-	definitions: { [K in keyof Values & string]: StateOptions<Values[K]> },
+	definitions: {
+		[K in keyof Values & string]: StateOptions<Values[K]>;
+	},
 ): StateManifest<Values> {
 	return {
 		namespace,
 		definitions: mapValues<StateOptionsLambda, StateDefinitionLambda, Values>(
 			definitions,
-			(options, name) => ({
-				name,
-				validate: Effect.fn("validate")(function* (value: unknown) {
-					const result = options.schema.safeParse(value);
-					if (result.success) {
-						return result.data;
-					}
-					return yield* new StateValidationError({ name, cause: result.error.message });
-				}),
-			}),
+			(options, name) => implementDefinition(options, name),
 		),
 	};
 }

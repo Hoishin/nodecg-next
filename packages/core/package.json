@@ -13,12 +13,20 @@
 	"dependencies": {
 		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
-		"type-fest": "catalog:",
-		"zod": "~4.0.0"
+		"type-fest": "catalog:"
 	},
 	"devDependencies": {
 		"@nodecg/private": "workspace:*",
 		"typescript": "catalog:",
-		"vitest": "^4.1.5"
+		"vitest": "^4.1.5",
+		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"zod": "^4.1.13"
+	},
+	"peerDependenciesMeta": {
+		"zod": {
+			"optional": true
+		}
 	}
 }
