@@ -5,8 +5,10 @@ import { z } from "zod";
 
 type EnforceJsonValue<T> = [T] extends [JsonValue] ? T : never;
 
+type ZodPrefaultDefault<T extends z.ZodType> = z.ZodPrefault<T> | z.ZodDefault<T>;
+
 interface StateOptions<Decoded> {
-	schema: z.ZodDefault<z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>>;
+	schema: ZodPrefaultDefault<z.ZodType<EnforceJsonValue<Decoded>, EnforceJsonValue<Decoded>>>;
 }
 
 export class StateValidationError extends Data.TaggedError("StateValidationError")<{

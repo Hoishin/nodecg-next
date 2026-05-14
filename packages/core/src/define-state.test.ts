@@ -95,13 +95,42 @@ describe("does not allow JSON incompatible schema", () => {
 	});
 });
 
-test("rejects schema without .default() at runtime", () => {
-	expect(() => {
-		defineState("test", {
-			// @ts-expect-error bypass type-level check to verify runtime enforcement
-			count: { schema: z.number() },
+describe(".default() enforcement", () => {
+	test("simple — accepted at type and runtime", () => {
+		const manifest = defineState("test", {
+			count: { schema: z.number().default(0) },
 		});
-	}).toThrow(/must provide a default/);
+		expect(manifest.definitions.count.getDefault()).toBe(0);
+	});
+
+	test("top-level .default() with no inner defaults — accepted at type and runtime", () => {
+		const manifest = defineState("test", {
+			conf: {
+				schema: z.object({ a: z.number(), b: z.number() }).default({ a: 1, b: 2 }),
+			},
+		});
+		expect(manifest.definitions.conf.getDefault()).toEqual({ a: 1, b: 2 });
+	});
+
+	test("top-level .prefault({}) with inner .default()s — accepted at type and runtime", () => {
+		const manifest = defineState("test", {
+			conf: {
+				schema: z.object({ a: z.number().default(0), b: z.string().default("") }).prefault({}),
+			},
+		});
+		expect(manifest.definitions.conf.getDefault()).toEqual({ a: 0, b: "" });
+	});
+
+	test("no top-level .default(), inner-only .default() — rejected at type and runtime", () => {
+		expect(() => {
+			defineState("test", {
+				conf: {
+					// @ts-expect-error outer object lacks .default(); inner field default doesn't count
+					schema: z.object({ a: z.number().default(0) }),
+				},
+			});
+		}).toThrow(/must provide a default/);
+	});
 });
 
 describe("does not allow zod schema with .transform()", () => {
