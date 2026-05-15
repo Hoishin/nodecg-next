@@ -1,6 +1,10 @@
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
+import {
+	FetchHttpClient,
+	HttpClient,
+	HttpClientRequest,
+} from "@effect/platform";
 import type { StateDefinition, StateManifest } from "@nodecg/core";
-import { mapValues } from "@nodecg/internal";
+import { mapValues, type Promisify } from "@nodecg/internal";
 import {
 	Data,
 	Effect,
@@ -30,26 +34,24 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	}
 }
 
-interface StateField<Decoded> {
-	getValue: () => Promise<Decoded>;
-	getValueEffect: () => Effect.Effect<Decoded, GetStateError, HttpClient.HttpClient>;
-	set: (value: Decoded) => Promise<void>;
-	setEffect: (
+interface StateFieldEffect<Decoded> {
+	getValue: () => Effect.Effect<Decoded, GetStateError, HttpClient.HttpClient>;
+	set: (
 		value: Decoded,
 	) => Effect.Effect<void, UpdateStateError, HttpClient.HttpClient>;
-	update: (fn: (value: Decoded) => Decoded | Promise<Decoded>) => Promise<void>;
-	updateEffect: (
+	update: (
 		fn: (value: Decoded) => Decoded | Promise<Decoded>,
 	) => Effect.Effect<void, UpdateStateError, HttpClient.HttpClient>;
 }
 
-function implementState<Decoded>(
+type StateField<Decoded> = Promisify<StateFieldEffect<Decoded>>;
+
+function implementStateEffect<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
-	runtime: ManagedRuntime.ManagedRuntime<HttpClient.HttpClient, never>,
-): StateField<Decoded> {
-	const getValueEffect = Effect.fn("getValue")(
+): StateFieldEffect<Decoded> {
+	const getValue = Effect.fn("getValue")(
 		function* () {
 			const client = yield* HttpClient.HttpClient;
 			const body = yield* client
@@ -69,7 +71,7 @@ function implementState<Decoded>(
 		).pipe(HttpClientRequest.bodyJson(encoded), Effect.andThen(client.execute));
 	});
 
-	const setEffect = Effect.fn("set")(
+	const set = Effect.fn("set")(
 		function* (value: Decoded) {
 			const encoded = yield* definition.encode(value);
 			yield* put(encoded);
@@ -92,9 +94,9 @@ function implementState<Decoded>(
 		}),
 	);
 
-	const updateEffect = Effect.fn("update")(
+	const update = Effect.fn("update")(
 		function* (fn: (value: Decoded) => Decoded | Promise<Decoded>) {
-			const current = yield* getValueEffect();
+			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
 			yield* put(encoded);
@@ -119,14 +121,7 @@ function implementState<Decoded>(
 		}),
 	);
 
-	return {
-		getValue: () => runtime.runPromise(getValueEffect()),
-		getValueEffect,
-		set: (value) => runtime.runPromise(setEffect(value)),
-		setEffect,
-		update: (fn) => runtime.runPromise(updateEffect(fn)),
-		updateEffect,
-	};
+	return { getValue, set, update };
 }
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
@@ -134,18 +129,39 @@ interface StateDefinitionLambda extends HKT.TypeLambda {
 	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
 }
 
+interface StateFieldEffectLambda extends HKT.TypeLambda {
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: StateFieldEffect<Schema.Schema.Type<this["Target"]>>;
+}
+
 interface StateFieldLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
 	readonly type: StateField<Schema.Schema.Type<this["Target"]>>;
 }
 
-export function loadState<
+export function loadStateEffect<
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+>(manifest: StateManifest<Definitions>) {
+	return Effect.sync(() =>
+		mapValues<StateDefinitionLambda, StateFieldEffectLambda, Definitions>(
+			manifest.definitions,
+			(definition, name) =>
+				implementStateEffect(manifest.namespace, name, definition),
+		),
+	);
+}
+
+export async function loadState<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
 >(manifest: StateManifest<Definitions>) {
 	const runtime = ManagedRuntime.make(FetchHttpClient.layer);
-	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
-		manifest.definitions,
-		(definition, name) =>
-			implementState(manifest.namespace, name, definition, runtime),
+	const effectState = await runtime.runPromise(loadStateEffect(manifest));
+	return mapValues<StateFieldEffectLambda, StateFieldLambda, Definitions>(
+		effectState,
+		(field) => ({
+			getValue: () => runtime.runPromise(field.getValue()),
+			set: (value) => runtime.runPromise(field.set(value)),
+			update: (fn) => runtime.runPromise(field.update(fn)),
+		}),
 	);
 }

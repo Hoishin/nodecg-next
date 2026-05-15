@@ -17,6 +17,7 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@nodecg/private": "workspace:*",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

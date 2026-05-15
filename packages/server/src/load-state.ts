@@ -1,5 +1,5 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
-import { mapValues } from "@nodecg/internal";
+import { mapValues, type Promisify } from "@nodecg/internal";
 import {
 	Data,
 	Effect,
@@ -33,16 +33,15 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	}
 }
 
-interface StateField<Decoded> {
-	getValue: () => Promise<Decoded>;
-	getValueEffect: () => Effect.Effect<Decoded, GetStateError>;
-	set: (value: Decoded) => Promise<void>;
-	setEffect: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
-	update: (fn: (value: Decoded) => Decoded | Promise<Decoded>) => Promise<void>;
-	updateEffect: (
+interface StateFieldEffect<Decoded> {
+	getValue: () => Effect.Effect<Decoded, GetStateError>;
+	set: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
+	update: (
 		fn: (value: Decoded) => Decoded | Promise<Decoded>,
 	) => Effect.Effect<void, UpdateStateError>;
 }
+
+type StateFieldPromise<Decoded> = Promisify<StateFieldEffect<Decoded>>;
 
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
@@ -52,14 +51,13 @@ type InitialValues<
 		| Promise<Schema.Schema.Type<Definitions[K]>>;
 };
 
-function implementState<Decoded>(
+function implementStateEffect<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
 	storage: StateStorageAdapter,
-	runtime: ManagedRuntime.ManagedRuntime<never, never>,
-): StateField<Decoded> {
-	const getValueEffect = Effect.fn("getValue")(
+): StateFieldEffect<Decoded> {
+	const getValue = Effect.fn("getValue")(
 		function* () {
 			const current = yield* storage.get(namespace, name);
 			return yield* definition.decode(current);
@@ -69,7 +67,7 @@ function implementState<Decoded>(
 		),
 	);
 
-	const setEffect = Effect.fn("set")(
+	const set = Effect.fn("set")(
 		function* (value: Decoded) {
 			const encoded = yield* definition.encode(value);
 			yield* storage.set(namespace, name, encoded);
@@ -80,9 +78,9 @@ function implementState<Decoded>(
 		),
 	);
 
-	const updateEffect = Effect.fn("update")(
+	const update = Effect.fn("update")(
 		function* (fn: (value: Decoded) => Decoded | Promise<Decoded>) {
-			const current = yield* getValueEffect();
+			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
 			yield* storage.set(namespace, name, encoded);
@@ -102,14 +100,7 @@ function implementState<Decoded>(
 		}),
 	);
 
-	return {
-		getValue: () => runtime.runPromise(getValueEffect()),
-		getValueEffect,
-		set: (value) => runtime.runPromise(setEffect(value)),
-		setEffect,
-		update: (fn) => runtime.runPromise(updateEffect(fn)),
-		updateEffect,
-	};
+	return { getValue, set, update };
 }
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
@@ -117,9 +108,60 @@ interface StateDefinitionLambda extends HKT.TypeLambda {
 	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
 }
 
-interface StateFieldLambda extends HKT.TypeLambda {
+interface StateFieldEffectLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateField<Schema.Schema.Type<this["Target"]>>;
+	readonly type: StateFieldEffect<Schema.Schema.Type<this["Target"]>>;
+}
+
+interface StateFieldPromiseLambda extends HKT.TypeLambda {
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: StateFieldPromise<Schema.Schema.Type<this["Target"]>>;
+}
+
+export function loadStateEffect<
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+>({
+	manifest,
+	initialValues,
+	storage = inMemoryStateStorage,
+}: {
+	manifest: StateManifest<Definitions>;
+	initialValues: InitialValues<Definitions>;
+	storage?: StateStorageAdapter;
+}) {
+	return Effect.gen(function* () {
+		yield* Effect.all(
+			Object.entries(initialValues).map(([name, thunk]) =>
+				Effect.gen(function* () {
+					const existing = yield* Effect.either(
+						storage.get(manifest.namespace, name),
+					);
+					if (existing._tag === "Right") return;
+					if (existing.left._tag !== "StateNotFound") {
+						return yield* existing.left;
+					}
+					const definition = manifest.definitions[name];
+					if (definition === undefined) {
+						return yield* Effect.die(
+							new Error(`Manifest is missing definition for state "${name}"`),
+						);
+					}
+					const value = yield* Effect.tryPromise(async () => thunk());
+					const encoded = yield* definition.encode(value);
+					yield* storage.set(manifest.namespace, name, encoded);
+				}),
+			),
+			{ concurrency: "unbounded" },
+		);
+
+		return mapValues<
+			StateDefinitionLambda,
+			StateFieldEffectLambda,
+			Definitions
+		>(manifest.definitions, (definition, name) =>
+			implementStateEffect(manifest.namespace, name, definition, storage),
+		);
+	});
 }
 
 export async function loadState<
@@ -134,38 +176,16 @@ export async function loadState<
 	storage?: StateStorageAdapter;
 }) {
 	const runtime = ManagedRuntime.make(Layer.empty);
-
-	await runtime.runPromise(
-		Effect.all(
-			Object.entries(initialValues).map(([name, thunk]) =>
-				Effect.gen(function* () {
-					const existing = yield* Effect.either(
-						storage.get(manifest.namespace, name),
-					);
-					if (existing._tag === "Right") return;
-					if (existing.left._tag !== "StateNotFound") {
-						return yield* existing.left;
-					}
-					const definition = manifest.definitions[name];
-					if (definition === undefined) {
-						return yield* Effect.die(
-							new Error(
-								`Manifest is missing definition for state "${name}"`,
-							),
-						);
-					}
-					const value = yield* Effect.tryPromise(async () => thunk());
-					const encoded = yield* definition.encode(value);
-					yield* storage.set(manifest.namespace, name, encoded);
-				}),
-			),
-			{ concurrency: "unbounded" },
-		),
+	const effectState = await runtime.runPromise(
+		loadStateEffect({ manifest, initialValues, storage }),
 	);
-
-	return mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
-		manifest.definitions,
-		(definition, name) =>
-			implementState(manifest.namespace, name, definition, storage, runtime),
-	);
+	return mapValues<
+		StateFieldEffectLambda,
+		StateFieldPromiseLambda,
+		Definitions
+	>(effectState, (field) => ({
+		getValue: () => runtime.runPromise(field.getValue()),
+		set: (value) => runtime.runPromise(field.set(value)),
+		update: (fn) => runtime.runPromise(field.update(fn)),
+	}));
 }

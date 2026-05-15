@@ -19,6 +19,7 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@nodecg/private": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

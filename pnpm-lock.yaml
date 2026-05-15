@@ -78,6 +78,9 @@ importers:
         specifier: 'catalog:'
         version: 5.6.0
     devDependencies:
+      '@nodecg/private':
+        specifier: workspace:*
+        version: link:../private
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.5(vite@8.0.11(@types/node@24.12.3))(vitest@4.1.5)
@@ -236,6 +239,9 @@ importers:
         specifier: 'catalog:'
         version: 5.6.0
     devDependencies:
+      '@nodecg/private':
+        specifier: workspace:*
+        version: link:../private
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
