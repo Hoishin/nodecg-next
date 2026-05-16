@@ -1,7 +1,7 @@
 import { FetchHttpClient } from "@effect/platform";
 import { testEffect } from "@nodecg/private";
 import { Effect } from "effect";
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { HttpStateTransport } from "./http-state-transport";
 import { StateTransportService } from "./state-transport";
@@ -28,64 +28,68 @@ function mockFetch(
 	};
 }
 
-test(
-	"get issues a GET to the state URL and returns the decoded body",
-	testEffect(
-		Effect.gen(function* () {
-			const calls: Call[] = [];
-			const transport = yield* StateTransportService;
+describe("get", () => {
+	test(
+		"issues a GET to the state URL and returns the decoded body",
+		testEffect(
+			Effect.gen(function* () {
+				const calls: Call[] = [];
+				const transport = yield* StateTransportService;
 
-			const value = yield* transport.get("root", "count").pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(calls, () => new Response(JSON.stringify(42))),
-				),
-			);
+				const value = yield* transport.get("root", "count").pipe(
+					Effect.provideService(
+						FetchHttpClient.Fetch,
+						mockFetch(calls, () => new Response(JSON.stringify(42))),
+					),
+				);
 
-			expect(value).toBe(42);
-			expect(calls[0]?.method).toBe("GET");
-			expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
-		}).pipe(Effect.provide(HttpStateTransport)),
-	),
-);
+				expect(value).toBe(42);
+				expect(calls[0]?.method).toBe("GET");
+				expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
+			}).pipe(Effect.provide(HttpStateTransport)),
+		),
+	);
 
-test(
-	"update issues a PUT with the JSON-encoded body",
-	testEffect(
-		Effect.gen(function* () {
-			const calls: Call[] = [];
-			const transport = yield* StateTransportService;
+	test(
+		"fails with StateNotFound when the server responds 404",
+		testEffect(
+			Effect.gen(function* () {
+				const calls: Call[] = [];
+				const transport = yield* StateTransportService;
 
-			yield* transport.update("root", "count", 7).pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(calls, () => new Response(null, { status: 204 })),
-				),
-			);
+				const error = yield* transport.get("root", "count").pipe(
+					Effect.provideService(
+						FetchHttpClient.Fetch,
+						mockFetch(calls, () => new Response(null, { status: 404 })),
+					),
+					Effect.flip,
+				);
 
-			expect(calls[0]?.method).toBe("PUT");
-			expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
-			expect(JSON.parse(calls[0]?.body ?? "")).toBe(7);
-		}).pipe(Effect.provide(HttpStateTransport)),
-	),
-);
+				expect(error._tag).toBe("StateNotFound");
+			}).pipe(Effect.provide(HttpStateTransport)),
+		),
+	);
+});
 
-test(
-	"get fails with StateNotFound when the server responds 404",
-	testEffect(
-		Effect.gen(function* () {
-			const calls: Call[] = [];
-			const transport = yield* StateTransportService;
+describe("update", () => {
+	test(
+		"issues a PUT with the JSON-encoded body",
+		testEffect(
+			Effect.gen(function* () {
+				const calls: Call[] = [];
+				const transport = yield* StateTransportService;
 
-			const error = yield* transport.get("root", "count").pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(calls, () => new Response(null, { status: 404 })),
-				),
-				Effect.flip,
-			);
+				yield* transport.update("root", "count", 7).pipe(
+					Effect.provideService(
+						FetchHttpClient.Fetch,
+						mockFetch(calls, () => new Response(null, { status: 204 })),
+					),
+				);
 
-			expect(error._tag).toBe("StateNotFound");
-		}).pipe(Effect.provide(HttpStateTransport)),
-	),
-);
+				expect(calls[0]?.method).toBe("PUT");
+				expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
+				expect(JSON.parse(calls[0]?.body ?? "")).toBe(7);
+			}).pipe(Effect.provide(HttpStateTransport)),
+		),
+	);
+});

@@ -1,8 +1,7 @@
 import { defineState } from "@nodecg/core";
 import { testEffect } from "@nodecg/private";
 import { Effect, Schema } from "effect";
-import type { JsonValue } from "type-fest";
-import { expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state";
 import {
@@ -11,117 +10,222 @@ import {
 	StateTransportService,
 } from "./state-transport";
 
-function createInMemoryTransport(): StateTransport {
-	const map = new Map<string, Map<string, JsonValue>>();
-	return {
-		get: Effect.fn("get")(function* (namespace: string, name: string) {
-			const value = map.get(namespace)?.get(name);
-			if (typeof value === "undefined") {
-				return yield* new StateNotFound({ namespace, name });
-			}
-			return value;
-		}),
-		update: Effect.fn("update")(function* (
-			namespace: string,
-			name: string,
-			value: JsonValue,
-		) {
-			yield* Effect.sync(() => {
-				const ns = map.get(namespace);
-				if (ns) {
-					ns.set(name, value);
-				} else {
-					map.set(namespace, new Map([[name, value]]));
-				}
-			});
-		}),
-	};
-}
+const createTransportStub = () =>
+	({
+		get: vi.fn<StateTransport["get"]>(),
+		update: vi.fn<StateTransport["update"]>(() => Effect.void),
+	}) satisfies StateTransport;
 
-test("loadState — Promise wrapper end-to-end", async () => {
-	const manifest = defineState("test-loadstate-basic", {
-		count: { schema: Schema.Number },
-	});
-	const state = await loadState({
-		manifest,
-		stateTransport: createInMemoryTransport(),
-	});
+describe("getValue", () => {
+	test(
+		"decodes the value returned by the transport",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.get.mockReturnValue(Effect.succeed(42));
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
 
-	await state.count.set(42);
-	expect(await state.count.getValue()).toBe(42);
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
+
+				expect(
+					yield* state.count
+						.getValue()
+						.pipe(Effect.provideService(StateTransportService, transportStub)),
+				).toBe(42);
+			}),
+		),
+	);
+
+	test(
+		"fails when the stored value does not match the schema",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.get.mockReturnValue(Effect.succeed("not a number"));
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
+
+				const result = yield* Effect.either(
+					state.count
+						.getValue()
+						.pipe(Effect.provideService(StateTransportService, transportStub)),
+				);
+				expect(result._tag).toBe("Left");
+			}),
+		),
+	);
+
+	test(
+		"propagates StateNotFound from the transport",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.get.mockReturnValue(
+					Effect.fail(new StateNotFound({ namespace: "root", name: "count" })),
+				);
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
+
+				const result = yield* Effect.either(
+					state.count
+						.getValue()
+						.pipe(Effect.provideService(StateTransportService, transportStub)),
+				);
+				expect(result._tag).toBe("Left");
+			}),
+		),
+	);
+
+	test(
+		"reads a stored string back into a Date",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.get.mockReturnValue(
+					Effect.succeed("2030-01-01T00:00:00.000Z"),
+				);
+				const manifest = defineState("root", {
+					when: { schema: Schema.DateFromString },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
+
+				expect(
+					yield* state.when
+						.getValue()
+						.pipe(Effect.provideService(StateTransportService, transportStub)),
+				).toEqual(new Date("2030-01-01T00:00:00.000Z"));
+			}),
+		),
+	);
 });
 
-test(
-	"getValue decodes the value held by the transport",
-	testEffect(
-		Effect.gen(function* () {
-			const transport = createInMemoryTransport();
-			const provide = Effect.provideService(StateTransportService, transport);
-			const manifest = defineState("root", {
-				count: { schema: Schema.Number },
-			});
-			const state = yield* loadStateEffect(manifest).pipe(provide);
+describe("set", () => {
+	test(
+		"encodes the value and writes it via the transport",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
 
-			yield* transport.update("root", "count", 42);
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
 
-			expect(yield* state.count.getValue().pipe(provide)).toBe(42);
-		}),
-	),
-);
+				yield* state.count
+					.set(7)
+					.pipe(Effect.provideService(StateTransportService, transportStub));
+				expect(transportStub.update).toHaveBeenCalledWith("root", "count", 7);
+			}),
+		),
+	);
 
-test(
-	"update reads the current value, applies the fn, and writes the result",
-	testEffect(
-		Effect.gen(function* () {
-			const transport = createInMemoryTransport();
-			const provide = Effect.provideService(StateTransportService, transport);
-			const manifest = defineState("root", {
-				count: { schema: Schema.Number },
-			});
-			const state = yield* loadStateEffect(manifest).pipe(provide);
+	test(
+		"fails when the value fails schema validation",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
 
-			yield* transport.update("root", "count", 10);
-			yield* state.count.update((v) => v + 5).pipe(provide);
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
 
-			expect(yield* state.count.getValue().pipe(provide)).toBe(15);
-		}),
-	),
-);
+				const error = yield* state.count
+					.set("not a number" as unknown as number)
+					.pipe(
+						Effect.provideService(StateTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("UpdateStateError");
+			}),
+		),
+	);
 
-test(
-	"bidirectional codec round-trips through the transport wire",
-	testEffect(
-		Effect.gen(function* () {
-			const transport = createInMemoryTransport();
-			const provide = Effect.provideService(StateTransportService, transport);
-			const manifest = defineState("root", {
-				when: { schema: Schema.DateFromString },
-			});
-			const state = yield* loadStateEffect(manifest).pipe(provide);
+	test(
+		"sends a Date to the transport as a string",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const manifest = defineState("root", {
+					when: { schema: Schema.DateFromString },
+				});
 
-			const newDate = new Date("2030-01-01T00:00:00.000Z");
-			yield* state.when.set(newDate).pipe(provide);
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
 
-			const wire = yield* transport.get("root", "when");
-			expect(wire).toBe("2030-01-01T00:00:00.000Z");
-			expect(yield* state.when.getValue().pipe(provide)).toEqual(newDate);
-		}),
-	),
-);
+				yield* state.when
+					.set(new Date("2030-01-01T00:00:00.000Z"))
+					.pipe(Effect.provideService(StateTransportService, transportStub));
+				expect(transportStub.update).toHaveBeenLastCalledWith(
+					"root",
+					"when",
+					"2030-01-01T00:00:00.000Z",
+				);
+			}),
+		),
+	);
+});
 
-test(
-	"getValue fails when the transport has no value for the state",
-	testEffect(
-		Effect.gen(function* () {
-			const transport = createInMemoryTransport();
-			const provide = Effect.provideService(StateTransportService, transport);
-			const manifest = defineState("root", {
-				count: { schema: Schema.Number },
-			});
-			const state = yield* loadStateEffect(manifest).pipe(provide);
+describe("update", () => {
+	test(
+		"reads the current value, applies the fn, and writes the result",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.get.mockReturnValue(Effect.succeed(10));
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
 
-			const result = yield* Effect.either(state.count.getValue().pipe(provide));
-			expect(result._tag).toBe("Left");
-		}),
-	),
-);
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+				);
+
+				yield* state.count
+					.update((v) => v + 5)
+					.pipe(Effect.provideService(StateTransportService, transportStub));
+				expect(transportStub.update).toHaveBeenLastCalledWith(
+					"root",
+					"count",
+					15,
+				);
+			}),
+		),
+	);
+});
+
+describe("loadState (Promise wrapper)", () => {
+	test("forwards to the injected transport", async () => {
+		const transportStub = createTransportStub();
+		transportStub.get.mockReturnValue(Effect.succeed(42));
+		const manifest = defineState("root", { count: { schema: Schema.Number } });
+
+		const state = await loadState({ manifest, stateTransport: transportStub });
+
+		expect(await state.count.getValue()).toBe(42);
+		await state.count.set(9);
+		expect(transportStub.update).toHaveBeenCalledWith("root", "count", 9);
+	});
+});
