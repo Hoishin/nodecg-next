@@ -16,10 +16,9 @@ Expermental new version of NodeCG in active development from scratch
 - State is declarative: it is define in a single place with name and schema
 
   ```ts
-  const stateDefinition = defineState({
-    counter: { schema, initialValue, persist: false },
-    games: { schema, initialValue },
-    // ...
+  const manifest = defineState("match", {
+    counter: { schema },
+    games: { schema },
   });
   ```
 
@@ -29,23 +28,27 @@ Expermental new version of NodeCG in active development from scratch
   // Server-side
   import { loadState } from "@nodecg/server";
 
-  const state = await loadState(stateDefinition);
-  console.log(state.counter.getValue());
+  const state = await loadState({
+    manifest,
+    initialValues: { counter: () => 0, games: () => [] },
+  });
+  console.log(await state.counter.getValue());
 
   // Client-side
   import { loadState } from "@nodecg/client";
 
-  const state = await loadState(stateDefinition);
+  const state = await loadState(manifest);
   console.log(await state.counter.getValue());
   ```
 
-- State is immutable: it provides read-only value, and can only be updated with function call
+- State is immutable: it provides read-only value, and is updated by returning a new value from the updater (which may be async)
 
   ```ts
   console.log(await state.counter.getValue()); // Returns read-only value
 
   await state.counter.update((value) => {
     value.timestamp = Date.now();
+    return value;
   });
   ```
 
@@ -154,13 +157,13 @@ Expermental new version of NodeCG in active development from scratch
 - State supports namespaces: states can be grouped into namespaces to avoid name conflicts and manage permissions more easily
 
   ```ts
-  const commercialStateDefinition = defineState(
+  const commercialManifest = defineState(
+    "commercial",
     {
-      isRunning: { schema, initialValue },
-      remainingTime: { schema, initialValue },
+      isRunning: { schema },
+      remainingTime: { schema },
     },
     {
-      namespace: "commercial",
       permissions: {
         read: ["producer"],
         update: ["producer"],
