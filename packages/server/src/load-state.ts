@@ -12,8 +12,7 @@ import {
 import type { Promisable } from "type-fest";
 
 import { createInMemoryStateStorage } from "./in-memory-state-storage";
-import type { StateStorage } from "./state-storage";
-import { StateStorageService } from "./state-storage-service";
+import { type StateStorage, StateStorageService } from "./state-storage";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;

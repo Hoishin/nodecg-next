@@ -1,4 +1,4 @@
-import { Data, type Duration, type Effect } from "effect";
+import { Context, Data, type Duration, type Effect } from "effect";
 import type { JsonValue } from "type-fest";
 
 export class StateNotFound extends Data.TaggedError("StateNotFound")<{
@@ -41,3 +41,8 @@ export interface StateStorage {
 	) => Effect.Effect<void, StateNotFound | StateSaveFailed>;
 	persistInterval: Duration.DurationInput;
 }
+
+export class StateStorageService extends Context.Tag("StateStorage")<
+	StateStorageService,
+	StateStorage
+>() {}

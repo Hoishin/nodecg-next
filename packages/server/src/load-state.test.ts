@@ -13,7 +13,7 @@ import {
 	InMemoryStateStorage,
 } from "./in-memory-state-storage";
 import { loadState, loadStateEffect } from "./load-state";
-import { StateStorageService } from "./state-storage-service";
+import { StateStorageService } from "./state-storage";
 
 // Basic loadState smoke test (Promise wrapper)
 test("loadState — Promise wrapper end-to-end", async () => {
@@ -143,11 +143,7 @@ test(
 				initialValues: { count: () => 0 },
 			}).pipe(provideStorage);
 
-			yield* storage.set(
-				"test-effect-decode-fail",
-				"count",
-				"not a number",
-			);
+			yield* storage.set("test-effect-decode-fail", "count", "not a number");
 
 			const result = yield* Effect.either(
 				state.count.getValue().pipe(provideStorage),
