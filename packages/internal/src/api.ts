@@ -3,6 +3,7 @@ import {
 	HttpApiEndpoint,
 	HttpApiError,
 	HttpApiGroup,
+	HttpApiSchema,
 } from "@effect/platform";
 import { Schema } from "effect";
 
@@ -20,18 +21,29 @@ export const PublishPayload = Schema.Struct({
 	value: Schema.Unknown,
 });
 
-export const NodecgApi = HttpApi.make("NodecgApi")
+const StateGroup = HttpApiGroup.make("State")
 	.add(
-		HttpApiGroup.make("Root").add(
-			HttpApiEndpoint.get("root", "/").addError(HttpApiError.NotImplemented),
-		),
+		HttpApiEndpoint.get(
+			"get",
+		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
+			.addSuccess(Schema.Unknown)
+			.addError(HttpApiError.NotFound)
+			.addError(HttpApiError.NotImplemented),
 	)
 	.add(
-		HttpApiGroup.make("Api")
-			.add(HttpApiEndpoint.get("ping", "/api/ping").addSuccess(Schema.String))
-			.add(
-				HttpApiEndpoint.post("publish", "/api/publish").setPayload(
-					PublishPayload,
-				),
-			),
+		HttpApiEndpoint.put(
+			"update",
+		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
+			.setPayload(Schema.Unknown)
+			.addError(HttpApiError.NotFound)
+			.addError(HttpApiError.NotImplemented),
 	);
+
+const HealthGroup = HttpApiGroup.make("Health").add(
+	HttpApiEndpoint.get("ping", "/ping").addSuccess(Schema.String),
+);
+
+export const NodecgApi = HttpApi.make("NodecgApi")
+	.add(HealthGroup)
+	.add(StateGroup)
+	.prefix("/api");

@@ -11,7 +11,7 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
-import { usePing, usePublish } from "./api.ts";
+import { usePing } from "./api.ts";
 import { sendMessage, useLastMessage, useWsState } from "./ws.ts";
 
 const queryClient = new QueryClient();
@@ -39,7 +39,6 @@ const indexRoute = createRoute({
 	path: "/",
 	component: function Index() {
 		const { data: ping } = usePing();
-		const publish = usePublish();
 		const wsState = useWsState();
 		const lastMessage = useLastMessage();
 
@@ -55,13 +54,6 @@ const indexRoute = createRoute({
 				>
 					send ping
 				</button>
-				<button
-					onClick={() => publish.mutate({ topic: "demo", value: Date.now() })}
-					disabled={publish.isPending}
-				>
-					publish demo
-				</button>
-				<p>publish status → {publish.status}</p>
 			</div>
 		);
 	},

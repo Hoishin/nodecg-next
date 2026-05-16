@@ -39,19 +39,19 @@ const wsHandler = Effect.gen(function* () {
 	return HttpServerResponse.empty();
 });
 
-const RootGroupLive = HttpApiBuilder.group(NodecgApi, "Root", (handlers) =>
-	handlers.handle("root", () => Effect.fail(new HttpApiError.NotImplemented())),
+const HealthGroupLive = HttpApiBuilder.group(NodecgApi, "Health", (handlers) =>
+	handlers.handle("ping", () => Effect.succeed("pong")),
 );
 
-const ApiGroupLive = HttpApiBuilder.group(NodecgApi, "Api", (handlers) =>
+const StateGroupLive = HttpApiBuilder.group(NodecgApi, "State", (handlers) =>
 	handlers
-		.handle("ping", () => Effect.succeed("pong"))
-		.handle("publish", ({ payload }) => Effect.log(`pub: ${payload.topic}`)),
+		.handle("get", () => Effect.fail(new HttpApiError.NotImplemented()))
+		.handle("update", () => Effect.fail(new HttpApiError.NotImplemented())),
 );
 
 const NodecgApiLive = HttpApiBuilder.api(NodecgApi).pipe(
-	Layer.provide(RootGroupLive),
-	Layer.provide(ApiGroupLive),
+	Layer.provide(HealthGroupLive),
+	Layer.provide(StateGroupLive),
 );
 
 const wsMiddleware = (apiApp: HttpApp.Default) =>
