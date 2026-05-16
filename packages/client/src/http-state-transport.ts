@@ -17,7 +17,7 @@ export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
 	function* () {
 		const client = yield* HttpApiClient.make(NodecgApi);
 
-		const get = Effect.fn("StateTransport.get")(function* (
+		const read = Effect.fn("StateTransport.read")(function* (
 			namespace: string,
 			name: string,
 		) {
@@ -54,7 +54,7 @@ export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
 			);
 		});
 
-		return { get, update };
+		return { read, update };
 	},
 	Effect.provide(FetchHttpClient.layer),
 );

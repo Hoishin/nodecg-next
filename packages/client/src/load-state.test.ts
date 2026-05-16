@@ -12,7 +12,7 @@ import {
 
 const createTransportStub = () =>
 	({
-		get: vi.fn<StateTransport["get"]>(),
+		read: vi.fn<StateTransport["read"]>(),
 		update: vi.fn<StateTransport["update"]>(() => Effect.void),
 	}) satisfies StateTransport;
 
@@ -22,7 +22,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.get.mockReturnValue(Effect.succeed(42));
+				transportStub.read.mockReturnValue(Effect.succeed(42));
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
 				});
@@ -45,7 +45,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.get.mockReturnValue(Effect.succeed("not a number"));
+				transportStub.read.mockReturnValue(Effect.succeed("not a number"));
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
 				});
@@ -69,7 +69,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.get.mockReturnValue(
+				transportStub.read.mockReturnValue(
 					Effect.fail(new StateNotFound({ namespace: "root", name: "count" })),
 				);
 				const manifest = defineState("root", {
@@ -95,7 +95,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.get.mockReturnValue(
+				transportStub.read.mockReturnValue(
 					Effect.succeed("2030-01-01T00:00:00.000Z"),
 				);
 				const manifest = defineState("root", {
@@ -194,7 +194,7 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.get.mockReturnValue(Effect.succeed(10));
+				transportStub.read.mockReturnValue(Effect.succeed(10));
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
 				});
@@ -219,7 +219,7 @@ describe("update", () => {
 describe("loadState (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();
-		transportStub.get.mockReturnValue(Effect.succeed(42));
+		transportStub.read.mockReturnValue(Effect.succeed(42));
 		const manifest = defineState("root", { count: { schema: Schema.Number } });
 
 		const state = await loadState({ manifest, stateTransport: transportStub });

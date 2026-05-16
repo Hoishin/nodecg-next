@@ -5,13 +5,13 @@ import { describe, expect, test } from "vitest";
 import { InMemoryStateStorage } from "./in-memory-state-storage";
 import { StateStorageService } from "./state-storage";
 
-describe("get", () => {
+describe("read", () => {
 	test(
 		"fails with StateNotFound on a missing key",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				const result = yield* Effect.either(storage.get("ns", "missing"));
+				const result = yield* Effect.either(storage.read("ns", "missing"));
 				expect(result._tag).toBe("Left");
 				if (result._tag === "Left") {
 					expect(result.left._tag).toBe("StateNotFound");
@@ -21,28 +21,29 @@ describe("get", () => {
 	);
 });
 
-describe("set", () => {
+describe("create", () => {
 	test(
-		"stores values that get returns (creating the namespace)",
+		"stores new values that read returns (creating the namespace)",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				yield* storage.set("ns", "a", 1);
-				yield* storage.set("ns", "b", "two");
-				expect(yield* storage.get("ns", "a")).toBe(1);
-				expect(yield* storage.get("ns", "b")).toBe("two");
+				yield* storage.create("ns", "a", 1);
+				yield* storage.create("ns", "b", "two");
+				expect(yield* storage.read("ns", "a")).toBe(1);
+				expect(yield* storage.read("ns", "b")).toBe("two");
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
 
 	test(
-		"overwrites an existing value",
+		"fails with StateAlreadyExists when the key already exists",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				yield* storage.set("ns", "a", 1);
-				yield* storage.set("ns", "a", 2);
-				expect(yield* storage.get("ns", "a")).toBe(2);
+				yield* storage.create("ns", "a", 1);
+				const error = yield* storage.create("ns", "a", 2).pipe(Effect.flip);
+				expect(error._tag).toBe("StateAlreadyExists");
+				expect(yield* storage.read("ns", "a")).toBe(1);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -54,9 +55,9 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				yield* storage.set("ns", "a", 1);
+				yield* storage.create("ns", "a", 1);
 				yield* storage.update("ns", "a", 2);
-				expect(yield* storage.get("ns", "a")).toBe(2);
+				expect(yield* storage.read("ns", "a")).toBe(2);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);

@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
+	StateAlreadyExists,
 	StateNotFound,
 	StateSaveFailed,
 	StateStorageService,
@@ -15,7 +16,7 @@ export function createInMemoryStateStorage(): Context.Tag.Service<
 > {
 	const map = new Map<string, Map<string, JsonValue>>();
 
-	const get = Effect.fn("StateStorage.get")(function* (
+	const read = Effect.fn("StateStorage.read")(function* (
 		namespace: string,
 		name: string,
 	) {
@@ -26,11 +27,14 @@ export function createInMemoryStateStorage(): Context.Tag.Service<
 		return value;
 	});
 
-	const set = Effect.fn("StateStorage.set")(function* (
+	const create = Effect.fn("StateStorage.create")(function* (
 		namespace: string,
 		name: string,
 		value: JsonValue,
 	) {
+		if (typeof map.get(namespace)?.get(name) !== "undefined") {
+			return yield* new StateAlreadyExists({ namespace, name });
+		}
 		return yield* Effect.try({
 			try: () => {
 				const ns = map.get(namespace);
@@ -67,7 +71,7 @@ export function createInMemoryStateStorage(): Context.Tag.Service<
 		}
 	});
 
-	return { get, set, update, persistInterval: 0 };
+	return { read, create, update, persistInterval: 0 };
 }
 
 export const InMemoryStateStorage = Layer.sync(StateStorageService, () =>

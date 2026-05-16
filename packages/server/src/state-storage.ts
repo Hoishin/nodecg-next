@@ -8,6 +8,13 @@ export class StateNotFound extends Data.TaggedError("StateNotFound")<{
 	override readonly message = `State "${this.name}" in "${this.namespace}" does not exist`;
 }
 
+export class StateAlreadyExists extends Data.TaggedError("StateAlreadyExists")<{
+	namespace: string;
+	name: string;
+}> {
+	override readonly message = `State "${this.name}" in "${this.namespace}" already exists`;
+}
+
 export class StateGetFailed extends Data.TaggedError("StateGetFailed")<{
 	namespace: string;
 	name: string;
@@ -25,15 +32,15 @@ export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
 }
 
 export interface StateStorage {
-	get: (
-		namespace: string,
-		name: string,
-	) => Effect.Effect<JsonValue, StateNotFound | StateGetFailed>;
-	set: (
+	create: (
 		namespace: string,
 		name: string,
 		value: JsonValue,
-	) => Effect.Effect<void, StateSaveFailed>;
+	) => Effect.Effect<void, StateAlreadyExists | StateSaveFailed>;
+	read: (
+		namespace: string,
+		name: string,
+	) => Effect.Effect<JsonValue, StateNotFound | StateGetFailed>;
 	update: (
 		namespace: string,
 		name: string,

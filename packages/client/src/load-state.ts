@@ -54,7 +54,7 @@ function implementStateEffect<Decoded>(
 	const getValue = Effect.fn("getValue")(
 		function* () {
 			const transport = yield* StateTransportService;
-			const current = yield* transport.get(namespace, name);
+			const current = yield* transport.read(namespace, name);
 			return yield* definition.decode(current);
 		},
 		Effect.mapError(

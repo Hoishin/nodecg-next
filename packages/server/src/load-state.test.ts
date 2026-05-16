@@ -17,8 +17,8 @@ import {
 
 const createStorageStub = () =>
 	({
-		get: vi.fn<StateStorage["get"]>(),
-		set: vi.fn<StateStorage["set"]>(() => Effect.void),
+		read: vi.fn<StateStorage["read"]>(),
+		create: vi.fn<StateStorage["create"]>(() => Effect.void),
 		update: vi.fn<StateStorage["update"]>(() => Effect.void),
 		persistInterval: 0,
 	}) satisfies StateStorage;
@@ -29,7 +29,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(
+				storageStub.read.mockReturnValue(
 					Effect.fail(new StateNotFound({ namespace: "ns", name: "count" })),
 				);
 				const manifest = defineState("ns", {
@@ -41,8 +41,8 @@ describe("loadStateEffect seeding", () => {
 					initialValues: { count: () => 42 },
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				expect(storageStub.set).toHaveBeenCalledWith("ns", "count", 42);
-				expect(storageStub.set).toHaveBeenCalledTimes(1);
+				expect(storageStub.create).toHaveBeenCalledWith("ns", "count", 42);
+				expect(storageStub.create).toHaveBeenCalledTimes(1);
 			}),
 		),
 	);
@@ -52,7 +52,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(
+				storageStub.read.mockReturnValue(
 					Effect.fail(new StateNotFound({ namespace: "ns", name: "count" })),
 				);
 				const manifest = defineState("ns", {
@@ -69,7 +69,7 @@ describe("loadStateEffect seeding", () => {
 					},
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				expect(storageStub.set).toHaveBeenCalledWith("ns", "count", 7);
+				expect(storageStub.create).toHaveBeenCalledWith("ns", "count", 7);
 			}),
 		),
 	);
@@ -79,7 +79,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(Effect.succeed(5));
+				storageStub.read.mockReturnValue(Effect.succeed(5));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -89,7 +89,7 @@ describe("loadStateEffect seeding", () => {
 					initialValues: { count: () => 0 },
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				expect(storageStub.set).not.toHaveBeenCalled();
+				expect(storageStub.create).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -99,7 +99,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(
+				storageStub.read.mockReturnValue(
 					Effect.fail(new StateNotFound({ namespace: "ns", name: "broken" })),
 				);
 				const definition: StateDefinition<number> = {
@@ -136,7 +136,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(Effect.succeed(42));
+				storageStub.read.mockReturnValue(Effect.succeed(42));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -148,7 +148,7 @@ describe("getValue", () => {
 
 				expect(
 					yield* state.count
-						.getValue()
+						.get()
 						.pipe(Effect.provideService(StateStorageService, storageStub)),
 				).toBe(42);
 			}),
@@ -160,7 +160,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(Effect.succeed("not a number"));
+				storageStub.read.mockReturnValue(Effect.succeed("not a number"));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -172,7 +172,7 @@ describe("getValue", () => {
 
 				const result = yield* Effect.either(
 					state.count
-						.getValue()
+						.get()
 						.pipe(Effect.provideService(StateStorageService, storageStub)),
 				);
 				expect(result._tag).toBe("Left");
@@ -185,7 +185,7 @@ describe("getValue", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(
+				storageStub.read.mockReturnValue(
 					Effect.succeed("2026-05-14T00:00:00.000Z"),
 				);
 				const manifest = defineState("ns", {
@@ -199,7 +199,7 @@ describe("getValue", () => {
 
 				expect(
 					yield* state.when
-						.getValue()
+						.get()
 						.pipe(Effect.provideService(StateStorageService, storageStub)),
 				).toEqual(new Date("2026-05-14T00:00:00.000Z"));
 			}),
@@ -213,7 +213,7 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(Effect.succeed(0));
+				storageStub.read.mockReturnValue(Effect.succeed(0));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -226,7 +226,7 @@ describe("set", () => {
 				yield* state.count
 					.set(7)
 					.pipe(Effect.provideService(StateStorageService, storageStub));
-				expect(storageStub.set).toHaveBeenCalledWith("ns", "count", 7);
+				expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 7);
 			}),
 		),
 	);
@@ -236,7 +236,7 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(Effect.succeed(0));
+				storageStub.read.mockReturnValue(Effect.succeed(0));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -261,7 +261,7 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(
+				storageStub.read.mockReturnValue(
 					Effect.succeed("1970-01-01T00:00:00.000Z"),
 				);
 				const manifest = defineState("ns", {
@@ -276,7 +276,7 @@ describe("set", () => {
 				yield* state.when
 					.set(new Date("2026-05-14T00:00:00.000Z"))
 					.pipe(Effect.provideService(StateStorageService, storageStub));
-				expect(storageStub.set).toHaveBeenLastCalledWith(
+				expect(storageStub.update).toHaveBeenLastCalledWith(
 					"ns",
 					"when",
 					"2026-05-14T00:00:00.000Z",
@@ -292,7 +292,7 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.get.mockReturnValue(Effect.succeed(10));
+				storageStub.read.mockReturnValue(Effect.succeed(10));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -305,7 +305,7 @@ describe("update", () => {
 				yield* state.count
 					.update((v) => v + 3)
 					.pipe(Effect.provideService(StateStorageService, storageStub));
-				expect(storageStub.set).toHaveBeenLastCalledWith("ns", "count", 13);
+				expect(storageStub.update).toHaveBeenLastCalledWith("ns", "count", 13);
 			}),
 		),
 	);
@@ -314,7 +314,7 @@ describe("update", () => {
 describe("loadState (Promise wrapper)", () => {
 	test("forwards to the injected storage", async () => {
 		const storageStub = createStorageStub();
-		storageStub.get.mockReturnValue(Effect.succeed(42));
+		storageStub.read.mockReturnValue(Effect.succeed(42));
 		const manifest = defineState("ns", { count: { schema: Schema.Number } });
 
 		const state = await loadState({
@@ -323,8 +323,8 @@ describe("loadState (Promise wrapper)", () => {
 			storage: storageStub,
 		});
 
-		expect(await state.count.getValue()).toBe(42);
+		expect(await state.count.get()).toBe(42);
 		await state.count.set(9);
-		expect(storageStub.set).toHaveBeenCalledWith("ns", "count", 9);
+		expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 9);
 	});
 });

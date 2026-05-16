@@ -6,7 +6,6 @@ import {
 	type HKT,
 	Layer,
 	ManagedRuntime,
-	Match,
 	type Schema,
 } from "effect";
 import type { Promisable } from "type-fest";
@@ -17,25 +16,25 @@ import { StateStorageService, type StateStorage } from "./state-storage";
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
 	readonly name: string;
-	readonly cause: string;
+	readonly cause: Error;
 }> {
 	override get message() {
-		return `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause}`;
+		return `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 	}
 }
 
 export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	readonly namespace: string;
 	readonly name: string;
-	readonly cause: string;
+	readonly cause: Error;
 }> {
 	override get message() {
-		return `Failed to update state "${this.name}" in "${this.namespace}": ${this.cause}`;
+		return `Failed to update state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 	}
 }
 
 interface StateFieldEffect<Decoded> {
-	getValue: () => Effect.Effect<Decoded, GetStateError, StateStorageService>;
+	get: () => Effect.Effect<Decoded, GetStateError, StateStorageService>;
 	set: (
 		value: Decoded,
 	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
@@ -62,11 +61,11 @@ function implementStateEffect<Decoded>(
 	const getValue = Effect.fn("getValue")(
 		function* () {
 			const storage = yield* StateStorageService;
-			const current = yield* storage.get(namespace, name);
+			const current = yield* storage.read(namespace, name);
 			return yield* definition.decode(current);
 		},
 		Effect.mapError(
-			(error) => new GetStateError({ namespace, name, cause: error.message }),
+			(error) => new GetStateError({ namespace, name, cause: error }),
 		),
 	);
 
@@ -74,11 +73,10 @@ function implementStateEffect<Decoded>(
 		function* (value: Decoded) {
 			const storage = yield* StateStorageService;
 			const encoded = yield* definition.encode(value);
-			yield* storage.set(namespace, name, encoded);
+			yield* storage.update(namespace, name, encoded);
 		},
 		Effect.mapError(
-			(error) =>
-				new UpdateStateError({ namespace, name, cause: error.message }),
+			(error) => new UpdateStateError({ namespace, name, cause: error }),
 		),
 	);
 
@@ -88,24 +86,14 @@ function implementStateEffect<Decoded>(
 			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
-			yield* storage.set(namespace, name, encoded);
+			yield* storage.update(namespace, name, encoded);
 		},
 		Effect.mapError((error) => {
-			const cause = Match.value(error).pipe(
-				Match.tag(
-					"UnknownException",
-					"GetStateError",
-					"StateValidationError",
-					"StateSaveFailed",
-					(e) => e.message,
-				),
-				Match.exhaustive,
-			);
-			return new UpdateStateError({ namespace, name, cause });
+			return new UpdateStateError({ namespace, name, cause: error });
 		}),
 	);
 
-	return { getValue, set, update };
+	return { get: getValue, set, update };
 }
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
@@ -146,10 +134,10 @@ export function loadStateEffect<
 					}
 					const value = yield* Effect.tryPromise(async () => thunk());
 					const encoded = yield* definition.encode(value);
-					yield* storage.set(manifest.namespace, name, encoded);
+					yield* storage.create(manifest.namespace, name, encoded);
 				});
 				return storage
-					.get(manifest.namespace, name)
+					.read(manifest.namespace, name)
 					.pipe(Effect.catchTag("StateNotFound", () => seed));
 			}),
 			{ concurrency: "unbounded" },
@@ -191,7 +179,7 @@ export async function loadState<
 		StateFieldPromiseLambda,
 		Definitions
 	>(effectState, (field) => ({
-		getValue: () => runtime.runPromise(field.getValue()),
+		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
 	}));

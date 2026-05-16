@@ -25,7 +25,7 @@ export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
 }
 
 export interface StateTransport {
-	get: (
+	read: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<unknown, StateNotFound | StateGetFailed>;
