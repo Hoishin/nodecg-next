@@ -27,10 +27,13 @@ const handleMessage = (
 const wsHandler = Effect.gen(function* () {
 	const socket = yield* HttpServerRequest.upgrade;
 	const write = yield* socket.writer;
-	const send = (msg: ServerMessage) => encodeServerMessage(msg).pipe(Effect.flatMap(write));
+	const send = (msg: ServerMessage) =>
+		encodeServerMessage(msg).pipe(Effect.flatMap(write));
 	yield* socket.runRaw((data) =>
 		typeof data === "string"
-			? decodeClientMessage(data).pipe(Effect.flatMap((msg) => handleMessage(msg, send)))
+			? decodeClientMessage(data).pipe(
+					Effect.flatMap((msg) => handleMessage(msg, send)),
+				)
 			: Effect.void,
 	);
 	return HttpServerResponse.empty();
@@ -56,7 +59,9 @@ const wsMiddleware = (apiApp: HttpApp.Default) =>
 		const req = yield* HttpServerRequest.HttpServerRequest;
 		if (new URL(req.url, "http://x").pathname === "/ws") {
 			return yield* wsHandler.pipe(
-				Effect.catchAll(() => Effect.succeed(HttpServerResponse.empty({ status: 500 }))),
+				Effect.catchAll(() =>
+					Effect.succeed(HttpServerResponse.empty({ status: 500 })),
+				),
 			);
 		}
 		return yield* apiApp;

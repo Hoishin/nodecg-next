@@ -49,7 +49,10 @@ const indexRoute = createRoute({
 				<p>GET /api/ping → {ping ?? "…"}</p>
 				<p>WS /ws → {wsState}</p>
 				<p>last WS message → {lastMessage ? lastMessage._tag : "—"}</p>
-				<button onClick={() => sendMessage({ _tag: "ping" })} disabled={wsState !== "open"}>
+				<button
+					onClick={() => sendMessage({ _tag: "ping" })}
+					disabled={wsState !== "open"}
+				>
 					send ping
 				</button>
 				<button

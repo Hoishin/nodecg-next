@@ -15,7 +15,7 @@ catalog:
   zod: ~4.1.13
 
 allowBuilds:
-  '@parcel/watcher': false
+  "@parcel/watcher": false
   msgpackr-extract: false
 
 minimumReleaseAge: 4320

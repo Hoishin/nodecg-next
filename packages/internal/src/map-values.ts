@@ -11,7 +11,9 @@ export function mapValues<
 		key: keyof T & string,
 	) => HKT.Kind<G, never, never, never, V>,
 ): { [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]> } {
-	type Result = { [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]> };
+	type Result = {
+		[K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
+	};
 
 	const result: Partial<Result> = {};
 

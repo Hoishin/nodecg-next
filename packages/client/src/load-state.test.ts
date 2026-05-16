@@ -43,9 +43,7 @@ test(
 		}).pipe(
 			Effect.provide(
 				mockHttpClient((request) => {
-					expect(request.url).toMatch(
-						"/api/namespaces/root/state/count",
-					);
+					expect(request.url).toMatch("/api/namespaces/root/state/count");
 					return new Response(JSON.stringify(42), { status: 200 });
 				}),
 			),
@@ -97,10 +95,9 @@ test(
 						expect(jsonBody(request)).toBe("2030-01-01T00:00:00.000Z");
 						return new Response(null, { status: 204 });
 					}
-					return new Response(
-						JSON.stringify("2026-05-14T00:00:00.000Z"),
-						{ status: 200 },
-					);
+					return new Response(JSON.stringify("2026-05-14T00:00:00.000Z"), {
+						status: 200,
+					});
 				}),
 			),
 		),

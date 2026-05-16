@@ -1,4 +1,9 @@
-import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup } from "@effect/platform";
+import {
+	HttpApi,
+	HttpApiEndpoint,
+	HttpApiError,
+	HttpApiGroup,
+} from "@effect/platform";
 import { Schema } from "effect";
 
 export const ClientMessage = Schema.Union(
@@ -24,5 +29,9 @@ export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(
 		HttpApiGroup.make("Api")
 			.add(HttpApiEndpoint.get("ping", "/api/ping").addSuccess(Schema.String))
-			.add(HttpApiEndpoint.post("publish", "/api/publish").setPayload(PublishPayload)),
+			.add(
+				HttpApiEndpoint.post("publish", "/api/publish").setPayload(
+					PublishPayload,
+				),
+			),
 	);

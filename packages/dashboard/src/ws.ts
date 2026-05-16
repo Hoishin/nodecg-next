@@ -4,7 +4,9 @@ import { useSyncExternalStore } from "react";
 
 type WsState = "connecting" | "open" | "closed";
 
-const decodeServerMessage = Schema.decodeUnknown(Schema.parseJson(ServerMessage));
+const decodeServerMessage = Schema.decodeUnknown(
+	Schema.parseJson(ServerMessage),
+);
 
 const resource = Effect.runSync(
 	Effect.gen(function* () {
@@ -20,7 +22,8 @@ const openSocket = Effect.gen(function* () {
 
 	if (
 		current &&
-		(current.readyState === WebSocket.CONNECTING || current.readyState === WebSocket.OPEN)
+		(current.readyState === WebSocket.CONNECTING ||
+			current.readyState === WebSocket.OPEN)
 	) {
 		return current;
 	}
@@ -74,7 +77,9 @@ export const useWsState = (): WsState =>
 		(cb) => {
 			Effect.runFork(openSocket);
 			const fiber = Effect.runFork(
-				resource.stateRef.changes.pipe(Stream.runForEach(() => Effect.sync(cb))),
+				resource.stateRef.changes.pipe(
+					Stream.runForEach(() => Effect.sync(cb)),
+				),
 			);
 			return () => {
 				Effect.runFork(Fiber.interrupt(fiber));
@@ -88,7 +93,9 @@ export const useLastMessage = (): ServerMessage | null =>
 		(cb) => {
 			Effect.runFork(openSocket);
 			const fiber = Effect.runFork(
-				resource.messageRef.changes.pipe(Stream.runForEach(() => Effect.sync(cb))),
+				resource.messageRef.changes.pipe(
+					Stream.runForEach(() => Effect.sync(cb)),
+				),
 			);
 			return () => {
 				Effect.runFork(Fiber.interrupt(fiber));

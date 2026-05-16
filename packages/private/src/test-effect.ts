@@ -10,9 +10,18 @@ export function testEffect<A, E>(self: Effect.Effect<A, E, Scope.Scope>) {
 			Match.tag("Die", ({ defect }) => defect),
 			Match.tag("Fail", ({ error }) => error),
 			Match.tag("Interrupt", () => new Error("test interrupted")),
-			Match.tag("Parallel", () => new Error("test failed with parallel causes", { cause: exit })),
-			Match.tag("Sequential", () => new Error("test failed with parallel causes", { cause: exit })),
-			Match.tag("Empty", () => new Error("test failed with empty causes", { cause: exit })),
+			Match.tag(
+				"Parallel",
+				() => new Error("test failed with parallel causes", { cause: exit }),
+			),
+			Match.tag(
+				"Sequential",
+				() => new Error("test failed with parallel causes", { cause: exit }),
+			),
+			Match.tag(
+				"Empty",
+				() => new Error("test failed with empty causes", { cause: exit }),
+			),
 			Match.exhaustive,
 		);
 		throw error;
