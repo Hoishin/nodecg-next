@@ -118,13 +118,14 @@ describe("loadStateEffect seeding", () => {
 					definitions: { broken: definition },
 				};
 
-				const result = yield* Effect.either(
-					loadStateEffect({
-						manifest,
-						initialValues: { broken: () => 42 },
-					}).pipe(Effect.provideService(StateStorageService, storageStub)),
+				const error = yield* loadStateEffect({
+					manifest,
+					initialValues: { broken: () => 42 },
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.flip,
 				);
-				expect(result._tag).toBe("Left");
+				expect(error._tag).toBe("StateValidationError");
 			}),
 		),
 	);
@@ -170,12 +171,13 @@ describe("getValue", () => {
 					initialValues: { count: () => 0 },
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				const result = yield* Effect.either(
-					state.count
-						.get()
-						.pipe(Effect.provideService(StateStorageService, storageStub)),
-				);
-				expect(result._tag).toBe("Left");
+				const error = yield* state.count
+					.get()
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("GetStateError");
 			}),
 		),
 	);
@@ -246,12 +248,13 @@ describe("set", () => {
 					initialValues: { count: () => 0 },
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				const result = yield* Effect.either(
-					state.count
-						.set("not a number" as unknown as number)
-						.pipe(Effect.provideService(StateStorageService, storageStub)),
-				);
-				expect(result._tag).toBe("Left");
+				const error = yield* state.count
+					.set("not a number" as unknown as number)
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("UpdateStateError");
 			}),
 		),
 	);

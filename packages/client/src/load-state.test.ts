@@ -54,12 +54,13 @@ describe("getValue", () => {
 					Effect.provideService(StateTransportService, transportStub),
 				);
 
-				const result = yield* Effect.either(
-					state.count
-						.getValue()
-						.pipe(Effect.provideService(StateTransportService, transportStub)),
-				);
-				expect(result._tag).toBe("Left");
+				const error = yield* state.count
+					.getValue()
+					.pipe(
+						Effect.provideService(StateTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("GetStateError");
 			}),
 		),
 	);
@@ -80,12 +81,13 @@ describe("getValue", () => {
 					Effect.provideService(StateTransportService, transportStub),
 				);
 
-				const result = yield* Effect.either(
-					state.count
-						.getValue()
-						.pipe(Effect.provideService(StateTransportService, transportStub)),
-				);
-				expect(result._tag).toBe("Left");
+				const error = yield* state.count
+					.getValue()
+					.pipe(
+						Effect.provideService(StateTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("GetStateError");
 			}),
 		),
 	);
