@@ -70,7 +70,6 @@ export function createInMemoryStateStorage(): Context.Tag.Service<
 	return { get, set, update, persistInterval: 0 };
 }
 
-export const InMemoryStateStorage = Layer.sync(
-	StateStorageService,
-	createInMemoryStateStorage,
+export const InMemoryStateStorage = Layer.sync(StateStorageService, () =>
+	createInMemoryStateStorage(),
 );

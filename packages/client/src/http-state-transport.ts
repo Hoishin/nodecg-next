@@ -1,10 +1,6 @@
-import {
-	FetchHttpClient,
-	HttpClient,
-	HttpClientRequest,
-	HttpClientResponse,
-} from "@effect/platform";
-import { Context, Effect, Layer, Match } from "effect";
+import { FetchHttpClient, HttpApiClient } from "@effect/platform";
+import { NodecgApi } from "@nodecg/internal";
+import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
@@ -14,90 +10,56 @@ import {
 	StateTransportService,
 } from "./state-transport";
 
-export function createHttpStateTransport(): Context.Tag.Service<
-	typeof StateTransportService
-> {
-	const get = Effect.fn("StateTransport.get")(function* (
-		namespace: string,
-		name: string,
-	) {
-		const client = yield* HttpClient.HttpClient;
-		const response = yield* client
-			.get(`/api/namespaces/${namespace}/state/${name}`)
-			.pipe(
-				Effect.mapError(
-					(error) =>
-						new StateGetFailed({
-							namespace,
-							name,
-							cause: new Error(error.message),
-						}),
+const toError = (error: { readonly _tag: string }): Error =>
+	error instanceof Error ? error : new Error(error._tag);
+
+export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
+	function* () {
+		const client = yield* HttpApiClient.make(NodecgApi);
+
+		const get = Effect.fn("StateTransport.get")(function* (
+			namespace: string,
+			name: string,
+		) {
+			return yield* client.State.get({ path: { namespace, name } }).pipe(
+				Effect.mapError((error) =>
+					Match.value(error).pipe(
+						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.orElse(
+							(e) => new StateGetFailed({ namespace, name, cause: toError(e) }),
+						),
+					),
 				),
 			);
-		return yield* HttpClientResponse.matchStatus(response, {
-			"2xx": (ok) =>
-				ok.json.pipe(
-					Effect.mapError(
-						(error) =>
-							new StateGetFailed({
-								namespace,
-								name,
-								cause: new Error(error.message),
-							}),
+		});
+
+		const update = Effect.fn("StateTransport.update")(function* (
+			namespace: string,
+			name: string,
+			value: JsonValue,
+		) {
+			yield* client.State.update({
+				path: { namespace, name },
+				payload: value,
+			}).pipe(
+				Effect.mapError((error) =>
+					Match.value(error).pipe(
+						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.orElse(
+							(e) =>
+								new StateSaveFailed({ namespace, name, cause: toError(e) }),
+						),
 					),
 				),
-			404: () => new StateNotFound({ namespace, name }),
-			orElse: (bad) =>
-				new StateGetFailed({
-					namespace,
-					name,
-					cause: new Error(`unexpected response status ${bad.status}`),
-				}),
+			);
 		});
-	}, Effect.provide(FetchHttpClient.layer));
 
-	const update = Effect.fn("StateTransport.update")(function* (
-		namespace: string,
-		name: string,
-		value: JsonValue,
-	) {
-		const client = yield* HttpClient.HttpClient;
-		const response = yield* HttpClientRequest.put(
-			`/api/namespaces/${namespace}/state/${name}`,
-		).pipe(
-			HttpClientRequest.bodyJson(value),
-			Effect.andThen(client.execute),
-			Effect.mapError((error) => {
-				const message = Match.value(error).pipe(
-					Match.tag(
-						"HttpBodyError",
-						(e) => `failed to encode body (${e.reason._tag})`,
-					),
-					Match.tag("RequestError", "ResponseError", (e) => e.message),
-					Match.exhaustive,
-				);
-				return new StateSaveFailed({
-					namespace,
-					name,
-					cause: new Error(message),
-				});
-			}),
-		);
-		return yield* HttpClientResponse.matchStatus(response, {
-			"2xx": () => Effect.void,
-			404: () => new StateNotFound({ namespace, name }),
-			orElse: (bad) =>
-				new StateSaveFailed({
-					namespace,
-					name,
-					cause: new Error(`unexpected response status ${bad.status}`),
-				}),
-		});
-	}, Effect.provide(FetchHttpClient.layer));
+		return { get, update };
+	},
+	Effect.provide(FetchHttpClient.layer),
+);
 
-	return { get, update };
-}
-
-export const HttpStateTransport = Layer.sync(StateTransportService, () =>
+export const HttpStateTransport = Layer.effect(
+	StateTransportService,
 	createHttpStateTransport(),
 );

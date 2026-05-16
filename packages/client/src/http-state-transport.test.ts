@@ -3,7 +3,8 @@ import { testEffect } from "@nodecg/private";
 import { Effect } from "effect";
 import { expect, test } from "vitest";
 
-import { createHttpStateTransport } from "./http-state-transport";
+import { HttpStateTransport } from "./http-state-transport";
+import { StateTransportService } from "./state-transport";
 
 interface Call {
 	url: string;
@@ -32,7 +33,7 @@ test(
 	testEffect(
 		Effect.gen(function* () {
 			const calls: Call[] = [];
-			const transport = createHttpStateTransport();
+			const transport = yield* StateTransportService;
 
 			const value = yield* transport.get("root", "count").pipe(
 				Effect.provideService(
@@ -44,16 +45,16 @@ test(
 			expect(value).toBe(42);
 			expect(calls[0]?.method).toBe("GET");
 			expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
-		}),
+		}).pipe(Effect.provide(HttpStateTransport)),
 	),
 );
 
 test(
-	"set issues a PUT with the JSON-encoded body",
+	"update issues a PUT with the JSON-encoded body",
 	testEffect(
 		Effect.gen(function* () {
 			const calls: Call[] = [];
-			const transport = createHttpStateTransport();
+			const transport = yield* StateTransportService;
 
 			yield* transport.update("root", "count", 7).pipe(
 				Effect.provideService(
@@ -65,7 +66,7 @@ test(
 			expect(calls[0]?.method).toBe("PUT");
 			expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
 			expect(JSON.parse(calls[0]?.body ?? "")).toBe(7);
-		}),
+		}).pipe(Effect.provide(HttpStateTransport)),
 	),
 );
 
@@ -74,7 +75,7 @@ test(
 	testEffect(
 		Effect.gen(function* () {
 			const calls: Call[] = [];
-			const transport = createHttpStateTransport();
+			const transport = yield* StateTransportService;
 
 			const error = yield* transport.get("root", "count").pipe(
 				Effect.provideService(
@@ -85,6 +86,6 @@ test(
 			);
 
 			expect(error._tag).toBe("StateNotFound");
-		}),
+		}).pipe(Effect.provide(HttpStateTransport)),
 	),
 );

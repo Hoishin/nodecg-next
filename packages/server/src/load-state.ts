@@ -12,7 +12,7 @@ import {
 import type { Promisable } from "type-fest";
 
 import { createInMemoryStateStorage } from "./in-memory-state-storage";
-import { type StateStorage, StateStorageService } from "./state-storage";
+import { StateStorageService, type StateStorage } from "./state-storage";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -170,14 +170,18 @@ export async function loadState<
 >({
 	manifest,
 	initialValues,
-	storage = createInMemoryStateStorage(),
+	storage,
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
-	storage?: StateStorage;
+	storage?: StateStorage | Effect.Effect<StateStorage, never, never>;
 }) {
 	const runtime = ManagedRuntime.make(
-		Layer.succeed(StateStorageService, storage),
+		storage
+			? Effect.isEffect(storage)
+				? Layer.effect(StateStorageService, storage)
+				: Layer.succeed(StateStorageService, storage)
+			: Layer.sync(StateStorageService, createInMemoryStateStorage),
 	);
 	const effectState = await runtime.runPromise(
 		loadStateEffect({ manifest, initialValues }),

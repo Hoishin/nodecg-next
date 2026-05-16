@@ -44,7 +44,7 @@ test("loadState — Promise wrapper end-to-end", async () => {
 	});
 	const state = await loadState({
 		manifest,
-		transport: createInMemoryTransport(),
+		stateTransport: createInMemoryTransport(),
 	});
 
 	await state.count.set(42);

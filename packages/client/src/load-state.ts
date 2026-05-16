@@ -12,7 +12,7 @@ import {
 import type { Promisable } from "type-fest";
 
 import { createHttpStateTransport } from "./http-state-transport";
-import { type StateTransport, StateTransportService } from "./state-transport";
+import { StateTransportService, type StateTransport } from "./state-transport";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -135,13 +135,17 @@ export async function loadState<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
 >({
 	manifest,
-	transport = createHttpStateTransport(),
+	stateTransport,
 }: {
 	manifest: StateManifest<Definitions>;
-	transport?: StateTransport;
+	stateTransport?: StateTransport | Effect.Effect<StateTransport, never, never>;
 }) {
 	const runtime = ManagedRuntime.make(
-		Layer.succeed(StateTransportService, transport),
+		stateTransport
+			? Effect.isEffect(stateTransport)
+				? Layer.effect(StateTransportService, stateTransport)
+				: Layer.succeed(StateTransportService, stateTransport)
+			: Layer.effect(StateTransportService, createHttpStateTransport()),
 	);
 	const effectState = await runtime.runPromise(loadStateEffect(manifest));
 	return mapValues<
