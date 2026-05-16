@@ -4,14 +4,15 @@ import {
 	Data,
 	Effect,
 	type HKT,
-	type Layer,
+	Layer,
 	ManagedRuntime,
 	Match,
 	type Schema,
 } from "effect";
 import type { Promisable } from "type-fest";
 
-import { InMemoryStateStorage } from "./in-memory-state-storage";
+import { createInMemoryStateStorage } from "./in-memory-state-storage";
+import type { StateStorage } from "./state-storage";
 import { StateStorageService } from "./state-storage-service";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
@@ -136,12 +137,12 @@ export function loadStateEffect<
 		const storage = yield* StateStorageService;
 
 		yield* Effect.all(
-			Object.entries(initialValues).map(([name, thunk]) => {
+			Object.entries(manifest.definitions).map(([name, definition]) => {
 				const seed = Effect.gen(function* () {
-					const definition = manifest.definitions[name];
-					if (definition === undefined) {
+					const thunk = initialValues[name];
+					if (typeof thunk === "undefined") {
 						return yield* Effect.die(
-							new Error(`Manifest is missing definition for state "${name}"`),
+							new Error(`Missing initial value for state "${name}"`),
 						);
 					}
 					const value = yield* Effect.tryPromise(async () => thunk());
@@ -170,13 +171,15 @@ export async function loadState<
 >({
 	manifest,
 	initialValues,
-	storage = InMemoryStateStorage,
+	storage = createInMemoryStateStorage(),
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
-	storage?: Layer.Layer<StateStorageService>;
+	storage?: StateStorage;
 }) {
-	const runtime = ManagedRuntime.make(storage);
+	const runtime = ManagedRuntime.make(
+		Layer.succeed(StateStorageService, storage),
+	);
 	const effectState = await runtime.runPromise(
 		loadStateEffect({ manifest, initialValues }),
 	);

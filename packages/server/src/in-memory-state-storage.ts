@@ -17,7 +17,7 @@ export function createInMemoryStateStorage(): Context.Tag.Service<
 		name: string,
 	) {
 		const value = map.get(namespace)?.get(name);
-		if (value === undefined) {
+		if (typeof value === "undefined") {
 			return yield* new StateNotFound({ namespace, name });
 		}
 		return value;
