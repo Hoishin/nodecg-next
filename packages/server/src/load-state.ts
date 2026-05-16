@@ -4,14 +4,15 @@ import {
 	Data,
 	Effect,
 	type HKT,
-	Layer,
+	type Layer,
 	ManagedRuntime,
 	Match,
 	type Schema,
 } from "effect";
+import type { Promisable } from "type-fest";
 
-import type { StateStorage } from "./state-storage";
-import { inMemoryStateStorage } from "./state-storage-in-memory";
+import { InMemoryStateStorage } from "./in-memory-state-storage";
+import { StateStorageService } from "./state-storage-service";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -34,11 +35,13 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 }
 
 interface StateFieldEffect<Decoded> {
-	getValue: () => Effect.Effect<Decoded, GetStateError>;
-	set: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
+	getValue: () => Effect.Effect<Decoded, GetStateError, StateStorageService>;
+	set: (
+		value: Decoded,
+	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
 	update: (
-		fn: (value: Decoded) => Decoded | Promise<Decoded>,
-	) => Effect.Effect<void, UpdateStateError>;
+		fn: (value: Decoded) => Promisable<Decoded>,
+	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
 }
 
 type StateFieldPromise<Decoded> = Promisify<StateFieldEffect<Decoded>>;
@@ -46,19 +49,19 @@ type StateFieldPromise<Decoded> = Promisify<StateFieldEffect<Decoded>>;
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
 > = {
-	[K in keyof Definitions & string]: () =>
-		| Schema.Schema.Type<Definitions[K]>
-		| Promise<Schema.Schema.Type<Definitions[K]>>;
+	[K in keyof Definitions & string]: () => Promisable<
+		Schema.Schema.Type<Definitions[K]>
+	>;
 };
 
 function implementStateEffect<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
-	storage: StateStorage,
 ): StateFieldEffect<Decoded> {
 	const getValue = Effect.fn("getValue")(
 		function* () {
+			const storage = yield* StateStorageService;
 			const current = yield* storage.get(namespace, name);
 			return yield* definition.decode(current);
 		},
@@ -69,6 +72,7 @@ function implementStateEffect<Decoded>(
 
 	const set = Effect.fn("set")(
 		function* (value: Decoded) {
+			const storage = yield* StateStorageService;
 			const encoded = yield* definition.encode(value);
 			yield* storage.set(namespace, name, encoded);
 		},
@@ -79,7 +83,8 @@ function implementStateEffect<Decoded>(
 	);
 
 	const update = Effect.fn("update")(
-		function* (fn: (value: Decoded) => Decoded | Promise<Decoded>) {
+		function* (fn: (value: Decoded) => Promisable<Decoded>) {
+			const storage = yield* StateStorageService;
 			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
@@ -123,22 +128,20 @@ export function loadStateEffect<
 >({
 	manifest,
 	initialValues,
-	storage = inMemoryStateStorage,
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
-	storage?: StateStorage;
 }) {
 	return Effect.gen(function* () {
+		const storage = yield* StateStorageService;
+
 		yield* Effect.all(
 			Object.entries(initialValues).map(([name, thunk]) => {
 				const seed = Effect.gen(function* () {
 					const definition = manifest.definitions[name];
 					if (definition === undefined) {
 						return yield* Effect.die(
-							new Error(
-								`Manifest is missing definition for state "${name}"`,
-							),
+							new Error(`Manifest is missing definition for state "${name}"`),
 						);
 					}
 					const value = yield* Effect.tryPromise(async () => thunk());
@@ -157,7 +160,7 @@ export function loadStateEffect<
 			StateFieldEffectLambda,
 			Definitions
 		>(manifest.definitions, (definition, name) =>
-			implementStateEffect(manifest.namespace, name, definition, storage),
+			implementStateEffect(manifest.namespace, name, definition),
 		);
 	});
 }
@@ -167,15 +170,15 @@ export async function loadState<
 >({
 	manifest,
 	initialValues,
-	storage = inMemoryStateStorage,
+	storage = InMemoryStateStorage,
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
-	storage?: StateStorage;
+	storage?: Layer.Layer<StateStorageService>;
 }) {
-	const runtime = ManagedRuntime.make(Layer.empty);
+	const runtime = ManagedRuntime.make(storage);
 	const effectState = await runtime.runPromise(
-		loadStateEffect({ manifest, initialValues, storage }),
+		loadStateEffect({ manifest, initialValues }),
 	);
 	return mapValues<
 		StateFieldEffectLambda,

@@ -13,6 +13,7 @@ import {
 	Match,
 	type Schema,
 } from "effect";
+import type { Promisable } from "type-fest";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -40,7 +41,7 @@ interface StateFieldEffect<Decoded> {
 		value: Decoded,
 	) => Effect.Effect<void, UpdateStateError, HttpClient.HttpClient>;
 	update: (
-		fn: (value: Decoded) => Decoded | Promise<Decoded>,
+		fn: (value: Decoded) => Promisable<Decoded>,
 	) => Effect.Effect<void, UpdateStateError, HttpClient.HttpClient>;
 }
 
@@ -95,7 +96,7 @@ function implementStateEffect<Decoded>(
 	);
 
 	const update = Effect.fn("update")(
-		function* (fn: (value: Decoded) => Decoded | Promise<Decoded>) {
+		function* (fn: (value: Decoded) => Promisable<Decoded>) {
 			const current = yield* getValue();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
