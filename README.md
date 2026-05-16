@@ -233,6 +233,18 @@ Status: In Planning
 - Format: `pnpm format`
 - Start dev server: `pnpm dev`
 
+### Architecture
+
+NodeCG is a full-stack framework where there are server-side code, client-side code, and small runtime code and types used in both environment. In order to have clear separation, this repository uses monorepo with pnpm.
+
+- Server-side package: vitest runs on Node.js environment. Can use APIs from `node:*` imports. Cannot use browser APIs (window, document, etc)
+- Client-side package: vitest runs browser mode and runs tests in real browsers. Can use browser APIs, but cannot use `node:*` imports.
+- Package for both: vitest runs both on Node.js environment and browser mode. Cannot import `node:*` and cannot use browser APIs.
+
+The codebase uses Effect for type-safety, error-safety, and dependency injection.
+
+- Entire codebase runs as Effect, except user-facing functions that provides both Effect-based interface and non-Effect interface. The boundary is at the very edge to keep the advantages of Effect.
+
 ## License
 
 MIT License
