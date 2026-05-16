@@ -1,6 +1,6 @@
 # NodeCG
 
-Expermental new version of NodeCG in active development from scratch
+Experimental new version of NodeCG in active development from scratch
 
 ## API
 
@@ -13,7 +13,7 @@ Expermental new version of NodeCG in active development from scratch
 
 ### Shared State
 
-- State is declarative: it is define in a single place with name and schema
+- ✅ State is declarative: it is defined in a single place with name and schema
 
   ```ts
   const manifest = defineState("match", {
@@ -22,7 +22,7 @@ Expermental new version of NodeCG in active development from scratch
   });
   ```
 
-- State is platform agnostic: it can be loaded with dedicated server or client API
+- ✅ State is platform agnostic: it can be loaded with dedicated server or client API
 
   ```ts
   // Server-side
@@ -41,7 +41,7 @@ Expermental new version of NodeCG in active development from scratch
   console.log(await state.counter.getValue());
   ```
 
-- State is immutable: it provides read-only value, and is updated by returning a new value from the updater (which may be async)
+- ✅ State is immutable: it provides read-only value, and is updated by returning a new value from the updater (which may be async)
 
   ```ts
   console.log(await state.counter.getValue()); // Returns read-only value
@@ -52,7 +52,7 @@ Expermental new version of NodeCG in active development from scratch
   });
   ```
 
-- State is reactive: it provides subscription API to listen to changes
+- 🚧 State is reactive: it provides subscription API to listen to changes
 
   ```ts
   const unsubscribe = state.counter.subscribe((newValue) => {
@@ -63,36 +63,35 @@ Expermental new version of NodeCG in active development from scratch
   unsubscribe();
   ```
 
-- State supports transactions: multiple updates can be batched together to ensure consistency
+- 🚧 State supports transactions: multiple updates can be batched together to ensure consistency
 
   ```ts
   await state.transaction(() => {
     state.counter.update((value) => {
       value.timestamp = Date.now();
+      return value;
     });
-    state.games.update((value) => {
-      value.push("New Game");
-    });
+    state.games.update((value) => [...value, "New Game"]);
   });
   ```
 
-- State supports optimistic updates: client can update state immediately and sync with server in the background
+- 🚧 State supports optimistic updates: client can update state immediately and sync with server in the background
 
   ```ts
   // Client-side
   state.counter.updateOptimistic((value) => {
     value.timestamp = Date.now();
+    return value;
   });
   ```
 
-- State supports migrations: when schema changes, state can be migrated to new schema without data loss
+- 🚧 State supports migrations: when schema changes, state can be migrated to new schema without data loss
 
   ```ts
-  const newStateDefinition = defineState({
-    counter: { schema: newSchema, initialValue },
+  const newManifest = defineState("match", {
+    counter: { schema: newSchema },
     games: {
       schema: newSchema,
-      initialValue,
       migration: (oldValue) => {
         return oldValue.map((game) => {
           // ...
@@ -102,14 +101,14 @@ Expermental new version of NodeCG in active development from scratch
   });
   ```
 
-- State supports access control: permissions can be defined for each state to control who can read or update it
+- 🚧 State supports access control: permissions can be defined for each state to control who can read or update it
 
   ```ts
-  const stateDefinition = defineState(
+  const manifest = defineState(
+    "match",
     {
       counter: {
         schema,
-        initialValue,
         permissions: {
           read: ["judge", "producer"],
         },
@@ -119,31 +118,31 @@ Expermental new version of NodeCG in active development from scratch
           update: [], // Only system can update
         },
       },
-      // ...
     },
     {
       permissions: {
-        read: ["viewer"]
+        read: ["viewer"],
         update: ["admin"],
       },
     },
   );
   ```
 
-- State supports computed values: state can define computed values that are derived from other state values in server side, and limit scope of subscription to those computed values
+- 🚧 State supports computed values: state can define computed values that are derived from other state values in server side, and limit scope of subscription to those computed values
 
   ```ts
-  const stateDefinition = defineState(
+  const manifest = defineState(
+    "match",
     {
-      counter: { schema, initialValue },
-      games: { schema, initialValue },
-      // ...
+      counter: { schema },
+      games: { schema },
     },
     {
       computed: {
         firstGameId: {
           schema,
-          compute: (state) => state.games.getValue()[0]?.id || null,
+          compute: async (state) =>
+            (await state.games.getValue())[0]?.id || null,
         },
       },
     },
@@ -154,7 +153,7 @@ Expermental new version of NodeCG in active development from scratch
   });
   ```
 
-- State supports namespaces: states can be grouped into namespaces to avoid name conflicts and manage permissions more easily
+- ✅ State supports namespaces: states can be grouped into namespaces to avoid name conflicts and manage permissions more easily
 
   ```ts
   const commercialManifest = defineState(
@@ -172,33 +171,38 @@ Expermental new version of NodeCG in active development from scratch
   );
   ```
 
-- Admin dashboard (view, clear, export, import, freeze)
-- boolean option for persistence
-- Hooks: `beforeUpdate`, `afterUpdate`
-- State in client-side is synchronized on reconnect
-- Revision number
-- Conflict resolution with custom logic
-- Encryption at rest
-- Subscription update frequency control
-- State update audit log (user, timestamp, label)
-- List of subscribers with user, session, connection
-- Built-in stopwatch/timer logic, scheduled updates
-- Soft-delete removed state definitions
-- External webhook registration for state updates
+- 🚧 State supports configurable laziness — whether the up-to-date value is kept in memory for immediate access. Independent of `subscribe` and optimistic updates
+  - Server-side: eager by default, can opt into lazy
+  - Client-side: always lazy
 
-- Cross instance state sharing
+- 🚧 Admin dashboard (view, clear, export, import, freeze)
+- 🚧 boolean option for persistence
+- 🚧 Hooks: `beforeUpdate`, `afterUpdate`
+- 🚧 State in client-side is synchronized on reconnect
+- 🚧 Revision number
+- 🚧 Conflict resolution with custom logic
+- 🚧 Encryption at rest
+- 🚧 Subscription update frequency control
+- 🚧 State update audit log (user, timestamp, label)
+- 🚧 List of subscribers with user, session, connection
+- 🚧 Built-in stopwatch/timer logic, scheduled updates
+- 🚧 Soft-delete removed state definitions
+- 🚧 External webhook registration for state updates
+
+- 🚧 Cross instance state sharing
 
 #### State Schema
 
-Supports JSON Schema, Zod, Effect Schema, Valibot
+- ✅ Effect Schema
+- 🚧 JSON Schema
+- 🚧 Zod
+- 🚧 Valibot
 
 #### What happens when multiple updates happen at the same time?
 
 #### What happens when only client defines state?
 
-### Messaging
-
-Status: In Planning
+### 🚧 Messaging
 
 - Messages go through a Channel. Channels are defined with name and schema.
   ```ts
@@ -217,23 +221,24 @@ Status: In Planning
 
 ### Data Persistence
 
-- Data persistence is abstracted and can be implemented for any storage backend
-- Default data persistence is SQLite for system data, and JSON files for State
+- ✅ Data persistence is abstracted and can be implemented for any storage backend
+- 🚧 Default data persistence is SQLite for system data, and JSON files for State
 
-### Authentication
+### 🚧 Authentication
 
-### Authorization
+### 🚧 Authorization
 
-### Asset storage
+### 🚧 Asset storage
 
-### Outdated Client Detection
+### 🚧 Outdated Client Detection
 
 ## Development
 
+- Install: `pnpm install`
 - Type check: `pnpm type-check`
 - Test: `pnpm test`
 - Lint: `pnpm lint`
-- Format: `pnpm format`
+- Format: `pnpm fmt`
 - Start dev server: `pnpm dev`
 
 ### Architecture
