@@ -11,11 +11,8 @@ describe("read", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				const result = yield* Effect.either(storage.read("ns", "missing"));
-				expect(result._tag).toBe("Left");
-				if (result._tag === "Left") {
-					expect(result.left._tag).toBe("StateNotFound");
-				}
+				const error = yield* storage.read("ns", "missing").pipe(Effect.flip);
+				expect(error._tag).toBe("StateNotFound");
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -67,11 +64,8 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				const result = yield* Effect.either(storage.update("ns", "x", 1));
-				expect(result._tag).toBe("Left");
-				if (result._tag === "Left") {
-					expect(result.left._tag).toBe("StateNotFound");
-				}
+				const error = yield* storage.update("ns", "x", 1).pipe(Effect.flip);
+				expect(error._tag).toBe("StateNotFound");
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
