@@ -4,10 +4,10 @@ import type { JsonValue } from "type-fest";
 import {
 	StateNotFound,
 	StateSaveFailed,
-	type StateStorageAdapter,
+	type StateStorage,
 } from "./state-storage";
 
-export function createInMemoryStateStorage(): StateStorageAdapter {
+export function createInMemoryStateStorage(): StateStorage {
 	const map = new Map<string, Map<string, JsonValue>>();
 
 	return {

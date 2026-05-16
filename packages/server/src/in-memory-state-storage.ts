@@ -1,0 +1,73 @@
+import { Context, Effect, Layer } from "effect";
+import type { JsonValue } from "type-fest";
+
+import { StateNotFound, StateSaveFailed } from "./state-storage";
+import { StateStorageService } from "./state-storage-service";
+
+const toError = (error: unknown): Error =>
+	error instanceof Error ? error : new Error("Unknown error", { cause: error });
+
+export function createInMemoryStateStorage(): Context.Tag.Service<
+	typeof StateStorageService
+> {
+	const map = new Map<string, Map<string, JsonValue>>();
+
+	const get = Effect.fn("StateStorage.get")(function* (
+		namespace: string,
+		name: string,
+	) {
+		const value = map.get(namespace)?.get(name);
+		if (value === undefined) {
+			return yield* new StateNotFound({ namespace, name });
+		}
+		return value;
+	});
+
+	const set = Effect.fn("StateStorage.set")(function* (
+		namespace: string,
+		name: string,
+		value: JsonValue,
+	) {
+		return yield* Effect.try({
+			try: () => {
+				const ns = map.get(namespace);
+				if (ns) {
+					ns.set(name, value);
+				} else {
+					map.set(namespace, new Map([[name, value]]));
+				}
+			},
+			catch: (error) =>
+				new StateSaveFailed({ namespace, name, cause: toError(error) }),
+		});
+	});
+
+	const update = Effect.fn("StateStorage.update")(function* (
+		namespace: string,
+		name: string,
+		value: JsonValue,
+	) {
+		const updated = yield* Effect.try({
+			try: () => {
+				const ns = map.get(namespace);
+				if (ns) {
+					ns.set(name, value);
+					return true;
+				}
+				return false;
+			},
+			catch: (error) =>
+				new StateSaveFailed({ namespace, name, cause: toError(error) }),
+		});
+		if (!updated) {
+			return yield* new StateNotFound({ namespace, name });
+		}
+	});
+
+	return { get, set, update, persistInterval: 0 };
+}
+
+export const InMemoryStateStorage = Layer.sync(
+	StateStorageService,
+	createInMemoryStateStorage,
+);

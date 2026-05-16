@@ -10,7 +10,7 @@ import {
 	type Schema,
 } from "effect";
 
-import type { StateStorageAdapter } from "./state-storage";
+import type { StateStorage } from "./state-storage";
 import { inMemoryStateStorage } from "./state-storage-in-memory";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
@@ -55,7 +55,7 @@ function implementStateEffect<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
-	storage: StateStorageAdapter,
+	storage: StateStorage,
 ): StateFieldEffect<Decoded> {
 	const getValue = Effect.fn("getValue")(
 		function* () {
@@ -127,30 +127,28 @@ export function loadStateEffect<
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
-	storage?: StateStorageAdapter;
+	storage?: StateStorage;
 }) {
 	return Effect.gen(function* () {
 		yield* Effect.all(
-			Object.entries(initialValues).map(([name, thunk]) =>
-				Effect.gen(function* () {
-					const existing = yield* Effect.either(
-						storage.get(manifest.namespace, name),
-					);
-					if (existing._tag === "Right") return;
-					if (existing.left._tag !== "StateNotFound") {
-						return yield* existing.left;
-					}
+			Object.entries(initialValues).map(([name, thunk]) => {
+				const seed = Effect.gen(function* () {
 					const definition = manifest.definitions[name];
 					if (definition === undefined) {
 						return yield* Effect.die(
-							new Error(`Manifest is missing definition for state "${name}"`),
+							new Error(
+								`Manifest is missing definition for state "${name}"`,
+							),
 						);
 					}
 					const value = yield* Effect.tryPromise(async () => thunk());
 					const encoded = yield* definition.encode(value);
 					yield* storage.set(manifest.namespace, name, encoded);
-				}),
-			),
+				});
+				return storage
+					.get(manifest.namespace, name)
+					.pipe(Effect.catchTag("StateNotFound", () => seed));
+			}),
 			{ concurrency: "unbounded" },
 		);
 
@@ -173,7 +171,7 @@ export async function loadState<
 }: {
 	manifest: StateManifest<Definitions>;
 	initialValues: InitialValues<Definitions>;
-	storage?: StateStorageAdapter;
+	storage?: StateStorage;
 }) {
 	const runtime = ManagedRuntime.make(Layer.empty);
 	const effectState = await runtime.runPromise(

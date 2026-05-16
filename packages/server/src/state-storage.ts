@@ -24,7 +24,7 @@ export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
 	override readonly message = `Failed to save state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 }
 
-export interface StateStorageAdapter {
+export interface StateStorage {
 	get: (
 		namespace: string,
 		name: string,
