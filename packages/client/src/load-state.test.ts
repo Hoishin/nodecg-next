@@ -1,105 +1,127 @@
-import {
-	HttpClient,
-	type HttpClientRequest,
-	HttpClientResponse,
-} from "@effect/platform";
 import { defineState } from "@nodecg/core";
 import { testEffect } from "@nodecg/private";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Schema } from "effect";
+import type { JsonValue } from "type-fest";
 import { expect, test } from "vitest";
 
-import { loadStateEffect } from "./load-state";
+import { loadState, loadStateEffect } from "./load-state";
+import {
+	StateNotFound,
+	type StateTransport,
+	StateTransportService,
+} from "./state-transport";
 
-function mockHttpClient(
-	handler: (request: HttpClientRequest.HttpClientRequest) => Response,
-) {
-	return Layer.succeed(
-		HttpClient.HttpClient,
-		HttpClient.make((request) =>
-			Effect.succeed(HttpClientResponse.fromWeb(request, handler(request))),
-		),
-	);
+function createInMemoryTransport(): StateTransport {
+	const map = new Map<string, Map<string, JsonValue>>();
+	return {
+		get: Effect.fn("get")(function* (namespace: string, name: string) {
+			const value = map.get(namespace)?.get(name);
+			if (typeof value === "undefined") {
+				return yield* new StateNotFound({ namespace, name });
+			}
+			return value;
+		}),
+		update: Effect.fn("update")(function* (
+			namespace: string,
+			name: string,
+			value: JsonValue,
+		) {
+			yield* Effect.sync(() => {
+				const ns = map.get(namespace);
+				if (ns) {
+					ns.set(name, value);
+				} else {
+					map.set(namespace, new Map([[name, value]]));
+				}
+			});
+		}),
+	};
 }
 
-function jsonBody(request: HttpClientRequest.HttpClientRequest): unknown {
-	const body = request.body;
-	if (body._tag === "Uint8Array") {
-		return JSON.parse(new TextDecoder().decode(body.body));
-	}
-	return undefined;
-}
+test("loadState — Promise wrapper end-to-end", async () => {
+	const manifest = defineState("test-loadstate-basic", {
+		count: { schema: Schema.Number },
+	});
+	const state = await loadState({
+		manifest,
+		transport: createInMemoryTransport(),
+	});
+
+	await state.count.set(42);
+	expect(await state.count.getValue()).toBe(42);
+});
 
 test(
-	"getValue fetches and decodes the response body",
+	"getValue decodes the value held by the transport",
 	testEffect(
 		Effect.gen(function* () {
+			const transport = createInMemoryTransport();
+			const provide = Effect.provideService(StateTransportService, transport);
 			const manifest = defineState("root", {
 				count: { schema: Schema.Number },
 			});
-			const state = yield* loadStateEffect(manifest);
+			const state = yield* loadStateEffect(manifest).pipe(provide);
 
-			const value = yield* state.count.getValue();
-			expect(value).toBe(42);
-		}).pipe(
-			Effect.provide(
-				mockHttpClient((request) => {
-					expect(request.url).toMatch("/api/namespaces/root/state/count");
-					return new Response(JSON.stringify(42), { status: 200 });
-				}),
-			),
-		),
+			yield* transport.update("root", "count", 42);
+
+			expect(yield* state.count.getValue().pipe(provide)).toBe(42);
+		}),
 	),
 );
 
 test(
-	"update reads the current value, applies the fn, and PUTs the result",
+	"update reads the current value, applies the fn, and writes the result",
 	testEffect(
 		Effect.gen(function* () {
+			const transport = createInMemoryTransport();
+			const provide = Effect.provideService(StateTransportService, transport);
 			const manifest = defineState("root", {
 				count: { schema: Schema.Number },
 			});
-			const state = yield* loadStateEffect(manifest);
+			const state = yield* loadStateEffect(manifest).pipe(provide);
 
-			yield* state.count.update((v) => v + 5);
-		}).pipe(
-			Effect.provide(
-				mockHttpClient((request) => {
-					if (request.method === "PUT") {
-						expect(jsonBody(request)).toBe(15);
-						return new Response(null, { status: 204 });
-					}
-					return new Response(JSON.stringify(10), { status: 200 });
-				}),
-			),
-		),
+			yield* transport.update("root", "count", 10);
+			yield* state.count.update((v) => v + 5).pipe(provide);
+
+			expect(yield* state.count.getValue().pipe(provide)).toBe(15);
+		}),
 	),
 );
 
 test(
-	"bidirectional codec round-trips through HTTP",
+	"bidirectional codec round-trips through the transport wire",
 	testEffect(
 		Effect.gen(function* () {
+			const transport = createInMemoryTransport();
+			const provide = Effect.provideService(StateTransportService, transport);
 			const manifest = defineState("root", {
 				when: { schema: Schema.DateFromString },
 			});
-			const state = yield* loadStateEffect(manifest);
+			const state = yield* loadStateEffect(manifest).pipe(provide);
 
-			const initial = yield* state.when.getValue();
-			expect(initial).toEqual(new Date("2026-05-14T00:00:00.000Z"));
+			const newDate = new Date("2030-01-01T00:00:00.000Z");
+			yield* state.when.set(newDate).pipe(provide);
 
-			yield* state.when.set(new Date("2030-01-01T00:00:00.000Z"));
-		}).pipe(
-			Effect.provide(
-				mockHttpClient((request) => {
-					if (request.method === "PUT") {
-						expect(jsonBody(request)).toBe("2030-01-01T00:00:00.000Z");
-						return new Response(null, { status: 204 });
-					}
-					return new Response(JSON.stringify("2026-05-14T00:00:00.000Z"), {
-						status: 200,
-					});
-				}),
-			),
-		),
+			const wire = yield* transport.get("root", "when");
+			expect(wire).toBe("2030-01-01T00:00:00.000Z");
+			expect(yield* state.when.getValue().pipe(provide)).toEqual(newDate);
+		}),
+	),
+);
+
+test(
+	"getValue fails when the transport has no value for the state",
+	testEffect(
+		Effect.gen(function* () {
+			const transport = createInMemoryTransport();
+			const provide = Effect.provideService(StateTransportService, transport);
+			const manifest = defineState("root", {
+				count: { schema: Schema.Number },
+			});
+			const state = yield* loadStateEffect(manifest).pipe(provide);
+
+			const result = yield* Effect.either(state.count.getValue().pipe(provide));
+			expect(result._tag).toBe("Left");
+		}),
 	),
 );
