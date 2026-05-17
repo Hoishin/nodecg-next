@@ -2,13 +2,32 @@
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["typescript", "unicorn", "oxc"],
 	"categories": {
-		"correctness": "error"
+		"correctness": "error",
+		"nursery": "error"
 	},
-	"rules": {},
+	"rules": {
+		"no-undef": "off",
+		"max-lines-per-function": [
+			"error",
+			{
+				"max": 100,
+				"skipBlankLines": true,
+				"skipComments": true
+			}
+		]
+	},
 	"env": {
 		"builtin": true
 	},
 	"options": {
 		"typeAware": true
-	}
+	},
+	"overrides": [
+		{
+			"files": ["./**/*.test.ts"],
+			"rules": {
+				"max-lines-per-function": "off"
+			}
+		}
+	]
 }
