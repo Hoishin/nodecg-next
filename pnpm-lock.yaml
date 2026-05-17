@@ -200,6 +200,9 @@ importers:
       '@nodecg/internal':
         specifier: workspace:*
         version: link:../internal
+      '@nodecg/server':
+        specifier: workspace:*
+        version: link:../server
       effect:
         specifier: 'catalog:'
         version: 3.21.2

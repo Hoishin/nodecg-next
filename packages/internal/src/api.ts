@@ -28,7 +28,7 @@ const StateGroup = HttpApiGroup.make("State")
 		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
 			.addSuccess(Schema.Unknown)
 			.addError(HttpApiError.NotFound)
-			.addError(HttpApiError.NotImplemented),
+			.addError(HttpApiError.InternalServerError),
 	)
 	.add(
 		HttpApiEndpoint.put(
@@ -36,7 +36,8 @@ const StateGroup = HttpApiGroup.make("State")
 		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
 			.setPayload(Schema.Unknown)
 			.addError(HttpApiError.NotFound)
-			.addError(HttpApiError.NotImplemented),
+			.addError(HttpApiError.BadRequest)
+			.addError(HttpApiError.InternalServerError),
 	);
 
 const HealthGroup = HttpApiGroup.make("Health").add(

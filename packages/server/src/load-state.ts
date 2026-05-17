@@ -1,4 +1,8 @@
-import type { StateDefinition, StateManifest } from "@nodecg/core";
+import type {
+	StateDefinition,
+	StateManifest,
+	StateValidationError,
+} from "@nodecg/core";
 import { mapValues, type PromisifyObject } from "@nodecg/internal";
 import {
 	Data,
@@ -8,10 +12,15 @@ import {
 	ManagedRuntime,
 	type Schema,
 } from "effect";
-import type { Promisable } from "type-fest";
+import type { JsonValue, Promisable } from "type-fest";
 
 import { createInMemoryStateStorage } from "./in-memory-state-storage";
-import { StateStorageService, type StateStorage } from "./state-storage";
+import {
+	StateStorageService,
+	type StateStorage,
+	type StateNotFound,
+	type StateSaveFailed,
+} from "./state-storage";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
@@ -33,22 +42,41 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	}
 }
 
+export const stateSetEncodedKey = Symbol("stateSetEncodedKey");
+
 export interface StateField<Decoded> {
-	get: () => Effect.Effect<Decoded, GetStateError, StateStorageService>;
-	set: (
+	readonly get: () => Effect.Effect<
+		Decoded,
+		GetStateError,
+		StateStorageService
+	>;
+	readonly set: (
 		value: Decoded,
 	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
-	update: (
+	readonly update: (
 		fn: (value: Decoded) => Promisable<Decoded>,
 	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
+	readonly validate: (
+		value: Decoded,
+	) => Effect.Effect<JsonValue, StateValidationError>;
+	readonly [stateSetEncodedKey]: (
+		value: unknown,
+	) => Effect.Effect<
+		void,
+		StateValidationError | StateNotFound | StateSaveFailed,
+		StateStorageService
+	>;
 }
 
-export type StateFieldPromise<Decoded> = PromisifyObject<StateField<Decoded>>;
+export type StateFieldPromise<Decoded> = PromisifyObject<
+	StateField<Decoded>,
+	"get" | "set" | "update"
+>;
 
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
 > = {
-	[K in keyof Definitions & string]: () => Promisable<
+	readonly [K in keyof Definitions & string]: () => Promisable<
 		Schema.Schema.Type<Definitions[K]>
 	>;
 };
@@ -58,7 +86,7 @@ function implementStateEffect<Decoded>(
 	name: string,
 	definition: StateDefinition<Decoded>,
 ): StateField<Decoded> {
-	const getValue = Effect.fn("getValue")(
+	const get = Effect.fn("getValue")(
 		function* () {
 			const storage = yield* StateStorageService;
 			const current = yield* storage.read(namespace, name);
@@ -83,7 +111,7 @@ function implementStateEffect<Decoded>(
 	const update = Effect.fn("update")(
 		function* (fn: (value: Decoded) => Promisable<Decoded>) {
 			const storage = yield* StateStorageService;
-			const current = yield* getValue();
+			const current = yield* get();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
 			yield* storage.update(namespace, name, encoded);
@@ -93,7 +121,21 @@ function implementStateEffect<Decoded>(
 		}),
 	);
 
-	return { get: getValue, set, update };
+	const setEncoded = (value: unknown) =>
+		Effect.gen(function* () {
+			const decoded = yield* definition.decode(value);
+			const encoded = yield* definition.encode(decoded);
+			const storage = yield* StateStorageService;
+			yield* storage.update(namespace, name, encoded);
+		});
+
+	return {
+		get,
+		set,
+		update,
+		validate: definition.encode,
+		[stateSetEncodedKey]: setEncoded,
+	};
 }
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
@@ -111,7 +153,7 @@ interface StateFieldPromiseLambda extends HKT.TypeLambda {
 	readonly type: StateFieldPromise<Schema.Schema.Type<this["Target"]>>;
 }
 
-export const stateMetadataKey: unique symbol = Symbol();
+export const stateMetadataKey = Symbol("stateMetadataKey");
 
 export function loadStateEffect<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
@@ -145,19 +187,13 @@ export function loadStateEffect<
 			{ concurrency: "unbounded" },
 		);
 
-		const stateField = mapValues<
-			StateDefinitionLambda,
-			StateFieldLambda,
-			Definitions
-		>(manifest.definitions, (definition, name) =>
-			implementStateEffect(manifest.namespace, name, definition),
-		);
-
 		return {
-			...stateField,
-			[stateMetadataKey]: {
-				namespace: manifest.namespace,
-			},
+			...mapValues<StateDefinitionLambda, StateFieldLambda, Definitions>(
+				manifest.definitions,
+				(definition, name) =>
+					implementStateEffect(manifest.namespace, name, definition),
+			),
+			[stateMetadataKey]: { namespace: manifest.namespace },
 		};
 	});
 }
@@ -185,20 +221,17 @@ export async function loadState<
 		loadStateEffect({ manifest, initialValues }),
 	);
 
-	const state = mapValues<
-		StateFieldLambda,
-		StateFieldPromiseLambda,
-		Definitions
-	>(effectState, (field) => ({
-		get: () => runtime.runPromise(field.get()),
-		set: (value) => runtime.runPromise(field.set(value)),
-		update: (fn) => runtime.runPromise(field.update(fn)),
-	}));
-
 	return {
-		...state,
-		[stateMetadataKey]: {
-			namespace: manifest.namespace,
-		},
+		...mapValues<StateFieldLambda, StateFieldPromiseLambda, Definitions>(
+			effectState,
+			(field) => ({
+				get: () => runtime.runPromise(field.get()),
+				set: (value) => runtime.runPromise(field.set(value)),
+				update: (fn) => runtime.runPromise(field.update(fn)),
+				validate: field.validate,
+				[stateSetEncodedKey]: field[stateSetEncodedKey],
+			}),
+		),
+		[stateMetadataKey]: { namespace: manifest.namespace },
 	};
 }

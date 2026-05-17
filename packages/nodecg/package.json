@@ -11,6 +11,7 @@
 		"@effect/platform": "catalog:",
 		"@effect/platform-node": "catalog:",
 		"@nodecg/internal": "workspace:*",
+		"@nodecg/server": "workspace:*",
 		"effect": "catalog:",
 		"ws": "^8.20.0"
 	},
