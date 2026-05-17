@@ -6,10 +6,10 @@ export class StateValidationError extends Data.TaggedError(
 	"StateValidationError",
 )<{
 	readonly name: string;
-	readonly cause: string;
+	readonly cause: Error;
 }> {
 	override get message() {
-		return `Failed to validate state "${this.name}": ${this.cause}`;
+		return `Failed to validate state "${this.name}": ${this.cause.message}`;
 	}
 }
 
@@ -48,7 +48,7 @@ function implementDefinition<S extends Schema.Schema<any, JsonValue, never>>(
 			return yield* Schema.encode(schema)(value).pipe(
 				Effect.catchTag(
 					"ParseError",
-					(error) => new StateValidationError({ name, cause: error.message }),
+					(error) => new StateValidationError({ name, cause: error }),
 				),
 			);
 		}),
@@ -56,7 +56,7 @@ function implementDefinition<S extends Schema.Schema<any, JsonValue, never>>(
 			return yield* Schema.decodeUnknown(schema)(value).pipe(
 				Effect.catchTag(
 					"ParseError",
-					(error) => new StateValidationError({ name, cause: error.message }),
+					(error) => new StateValidationError({ name, cause: error }),
 				),
 			);
 		}),

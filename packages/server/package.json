@@ -4,13 +4,17 @@
 	"license": "MIT",
 	"type": "module",
 	"exports": {
-		"./load-state": "./src/load-state.ts"
+		"./load-state": "./src/load-state.ts",
+		"./load-nodecg": "./src/load-nodecg.ts",
+		"./in-memory-state-storage": "./src/in-memory-state-storage.ts"
 	},
 	"scripts": {
 		"test": "vitest run",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effect/platform": "catalog:",
+		"@effect/platform-node": "catalog:",
 		"@nodecg/core": "workspace:*",
 		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
