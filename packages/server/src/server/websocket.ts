@@ -15,7 +15,12 @@ const handleMessage = (
 ) =>
 	Match.value(msg).pipe(
 		Match.tag("subscribe", ({ topic }) => Effect.log(`sub: ${topic}`)),
-		Match.tag("ping", () => send({ _tag: "pong" })),
+		Match.tag("ping", () =>
+			Effect.gen(function* () {
+				yield* Effect.logDebug("Received ping");
+				yield* send({ _tag: "pong" });
+			}),
+		),
 		Match.exhaustive,
 	);
 
