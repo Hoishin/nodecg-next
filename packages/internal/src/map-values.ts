@@ -5,14 +5,16 @@ export function mapValues<
 	G extends HKT.TypeLambda,
 	T extends Record<string, unknown>,
 >(
-	obj: { [K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]> },
+	obj: {
+		readonly [K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]>;
+	},
 	transform: <V>(
 		value: HKT.Kind<F, never, never, never, V>,
 		key: keyof T & string,
 	) => HKT.Kind<G, never, never, never, V>,
 ) {
 	type Result = {
-		[K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
+		readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
 	};
 
 	const result: Partial<Result> = {};
@@ -32,7 +34,7 @@ export const mapEffectValues =
 	>() =>
 	<E, R>(
 		obj: {
-			[K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]>;
+			readonly [K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]>;
 		},
 		transform: <V>(
 			value: HKT.Kind<F, never, never, never, V>,
@@ -40,7 +42,7 @@ export const mapEffectValues =
 		) => Effect.Effect<HKT.Kind<G, never, never, never, V>, E, R>,
 	) => {
 		type Result = {
-			[K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
+			readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
 		};
 		return Effect.gen(function* () {
 			const result: Partial<Result> = {};

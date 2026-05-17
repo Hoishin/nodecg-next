@@ -17,7 +17,6 @@ import {
 	type StateFieldPromise,
 	stateFieldInternal,
 } from "./models/state-field";
-import { StateStorageService } from "./state-storage";
 
 type LoadedState = Record<
 	string,
@@ -67,10 +66,7 @@ const wsMiddleware = (apiApp: HttpApp.Default) =>
 		return yield* apiApp;
 	});
 
-export const loadNodeCG = (options: {
-	states: ReadonlyArray<LoadedState>;
-	storage: Layer.Layer<StateStorageService>;
-}) => {
+export const loadNodecg = (options: { states: ReadonlyArray<LoadedState> }) => {
 	const registry = new Map<
 		string,
 		Map<string, StateField<unknown> | StateFieldPromise<unknown>>
@@ -98,13 +94,16 @@ export const loadNodeCG = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					const storage = yield* StateStorageService;
-					return yield* storage.read(namespace, name).pipe(
+					return yield* field[stateFieldInternal].get().pipe(
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
 								Match.tag(
 									"StateGetFailed",
+									() => new HttpApiError.InternalServerError(),
+								),
+								Match.tag(
+									"StateValidationError",
 									() => new HttpApiError.InternalServerError(),
 								),
 								Match.exhaustive,
@@ -141,7 +140,7 @@ export const loadNodeCG = (options: {
 
 	const NodecgApiLive = HttpApiBuilder.api(NodecgApi).pipe(
 		Layer.provide(HealthGroupLive),
-		Layer.provide(Layer.provide(StateGroupLive, options.storage)),
+		Layer.provide(StateGroupLive),
 	);
 
 	const ServerLive = HttpApiBuilder.serve(wsMiddleware).pipe(

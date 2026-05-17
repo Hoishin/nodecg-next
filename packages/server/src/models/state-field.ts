@@ -60,8 +60,11 @@ export interface StateField<Decoded> {
 		value: Decoded,
 	) => Effect.Effect<JsonValue, StateValidationError>;
 
-	readonly [stateFieldInternal]: {
-		setEncoded: (
+	readonly [stateFieldInternal]: Pick<
+		StateField<Decoded>,
+		"get" | "set" | "update" | "validate"
+	> & {
+		readonly setEncoded: (
 			value: unknown,
 		) => Effect.Effect<
 			void,

@@ -61,13 +61,20 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		yield* storage.update(namespace, name, encoded);
 	});
 
-	return {
+	const field: StateField<Decoded> = {
 		get,
 		set,
 		update,
 		validate: definition.encode,
-		[stateFieldInternal]: { setEncoded },
-	} satisfies StateField<Decoded>;
+		[stateFieldInternal]: {
+			get,
+			set,
+			update,
+			validate: definition.encode,
+			setEncoded,
+		},
+	};
+	return field;
 });
 
 interface StateDefinitionLambda extends HKT.TypeLambda {
@@ -157,17 +164,20 @@ export async function loadState<
 		loadStateEffect({ manifest, initialValues }),
 	);
 
+	const fields = mapValues<
+		StateFieldLambda,
+		StateFieldPromiseLambda,
+		Definitions
+	>(effectState, (field) => ({
+		get: promisifyEffectFn(field.get),
+		set: promisifyEffectFn(field.set),
+		update: promisifyEffectFn(field.update),
+		validate: promisifyEffectFn(field.validate),
+		[stateFieldInternal]: field[stateFieldInternal],
+	}));
+
 	return {
-		...mapValues<StateFieldLambda, StateFieldPromiseLambda, Definitions>(
-			effectState,
-			(field) => ({
-				get: promisifyEffectFn(field.get),
-				set: promisifyEffectFn(field.set),
-				update: promisifyEffectFn(field.update),
-				validate: promisifyEffectFn(field.validate),
-				[stateFieldInternal]: field[stateFieldInternal],
-			}),
-		),
+		...fields,
 		[stateMetadataKey]: { namespace: manifest.namespace },
 	};
 }
