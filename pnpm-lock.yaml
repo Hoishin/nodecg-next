@@ -269,6 +269,9 @@ importers:
       '@nodecg/private':
         specifier: workspace:*
         version: link:../private
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.12.3
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

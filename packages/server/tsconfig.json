@@ -2,6 +2,7 @@
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"module": "preserve",
-		"lib": ["ESNext"]
+		"lib": ["ESNext"],
+		"types": ["node"]
 	}
 }
