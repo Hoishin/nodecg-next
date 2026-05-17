@@ -7,7 +7,7 @@ import {
 	defineState,
 	StateValidationError,
 	type StateDefinition,
-} from "./define-state";
+} from "./define-state.ts";
 
 test(
 	"base — Schema.Number encode/decode round-trip",

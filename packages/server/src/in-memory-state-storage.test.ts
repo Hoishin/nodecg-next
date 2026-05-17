@@ -2,8 +2,8 @@ import { testEffect } from "@nodecg/private";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { InMemoryStateStorage } from "./in-memory-state-storage";
-import { StateStorageService } from "./state-storage";
+import { InMemoryStateStorage } from "./in-memory-state-storage.ts";
+import { StateStorageService } from "./state-storage.ts";
 
 describe("read", () => {
 	test(

@@ -8,7 +8,7 @@ import {
 	StateNotFound,
 	StateSaveFailed,
 	StateTransportService,
-} from "./state-transport";
+} from "./state-transport.ts";
 
 export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
 	function* () {

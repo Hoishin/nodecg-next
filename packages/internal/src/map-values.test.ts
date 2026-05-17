@@ -2,7 +2,7 @@ import { testEffect } from "@nodecg/private";
 import { Context, Data, Effect, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
-import { mapEffectValues, mapValues } from "./map-values";
+import { mapEffectValues, mapValues } from "./map-values.ts";
 
 interface IdentityLambda extends HKT.TypeLambda {
 	readonly type: this["Target"];

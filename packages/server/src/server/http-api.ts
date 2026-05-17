@@ -2,12 +2,12 @@ import { HttpApiBuilder, HttpApiError } from "@effect/platform";
 import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
-import { stateMetadataKey } from "../load-state";
+import { stateMetadataKey } from "../load-state.ts";
 import {
 	type StateField,
 	type StateFieldPromise,
 	stateFieldInternal,
-} from "../models/state-field";
+} from "../models/state-field.ts";
 
 export type LoadedState = Record<
 	string,

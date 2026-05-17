@@ -7,7 +7,7 @@ import {
 	StateNotFound,
 	StateSaveFailed,
 	StateStorageService,
-} from "./state-storage";
+} from "./state-storage.ts";
 
 export function createInMemoryStateStorage(): Context.Tag.Service<
 	typeof StateStorageService

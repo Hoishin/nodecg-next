@@ -3,4 +3,4 @@ export {
 	StateValidationError,
 	type StateDefinition,
 	type StateManifest,
-} from "./define-state";
+} from "./define-state.ts";

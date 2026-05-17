@@ -1,1 +1,1 @@
-export { testEffect } from "./test-effect";
+export { testEffect } from "./test-effect.ts";

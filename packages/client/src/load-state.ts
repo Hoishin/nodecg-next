@@ -11,8 +11,11 @@ import {
 } from "effect";
 import type { Promisable } from "type-fest";
 
-import { createHttpStateTransport } from "./http-state-transport";
-import { StateTransportService, type StateTransport } from "./state-transport";
+import { createHttpStateTransport } from "./http-state-transport.ts";
+import {
+	StateTransportService,
+	type StateTransport,
+} from "./state-transport.ts";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;

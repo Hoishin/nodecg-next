@@ -8,12 +8,12 @@ import { testEffect } from "@nodecg/private";
 import { Effect, Schema } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { loadState, loadStateEffect } from "./load-state";
+import { loadState, loadStateEffect } from "./load-state.ts";
 import {
 	StateNotFound,
 	type StateStorage,
 	StateStorageService,
-} from "./state-storage";
+} from "./state-storage.ts";
 
 const createStorageStub = () =>
 	({

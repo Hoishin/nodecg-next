@@ -3,8 +3,8 @@ import { testEffect } from "@nodecg/private";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { HttpStateTransport } from "./http-state-transport";
-import { StateTransportService } from "./state-transport";
+import { HttpStateTransport } from "./http-state-transport.ts";
+import { StateTransportService } from "./state-transport.ts";
 
 interface Call {
 	url: string;

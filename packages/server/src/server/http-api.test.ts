@@ -3,14 +3,14 @@ import { StateValidationError } from "@nodecg/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { stateMetadataKey } from "../load-state";
-import { type StateField, stateFieldInternal } from "../models/state-field";
+import { stateMetadataKey } from "../load-state.ts";
+import { type StateField, stateFieldInternal } from "../models/state-field.ts";
 import {
 	StateGetFailed,
 	StateNotFound,
 	StateSaveFailed,
-} from "../state-storage";
-import { buildNodecgApi, type LoadedState } from "./http-api";
+} from "../state-storage.ts";
+import { buildNodecgApi, type LoadedState } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];
 

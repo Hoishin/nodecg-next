@@ -4,9 +4,7 @@
 	"license": "MIT",
 	"type": "module",
 	"exports": {
-		"./load-state": "./src/load-state.ts",
-		"./load-nodecg": "./src/load-nodecg.ts",
-		"./in-memory-state-storage": "./src/in-memory-state-storage.ts"
+		".": "./src/_export.ts"
 	},
 	"scripts": {
 		"test": "vitest run",

@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
-		"module": "preserve",
+		"module": "nodenext",
+		"allowImportingTsExtensions": true,
 		"target": "esnext",
 		"lib": ["ESNext"],
 		"types": [],

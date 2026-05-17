@@ -3,12 +3,12 @@ import { testEffect } from "@nodecg/private";
 import { Effect, Schema } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { loadState, loadStateEffect } from "./load-state";
+import { loadState, loadStateEffect } from "./load-state.ts";
 import {
 	StateNotFound,
 	type StateTransport,
 	StateTransportService,
-} from "./state-transport";
+} from "./state-transport.ts";
 
 const createTransportStub = () =>
 	({
