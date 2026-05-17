@@ -11,7 +11,8 @@
 	},
 	"dependencies": {
 		"@effect/platform": "catalog:",
-		"effect": "catalog:"
+		"effect": "catalog:",
+		"type-fest": "catalog:"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

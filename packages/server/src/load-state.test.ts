@@ -177,7 +177,7 @@ describe("getValue", () => {
 						Effect.provideService(StateStorageService, storageStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("GetStateError");
+				expect(error._tag).toBe("StateValidationError");
 			}),
 		),
 	);
@@ -254,7 +254,7 @@ describe("set", () => {
 						Effect.provideService(StateStorageService, storageStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("UpdateStateError");
+				expect(error._tag).toBe("StateValidationError");
 			}),
 		),
 	);

@@ -1,5 +1,5 @@
 import { FetchHttpClient, HttpApiClient } from "@effect/platform";
-import { NodecgApi } from "@nodecg/internal";
+import { NodecgApi, toError } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
@@ -9,9 +9,6 @@ import {
 	StateSaveFailed,
 	StateTransportService,
 } from "./state-transport";
-
-const toError = (error: { readonly _tag: string }): Error =>
-	error instanceof Error ? error : new Error(error._tag);
 
 export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
 	function* () {

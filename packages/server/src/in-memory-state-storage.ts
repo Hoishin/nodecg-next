@@ -1,3 +1,4 @@
+import { toError } from "@nodecg/internal";
 import { Context, Effect, Layer } from "effect";
 import type { JsonValue } from "type-fest";
 
@@ -7,9 +8,6 @@ import {
 	StateSaveFailed,
 	StateStorageService,
 } from "./state-storage";
-
-const toError = (error: unknown): Error =>
-	error instanceof Error ? error : new Error("Unknown error", { cause: error });
 
 export function createInMemoryStateStorage(): Context.Tag.Service<
 	typeof StateStorageService

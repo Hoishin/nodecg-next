@@ -11,12 +11,12 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { ClientMessage, NodecgApi, ServerMessage } from "@nodecg/internal";
 import { Effect, Layer, Match, Schema } from "effect";
 
+import { stateMetadataKey } from "./load-state";
 import {
 	type StateField,
 	type StateFieldPromise,
-	stateMetadataKey,
-	stateSetEncodedKey,
-} from "./load-state";
+	stateFieldInternal,
+} from "./models/state-field";
 import { StateStorageService } from "./state-storage";
 
 type LoadedState = Record<
@@ -119,7 +119,7 @@ export const loadNodeCG = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					yield* field[stateSetEncodedKey](payload).pipe(
+					yield* field[stateFieldInternal].setEncoded(payload).pipe(
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag(
