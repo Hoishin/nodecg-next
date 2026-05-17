@@ -7,6 +7,7 @@
 		".": "./src/internal.ts"
 	},
 	"scripts": {
+		"test": "vitest run",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -15,6 +16,11 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"typescript": "catalog:"
+		"@nodecg/private": "workspace:*",
+		"@vitest/browser": "catalog:",
+		"@vitest/browser-playwright": "catalog:",
+		"playwright": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	}
 }
