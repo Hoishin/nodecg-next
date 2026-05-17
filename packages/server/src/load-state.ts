@@ -33,7 +33,7 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	}
 }
 
-interface StateField<Decoded> {
+export interface StateField<Decoded> {
 	get: () => Effect.Effect<Decoded, GetStateError, StateStorageService>;
 	set: (
 		value: Decoded,
@@ -43,7 +43,7 @@ interface StateField<Decoded> {
 	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
 }
 
-type StateFieldPromise<Decoded> = PromisifyObject<StateField<Decoded>>;
+export type StateFieldPromise<Decoded> = PromisifyObject<StateField<Decoded>>;
 
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
