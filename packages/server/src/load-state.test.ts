@@ -8,7 +8,7 @@ import { testEffect } from "@nodecg/private";
 import { Effect, Schema } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { loadState, loadStateEffect } from "./load-state";
+import { loadState, loadStateEffect, stateMetadataKey } from "./load-state";
 import {
 	StateNotFound,
 	type StateStorage,
@@ -329,5 +329,41 @@ describe("loadState (Promise wrapper)", () => {
 		expect(await state.count.get()).toBe(42);
 		await state.count.set(9);
 		expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 9);
+	});
+});
+
+describe("metadata", () => {
+	test(
+		"loadStateEffect exposes the manifest namespace",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Effect.succeed(0));
+				const manifest = defineState("ns", {
+					count: { schema: Schema.Number },
+				});
+
+				const result = yield* loadStateEffect({
+					manifest,
+					initialValues: { count: () => 0 },
+				}).pipe(Effect.provideService(StateStorageService, storageStub));
+
+				expect(result[stateMetadataKey].namespace).toBe("ns");
+			}),
+		),
+	);
+
+	test("loadState exposes the manifest namespace", async () => {
+		const storageStub = createStorageStub();
+		storageStub.read.mockReturnValue(Effect.succeed(0));
+		const manifest = defineState("ns", { count: { schema: Schema.Number } });
+
+		const state = await loadState({
+			manifest,
+			initialValues: { count: () => 0 },
+			storage: storageStub,
+		});
+
+		expect(state[stateMetadataKey].namespace).toBe("ns");
 	});
 });

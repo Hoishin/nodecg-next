@@ -1,5 +1,5 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
-import { mapValues, type Promisify } from "@nodecg/internal";
+import { mapValues, type PromisifyObject } from "@nodecg/internal";
 import {
 	Data,
 	Effect,
@@ -44,7 +44,7 @@ interface StateFieldEffect<Decoded> {
 	) => Effect.Effect<void, UpdateStateError, StateTransportService>;
 }
 
-type StateFieldPromise<Decoded> = Promisify<StateFieldEffect<Decoded>>;
+type StateFieldPromise<Decoded> = PromisifyObject<StateFieldEffect<Decoded>>;
 
 function implementStateEffect<Decoded>(
 	namespace: string,

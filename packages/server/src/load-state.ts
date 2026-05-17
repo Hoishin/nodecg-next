@@ -1,5 +1,5 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
-import { mapValues, type Promisify } from "@nodecg/internal";
+import { mapValues, type PromisifyObject } from "@nodecg/internal";
 import {
 	Data,
 	Effect,
@@ -33,7 +33,7 @@ export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	}
 }
 
-interface StateFieldEffect<Decoded> {
+interface StateField<Decoded> {
 	get: () => Effect.Effect<Decoded, GetStateError, StateStorageService>;
 	set: (
 		value: Decoded,
@@ -43,7 +43,7 @@ interface StateFieldEffect<Decoded> {
 	) => Effect.Effect<void, UpdateStateError, StateStorageService>;
 }
 
-type StateFieldPromise<Decoded> = Promisify<StateFieldEffect<Decoded>>;
+type StateFieldPromise<Decoded> = PromisifyObject<StateField<Decoded>>;
 
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
@@ -57,7 +57,7 @@ function implementStateEffect<Decoded>(
 	namespace: string,
 	name: string,
 	definition: StateDefinition<Decoded>,
-): StateFieldEffect<Decoded> {
+): StateField<Decoded> {
 	const getValue = Effect.fn("getValue")(
 		function* () {
 			const storage = yield* StateStorageService;
@@ -101,15 +101,17 @@ interface StateDefinitionLambda extends HKT.TypeLambda {
 	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
 }
 
-interface StateFieldEffectLambda extends HKT.TypeLambda {
+interface StateFieldLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateFieldEffect<Schema.Schema.Type<this["Target"]>>;
+	readonly type: StateField<Schema.Schema.Type<this["Target"]>>;
 }
 
 interface StateFieldPromiseLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
 	readonly type: StateFieldPromise<Schema.Schema.Type<this["Target"]>>;
 }
+
+export const stateMetadataKey: unique symbol = Symbol();
 
 export function loadStateEffect<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
@@ -143,13 +145,20 @@ export function loadStateEffect<
 			{ concurrency: "unbounded" },
 		);
 
-		return mapValues<
+		const stateField = mapValues<
 			StateDefinitionLambda,
-			StateFieldEffectLambda,
+			StateFieldLambda,
 			Definitions
 		>(manifest.definitions, (definition, name) =>
 			implementStateEffect(manifest.namespace, name, definition),
 		);
+
+		return {
+			...stateField,
+			[stateMetadataKey]: {
+				namespace: manifest.namespace,
+			},
+		};
 	});
 }
 
@@ -171,11 +180,13 @@ export async function loadState<
 				: Layer.succeed(StateStorageService, storage)
 			: Layer.sync(StateStorageService, createInMemoryStateStorage),
 	);
+
 	const effectState = await runtime.runPromise(
 		loadStateEffect({ manifest, initialValues }),
 	);
-	return mapValues<
-		StateFieldEffectLambda,
+
+	const state = mapValues<
+		StateFieldLambda,
 		StateFieldPromiseLambda,
 		Definitions
 	>(effectState, (field) => ({
@@ -183,4 +194,11 @@ export async function loadState<
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
 	}));
+
+	return {
+		...state,
+		[stateMetadataKey]: {
+			namespace: manifest.namespace,
+		},
+	};
 }
