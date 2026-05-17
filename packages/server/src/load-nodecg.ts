@@ -1,17 +1,15 @@
-import { createServer } from "node:http";
-
 import { HttpApiBuilder } from "@effect/platform";
-import { NodeHttpServer } from "@effect/platform-node";
 import { Layer } from "effect";
 
 import { buildNodecgApi, type LoadedState } from "./server/http-api";
-import { WebSocketRouteLive } from "./server/websocket";
+import { nodeServer } from "./server/node-server";
+import { websocketRoute } from "./server/websocket";
 
 export const loadNodecg = (options: { states: ReadonlyArray<LoadedState> }) => {
 	const ServerLive = HttpApiBuilder.serve().pipe(
-		Layer.provide(WebSocketRouteLive),
+		Layer.provide(websocketRoute),
 		Layer.provide(buildNodecgApi(options)),
-		Layer.provide(NodeHttpServer.layer(() => createServer(), { port: 3000 })),
+		Layer.provide(nodeServer()),
 	);
 
 	return Layer.launch(ServerLive);

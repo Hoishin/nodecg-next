@@ -34,7 +34,7 @@ const wsHandler = Effect.gen(function* () {
 	return HttpServerResponse.empty();
 });
 
-export const WebSocketRouteLive = HttpApiBuilder.Router.use((router) =>
+export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 	router.get(
 		"/ws",
 		wsHandler.pipe(
