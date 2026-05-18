@@ -1,5 +1,13 @@
 import { type ClientMessage, ServerMessage } from "@nodecg/internal";
-import { Effect, Fiber, Ref, Schema, Stream, SubscriptionRef } from "effect";
+import {
+	Effect,
+	Fiber,
+	Ref,
+	Schedule,
+	Schema,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { useSyncExternalStore } from "react";
 
 type WsState = "connecting" | "open" | "closed";
@@ -52,19 +60,17 @@ const connection = Effect.gen(function* () {
 	return code;
 });
 
-// Reconnect (once, after 3s) only on transient/server-side closes. Protocol,
-// policy, intentional, and app-defined codes won't recover by retrying.
+// Reconnect only on transient/server-side closes, with exponential backoff
+// (1s → 30s cap). Protocol, policy, intentional, and app-defined codes won't
+// recover by retrying.
 const reconnectCodes = new Set([1001, 1005, 1006, 1011, 1012, 1013, 1014]);
 
-Effect.runFork(
-	Effect.gen(function* () {
-		let code = yield* connection;
-		while (reconnectCodes.has(code)) {
-			yield* Effect.sleep("3 seconds");
-			code = yield* connection;
-		}
-	}),
+const reconnect = Schedule.exponential("3 second").pipe(
+	Schedule.either(Schedule.spaced("30 seconds")),
+	Schedule.whileInput((code: number) => reconnectCodes.has(code)),
 );
+
+Effect.runFork(connection.pipe(Effect.repeat(reconnect)));
 
 export const sendMessage = (msg: ClientMessage): void => {
 	Effect.runFork(
