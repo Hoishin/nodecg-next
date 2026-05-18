@@ -1,0 +1,42 @@
+diff --git a/dist/esm/internal/httpServer.js b/dist/esm/internal/httpServer.js
+index 0253ddde0471b729c9160eba3c9f459a7733c739..c7048ed070874900299239a5a483510aa8382300 100644
+--- a/dist/esm/internal/httpServer.js
++++ b/dist/esm/internal/httpServer.js
+@@ -32,9 +32,18 @@ export const make = (evaluate, options) => Effect.gen(function* () {
+   const scope = yield* Effect.scope;
+   const server = yield* Effect.acquireRelease(Effect.sync(evaluate), server => Effect.async(resume => {
+     if (!server.listening) {
++      console.log(`[PATCH] server.close() finalizer: not listening @ ${Date.now()}`);
+       return resume(Effect.void);
+     }
++    console.log(`[PATCH] server.close() finalizer ENTER @ ${Date.now()}`);
++    const _connTick = setInterval(() => {
++      server.getConnections((e, c) => {
++        console.log(`[PATCH] server connections @ ${Date.now()} count=${c} err=${e ? e.message : "none"}`);
++      });
++    }, 1000);
+     server.close(error => {
++      clearInterval(_connTick);
++      console.log(`[PATCH] server.close() RESOLVED @ ${Date.now()} err=${error ? error.message : "none"}`);
+       if (error) {
+         resume(Effect.die(error));
+       } else {
+@@ -58,7 +67,8 @@ export const make = (evaluate, options) => Effect.gen(function* () {
+   const wss = yield* pipe(Effect.acquireRelease(Effect.sync(() => new WS.WebSocketServer({
+     noServer: true
+   })), wss => Effect.async(resume => {
+-    wss.close(() => resume(Effect.void));
++    console.log(`[PATCH] wss.close() finalizer ENTER @ ${Date.now()} clients=${wss.clients ? wss.clients.size : "n/a"}`);
++    wss.close(() => { console.log(`[PATCH] wss.close() RESOLVED @ ${Date.now()}`); resume(Effect.void); });
+   })), Scope.extend(scope), Effect.cached);
+   return Server.make({
+     address: typeof address === "string" ? {
+@@ -113,7 +123,7 @@ export const makeUpgradeHandler = (lazyWss, httpApp, middleware) => {
+     };
+     const upgradeEffect = Socket.fromWebSocket(Effect.flatMap(lazyWss, wss => Effect.acquireRelease(Effect.async(resume => wss.handleUpgrade(nodeRequest, socket, head, ws => {
+       resume(Effect.succeed(ws));
+-    })), ws => Effect.sync(() => ws.close()))));
++    })), ws => Effect.sync(() => { console.log(`[PATCH] per-connection ws.close() CALLED @ ${Date.now()}`); ws.close(); }))));
+     const fiber = runFork(Effect.provideService(handledApp, ServerRequest.HttpServerRequest, new ServerRequestImpl(nodeRequest, nodeResponse, upgradeEffect)));
+     socket.on("close", () => {
+       if (!socket.writableEnded) {
