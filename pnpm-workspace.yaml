@@ -19,6 +19,3 @@ allowBuilds:
   msgpackr-extract: false
 
 minimumReleaseAge: 4320
-
-patchedDependencies:
-  '@effect/platform-node@0.106.0': patches/@effect__platform-node@0.106.0.patch
