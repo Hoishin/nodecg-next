@@ -14,12 +14,21 @@ const handleMessage = (
 	send: (msg: ServerMessage) => Effect.Effect<void, unknown>,
 ) =>
 	Match.value(msg).pipe(
-		Match.tag("subscribe", ({ topic }) => Effect.log(`sub: ${topic}`)),
-		Match.tag("ping", () =>
+		Match.when({ _tag: "ping", topic: "ping" }, () =>
 			Effect.gen(function* () {
 				yield* Effect.logDebug("Received ping");
-				yield* send({ _tag: "pong" });
+				yield* send({ _tag: "ping", topic: "pong" });
 			}),
+		),
+		Match.when({ _tag: "ping", topic: "pong" }, () =>
+			Effect.gen(function* () {
+				yield* Effect.logDebug("Received pong");
+			}),
+		),
+		Match.when({ _tag: "subscribe", topic: "state" }, (msg) =>
+			Effect.log(
+				`sub: ${msg.message.filter.namespace}/${msg.message.filter.name}`,
+			),
 		),
 		Match.exhaustive,
 	);

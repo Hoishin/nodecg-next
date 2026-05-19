@@ -49,7 +49,7 @@ const indexRoute = createRoute({
 				<p>WS /ws → {wsState}</p>
 				<p>last WS message → {lastMessage ? lastMessage._tag : "—"}</p>
 				<button
-					onClick={() => sendMessage({ _tag: "ping" })}
+					onClick={() => sendMessage({ _tag: "ping", topic: "ping" })}
 					disabled={wsState !== "open"}
 				>
 					send ping

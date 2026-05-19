@@ -7,20 +7,6 @@ import {
 } from "@effect/platform";
 import { Schema } from "effect";
 
-export const ClientMessage = Schema.Union(
-	Schema.TaggedStruct("subscribe", { topic: Schema.String }),
-	Schema.TaggedStruct("ping", {}),
-);
-export type ClientMessage = typeof ClientMessage.Type;
-
-export const ServerMessage = Schema.Union(Schema.TaggedStruct("pong", {}));
-export type ServerMessage = typeof ServerMessage.Type;
-
-export const PublishPayload = Schema.Struct({
-	topic: Schema.String,
-	value: Schema.Unknown,
-});
-
 const StateGroup = HttpApiGroup.make("State")
 	.add(
 		HttpApiEndpoint.get(
