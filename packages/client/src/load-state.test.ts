@@ -8,12 +8,12 @@ import { loadState, loadStateEffect } from "./load-state.ts";
 import {
 	type MessageChannel,
 	MessageChannelService,
-} from "./message-channel/message-channel.ts";
+} from "./services/message-channel/message-channel.ts";
 import {
 	StateNotFound,
 	type StateTransport,
 	StateTransportService,
-} from "./state-transport/state-transport.ts";
+} from "./services/state-transport/state-transport.ts";
 
 const createTransportStub = () =>
 	({

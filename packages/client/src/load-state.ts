@@ -21,13 +21,13 @@ import type { Promisable } from "type-fest";
 import {
 	type MessageChannel,
 	MessageChannelService,
-} from "./message-channel/message-channel.ts";
-import { WebSocketMessageChannel } from "./message-channel/websocket-message-channel.ts";
-import { HttpStateTransport } from "./state-transport/http-state-transport.ts";
+} from "./services/message-channel/message-channel.ts";
+import { WebSocketMessageChannel } from "./services/message-channel/websocket-message-channel.ts";
+import { HttpStateTransport } from "./services/state-transport/http-state-transport.ts";
 import {
 	StateTransportService,
 	type StateTransport,
-} from "./state-transport/state-transport.ts";
+} from "./services/state-transport/state-transport.ts";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
 	readonly namespace: string;
