@@ -1,0 +1,29 @@
+{
+	"name": "@nodecg/example-counter",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"scripts": {
+		"dev": "pnpm run --parallel \"/^dev:/\"",
+		"dev:dashboard": "vite dev",
+		"dev:server": "node --watch src/server.ts",
+		"type-check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effect/platform-node": "catalog:",
+		"@nodecg/client": "workspace:*",
+		"@nodecg/core": "workspace:*",
+		"@nodecg/server": "workspace:*",
+		"effect": "catalog:",
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.1",
+		"typescript": "catalog:",
+		"vite": "^8.0.11"
+	}
+}

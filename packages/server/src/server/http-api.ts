@@ -4,30 +4,31 @@ import { Effect, Layer, Match } from "effect";
 
 import { stateMetadataKey } from "../load-state.ts";
 import {
+	stateFieldInternal,
 	type StateField,
 	type StateFieldPromise,
-	stateFieldInternal,
 } from "../models/state-field.ts";
 
-export type LoadedState = Record<
+type StateFieldInternal<Decoded> =
+	StateField<Decoded>[typeof stateFieldInternal];
+
+export type LoadedState<Decoded> = Record<
 	string,
-	StateField<unknown> | StateFieldPromise<unknown>
+	StateField<Decoded> | StateFieldPromise<Decoded>
 > & {
-	[stateMetadataKey]: { namespace: string };
+	readonly [stateMetadataKey]: { namespace: string };
 };
 
 export const buildNodecgApi = (options: {
-	states: ReadonlyArray<LoadedState>;
+	states: ReadonlyArray<LoadedState<unknown>>;
 }) => {
-	const registry = new Map<
-		string,
-		Map<string, StateField<unknown> | StateFieldPromise<unknown>>
-	>();
+	const registry = new Map<string, Map<string, StateFieldInternal<unknown>>>();
 	for (const state of options.states) {
 		const { namespace } = state[stateMetadataKey];
-		const fields = registry.get(namespace) ?? new Map();
+		const fields =
+			registry.get(namespace) ?? new Map<string, StateFieldInternal<unknown>>();
 		for (const [name, field] of Object.entries(state)) {
-			fields.set(name, field);
+			fields.set(name, field[stateFieldInternal]);
 		}
 		registry.set(namespace, fields);
 	}
@@ -46,7 +47,7 @@ export const buildNodecgApi = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					return yield* field[stateFieldInternal].get().pipe(
+					return yield* field.get().pipe(
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
@@ -70,7 +71,7 @@ export const buildNodecgApi = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					yield* field[stateFieldInternal].setEncoded(payload).pipe(
+					yield* field.setEncoded(payload).pipe(
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag(

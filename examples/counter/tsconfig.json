@@ -4,6 +4,7 @@
 		"module": "preserve",
 		"lib": ["ESNext", "DOM"],
 		"jsx": "react-jsx",
-		"allowImportingTsExtensions": true
+		"allowImportingTsExtensions": true,
+		"types": ["node"]
 	}
 }
