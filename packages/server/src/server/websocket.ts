@@ -30,6 +30,11 @@ const handleMessage = (
 				`sub: ${msg.message.filter.namespace}/${msg.message.filter.name}`,
 			),
 		),
+		Match.when({ _tag: "unsubscribe", topic: "state" }, (msg) =>
+			Effect.log(
+				`unsub: ${msg.message.filter.namespace}/${msg.message.filter.name}`,
+			),
+		),
 		Match.exhaustive,
 	);
 

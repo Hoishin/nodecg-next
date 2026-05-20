@@ -1,20 +1,31 @@
 import { defineState } from "@nodecg/core";
+import type { ServerMessage } from "@nodecg/internal";
 import { testEffect } from "@nodecg/private";
-import { Effect, Schema } from "effect";
+import { Deferred, Effect, Mailbox, Schema, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state.ts";
 import {
+	type MessageChannel,
+	MessageChannelService,
+} from "./message-channel/message-channel.ts";
+import {
 	StateNotFound,
 	type StateTransport,
 	StateTransportService,
-} from "./state-transport.ts";
+} from "./state-transport/state-transport.ts";
 
 const createTransportStub = () =>
 	({
 		read: vi.fn<StateTransport["read"]>(),
 		update: vi.fn<StateTransport["update"]>(() => Effect.void),
 	}) satisfies StateTransport;
+
+const createMessageChannelStub = () =>
+	({
+		send: vi.fn<MessageChannel["send"]>(() => Effect.void),
+		messages: Stream.never,
+	}) satisfies MessageChannel;
 
 describe("getValue", () => {
 	test(
@@ -29,6 +40,10 @@ describe("getValue", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				expect(
@@ -52,6 +67,10 @@ describe("getValue", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				const error = yield* state.count
@@ -79,6 +98,10 @@ describe("getValue", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				const error = yield* state.count
@@ -106,6 +129,10 @@ describe("getValue", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				expect(
@@ -130,6 +157,10 @@ describe("set", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				yield* state.count
@@ -151,6 +182,10 @@ describe("set", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				const error = yield* state.count
@@ -175,6 +210,10 @@ describe("set", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				yield* state.when
@@ -203,6 +242,10 @@ describe("update", () => {
 
 				const state = yield* loadStateEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
 				);
 
 				yield* state.count
@@ -218,13 +261,193 @@ describe("update", () => {
 	);
 });
 
+describe("subscribe", () => {
+	test(
+		"sends server subscribe and dispatches decoded matching publishes",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const messageChannelStub: MessageChannel = {
+					send: vi.fn<MessageChannel["send"]>(() => Effect.void),
+					messages: Mailbox.toStream(mailbox),
+				};
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const received = yield* Deferred.make<number>();
+				yield* state.count.subscribe((v) => {
+					Effect.runSync(Deferred.succeed(received, v));
+				});
+
+				yield* mailbox.offer({
+					_tag: "publish",
+					topic: "state",
+					message: { filter: { namespace: "root", name: "count" }, value: 42 },
+				});
+
+				expect(yield* Deferred.await(received)).toBe(42);
+				expect(messageChannelStub.send).toHaveBeenCalledWith({
+					_tag: "subscribe",
+					topic: "state",
+					message: { filter: { namespace: "root", name: "count" } },
+				});
+			}),
+		),
+	);
+
+	test(
+		"ignores publishes for a different name",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const messageChannelStub: MessageChannel = {
+					send: vi.fn<MessageChannel["send"]>(() => Effect.void),
+					messages: Mailbox.toStream(mailbox),
+				};
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+					other: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const received = yield* Deferred.make<number>();
+				yield* state.count.subscribe((v) => {
+					Effect.runSync(Deferred.succeed(received, v));
+				});
+
+				yield* mailbox.offer({
+					_tag: "publish",
+					topic: "state",
+					message: { filter: { namespace: "root", name: "other" }, value: 99 },
+				});
+				yield* mailbox.offer({
+					_tag: "publish",
+					topic: "state",
+					message: { filter: { namespace: "root", name: "count" }, value: 7 },
+				});
+
+				expect(yield* Deferred.await(received)).toBe(7);
+			}),
+		),
+	);
+
+	test(
+		"sends server unsubscribe when cancel is called",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					messages: Stream.never,
+				};
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const cancel = yield* state.count.subscribe(() => {});
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith({
+							_tag: "subscribe",
+							topic: "state",
+							message: { filter: { namespace: "root", name: "count" } },
+						});
+					}),
+				);
+				cancel();
+
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith({
+							_tag: "unsubscribe",
+							topic: "state",
+							message: { filter: { namespace: "root", name: "count" } },
+						});
+					}),
+				);
+			}),
+		),
+	);
+
+	test(
+		"refcounts: unsubscribe fires only after the last cancel",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					messages: Stream.never,
+				};
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const cancel1 = yield* state.count.subscribe(() => {});
+				const cancel2 = yield* state.count.subscribe(() => {});
+
+				cancel1();
+				// Give the scheduler a chance, then confirm no unsubscribe yet.
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						// any send call should not be unsubscribe
+						const hasUnsubscribe = send.mock.calls.some(
+							([msg]) => msg._tag === "unsubscribe",
+						);
+						expect(hasUnsubscribe).toBe(false);
+					}),
+				);
+
+				cancel2();
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith({
+							_tag: "unsubscribe",
+							topic: "state",
+							message: { filter: { namespace: "root", name: "count" } },
+						});
+					}),
+				);
+			}),
+		),
+	);
+});
+
 describe("loadState (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();
 		transportStub.read.mockReturnValue(Effect.succeed(42));
 		const manifest = defineState("root", { count: { schema: Schema.Number } });
 
-		const state = await loadState({ manifest, stateTransport: transportStub });
+		const messageChannelStub = createMessageChannelStub();
+		const state = await loadState({
+			manifest,
+			stateTransport: () => transportStub,
+			messageChannel: () => messageChannelStub,
+		});
 
 		expect(await state.count.getValue()).toBe(42);
 		await state.count.set(9);

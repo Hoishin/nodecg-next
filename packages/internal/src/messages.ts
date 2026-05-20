@@ -14,6 +14,10 @@ export const ClientMessage = Schema.Union(
 		topic: Schema.Literal("state"),
 		message: Schema.Struct({ filter: StateFilter }),
 	}),
+	Schema.TaggedStruct("unsubscribe", {
+		topic: Schema.Literal("state"),
+		message: Schema.Struct({ filter: StateFilter }),
+	}),
 	PingMessage,
 );
 export type ClientMessage = typeof ClientMessage.Type;

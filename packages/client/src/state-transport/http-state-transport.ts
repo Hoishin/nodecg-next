@@ -10,8 +10,9 @@ import {
 	StateTransportService,
 } from "./state-transport.ts";
 
-export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
-	function* () {
+export const HttpStateTransport = Layer.effect(
+	StateTransportService,
+	Effect.gen(function* () {
 		const client = yield* HttpApiClient.make(NodecgApi);
 
 		const read = Effect.fn("StateTransport.read")(function* (
@@ -52,11 +53,5 @@ export const createHttpStateTransport = Effect.fn("createHttpStateTransport")(
 		});
 
 		return { read, update };
-	},
-	Effect.provide(FetchHttpClient.layer),
-);
-
-export const HttpStateTransport = Layer.effect(
-	StateTransportService,
-	createHttpStateTransport(),
+	}).pipe(Effect.provide(FetchHttpClient.layer)),
 );
