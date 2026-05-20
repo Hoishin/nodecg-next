@@ -6,16 +6,19 @@ import {
 	promisifyEffectFn,
 } from "@nodecg/internal";
 import { Effect, type HKT, Layer, ManagedRuntime, type Schema } from "effect";
-import type { Promisable } from "type-fest";
+import type { Promisable, SimplifyDeep } from "type-fest";
 
-import { createInMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	type StateField,
 	type StateFieldPromise,
 	StateUpdateFnError,
 	stateFieldInternal,
 } from "./models/state-field.ts";
-import { StateStorageService, type StateStorage } from "./services/state-storage/state-storage.ts";
+import { createInMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
+import {
+	StateStorageService,
+	type StateStorage,
+} from "./services/state-storage/state-storage.ts";
 
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
@@ -181,3 +184,8 @@ export async function loadState<
 		[stateMetadataKey]: { namespace: manifest.namespace },
 	};
 }
+
+export type LoadedState = SimplifyDeep<
+	| Effect.Effect.Success<ReturnType<typeof loadStateEffect>>
+	| Awaited<ReturnType<typeof loadState>>
+>;
