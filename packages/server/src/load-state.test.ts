@@ -13,7 +13,7 @@ import {
 	StateNotFound,
 	type StateStorage,
 	StateStorageService,
-} from "./state-storage.ts";
+} from "./services/state-storage/state-storage.ts";
 
 const createStorageStub = () =>
 	({

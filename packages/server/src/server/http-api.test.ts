@@ -9,7 +9,7 @@ import {
 	StateGetFailed,
 	StateNotFound,
 	StateSaveFailed,
-} from "../state-storage.ts";
+} from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi, type LoadedState } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];

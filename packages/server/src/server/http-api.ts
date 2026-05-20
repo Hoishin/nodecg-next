@@ -1,6 +1,7 @@
 import { HttpApiBuilder, HttpApiError } from "@effect/platform";
 import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
+import type { SimplifyDeep } from "type-fest";
 
 import { stateMetadataKey } from "../load-state.ts";
 import {
@@ -9,24 +10,26 @@ import {
 	type StateFieldPromise,
 } from "../models/state-field.ts";
 
-type StateFieldInternal<Decoded> =
-	StateField<Decoded>[typeof stateFieldInternal];
+type StateFieldCommon = SimplifyDeep<
+	Pick<
+		StateField<unknown> | StateFieldPromise<unknown>,
+		typeof stateFieldInternal
+	>
+>;
+type StateFieldInternal = StateFieldCommon[typeof stateFieldInternal];
 
-export type LoadedState<Decoded> = Record<
-	string,
-	StateField<Decoded> | StateFieldPromise<Decoded>
-> & {
+export type LoadedState = Record<string, StateFieldCommon> & {
 	readonly [stateMetadataKey]: { namespace: string };
 };
 
 export const buildNodecgApi = (options: {
-	states: ReadonlyArray<LoadedState<unknown>>;
+	states: ReadonlyArray<LoadedState>;
 }) => {
-	const registry = new Map<string, Map<string, StateFieldInternal<unknown>>>();
+	const registry = new Map<string, Map<string, StateFieldInternal>>();
 	for (const state of options.states) {
 		const { namespace } = state[stateMetadataKey];
 		const fields =
-			registry.get(namespace) ?? new Map<string, StateFieldInternal<unknown>>();
+			registry.get(namespace) ?? new Map<string, StateFieldInternal>();
 		for (const [name, field] of Object.entries(state)) {
 			fields.set(name, field[stateFieldInternal]);
 		}

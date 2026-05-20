@@ -7,7 +7,7 @@ import type {
 	StateGetFailed,
 	StateNotFound,
 	StateSaveFailed,
-} from "../state-storage.ts";
+} from "../services/state-storage/state-storage.ts";
 
 export const stateFieldInternal = Symbol("stateFieldInternal");
 
