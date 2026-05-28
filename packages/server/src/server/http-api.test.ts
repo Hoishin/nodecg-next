@@ -1,6 +1,6 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { StateValidationError } from "@nodecg/core";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
@@ -18,17 +18,22 @@ function stubField(
 	internal: Pick<Internal, "get" | "setEncoded">,
 ): StateField<unknown> {
 	const unused = vi.fn();
+	const subscribeEncoded = () => Stream.empty;
+	const subscribe = () => Stream.empty;
 	return {
 		get: unused,
 		set: unused,
 		update: unused,
 		validate: unused,
+		subscribe,
 		[stateFieldInternal]: {
 			get: internal.get,
 			set: unused,
 			update: unused,
 			validate: unused,
+			subscribe,
 			setEncoded: internal.setEncoded,
+			subscribeEncoded,
 		},
 	};
 }
@@ -37,7 +42,10 @@ function loadedState(
 	namespace: string,
 	fields: Record<string, StateField<unknown>>,
 ): LoadedState {
-	return { ...fields, [stateMetadataKey]: { namespace } };
+	return {
+		...fields,
+		[stateMetadataKey]: { namespace },
+	};
 }
 
 function webHandler(states: ReadonlyArray<LoadedState>) {

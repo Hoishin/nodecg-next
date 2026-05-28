@@ -1,18 +1,20 @@
 import { toError } from "@nodecg/internal";
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer, PubSub, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
+	type StateChange,
 	StateAlreadyExists,
 	StateNotFound,
 	StateSaveFailed,
 	StateStorageService,
 } from "./state-storage.ts";
 
-export function createInMemoryStateStorage(): Context.Tag.Service<
-	typeof StateStorageService
-> {
+export const createInMemoryStateStorage = Effect.fn(
+	"createInMemoryStateStorage",
+)(function* () {
 	const map = new Map<string, Map<string, JsonValue>>();
+	const pubsub = yield* PubSub.unbounded<StateChange>();
 
 	const read = Effect.fn("StateStorage.read")(function* (
 		namespace: string,
@@ -67,11 +69,19 @@ export function createInMemoryStateStorage(): Context.Tag.Service<
 		if (!updated) {
 			return yield* new StateNotFound({ namespace, name });
 		}
+		yield* pubsub.publish({ namespace, name, value });
 	});
 
-	return { read, create, update, persistInterval: 0 };
-}
+	return {
+		read,
+		create,
+		update,
+		changes: Stream.fromPubSub(pubsub),
+		persistInterval: 0,
+	};
+});
 
-export const InMemoryStateStorage = Layer.sync(StateStorageService, () =>
+export const InMemoryStateStorage = Layer.effect(
+	StateStorageService,
 	createInMemoryStateStorage(),
 );

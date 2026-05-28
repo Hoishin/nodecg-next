@@ -5,7 +5,14 @@ import {
 	toError,
 	promisifyEffectFn,
 } from "@nodecg/internal";
-import { Effect, type HKT, Layer, ManagedRuntime, type Schema } from "effect";
+import {
+	Effect,
+	type HKT,
+	Layer,
+	ManagedRuntime,
+	type Schema,
+	Stream,
+} from "effect";
 import type { Promisable, SimplifyDeep } from "type-fest";
 
 import {
@@ -64,17 +71,33 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		yield* storage.update(namespace, name, encoded);
 	});
 
+	const subscribeEncoded = () =>
+		storage.changes.pipe(
+			Stream.filter(
+				(change) => change.namespace === namespace && change.name === name,
+			),
+			Stream.map((change) => change.value),
+		);
+
+	const subscribe = () =>
+		subscribeEncoded().pipe(
+			Stream.flatMap((value) => definition.decode(value)),
+		);
+
 	const field: StateField<Decoded> = {
 		get,
 		set,
 		update,
 		validate: definition.encode,
+		subscribe,
 		[stateFieldInternal]: {
 			get,
 			set,
 			update,
 			validate: definition.encode,
 			setEncoded,
+			subscribe,
+			subscribeEncoded,
 		},
 	};
 	return field;
@@ -160,7 +183,7 @@ export async function loadState<
 			? Effect.isEffect(storage)
 				? Layer.effect(StateStorageService, storage)
 				: Layer.succeed(StateStorageService, storage)
-			: Layer.sync(StateStorageService, createInMemoryStateStorage),
+			: Layer.effect(StateStorageService, createInMemoryStateStorage()),
 	);
 
 	const effectState = await runtime.runPromise(
@@ -176,6 +199,16 @@ export async function loadState<
 		set: promisifyEffectFn(field.set),
 		update: promisifyEffectFn(field.update),
 		validate: promisifyEffectFn(field.validate),
+		subscribe: (handler) => {
+			field.subscribe().pipe(
+				Stream.runForEach((value) =>
+					Effect.try({
+						try: () => handler(value),
+						catch: (error) => Effect.die(error), // TODO: proper handling
+					}),
+				),
+			);
+		},
 		[stateFieldInternal]: field[stateFieldInternal],
 	}));
 

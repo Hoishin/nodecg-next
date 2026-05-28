@@ -1,5 +1,17 @@
-import { Context, Data, type Duration, type Effect } from "effect";
+import {
+	Context,
+	Data,
+	type Duration,
+	type Effect,
+	type Stream,
+} from "effect";
 import type { JsonValue } from "type-fest";
+
+export interface StateChange {
+	readonly namespace: string;
+	readonly name: string;
+	readonly value: JsonValue;
+}
 
 export class StateNotFound extends Data.TaggedError("StateNotFound")<{
 	namespace: string;
@@ -46,6 +58,7 @@ export interface StateStorage {
 		name: string,
 		value: JsonValue,
 	) => Effect.Effect<void, StateNotFound | StateSaveFailed>;
+	changes: Stream.Stream<StateChange>;
 	persistInterval: Duration.DurationInput;
 }
 

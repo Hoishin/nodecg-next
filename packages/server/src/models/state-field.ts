@@ -1,6 +1,6 @@
 import type { StateValidationError } from "@nodecg/core";
 import type { PromisifyObject } from "@nodecg/internal";
-import { Data, type Effect } from "effect";
+import { Data, type Effect, type Stream } from "effect";
 import type { Promisable, JsonValue } from "type-fest";
 
 import type {
@@ -60,9 +60,11 @@ export interface StateField<Decoded> {
 		value: Decoded,
 	) => Effect.Effect<JsonValue, StateValidationError>;
 
+	readonly subscribe: () => Stream.Stream<Decoded, StateValidationError>;
+
 	readonly [stateFieldInternal]: Pick<
 		StateField<Decoded>,
-		"get" | "set" | "update" | "validate"
+		"get" | "set" | "update" | "validate" | "subscribe"
 	> & {
 		readonly setEncoded: (
 			value: unknown,
@@ -70,7 +72,13 @@ export interface StateField<Decoded> {
 			void,
 			StateValidationError | StateNotFound | StateSaveFailed
 		>;
+		readonly subscribeEncoded: () => Stream.Stream<JsonValue>;
 	};
 }
 
-export type StateFieldPromise<Decoded> = PromisifyObject<StateField<Decoded>>;
+export type StateFieldPromise<Decoded> = Omit<
+	PromisifyObject<StateField<Decoded>>,
+	"subscribe"
+> & {
+	subscribe: (handler: (value: Decoded) => void) => void;
+};

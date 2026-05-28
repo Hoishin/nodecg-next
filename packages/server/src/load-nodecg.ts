@@ -8,7 +8,7 @@ import { websocketRoute } from "./server/websocket.ts";
 
 export const loadNodecg = (options: { states: ReadonlyArray<LoadedState> }) => {
 	const ServerLive = HttpApiBuilder.serve().pipe(
-		Layer.provide(websocketRoute),
+		Layer.provide(websocketRoute(options)),
 		Layer.provide(buildNodecgApi(options)),
 		Layer.provide(nodeServer()),
 	);
