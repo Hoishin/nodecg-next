@@ -15,7 +15,7 @@ import { buildNodecgApi } from "./http-api.ts";
 type Internal = StateField<unknown>[typeof stateFieldInternal];
 
 function stubField(
-	internal: Pick<Internal, "get" | "setEncoded">,
+	internal: Pick<Internal, "getEncoded" | "setEncoded">,
 ): StateField<unknown> {
 	const unused = vi.fn();
 	const subscribeEncoded = () => Stream.empty;
@@ -27,11 +27,12 @@ function stubField(
 		validate: unused,
 		subscribe,
 		[stateFieldInternal]: {
-			get: internal.get,
+			get: unused,
 			set: unused,
 			update: unused,
 			validate: unused,
 			subscribe,
+			getEncoded: internal.getEncoded,
 			setEncoded: internal.setEncoded,
 			subscribeEncoded,
 		},
@@ -71,7 +72,7 @@ describe("get", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () => Effect.succeed(42),
+					getEncoded: () => Effect.succeed(42),
 					setEncoded: () => Effect.void,
 				}),
 			}),
@@ -91,7 +92,7 @@ describe("get", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () =>
+					getEncoded: () =>
 						Effect.fail(
 							new StateNotFound({ namespace: "root", name: "count" }),
 						),
@@ -107,7 +108,7 @@ describe("get", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () =>
+					getEncoded: () =>
 						Effect.fail(
 							new StateGetFailed({
 								namespace: "root",
@@ -127,7 +128,7 @@ describe("get", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () =>
+					getEncoded: () =>
 						Effect.fail(
 							new StateValidationError({
 								name: "count",
@@ -156,7 +157,7 @@ describe("update", () => {
 		const setEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
 			loadedState("root", {
-				count: stubField({ get: () => Effect.succeed(0), setEncoded }),
+				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
 			}),
 		]);
 		const res = await handler(putRequest(7));
@@ -174,7 +175,7 @@ describe("update", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () => Effect.succeed(0),
+					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
 							new StateValidationError({
@@ -193,7 +194,7 @@ describe("update", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () => Effect.succeed(0),
+					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
 							new StateNotFound({ namespace: "root", name: "count" }),
@@ -209,7 +210,7 @@ describe("update", () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
-					get: () => Effect.succeed(0),
+					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
 							new StateSaveFailed({

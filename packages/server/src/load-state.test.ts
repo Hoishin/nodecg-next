@@ -134,7 +134,7 @@ describe("loadStateEffect seeding", () => {
 	);
 });
 
-describe("getValue", () => {
+describe("get", () => {
 	test(
 		"decodes the value returned by storage",
 		testEffect(
@@ -207,6 +207,60 @@ describe("getValue", () => {
 						.get()
 						.pipe(Effect.provideService(StateStorageService, storageStub)),
 				).toEqual(new Date("2026-05-14T00:00:00.000Z"));
+			}),
+		),
+	);
+});
+
+describe("getEncoded", () => {
+	test(
+		"returns the re-encoded value after validating",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(
+					Effect.succeed("2026-05-14T00:00:00.000Z"),
+				);
+				const manifest = defineState("ns", {
+					when: { schema: Schema.DateFromString },
+				});
+
+				const state = yield* loadStateEffect({
+					manifest,
+					initialValues: { when: () => new Date(0) },
+				}).pipe(Effect.provideService(StateStorageService, storageStub));
+
+				expect(
+					yield* state.when[stateFieldInternal]
+						.getEncoded()
+						.pipe(Effect.provideService(StateStorageService, storageStub)),
+				).toBe("2026-05-14T00:00:00.000Z");
+			}),
+		),
+	);
+
+	test(
+		"fails with StateValidationError when storage holds an unmatched value",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Effect.succeed("not a number"));
+				const manifest = defineState("ns", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect({
+					manifest,
+					initialValues: { count: () => 0 },
+				}).pipe(Effect.provideService(StateStorageService, storageStub));
+
+				const error = yield* state.count[stateFieldInternal]
+					.getEncoded()
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("StateValidationError");
 			}),
 		),
 	);

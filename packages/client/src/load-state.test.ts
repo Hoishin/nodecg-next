@@ -27,7 +27,7 @@ const createMessageChannelStub = () =>
 		messages: Stream.never,
 	}) satisfies MessageChannel;
 
-describe("getValue", () => {
+describe("get", () => {
 	test(
 		"decodes the value returned by the transport",
 		testEffect(
@@ -48,7 +48,7 @@ describe("getValue", () => {
 
 				expect(
 					yield* state.count
-						.getValue()
+						.get()
 						.pipe(Effect.provideService(StateTransportService, transportStub)),
 				).toBe(42);
 			}),
@@ -74,7 +74,7 @@ describe("getValue", () => {
 				);
 
 				const error = yield* state.count
-					.getValue()
+					.get()
 					.pipe(
 						Effect.provideService(StateTransportService, transportStub),
 						Effect.flip,
@@ -105,7 +105,7 @@ describe("getValue", () => {
 				);
 
 				const error = yield* state.count
-					.getValue()
+					.get()
 					.pipe(
 						Effect.provideService(StateTransportService, transportStub),
 						Effect.flip,
@@ -137,7 +137,7 @@ describe("getValue", () => {
 
 				expect(
 					yield* state.when
-						.getValue()
+						.get()
 						.pipe(Effect.provideService(StateTransportService, transportStub)),
 				).toEqual(new Date("2030-01-01T00:00:00.000Z"));
 			}),
@@ -449,7 +449,7 @@ describe("loadState (Promise wrapper)", () => {
 			messageChannel: () => messageChannelStub,
 		});
 
-		expect(await state.count.getValue()).toBe(42);
+		expect(await state.count.get()).toBe(42);
 		await state.count.set(9);
 		expect(transportStub.update).toHaveBeenCalledWith("root", "count", 9);
 	});

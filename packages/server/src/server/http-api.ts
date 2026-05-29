@@ -35,7 +35,7 @@ export const buildNodecgApi = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					return yield* field.get().pipe(
+					return yield* field.getEncoded().pipe(
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),

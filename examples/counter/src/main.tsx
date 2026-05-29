@@ -11,7 +11,7 @@ function Counter() {
 
 	useEffect(() => {
 		let unsubscribe: (() => void) | undefined;
-		counter.count.getValue().then(setValue).catch(console.error);
+		counter.count.get().then(setValue).catch(console.error);
 		counter.count
 			.subscribe(setValue)
 			.then((u) => {

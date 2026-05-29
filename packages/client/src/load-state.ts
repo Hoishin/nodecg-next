@@ -62,7 +62,7 @@ export class SubscribeStateError extends Data.TaggedError(
 }
 
 interface StateFieldEffect<Decoded> {
-	getValue: () => Effect.Effect<Decoded, GetStateError>;
+	get: () => Effect.Effect<Decoded, GetStateError>;
 	set: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
 	update: (
 		fn: (value: Decoded) => Promisable<Decoded>,
@@ -84,7 +84,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	const layerScope = yield* Effect.scope;
 	let refcount = 0;
 
-	const getValue = Effect.fn("getValue")(
+	const get = Effect.fn("get")(
 		function* () {
 			const current = yield* transport.read(namespace, name);
 			return yield* definition.decode(current);
@@ -107,7 +107,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 	const update = Effect.fn("update")(
 		function* (fn: (value: Decoded) => Promisable<Decoded>) {
-			const current = yield* getValue();
+			const current = yield* get();
 			const next = yield* Effect.tryPromise(async () => fn(current));
 			const encoded = yield* definition.encode(next);
 			yield* transport.update(namespace, name, encoded);
@@ -213,7 +213,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	});
 
 	const field: StateFieldEffect<Decoded> = {
-		getValue,
+		get,
 		set,
 		update,
 		subscribe,
@@ -287,7 +287,7 @@ export async function loadState<
 		StateFieldPromiseLambda,
 		Definitions
 	>(effectState, (field) => ({
-		getValue: () => runtime.runPromise(field.getValue()),
+		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
 		subscribe: (callback) => runtime.runPromise(field.subscribe(callback)),

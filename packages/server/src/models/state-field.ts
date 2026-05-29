@@ -66,6 +66,10 @@ export interface StateField<Decoded> {
 		StateField<Decoded>,
 		"get" | "set" | "update" | "validate" | "subscribe"
 	> & {
+		readonly getEncoded: () => Effect.Effect<
+			JsonValue,
+			StateGetFailed | StateNotFound | StateValidationError
+		>;
 		readonly setEncoded: (
 			value: unknown,
 		) => Effect.Effect<

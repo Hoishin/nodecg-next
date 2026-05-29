@@ -65,6 +65,11 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		yield* storage.update(namespace, name, encoded);
 	});
 
+	const getEncoded = Effect.fn("getEncoded")(function* () {
+		const decoded = yield* get();
+		return yield* definition.encode(decoded);
+	});
+
 	const setEncoded = Effect.fn("setEncoded")(function* (value: unknown) {
 		const decoded = yield* definition.decode(value);
 		const encoded = yield* definition.encode(decoded);
@@ -95,6 +100,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			set,
 			update,
 			validate: definition.encode,
+			getEncoded,
 			setEncoded,
 			subscribe,
 			subscribeEncoded,
