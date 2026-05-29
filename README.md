@@ -6,10 +6,11 @@ Experimental new version of NodeCG in active development from scratch
 
 ### Philosophy
 
-- TypeScript first and complete type safety
 - Modular and extensible
-- Simple and intuitive API without pitfalls
+- Decoupled client-side that supports both browsers and servers
+- Simple and intuitive APIs without pitfalls
 - Immutable data structures and updates
+- TypeScript first and complete type safety
 
 ### Shared State
 
@@ -32,19 +33,21 @@ Experimental new version of NodeCG in active development from scratch
     manifest,
     initialValues: { counter: () => 0, games: () => [] },
   });
-  console.log(await state.counter.getValue());
+  console.log(await state.counter.get());
 
   // Client-side
   import { loadState } from "@nodecg/client";
 
   const state = await loadState(manifest);
-  console.log(await state.counter.getValue());
+  console.log(await state.counter.get());
   ```
 
-- ✅ State is immutable: it provides read-only value, and is updated by returning a new value from the updater (which may be async)
+- ✅ State is immutable: it provides read-only value, and can be set or updated by returning a new value from the updater (which may be async)
 
   ```ts
-  console.log(await state.counter.getValue()); // Returns read-only value
+  console.log(await state.counter.get()); // Returns read-only value
+
+  await state.counter.set({ count: n, timestamp: Date.now() });
 
   await state.counter.update((value) => {
     value.timestamp = Date.now();
@@ -52,7 +55,7 @@ Experimental new version of NodeCG in active development from scratch
   });
   ```
 
-- 🚧 State is reactive: it provides subscription API to listen to changes
+- ✅ State is reactive: it provides subscription API to listen to changes
 
   ```ts
   const unsubscribe = state.counter.subscribe((newValue) => {
@@ -89,14 +92,19 @@ Experimental new version of NodeCG in active development from scratch
 
   ```ts
   const newManifest = defineState("match", {
-    counter: { schema: newSchema },
+    counter: { schema },
     games: {
-      schema: newSchema,
-      migration: (oldValue) => {
-        return oldValue.map((game) => {
-          // ...
-        });
-      },
+      schema,
+      migration: [
+        {
+          oldSchema,
+          migrate: (oldValue) => {
+            return oldValue.map((game) => {
+              // ...
+            });
+          },
+        },
+      ],
     },
   });
   ```
@@ -142,7 +150,7 @@ Experimental new version of NodeCG in active development from scratch
         firstGameId: {
           schema,
           compute: async (state) =>
-            (await state.games.getValue())[0]?.id || null,
+            (await state.games.get())[0]?.id || null,
         },
       },
     },
@@ -252,6 +260,85 @@ NodeCG is a full-stack framework where there are server-side code, client-side c
 The codebase uses Effect for type-safety, error-safety, and dependency injection.
 
 - Entire codebase runs as Effect, except user-facing functions that provides both Effect-based interface and non-Effect interface. The boundary is at the very edge to keep the advantages of Effect.
+
+#### Data flow
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TB
+    subgraph client["@nodecg/client"]
+        subgraph clientField["StateField"]
+            C_GET["🌐 get"]
+            C_UPDATE["🌐 update"]
+            C_SET["🌐 set"]
+            C_SUB["🌐 subscribe"]
+        end
+        subgraph transport["StateTransport"]
+            TREAD["read"]
+            TWRITE["write"]
+        end
+        subgraph channel["MessageChannel"]
+            MSUB["subscribe"]
+        end
+    end
+
+    subgraph corePkg["@nodecg/core"]
+        MANIFEST["StateManifest<br/>namespace"]
+        subgraph def["StateDefinition"]
+            ENCODE["encode"]
+            DECODE["decode"]
+        end
+        MANIFEST -->|"definitions"| def
+    end
+
+    subgraph server["@nodecg/server"]
+        subgraph core["StateField"]
+            GET["🌐 get"]
+            SET["🌐 set"]
+            UPDATE["🌐 update"]
+            SUB["🌐 subscribe"]
+            SEGET["🔒 getEncoded"]
+            SETE["🔒 setEncoded"]
+            SUBE["🔒 subscribeEncoded"]
+        end
+        subgraph storage["StateStorage"]
+            SCREATE["create"]
+            SREAD["read"]
+            SUPDATE["update"]
+            CHG["changes"]
+        end
+    end
+
+    %% client StateField → its own services
+    C_GET --> TREAD
+    C_SET --> TWRITE
+    C_UPDATE --> TREAD
+    C_UPDATE --> TWRITE
+    C_SUB --> MSUB
+
+    %% client ⇄ server wire
+    TREAD --> SEGET
+    TWRITE --> SETE
+    MSUB --> SUBE
+
+    %% encoded read/write delegate to the public methods
+    SEGET --> GET
+    SETE --> SET
+
+    %% subscribe decodes the encoded stream
+    SUBE -->|"decode"| SUB
+
+    %% storage
+    GET --> SREAD
+    SET --> SUPDATE
+    UPDATE --> SREAD
+    UPDATE --> SUPDATE
+    SUPDATE -. publish .-> CHG
+    CHG --> SUBE
+```
 
 ## License
 
