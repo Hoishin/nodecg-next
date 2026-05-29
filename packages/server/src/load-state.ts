@@ -72,8 +72,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: unknown) {
 		const decoded = yield* definition.decode(value);
-		const encoded = yield* definition.encode(decoded);
-		yield* storage.update(namespace, name, encoded);
+		yield* set(decoded);
 	});
 
 	const subscribeEncoded = () =>
