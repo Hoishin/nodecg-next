@@ -124,9 +124,7 @@ describe("changes", () => {
 						Effect.gen(function* () {
 							yield* Effect.yieldNow();
 							yield* storage.create("ns", "a", 1);
-							yield* storage
-								.update("missing-ns", "x", 99)
-								.pipe(Effect.flip);
+							yield* storage.update("missing-ns", "x", 99).pipe(Effect.flip);
 							yield* storage.update("ns", "a", 2);
 						}),
 					],

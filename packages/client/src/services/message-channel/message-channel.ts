@@ -13,7 +13,9 @@ export class MessageEncodeError extends Data.TaggedError("MessageEncodeError")<{
 	override readonly message = `Could not encode message: ${this.cause.message}`;
 }
 
-export class MessageChannelFailError extends Data.TaggedError("MessageChannelFailError")<{
+export class MessageChannelFailError extends Data.TaggedError(
+	"MessageChannelFailError",
+)<{
 	cause: Error;
 }> {
 	override readonly message = `Message channel failed: ${this.cause.message}`;

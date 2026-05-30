@@ -16,10 +16,7 @@ import {
 } from "effect";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import {
-	type StateField,
-	stateFieldInternal,
-} from "../models/state-field.ts";
+import { type StateField, stateFieldInternal } from "../models/state-field.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
@@ -38,8 +35,7 @@ const buildRegistry = (states: ReadonlyArray<LoadedState>) => {
 	const registry = new Map<string, Map<string, FieldInternal>>();
 	for (const state of states) {
 		const { namespace } = state[stateMetadataKey];
-		const fields =
-			registry.get(namespace) ?? new Map<string, FieldInternal>();
+		const fields = registry.get(namespace) ?? new Map<string, FieldInternal>();
 		for (const [name, field] of Object.entries(state)) {
 			fields.set(name, field[stateFieldInternal]);
 		}

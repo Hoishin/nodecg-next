@@ -26,10 +26,7 @@ function Counter() {
 	return (
 		<div>
 			<p>count = {value ?? "…"}</p>
-			<button
-				type="button"
-				onClick={() => counter.count.update((v) => v + 1)}
-			>
+			<button type="button" onClick={() => counter.count.update((v) => v + 1)}>
 				+1
 			</button>
 		</div>

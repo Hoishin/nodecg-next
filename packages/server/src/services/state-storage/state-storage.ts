@@ -1,10 +1,4 @@
-import {
-	Context,
-	Data,
-	type Duration,
-	type Effect,
-	type Stream,
-} from "effect";
+import { Context, Data, type Duration, type Effect, type Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 export interface StateChange {

@@ -149,8 +149,7 @@ Experimental new version of NodeCG in active development from scratch
       computed: {
         firstGameId: {
           schema,
-          compute: async (state) =>
-            (await state.games.get())[0]?.id || null,
+          compute: async (state) => (await state.games.get())[0]?.id || null,
         },
       },
     },
