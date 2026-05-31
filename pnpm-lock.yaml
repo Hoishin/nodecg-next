@@ -174,6 +174,39 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
 
+  packages/e2e:
+    devDependencies:
+      '@nodecg/client':
+        specifier: workspace:*
+        version: link:../client
+      '@nodecg/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nodecg/server':
+        specifier: workspace:*
+        version: link:../server
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.12.3
+      '@vitest/browser':
+        specifier: 'catalog:'
+        version: 4.1.5(vite@8.0.11(@types/node@24.12.3))(vitest@4.1.5)
+      '@vitest/browser-playwright':
+        specifier: 'catalog:'
+        version: 4.1.5(playwright@1.59.1)(vite@8.0.11(@types/node@24.12.3))(vitest@4.1.5)
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+      playwright:
+        specifier: 'catalog:'
+        version: 1.59.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.5(@types/node@24.12.3)(@vitest/browser-playwright@4.1.5)(vite@8.0.11(@types/node@24.12.3))
+
   packages/internal:
     dependencies:
       '@effect/platform':

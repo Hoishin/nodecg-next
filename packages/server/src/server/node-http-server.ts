@@ -24,8 +24,9 @@ const boundedClose = (server: Server) =>
 		}),
 	);
 
-export const nodeServer = () => {
+export const makeNodeHttpServer = () => {
 	const server = createServer();
+
 	return boundedClose(server).pipe(
 		Layer.provideMerge(NodeHttpServer.layer(() => server, { port: 3000 })),
 		HttpServer.withLogAddress,

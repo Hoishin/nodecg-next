@@ -1,0 +1,20 @@
+{
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "vitest run",
+		"type-check": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@nodecg/client": "workspace:*",
+		"@nodecg/core": "workspace:*",
+		"@nodecg/server": "workspace:*",
+		"@types/node": "catalog:",
+		"@vitest/browser": "catalog:",
+		"@vitest/browser-playwright": "catalog:",
+		"effect": "catalog:",
+		"playwright": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

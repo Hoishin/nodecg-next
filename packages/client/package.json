@@ -4,7 +4,7 @@
 	"license": "MIT",
 	"type": "module",
 	"exports": {
-		"./load-state": "./src/load-state.ts"
+		".": "./src/_export.ts"
 	},
 	"scripts": {
 		"test": "vitest run",

@@ -1,11 +1,6 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
+import { mapEffectValues, mapValues } from "@nodecg/internal";
 import {
-	mapEffectValues,
-	mapValues,
-	type PromisifyObject,
-} from "@nodecg/internal";
-import {
-	Data,
 	Effect,
 	Fiber,
 	type HKT,
@@ -19,6 +14,14 @@ import {
 import type { Promisable } from "type-fest";
 
 import {
+	GetStateError,
+	type StateFieldEffect,
+	type StateFieldPromise,
+	StateSubscriptionError,
+	StateValueError,
+	UpdateStateError,
+} from "./models/state-field.ts";
+import {
 	type MessageChannel,
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
@@ -29,51 +32,6 @@ import {
 	type StateTransport,
 } from "./services/state-transport/state-transport.ts";
 
-export class GetStateError extends Data.TaggedError("GetStateError")<{
-	readonly namespace: string;
-	readonly name: string;
-	readonly cause: string;
-}> {
-	override get message() {
-		return `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause}`;
-	}
-}
-
-export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
-	readonly namespace: string;
-	readonly name: string;
-	readonly cause: string;
-}> {
-	override get message() {
-		return `Failed to update state "${this.name}" in "${this.namespace}": ${this.cause}`;
-	}
-}
-
-export class SubscribeStateError extends Data.TaggedError(
-	"SubscribeStateError",
-)<{
-	readonly namespace: string;
-	readonly name: string;
-	readonly cause: string;
-}> {
-	override get message() {
-		return `Failed to subscribe to state "${this.name}" in "${this.namespace}": ${this.cause}`;
-	}
-}
-
-interface StateFieldEffect<Decoded> {
-	get: () => Effect.Effect<Decoded, GetStateError>;
-	set: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
-	update: (
-		fn: (value: Decoded) => Promisable<Decoded>,
-	) => Effect.Effect<void, UpdateStateError>;
-	subscribe: (
-		callback: (value: Decoded) => Promisable<void>,
-	) => Effect.Effect<() => void, SubscribeStateError>;
-}
-
-type StateFieldPromise<Decoded> = PromisifyObject<StateFieldEffect<Decoded>>;
-
 const implementState = Effect.fn("implementState")(function* <Decoded>(
 	namespace: string,
 	name: string,
@@ -81,7 +39,6 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 ) {
 	const transport = yield* StateTransportService;
 	const messageChannel = yield* MessageChannelService;
-	const layerScope = yield* Effect.scope;
 	let refcount = 0;
 
 	const get = Effect.fn("get")(
@@ -128,10 +85,8 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		}),
 	);
 
-	const subscribe = Effect.fn("subscribe")(function* (
-		callback: (value: Decoded) => Promisable<void>,
-	) {
-		const stream = Stream.acquireRelease(
+	const subscribe = () =>
+		Stream.acquireRelease(
 			messageChannel
 				.send({
 					_tag: "subscribe",
@@ -139,19 +94,10 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 					message: { filter: { namespace, name } },
 				})
 				.pipe(
-					Effect.mapError(
-						(error) =>
-							new SubscribeStateError({
-								namespace,
-								name,
-								cause: error.message,
-							}),
-					),
-					Effect.tap(() =>
-						Effect.sync(() => {
-							refcount += 1;
-						}),
-					),
+					Effect.mapError((cause) => new StateSubscriptionError({ cause })),
+					Effect.andThen(() => {
+						refcount += 1;
+					}),
 				),
 			() =>
 				Effect.gen(function* () {
@@ -184,33 +130,19 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 							? Option.some(msg.message.value)
 							: Option.none(),
 					),
-					Stream.mapError(
-						(error) =>
-							new SubscribeStateError({
-								namespace,
-								name,
-								cause: error.message,
-							}),
-					),
+					Stream.mapError((cause) => new StateSubscriptionError({ cause })),
 				),
 			),
-		);
-		const fiber = yield* Effect.forkIn(
-			Stream.runForEach(stream, (value) =>
+			Stream.mapEffect((value) =>
 				definition
 					.decode(value)
 					.pipe(
-						Effect.flatMap((decoded) =>
-							Effect.tryPromise(async () => callback(decoded)),
+						Effect.mapError(
+							(cause) => new StateValueError({ namespace, name, cause }),
 						),
 					),
 			),
-			layerScope,
 		);
-		return () => {
-			Effect.runFork(Fiber.interrupt(fiber));
-		};
-	});
 
 	const field: StateFieldEffect<Decoded> = {
 		get,
@@ -278,7 +210,7 @@ export async function loadState<
 		: WebSocketMessageChannel;
 
 	const runtime = ManagedRuntime.make(
-		Layer.mergeAll(transportLayer, messageChannelLayer, Layer.scope),
+		Layer.mergeAll(transportLayer, messageChannelLayer),
 	);
 
 	const effectState = await runtime.runPromise(loadStateEffect(manifest));
@@ -290,6 +222,16 @@ export async function loadState<
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
-		subscribe: (callback) => runtime.runPromise(field.subscribe(callback)),
+		subscribe: (callback) => {
+			const fiber = field.subscribe().pipe(
+				Stream.runForEach((value) =>
+					Effect.tryPromise(async () => callback(value)),
+				),
+				runtime.runFork,
+			);
+			return () => {
+				runtime.runFork(Fiber.interrupt(fiber));
+			};
+		},
 	}));
 }

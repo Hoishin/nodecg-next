@@ -200,10 +200,10 @@ export async function loadState<
 		StateFieldPromiseLambda,
 		Definitions
 	>(effectState, (field) => ({
-		get: promisifyEffectFn(field.get),
-		set: promisifyEffectFn(field.set),
-		update: promisifyEffectFn(field.update),
-		validate: promisifyEffectFn(field.validate),
+		get: promisifyEffectFn(field.get, runtime),
+		set: promisifyEffectFn(field.set, runtime),
+		update: promisifyEffectFn(field.update, runtime),
+		validate: promisifyEffectFn(field.validate, runtime),
 		subscribe: (handler) => {
 			field.subscribe().pipe(
 				Stream.runForEach((value) =>
