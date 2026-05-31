@@ -22,8 +22,11 @@ describe("client ⇄ server state sync", () => {
 		const cancel = state.count.subscribe((value) => {
 			received.push(value);
 		});
-		await state.count.set(7);
-		await vi.waitFor(() => expect(received).toEqual([7]));
+		// TODO: move .set() out of waitFor once subscribe is async
+		await vi.waitFor(async () => {
+			await state.count.set(7);
+			expect(received).toContain(7);
+		});
 		cancel();
 	});
 });

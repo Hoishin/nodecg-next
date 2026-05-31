@@ -24,11 +24,23 @@ const boundedClose = (server: Server) =>
 		}),
 	);
 
-export const makeNodeHttpServer = () => {
+export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
+	onReady,
+}: {
+	onReady?: () => void;
+}) {
 	const server = createServer();
+	if (onReady) {
+		server.addListener("listening", onReady);
+		yield* Effect.addFinalizer(() =>
+			Effect.sync(() => {
+				server.removeListener("listening", onReady);
+			}),
+		);
+	}
 
 	return boundedClose(server).pipe(
 		Layer.provideMerge(NodeHttpServer.layer(() => server, { port: 3000 })),
 		HttpServer.withLogAddress,
 	);
-};
+});

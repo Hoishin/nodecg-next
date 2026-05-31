@@ -1,20 +1,24 @@
-import { loadNodecgEffect, loadState } from "@nodecg/server";
-import { Effect, Fiber } from "effect";
-
-import { fixtureManifest, initialValues } from "./fixture-state.ts";
+import { fork } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export default async function setup() {
-	const loaded = await loadState({ manifest: fixtureManifest, initialValues });
-	const { promise: ready, resolve } = Promise.withResolvers<void>();
-	const fiber = Effect.runFork(
-		Effect.gen(function* () {
-			yield* loadNodecgEffect({ states: [loaded] });
-			resolve();
-			yield* Effect.never;
-		}).pipe(Effect.scoped),
+	const child = fork(
+		fileURLToPath(new URL("./start-server.ts", import.meta.url)),
+		{ stdio: ["ignore", "inherit", "inherit", "ipc"] },
 	);
-	await ready;
-	return async () => {
-		await Effect.runPromise(Fiber.interrupt(fiber));
+
+	await new Promise<void>((resolve, reject) => {
+		child.once("message", (message) => {
+			if (message === "ready") {
+				resolve();
+			}
+		});
+		child.once("exit", (code) =>
+			reject(new Error(`server exited before ready (code ${code})`)),
+		);
+	});
+
+	return function teardown() {
+		child.kill();
 	};
 }

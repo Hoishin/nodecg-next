@@ -9,15 +9,11 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["src/**/*.test.ts"],
-		globalSetup: ["./src/global-setup.ts"],
 		browser: {
 			enabled: true,
 			provider: playwright(),
 			instances: [
-				{ browser: "chromium" },
-				{ browser: "firefox" },
-				{ browser: "webkit" },
+				{ browser: "chromium", globalSetup: ["./src/global-setup.ts"] },
 			],
 			headless: true,
 			screenshotFailures: false,

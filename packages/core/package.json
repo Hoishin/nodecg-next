@@ -21,15 +21,6 @@
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",
 		"typescript": "catalog:",
-		"vitest": "catalog:",
-		"zod": "catalog:"
-	},
-	"peerDependencies": {
-		"zod": "^4.1.13"
-	},
-	"peerDependenciesMeta": {
-		"zod": {
-			"optional": true
-		}
+		"vitest": "catalog:"
 	}
 }
