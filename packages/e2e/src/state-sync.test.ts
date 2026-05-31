@@ -19,7 +19,7 @@ describe("client ⇄ server state sync", () => {
 	test("subscribe receives published updates over the websocket", async () => {
 		const state = await loadState({ manifest: fixtureManifest });
 		const received: number[] = [];
-		const cancel = await state.count.subscribe((value) => {
+		const cancel = state.count.subscribe((value) => {
 			received.push(value);
 		});
 		await state.count.set(7);

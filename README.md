@@ -38,7 +38,7 @@ Experimental new version of NodeCG in active development from scratch
   // Client-side
   import { loadState } from "@nodecg/client";
 
-  const state = await loadState(manifest);
+  const state = await loadState({ manifest });
   console.log(await state.counter.get());
   ```
 
