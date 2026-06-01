@@ -1,4 +1,11 @@
-import { Context, Data, type Duration, type Effect, type Stream } from "effect";
+import {
+	Context,
+	Data,
+	type Duration,
+	type Effect,
+	type Queue,
+	type Scope,
+} from "effect";
 import type { JsonValue } from "type-fest";
 
 export interface StateChange {
@@ -21,38 +28,26 @@ export class StateAlreadyExists extends Data.TaggedError("StateAlreadyExists")<{
 	override readonly message = `State "${this.name}" in "${this.namespace}" already exists`;
 }
 
-export class StateGetFailed extends Data.TaggedError("StateGetFailed")<{
-	namespace: string;
-	name: string;
-	cause: Error;
-}> {
-	override readonly message = `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
-}
-
-export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
-	namespace: string;
-	name: string;
-	cause: Error;
-}> {
-	override readonly message = `Failed to save state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
-}
-
 export interface StateStorage {
 	create: (
 		namespace: string,
 		name: string,
 		value: JsonValue,
-	) => Effect.Effect<void, StateAlreadyExists | StateSaveFailed>;
+	) => Effect.Effect<void, StateAlreadyExists>;
 	read: (
 		namespace: string,
 		name: string,
-	) => Effect.Effect<JsonValue, StateNotFound | StateGetFailed>;
+	) => Effect.Effect<JsonValue, StateNotFound>;
 	update: (
 		namespace: string,
 		name: string,
 		value: JsonValue,
-	) => Effect.Effect<void, StateNotFound | StateSaveFailed>;
-	changes: Stream.Stream<StateChange>;
+	) => Effect.Effect<void, StateNotFound>;
+	subscribe: () => Effect.Effect<
+		Queue.Dequeue<StateChange>,
+		never,
+		Scope.Scope
+	>;
 	persistInterval: Duration.DurationInput;
 }
 

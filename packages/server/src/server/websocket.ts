@@ -10,9 +10,9 @@ import {
 	Fiber,
 	Match,
 	type ParseResult,
-	Ref,
 	Schema,
 	Stream,
+	SynchronizedRef,
 } from "effect";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
@@ -52,7 +52,7 @@ export const websocketRoute = (options: {
 	const wsHandler = Effect.gen(function* () {
 		const socket = yield* HttpServerRequest.upgrade;
 		const write = yield* socket.writer;
-		const subscriptions = yield* Ref.make<
+		const subscriptions = yield* SynchronizedRef.make<
 			ReadonlyArray<{
 				readonly filter: StateFilter;
 				readonly fiber: Fiber.RuntimeFiber<
@@ -63,48 +63,60 @@ export const websocketRoute = (options: {
 		>([]);
 
 		const send = (msg: ServerMessage) =>
-			encodeServerMessage(msg).pipe(Effect.flatMap(write));
+			encodeServerMessage(msg).pipe(
+				Effect.andThen((encodedMessage) => write(encodedMessage)),
+			);
 
 		const startSubscription = (filter: StateFilter) =>
-			Effect.gen(function* () {
-				const existing = yield* Ref.get(subscriptions);
-				if (existing.some((s) => filterEquals(s.filter, filter))) {
-					return;
-				}
-				const internal = registry.get(filter.namespace)?.get(filter.name);
-				if (typeof internal === "undefined") {
-					yield* Effect.logWarning(
-						`Subscribe: unknown state "${filter.name}" in "${filter.namespace}"`,
-					);
-					return;
-				}
-				const fiber = yield* Effect.forkScoped(
-					Stream.runForEach(internal.subscribeEncoded(), (value) =>
-						send({
-							_tag: "publish",
+			SynchronizedRef.updateEffect(subscriptions, (list) =>
+				Effect.gen(function* () {
+					if (list.some((s) => filterEquals(s.filter, filter))) {
+						yield* send({
+							_tag: "ack-subscribe",
 							topic: "state",
-							message: { filter, value },
-						}),
-					),
-				);
-				yield* Ref.update(subscriptions, (list) => [
-					...list,
-					{ filter, fiber },
-				]);
-			});
+							message: { filter },
+						});
+						return list;
+					}
+					const internal = registry.get(filter.namespace)?.get(filter.name);
+					if (typeof internal === "undefined") {
+						yield* Effect.logWarning(
+							`Subscribe: unknown state "${filter.name}" in "${filter.namespace}"`,
+						);
+						return list;
+					}
+					const fiber = yield* Effect.forkScoped(
+						Effect.gen(function* () {
+							const stream = yield* internal.subscribeEncoded();
+							yield* send({
+								_tag: "ack-subscribe",
+								topic: "state",
+								message: { filter },
+							});
+							yield* Stream.runForEach(stream, (value) =>
+								send({
+									_tag: "publish",
+									topic: "state",
+									message: { filter, value },
+								}),
+							);
+						}).pipe(Effect.scoped),
+					);
+					return [...list, { filter, fiber }];
+				}),
+			);
 
 		const stopSubscription = (filter: StateFilter) =>
-			Effect.gen(function* () {
-				const existing = yield* Ref.get(subscriptions);
-				const match = existing.find((s) => filterEquals(s.filter, filter));
-				if (typeof match === "undefined") {
-					return;
-				}
-				yield* Fiber.interrupt(match.fiber);
-				yield* Ref.update(subscriptions, (list) =>
-					list.filter((s) => !filterEquals(s.filter, filter)),
-				);
-			});
+			SynchronizedRef.updateEffect(subscriptions, (list) =>
+				Effect.gen(function* () {
+					const match = list.find((s) => filterEquals(s.filter, filter));
+					if (typeof match === "undefined") {
+						return list;
+					}
+					yield* Fiber.interrupt(match.fiber);
+					return list.filter((s) => !filterEquals(s.filter, filter));
+				}),
+			);
 
 		const handleMessage = (msg: ClientMessage) =>
 			Match.value(msg).pipe(

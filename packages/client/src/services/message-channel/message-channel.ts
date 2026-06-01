@@ -13,17 +13,9 @@ export class MessageEncodeError extends Data.TaggedError("MessageEncodeError")<{
 	override readonly message = `Could not encode message: ${this.cause.message}`;
 }
 
-export class MessageChannelFailError extends Data.TaggedError(
-	"MessageChannelFailError",
-)<{
-	cause: Error;
-}> {
-	override readonly message = `Message channel failed: ${this.cause.message}`;
-}
-
 export interface MessageChannel {
 	send: (message: ClientMessage) => Effect.Effect<void, MessageEncodeError>;
-	messages: Stream.Stream<ServerMessage, MessageChannelFailError>;
+	receive: () => Stream.Stream<ServerMessage>;
 }
 
 export class MessageChannelService extends Context.Tag("MessageChannel")<

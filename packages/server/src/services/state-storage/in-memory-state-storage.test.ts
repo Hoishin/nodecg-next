@@ -1,6 +1,6 @@
 import { testEffect } from "@nodecg/private";
-import { Effect, Option, Stream } from "effect";
-import { assert, describe, expect, test } from "vitest";
+import { Effect, Exit, Queue, Scope } from "effect";
+import { describe, expect, test } from "vitest";
 
 import { InMemoryStateStorage } from "./in-memory-state-storage.ts";
 import { StateStorageService } from "./state-storage.ts";
@@ -83,27 +83,18 @@ describe("persistInterval", () => {
 	);
 });
 
-describe("changes", () => {
+describe("subscribe", () => {
 	test(
 		"emits a StateChange when update succeeds",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
 				yield* storage.create("ns", "a", 1);
+				const dequeue = yield* storage.subscribe();
 
-				const [head] = yield* Effect.all(
-					[
-						Stream.runHead(storage.changes),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* storage.update("ns", "a", 2);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				yield* storage.update("ns", "a", 2);
 
-				assert(Option.isSome(head));
-				expect(head.value).toEqual({
+				expect(yield* Queue.take(dequeue)).toEqual({
 					namespace: "ns",
 					name: "a",
 					value: 2,
@@ -113,26 +104,22 @@ describe("changes", () => {
 	);
 
 	test(
-		"does not emit on create or failed update",
+		"emits on create but not on a failed update",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
+				const dequeue = yield* storage.subscribe();
 
-				const [head] = yield* Effect.all(
-					[
-						Stream.runHead(storage.changes),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* storage.create("ns", "a", 1);
-							yield* storage.update("missing-ns", "x", 99).pipe(Effect.flip);
-							yield* storage.update("ns", "a", 2);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				yield* storage.create("ns", "a", 1);
+				yield* storage.update("missing-ns", "x", 99).pipe(Effect.flip);
+				yield* storage.update("ns", "a", 2);
 
-				assert(Option.isSome(head));
-				expect(head.value).toEqual({
+				expect(yield* Queue.take(dequeue)).toEqual({
+					namespace: "ns",
+					name: "a",
+					value: 1,
+				});
+				expect(yield* Queue.take(dequeue)).toEqual({
 					namespace: "ns",
 					name: "a",
 					value: 2,
@@ -147,24 +134,45 @@ describe("changes", () => {
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
 				yield* storage.create("ns", "a", 0);
+				const a = yield* storage.subscribe();
+				const b = yield* storage.subscribe();
 
-				const [a, b] = yield* Effect.all(
-					[
-						Stream.runHead(storage.changes),
-						Stream.runHead(storage.changes),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* storage.update("ns", "a", 7);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				yield* storage.update("ns", "a", 7);
 
-				assert(Option.isSome(a));
-				assert(Option.isSome(b));
 				const expected = { namespace: "ns", name: "a", value: 7 };
-				expect(a.value).toEqual(expected);
-				expect(b.value).toEqual(expected);
+				expect(yield* Queue.take(a)).toEqual(expected);
+				expect(yield* Queue.take(b)).toEqual(expected);
+			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
+
+	test(
+		"releases a subscription when its scope closes, leaving others intact",
+		testEffect(
+			Effect.gen(function* () {
+				const storage = yield* StateStorageService;
+				yield* storage.create("ns", "a", 0);
+				const scope = yield* Scope.make();
+				const scoped = yield* storage.subscribe().pipe(Scope.extend(scope));
+				const other = yield* storage.subscribe();
+
+				yield* storage.update("ns", "a", 1);
+				const expected1 = { namespace: "ns", name: "a", value: 1 };
+				expect(yield* Queue.take(scoped)).toEqual(expected1);
+				expect(yield* Queue.take(other)).toEqual(expected1);
+
+				yield* Scope.close(scope, Exit.void);
+				expect(yield* Queue.isShutdown(scoped)).toBe(true);
+
+				yield* storage.update("ns", "a", 2);
+				expect(yield* Queue.take(other)).toEqual({
+					namespace: "ns",
+					name: "a",
+					value: 2,
+				});
+				expect(
+					Exit.isInterrupted(yield* Queue.take(scoped).pipe(Effect.exit)),
+				).toBe(true);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);

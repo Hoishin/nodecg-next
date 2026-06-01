@@ -1,19 +1,17 @@
 import { Socket } from "@effect/platform";
 import { ClientMessage, ServerMessage } from "@nodecg/internal";
 import {
-	Cause,
 	Effect,
-	Exit,
 	Layer,
-	Mailbox,
 	Match,
 	Predicate,
+	PubSub,
 	Schema,
 	Scope,
+	Stream,
 } from "effect";
 
 import {
-	MessageChannelFailError,
 	MessageChannelService,
 	MessageEncodeError,
 } from "./message-channel.ts";
@@ -25,13 +23,9 @@ export const SocketMessageChannel = Layer.scoped(
 	MessageChannelService,
 	Effect.gen(function* () {
 		const socket = yield* Socket.Socket;
-		const mailbox = yield* Mailbox.make<
-			ServerMessage,
-			MessageChannelFailError
-		>();
+		const pubsub = yield* PubSub.unbounded<ServerMessage>();
 		const scope = yield* Effect.scope;
 
-		// Register incoming messages
 		yield* Effect.forkScoped(
 			socket
 				.runRaw((data) =>
@@ -41,13 +35,7 @@ export const SocketMessageChannel = Layer.scoped(
 							return;
 						}
 						const message = yield* decodeServerMessage(data);
-						const sent = yield* mailbox.offer(message);
-						if (!sent) {
-							yield* Effect.logWarning(
-								"Received a message, but mailbox is already closed",
-								message,
-							);
-						}
+						yield* pubsub.publish(message);
 					}).pipe(
 						Effect.catchTag("ParseError", (error) =>
 							Effect.logError("Failed to decode incoming message:", error),
@@ -55,29 +43,11 @@ export const SocketMessageChannel = Layer.scoped(
 					),
 				)
 				.pipe(
+					Effect.ensuring(PubSub.shutdown(pubsub)),
 					Effect.catchTag("SocketError", (error) =>
-						mailbox.fail(new MessageChannelFailError({ cause: error })),
+						Effect.logError("Message channel closed:", error),
 					),
 					Effect.ensureErrorType<never>(),
-					Effect.onExit((exit) =>
-						Exit.matchEffect(exit, {
-							onSuccess: () => mailbox.end,
-							onFailure: (cause) =>
-								Effect.gen(function* () {
-									if (Cause.isInterruptedOnly(cause)) {
-										yield* mailbox.end;
-									} else {
-										yield* mailbox.fail(
-											new MessageChannelFailError({
-												cause: new Error("Socket failed for unknown error", {
-													cause,
-												}),
-											}),
-										);
-									}
-								}),
-						}),
-					),
 				),
 		);
 
@@ -102,6 +72,6 @@ export const SocketMessageChannel = Layer.scoped(
 			);
 		}, Scope.extend(scope));
 
-		return { send, messages: Mailbox.toStream(mailbox) };
+		return { send, receive: () => Stream.fromPubSub(pubsub) };
 	}),
 );

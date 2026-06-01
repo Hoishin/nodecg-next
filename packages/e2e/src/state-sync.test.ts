@@ -19,14 +19,11 @@ describe("client ⇄ server state sync", () => {
 	test("subscribe receives published updates over the websocket", async () => {
 		const state = await loadState({ manifest: fixtureManifest });
 		const received: number[] = [];
-		const cancel = state.count.subscribe((value) => {
+		const cancel = await state.count.subscribe((value) => {
 			received.push(value);
 		});
-		// TODO: move .set() out of waitFor once subscribe is async
-		await vi.waitFor(async () => {
-			await state.count.set(7);
-			expect(received).toContain(7);
-		});
+		await state.count.set(7);
+		await vi.waitFor(() => expect(received).toEqual([7]));
 		cancel();
 	});
 });

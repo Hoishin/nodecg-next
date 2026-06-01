@@ -76,16 +76,22 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	});
 
 	const subscribeEncoded = () =>
-		storage.changes.pipe(
-			Stream.filter(
-				(change) => change.namespace === namespace && change.name === name,
+		storage.subscribe().pipe(
+			Effect.map((dequeue) =>
+				Stream.fromQueue(dequeue).pipe(
+					Stream.filter(
+						(change) => change.namespace === namespace && change.name === name,
+					),
+					Stream.map((change) => change.value),
+				),
 			),
-			Stream.map((change) => change.value),
 		);
 
 	const subscribe = () =>
 		subscribeEncoded().pipe(
-			Stream.flatMap((value) => definition.decode(value)),
+			Effect.map((stream) =>
+				stream.pipe(Stream.flatMap((value) => definition.decode(value))),
+			),
 		);
 
 	const field: StateField<Decoded> = {
@@ -206,12 +212,14 @@ export async function loadState<
 		validate: promisifyEffectFn(field.validate, runtime),
 		subscribe: (handler) => {
 			field.subscribe().pipe(
-				Stream.runForEach((value) =>
-					Effect.try({
-						try: () => handler(value),
-						catch: (error) => Effect.die(error), // TODO: proper handling
-					}),
+				Effect.andThen((stream) =>
+					Stream.runForEach(
+						stream,
+						(value) => Effect.sync(() => handler(value)), // TODO: properly handle defects
+					),
 				),
+				Effect.scoped,
+				runtime.runFork,
 			);
 		},
 		[stateFieldInternal]: field[stateFieldInternal],

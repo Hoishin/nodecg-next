@@ -1,12 +1,10 @@
-import { toError } from "@nodecg/internal";
-import { Effect, Layer, PubSub, Stream } from "effect";
+import { Effect, Layer, PubSub } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
 	type StateChange,
 	StateAlreadyExists,
 	StateNotFound,
-	StateSaveFailed,
 	StateStorageService,
 } from "./state-storage.ts";
 
@@ -14,7 +12,7 @@ export const createInMemoryStateStorage = Effect.fn(
 	"createInMemoryStateStorage",
 )(function* () {
 	const map = new Map<string, Map<string, JsonValue>>();
-	const pubsub = yield* PubSub.unbounded<StateChange>();
+	const changes = yield* PubSub.unbounded<StateChange>();
 
 	const read = Effect.fn("StateStorage.read")(function* (
 		namespace: string,
@@ -32,21 +30,16 @@ export const createInMemoryStateStorage = Effect.fn(
 		name: string,
 		value: JsonValue,
 	) {
-		if (typeof map.get(namespace)?.get(name) !== "undefined") {
+		const ns = map.get(namespace);
+		if (typeof ns?.get(name) !== "undefined") {
 			return yield* new StateAlreadyExists({ namespace, name });
 		}
-		return yield* Effect.try({
-			try: () => {
-				const ns = map.get(namespace);
-				if (ns) {
-					ns.set(name, value);
-				} else {
-					map.set(namespace, new Map([[name, value]]));
-				}
-			},
-			catch: (error) =>
-				new StateSaveFailed({ namespace, name, cause: toError(error) }),
-		});
+		if (ns) {
+			ns.set(name, value);
+		} else {
+			map.set(namespace, new Map([[name, value]]));
+		}
+		yield* changes.publish({ namespace, name, value });
 	});
 
 	const update = Effect.fn("StateStorage.update")(function* (
@@ -54,29 +47,19 @@ export const createInMemoryStateStorage = Effect.fn(
 		name: string,
 		value: JsonValue,
 	) {
-		const updated = yield* Effect.try({
-			try: () => {
-				const ns = map.get(namespace);
-				if (ns) {
-					ns.set(name, value);
-					return true;
-				}
-				return false;
-			},
-			catch: (error) =>
-				new StateSaveFailed({ namespace, name, cause: toError(error) }),
-		});
-		if (!updated) {
+		const ns = map.get(namespace);
+		if (!ns) {
 			return yield* new StateNotFound({ namespace, name });
 		}
-		yield* pubsub.publish({ namespace, name, value });
+		ns.set(name, value);
+		yield* changes.publish({ namespace, name, value });
 	});
 
 	return {
 		read,
 		create,
 		update,
-		changes: Stream.fromPubSub(pubsub),
+		subscribe: () => PubSub.subscribe(changes),
 		persistInterval: 0,
 	};
 });

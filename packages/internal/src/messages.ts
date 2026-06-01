@@ -23,6 +23,10 @@ export const ClientMessage = Schema.Union(
 export type ClientMessage = typeof ClientMessage.Type;
 
 export const ServerMessage = Schema.Union(
+	Schema.TaggedStruct("ack-subscribe", {
+		topic: Schema.Literal("state"),
+		message: Schema.Struct({ filter: StateFilter }),
+	}),
 	Schema.TaggedStruct("publish", {
 		topic: Schema.Literal("state"),
 		message: Schema.Struct({ filter: StateFilter, value: Schema.Unknown }),

@@ -72,7 +72,7 @@ describe("send", () => {
 	);
 });
 
-describe("messages", () => {
+describe("receive", () => {
 	test(
 		"decodes incoming JSON frames into ServerMessage stream values",
 		testEffect(
@@ -92,7 +92,7 @@ describe("messages", () => {
 						}),
 					);
 
-					const first = yield* Stream.runHead(channel.messages);
+					const first = yield* Stream.runHead(channel.receive());
 					assert(Option.isSome(first));
 					expect(first.value).toEqual({
 						_tag: "publish",
@@ -116,7 +116,12 @@ describe("messages", () => {
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
 					yield* closeClean;
-					const all = yield* Stream.runCollect(channel.messages);
+					const all = yield* Stream.runCollect(channel.receive()).pipe(
+						Effect.timeoutFail({
+							duration: "1 second",
+							onTimeout: () => Effect.fail("Stream did not finish"),
+						}),
+					);
 					expect(Array.from(all)).toEqual([]);
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
@@ -124,7 +129,7 @@ describe("messages", () => {
 	);
 
 	test(
-		"fails the stream with MessageChannelFailError on SocketError",
+		"ends the stream on socket error",
 		testEffect(
 			Effect.gen(function* () {
 				const { socket, closeWithError } = yield* makeFakeSocket;
@@ -137,10 +142,13 @@ describe("messages", () => {
 							cause: new Error("simulated"),
 						}),
 					);
-					const error = yield* Stream.runCollect(channel.messages).pipe(
-						Effect.flip,
+					const all = yield* Stream.runCollect(channel.receive()).pipe(
+						Effect.timeoutFail({
+							duration: "1 second",
+							onTimeout: () => Effect.fail("Stream did not finish"),
+						}),
 					);
-					expect(error._tag).toBe("MessageChannelFailError");
+					expect(Array.from(all)).toEqual([]);
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
 		),
@@ -166,7 +174,7 @@ describe("messages", () => {
 						}),
 					);
 
-					const first = yield* Stream.runHead(channel.messages);
+					const first = yield* Stream.runHead(channel.receive());
 					assert(Option.isSome(first));
 					expect(first.value).toMatchObject({
 						_tag: "publish",
@@ -197,7 +205,7 @@ describe("messages", () => {
 						}),
 					);
 
-					const first = yield* Stream.runHead(channel.messages);
+					const first = yield* Stream.runHead(channel.receive());
 					assert(Option.isSome(first));
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),

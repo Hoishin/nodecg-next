@@ -5,13 +5,14 @@ import {
 	type StateManifest,
 } from "@nodecg/core";
 import { testEffect } from "@nodecg/private";
-import { Effect, Option, Schema, Stream } from "effect";
+import { Effect, Option, Queue, Schema, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state.ts";
 import { stateFieldInternal } from "./models/state-field.ts";
 import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
+	type StateChange,
 	StateNotFound,
 	type StateStorage,
 	StateStorageService,
@@ -22,7 +23,9 @@ const createStorageStub = () =>
 		read: vi.fn<StateStorage["read"]>(),
 		create: vi.fn<StateStorage["create"]>(() => Effect.void),
 		update: vi.fn<StateStorage["update"]>(() => Effect.void),
-		changes: Stream.empty,
+		subscribe: vi.fn<StateStorage["subscribe"]>(() =>
+			Queue.unbounded<StateChange>(),
+		),
 		persistInterval: 0,
 	}) satisfies StateStorage;
 
@@ -404,17 +407,11 @@ describe("field subscribe", () => {
 					initialValues: { count: () => 0, other: () => 0 },
 				});
 
-				const [head] = yield* Effect.all(
-					[
-						Stream.runHead(state.count[stateFieldInternal].subscribeEncoded()),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* state.count.set(42);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				const stream =
+					yield* state.count[stateFieldInternal].subscribeEncoded();
+				yield* state.count.set(42);
 
+				const head = yield* Stream.runHead(stream);
 				assert(Option.isSome(head));
 				expect(head.value).toBe("42");
 			}).pipe(Effect.provide(InMemoryStateStorage)),
@@ -430,17 +427,10 @@ describe("field subscribe", () => {
 					initialValues: { count: () => 0, other: () => 0 },
 				});
 
-				const [head] = yield* Effect.all(
-					[
-						Stream.runHead(state.count.subscribe()),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* state.count.set(7);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				const stream = yield* state.count.subscribe();
+				yield* state.count.set(7);
 
+				const head = yield* Stream.runHead(stream);
 				assert(Option.isSome(head));
 				expect(head.value).toBe(7);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
@@ -456,18 +446,11 @@ describe("field subscribe", () => {
 					initialValues: { count: () => 0, other: () => 0 },
 				});
 
-				const [head] = yield* Effect.all(
-					[
-						Stream.runHead(state.count.subscribe()),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* state.other.set(99);
-							yield* state.count.set(3);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				const stream = yield* state.count.subscribe();
+				yield* state.other.set(99);
+				yield* state.count.set(3);
 
+				const head = yield* Stream.runHead(stream);
 				assert(Option.isSome(head));
 				expect(head.value).toBe(3);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
@@ -483,17 +466,10 @@ describe("field subscribe", () => {
 					initialValues: { count: () => 5, other: () => 0 },
 				});
 
-				const [head] = yield* Effect.all(
-					[
-						Stream.runHead(state.count.subscribe()),
-						Effect.gen(function* () {
-							yield* Effect.yieldNow();
-							yield* state.count.update((v) => v + 3);
-						}),
-					],
-					{ concurrency: "unbounded" },
-				);
+				const stream = yield* state.count.subscribe();
+				yield* state.count.update((v) => v + 3);
 
+				const head = yield* Stream.runHead(stream);
 				assert(Option.isSome(head));
 				expect(head.value).toBe(8);
 			}).pipe(Effect.provide(InMemoryStateStorage)),

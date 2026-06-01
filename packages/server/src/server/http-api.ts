@@ -40,10 +40,6 @@ export const buildNodecgApi = (options: {
 							Match.value(error).pipe(
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
 								Match.tag(
-									"StateGetFailed",
-									() => new HttpApiError.InternalServerError(),
-								),
-								Match.tag(
 									"StateValidationError",
 									() => new HttpApiError.InternalServerError(),
 								),
@@ -67,10 +63,6 @@ export const buildNodecgApi = (options: {
 									() => new HttpApiError.BadRequest(),
 								),
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
-								Match.tag(
-									"StateSaveFailed",
-									() => new HttpApiError.InternalServerError(),
-								),
 								Match.exhaustive,
 							),
 						),

@@ -5,11 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
 import { type StateField, stateFieldInternal } from "../models/state-field.ts";
-import {
-	StateGetFailed,
-	StateNotFound,
-	StateSaveFailed,
-} from "../services/state-storage/state-storage.ts";
+import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];
@@ -18,8 +14,8 @@ function stubField(
 	internal: Pick<Internal, "getEncoded" | "setEncoded">,
 ): StateField<unknown> {
 	const unused = vi.fn();
-	const subscribeEncoded = () => Stream.empty;
-	const subscribe = () => Stream.empty;
+	const subscribeEncoded = () => Effect.succeed(Stream.empty);
+	const subscribe = () => Effect.succeed(Stream.empty);
 	return {
 		get: unused,
 		set: unused,
@@ -104,26 +100,6 @@ describe("get", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("500 when the field reports StateGetFailed", async () => {
-		const handler = webHandler([
-			loadedState("root", {
-				count: stubField({
-					getEncoded: () =>
-						Effect.fail(
-							new StateGetFailed({
-								namespace: "root",
-								name: "count",
-								cause: new Error("boom"),
-							}),
-						),
-					setEncoded: () => Effect.void,
-				}),
-			}),
-		]);
-		const res = await handler(new Request(getUrl));
-		expect(res.status).toBe(500);
-	});
-
 	test("500 when the field reports StateValidationError", async () => {
 		const handler = webHandler([
 			loadedState("root", {
@@ -204,25 +180,5 @@ describe("update", () => {
 		]);
 		const res = await handler(putRequest(7));
 		expect(res.status).toBe(404);
-	});
-
-	test("500 when the field reports StateSaveFailed", async () => {
-		const handler = webHandler([
-			loadedState("root", {
-				count: stubField({
-					getEncoded: () => Effect.succeed(0),
-					setEncoded: () =>
-						Effect.fail(
-							new StateSaveFailed({
-								namespace: "root",
-								name: "count",
-								cause: new Error("boom"),
-							}),
-						),
-				}),
-			}),
-		]);
-		const res = await handler(putRequest(7));
-		expect(res.status).toBe(500);
 	});
 });

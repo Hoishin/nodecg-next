@@ -1,6 +1,6 @@
 import type { StateValidationError } from "@nodecg/core";
 import type { PromisifyObject } from "@nodecg/internal";
-import { Data, type Effect, type Stream } from "effect";
+import { Data, type Effect, type Scope, type Stream } from "effect";
 import type { Promisable } from "type-fest";
 
 export class GetStateError extends Data.TaggedError("GetStateError")<{
@@ -49,9 +49,10 @@ export interface StateFieldEffect<Decoded> {
 	update: (
 		fn: (value: Decoded) => Promisable<Decoded>,
 	) => Effect.Effect<void, UpdateStateError>;
-	subscribe: () => Stream.Stream<
-		Decoded,
-		StateSubscriptionError | StateValueError
+	subscribe: () => Effect.Effect<
+		Stream.Stream<Decoded, StateValueError>,
+		StateSubscriptionError,
+		Scope.Scope
 	>;
 }
 
@@ -59,5 +60,7 @@ export type StateFieldPromise<Decoded> = Omit<
 	PromisifyObject<StateFieldEffect<Decoded>>,
 	"subscribe"
 > & {
-	subscribe: (callback: (value: Decoded) => Promisable<void>) => () => void;
+	subscribe: (
+		callback: (value: Decoded) => Promisable<void>,
+	) => Promise<() => void>;
 };

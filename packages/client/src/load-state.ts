@@ -1,7 +1,9 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapEffectValues, mapValues } from "@nodecg/internal";
 import {
+	Deferred,
 	Effect,
+	Exit,
 	Fiber,
 	type HKT,
 	Layer,
@@ -9,6 +11,7 @@ import {
 	Match,
 	Option,
 	type Schema,
+	Scope,
 	Stream,
 } from "effect";
 import type { Promisable } from "type-fest";
@@ -86,63 +89,83 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	);
 
 	const subscribe = () =>
-		Stream.acquireRelease(
-			messageChannel
-				.send({
-					_tag: "subscribe",
-					topic: "state",
-					message: { filter: { namespace, name } },
-				})
-				.pipe(
-					Effect.mapError((cause) => new StateSubscriptionError({ cause })),
-					Effect.andThen(() => {
-						refcount += 1;
-					}),
-				),
-			() =>
+		Effect.gen(function* () {
+			const established = yield* Deferred.make<void>();
+
+			yield* Effect.acquireRelease(
 				Effect.gen(function* () {
-					refcount -= 1;
-					if (refcount > 0) {
-						return;
-					}
-					yield* messageChannel
-						.send({
-							_tag: "unsubscribe",
-							topic: "state",
-							message: { filter: { namespace, name } },
-						})
-						.pipe(
-							Effect.catchAll((error) =>
-								Effect.logError(
-									`Failed to send unsubscribe for "${namespace}/${name}":`,
-									error,
+					refcount += 1;
+					if (refcount === 1) {
+						yield* messageChannel
+							.send({
+								_tag: "subscribe",
+								topic: "state",
+								message: { filter: { namespace, name } },
+							})
+							.pipe(
+								Effect.mapError(
+									(cause) => new StateSubscriptionError({ cause }),
 								),
-							),
-						);
+							);
+					} else {
+						yield* Deferred.succeed(established, void 0);
+					}
 				}),
-		).pipe(
-			Stream.flatMap(() =>
-				messageChannel.messages.pipe(
-					Stream.filterMap((msg) =>
-						msg._tag === "publish" &&
-						msg.message.filter.namespace === namespace &&
-						msg.message.filter.name === name
-							? Option.some(msg.message.value)
-							: Option.none(),
-					),
-					Stream.mapError((cause) => new StateSubscriptionError({ cause })),
+				() =>
+					Effect.gen(function* () {
+						refcount -= 1;
+						if (refcount > 0) {
+							return;
+						}
+						yield* messageChannel
+							.send({
+								_tag: "unsubscribe",
+								topic: "state",
+								message: { filter: { namespace, name } },
+							})
+							.pipe(
+								Effect.catchAll((error) =>
+									Effect.logError(
+										`Failed to send unsubscribe for "${namespace}/${name}":`,
+										error,
+									),
+								),
+							);
+					}),
+			);
+
+			const decoded = messageChannel.receive().pipe(
+				Stream.tap((msg) =>
+					msg._tag === "ack-subscribe" &&
+					msg.message.filter.namespace === namespace &&
+					msg.message.filter.name === name
+						? Deferred.succeed(established, void 0)
+						: Effect.void,
 				),
-			),
-			Stream.mapEffect((value) =>
-				definition
-					.decode(value)
-					.pipe(
-						Effect.mapError(
-							(cause) => new StateValueError({ namespace, name, cause }),
+				Stream.filterMap((msg) =>
+					msg._tag === "publish" &&
+					msg.message.filter.namespace === namespace &&
+					msg.message.filter.name === name
+						? Option.some(msg.message.value)
+						: Option.none(),
+				),
+				Stream.mapEffect((value) =>
+					definition
+						.decode(value)
+						.pipe(
+							Effect.mapError(
+								(cause) => new StateValueError({ namespace, name, cause }),
+							),
 						),
-					),
-			),
-		);
+				),
+			);
+
+			const queue = yield* Stream.toQueue(decoded);
+
+			yield* Deferred.await(established);
+
+			return Stream.fromQueue(queue).pipe(Stream.flattenTake);
+		});
 
 	const field: StateFieldEffect<Decoded> = {
 		get,
@@ -222,15 +245,24 @@ export async function loadState<
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
-		subscribe: (callback) => {
-			const fiber = field.subscribe().pipe(
+		subscribe: async (callback) => {
+			// TODO: build effect and do one runtime.run*
+			const scope = await runtime.runPromise(Scope.make());
+			const stream = await runtime.runPromise(
+				field.subscribe().pipe(Scope.extend(scope)),
+			);
+			const fiber = stream.pipe(
 				Stream.runForEach((value) =>
 					Effect.tryPromise(async () => callback(value)),
 				),
 				runtime.runFork,
 			);
 			return () => {
-				runtime.runFork(Fiber.interrupt(fiber));
+				runtime.runFork(
+					Fiber.interrupt(fiber).pipe(
+						Effect.andThen(Scope.close(scope, Exit.void)),
+					),
+				);
 			};
 		},
 	}));

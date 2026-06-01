@@ -1,7 +1,16 @@
 import { defineState } from "@nodecg/core";
 import type { ServerMessage } from "@nodecg/internal";
 import { testEffect } from "@nodecg/private";
-import { Effect, Fiber, Mailbox, Option, Schema, Stream } from "effect";
+import {
+	Effect,
+	Exit,
+	Fiber,
+	Mailbox,
+	Option,
+	Schema,
+	Scope,
+	Stream,
+} from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state.ts";
@@ -24,7 +33,7 @@ const createTransportStub = () =>
 const createMessageChannelStub = () =>
 	({
 		send: vi.fn<MessageChannel["send"]>(() => Effect.void),
-		messages: Stream.never,
+		receive: () => Stream.never,
 	}) satisfies MessageChannel;
 
 describe("get", () => {
@@ -262,6 +271,22 @@ describe("update", () => {
 });
 
 describe("subscribe", () => {
+	const subscribeFrame = {
+		_tag: "subscribe",
+		topic: "state",
+		message: { filter: { namespace: "root", name: "count" } },
+	};
+	const unsubscribeFrame = {
+		_tag: "unsubscribe",
+		topic: "state",
+		message: { filter: { namespace: "root", name: "count" } },
+	};
+	const ackFrame: ServerMessage = {
+		_tag: "ack-subscribe",
+		topic: "state",
+		message: { filter: { namespace: "root", name: "count" } },
+	};
+
 	test(
 		"sends server subscribe and emits decoded matching publishes",
 		testEffect(
@@ -271,7 +296,7 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					messages: Mailbox.toStream(mailbox),
+					receive: () => Mailbox.toStream(mailbox),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -282,19 +307,16 @@ describe("subscribe", () => {
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const head = yield* Stream.runHead(state.count.subscribe()).pipe(
-					Effect.fork,
-				);
+				const head = yield* state.count
+					.subscribe()
+					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith({
-							_tag: "subscribe",
-							topic: "state",
-							message: { filter: { namespace: "root", name: "count" } },
-						});
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
 
+				yield* mailbox.offer(ackFrame);
 				yield* mailbox.offer({
 					_tag: "publish",
 					topic: "state",
@@ -314,9 +336,10 @@ describe("subscribe", () => {
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
-					send: vi.fn<MessageChannel["send"]>(() => Effect.void),
-					messages: Mailbox.toStream(mailbox),
+					send,
+					receive: () => Mailbox.toStream(mailbox),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -328,19 +351,16 @@ describe("subscribe", () => {
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const head = yield* Stream.runHead(state.count.subscribe()).pipe(
-					Effect.fork,
-				);
+				const head = yield* state.count
+					.subscribe()
+					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
-						expect(messageChannelStub.send).toHaveBeenCalledWith({
-							_tag: "subscribe",
-							topic: "state",
-							message: { filter: { namespace: "root", name: "count" } },
-						});
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
 
+				yield* mailbox.offer(ackFrame);
 				yield* mailbox.offer({
 					_tag: "publish",
 					topic: "state",
@@ -360,14 +380,15 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"sends server unsubscribe when the stream is interrupted",
+		"resolves only after the server acks",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					messages: Stream.never,
+					receive: () => Mailbox.toStream(mailbox),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -378,27 +399,56 @@ describe("subscribe", () => {
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const fiber = yield* Stream.runDrain(state.count.subscribe()).pipe(
-					Effect.fork,
-				);
+				const fiber = yield* state.count.subscribe().pipe(Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith({
-							_tag: "subscribe",
-							topic: "state",
-							message: { filter: { namespace: "root", name: "count" } },
-						});
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* Fiber.interrupt(fiber);
+				assert(Option.isNone(yield* Fiber.poll(fiber)));
 
+				yield* mailbox.offer(ackFrame);
+				yield* Fiber.join(fiber);
+			}),
+		),
+	);
+
+	test(
+		"sends server unsubscribe when the subscription scope closes",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Mailbox.toStream(mailbox),
+				};
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const scope = yield* Scope.make();
+				const fiber = yield* state.count
+					.subscribe()
+					.pipe(Scope.extend(scope), Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith({
-							_tag: "unsubscribe",
-							topic: "state",
-							message: { filter: { namespace: "root", name: "count" } },
-						});
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+				yield* mailbox.offer(ackFrame);
+				yield* Fiber.join(fiber);
+
+				yield* Scope.close(scope, Exit.void);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
 					}),
 				);
 			}),
@@ -406,14 +456,15 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"refcounts: unsubscribe fires only after the last stream ends",
+		"refcounts: subscribe sent once, unsubscribe only after the last scope closes",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					messages: Stream.never,
+					receive: () => Mailbox.toStream(mailbox),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -424,22 +475,30 @@ describe("subscribe", () => {
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const fiber1 = yield* Stream.runDrain(state.count.subscribe()).pipe(
-					Effect.fork,
-				);
-				const fiber2 = yield* Stream.runDrain(state.count.subscribe()).pipe(
-					Effect.fork,
-				);
+				const scope1 = yield* Scope.make();
+				const sub1 = yield* state.count
+					.subscribe()
+					.pipe(Scope.extend(scope1), Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
-						const subscribeCount = send.mock.calls.filter(
-							([msg]) => msg._tag === "subscribe",
-						).length;
-						expect(subscribeCount).toBe(2);
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
+				yield* mailbox.offer(ackFrame);
+				yield* Fiber.join(sub1);
 
-				yield* Fiber.interrupt(fiber1);
+				const scope2 = yield* Scope.make();
+				const sub2 = yield* state.count
+					.subscribe()
+					.pipe(Scope.extend(scope2), Effect.fork);
+				yield* Fiber.join(sub2);
+
+				const subscribeCount = send.mock.calls.filter(
+					([msg]) => msg._tag === "subscribe",
+				).length;
+				expect(subscribeCount).toBe(1);
+
+				yield* Scope.close(scope1, Exit.void);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						const hasUnsubscribe = send.mock.calls.some(
@@ -449,14 +508,10 @@ describe("subscribe", () => {
 					}),
 				);
 
-				yield* Fiber.interrupt(fiber2);
+				yield* Scope.close(scope2, Exit.void);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith({
-							_tag: "unsubscribe",
-							topic: "state",
-							message: { filter: { namespace: "root", name: "count" } },
-						});
+						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
 					}),
 				);
 			}),
