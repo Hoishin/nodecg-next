@@ -16,14 +16,16 @@ describe("client ⇄ server state sync", () => {
 		expect(await state.count.get()).toBe(42);
 	});
 
-	test("subscribe receives published updates over the websocket", async () => {
+	test("subscribe receives the current value, then published updates", async () => {
 		const state = await loadState({ manifest: fixtureManifest });
+		await state.count.set(5);
 		const received: number[] = [];
 		const cancel = await state.count.subscribe((value) => {
 			received.push(value);
 		});
+		await vi.waitFor(() => expect(received).toEqual([5]));
 		await state.count.set(7);
-		await vi.waitFor(() => expect(received).toEqual([7]));
+		await vi.waitFor(() => expect(received).toEqual([5, 7]));
 		cancel();
 	});
 });

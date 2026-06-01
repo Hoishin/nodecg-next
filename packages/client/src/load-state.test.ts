@@ -281,11 +281,11 @@ describe("subscribe", () => {
 		topic: "state",
 		message: { filter: { namespace: "root", name: "count" } },
 	};
-	const ackFrame: ServerMessage = {
-		_tag: "ack-subscribe",
+	const publishFrame = (value: number): ServerMessage => ({
+		_tag: "publish",
 		topic: "state",
-		message: { filter: { namespace: "root", name: "count" } },
-	};
+		message: { filter: { namespace: "root", name: "count" }, value },
+	});
 
 	test(
 		"sends server subscribe and emits decoded matching publishes",
@@ -316,12 +316,7 @@ describe("subscribe", () => {
 					}),
 				);
 
-				yield* mailbox.offer(ackFrame);
-				yield* mailbox.offer({
-					_tag: "publish",
-					topic: "state",
-					message: { filter: { namespace: "root", name: "count" }, value: 42 },
-				});
+				yield* mailbox.offer(publishFrame(42));
 
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
@@ -360,17 +355,12 @@ describe("subscribe", () => {
 					}),
 				);
 
-				yield* mailbox.offer(ackFrame);
 				yield* mailbox.offer({
 					_tag: "publish",
 					topic: "state",
 					message: { filter: { namespace: "root", name: "other" }, value: 99 },
 				});
-				yield* mailbox.offer({
-					_tag: "publish",
-					topic: "state",
-					message: { filter: { namespace: "root", name: "count" }, value: 7 },
-				});
+				yield* mailbox.offer(publishFrame(7));
 
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
@@ -380,7 +370,7 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"resolves only after the server acks",
+		"resolves only after the first publish",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
@@ -407,7 +397,7 @@ describe("subscribe", () => {
 				);
 				assert(Option.isNone(yield* Fiber.poll(fiber)));
 
-				yield* mailbox.offer(ackFrame);
+				yield* mailbox.offer(publishFrame(0));
 				yield* Fiber.join(fiber);
 			}),
 		),
@@ -442,7 +432,7 @@ describe("subscribe", () => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(ackFrame);
+				yield* mailbox.offer(publishFrame(0));
 				yield* Fiber.join(fiber);
 
 				yield* Scope.close(scope, Exit.void);
@@ -484,7 +474,7 @@ describe("subscribe", () => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(ackFrame);
+				yield* mailbox.offer(publishFrame(0));
 				yield* Fiber.join(sub1);
 
 				const scope2 = yield* Scope.make();

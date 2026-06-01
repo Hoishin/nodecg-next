@@ -1,22 +1,76 @@
-import { loadState } from "@nodecg/client";
-import { StrictMode, useEffect, useState } from "react";
+import { loadState, type StateFieldPromise } from "@nodecg/client";
+import { StrictMode, Suspense, useSyncExternalStore } from "react";
 import ReactDOM from "react-dom/client";
 
 import { counterState } from "./state.ts";
 
 const counter = await loadState({ manifest: counterState });
 
+type Snapshot<T> = { readonly value: T };
+
+interface StateFieldSyncStore<T> {
+	subscribe: (onStoreChange: () => void) => () => void;
+	getSnapshot: () => Snapshot<T> | undefined;
+	ready: () => Promise<void>;
+}
+
+const toSyncStore = <T,>(
+	stateField: StateFieldPromise<T>,
+): StateFieldSyncStore<T> => {
+	let snapshot: Snapshot<T> | undefined;
+	let started: Promise<void> | undefined;
+	const listeners = new Set<() => void>();
+
+	const publish = (value: T) => {
+		snapshot = { value };
+		for (const listener of listeners) {
+			listener();
+		}
+	};
+
+	const ready = () => {
+		if (typeof started === "undefined") {
+			started = stateField.subscribe(publish).then(() =>
+				stateField.get().then((value) => {
+					if (typeof snapshot === "undefined") {
+						publish(value);
+					}
+				}),
+			);
+		}
+		return started;
+	};
+
+	return {
+		ready,
+		subscribe(onStoreChange) {
+			listeners.add(onStoreChange);
+			void ready();
+			return () => {
+				listeners.delete(onStoreChange);
+			};
+		},
+		getSnapshot: () => snapshot,
+	};
+};
+
+const countStore = toSyncStore(counter.count);
+const useCount = () => {
+	const snapshot = useSyncExternalStore(
+		countStore.subscribe,
+		countStore.getSnapshot,
+	);
+	if (typeof snapshot === "undefined") {
+		throw countStore.ready();
+	}
+	return snapshot.value;
+};
+
 function Counter() {
-	const [value, setValue] = useState<number | null>(null);
-
-	useEffect(() => {
-		counter.count.get().then(setValue).catch(console.error);
-		return counter.count.subscribe(setValue);
-	}, []);
-
+	const value = useCount();
 	return (
 		<div>
-			<p>count = {value ?? "…"}</p>
+			<p>count = {value}</p>
 			<button type="button" onClick={() => counter.count.update((v) => v + 1)}>
 				+1
 			</button>
@@ -30,6 +84,8 @@ if (rootElement === null) {
 }
 ReactDOM.createRoot(rootElement).render(
 	<StrictMode>
-		<Counter />
+		<Suspense fallback="Loading...">
+			<Counter />
+		</Suspense>
 	</StrictMode>,
 );

@@ -135,13 +135,6 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			);
 
 			const decoded = messageChannel.receive().pipe(
-				Stream.tap((msg) =>
-					msg._tag === "ack-subscribe" &&
-					msg.message.filter.namespace === namespace &&
-					msg.message.filter.name === name
-						? Deferred.succeed(established, void 0)
-						: Effect.void,
-				),
 				Stream.filterMap((msg) =>
 					msg._tag === "publish" &&
 					msg.message.filter.namespace === namespace &&
@@ -149,6 +142,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 						? Option.some(msg.message.value)
 						: Option.none(),
 				),
+				Stream.tap(() => Deferred.succeed(established, void 0)),
 				Stream.mapEffect((value) =>
 					definition
 						.decode(value)

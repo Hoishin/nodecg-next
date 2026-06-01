@@ -4,6 +4,7 @@ import {
 	HttpServerResponse,
 	type Socket,
 } from "@effect/platform";
+import type { StateValidationError } from "@nodecg/core";
 import { ClientMessage, ServerMessage } from "@nodecg/internal";
 import {
 	Effect,
@@ -14,9 +15,11 @@ import {
 	Stream,
 	SynchronizedRef,
 } from "effect";
+import type { JsonValue } from "type-fest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
 import { type StateField, stateFieldInternal } from "../models/state-field.ts";
+import type { StateNotFound } from "../services/state-storage/state-storage.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
@@ -57,7 +60,10 @@ export const websocketRoute = (options: {
 				readonly filter: StateFilter;
 				readonly fiber: Fiber.RuntimeFiber<
 					void,
-					ParseResult.ParseError | Socket.SocketError
+					| ParseResult.ParseError
+					| Socket.SocketError
+					| StateNotFound
+					| StateValidationError
 				>;
 			}>
 		>([]);
@@ -67,17 +73,17 @@ export const websocketRoute = (options: {
 				Effect.andThen((encodedMessage) => write(encodedMessage)),
 			);
 
+		const publishState = (filter: StateFilter, value: JsonValue) =>
+			send({ _tag: "publish", topic: "state", message: { filter, value } });
+
+		const sendCurrent = (filter: StateFilter, internal: FieldInternal) =>
+			internal
+				.getEncoded()
+				.pipe(Effect.flatMap((value) => publishState(filter, value)));
+
 		const startSubscription = (filter: StateFilter) =>
 			SynchronizedRef.updateEffect(subscriptions, (list) =>
 				Effect.gen(function* () {
-					if (list.some((s) => filterEquals(s.filter, filter))) {
-						yield* send({
-							_tag: "ack-subscribe",
-							topic: "state",
-							message: { filter },
-						});
-						return list;
-					}
 					const internal = registry.get(filter.namespace)?.get(filter.name);
 					if (typeof internal === "undefined") {
 						yield* Effect.logWarning(
@@ -85,20 +91,16 @@ export const websocketRoute = (options: {
 						);
 						return list;
 					}
+					if (list.some((s) => filterEquals(s.filter, filter))) {
+						yield* sendCurrent(filter, internal);
+						return list;
+					}
 					const fiber = yield* Effect.forkScoped(
 						Effect.gen(function* () {
 							const stream = yield* internal.subscribeEncoded();
-							yield* send({
-								_tag: "ack-subscribe",
-								topic: "state",
-								message: { filter },
-							});
+							yield* sendCurrent(filter, internal);
 							yield* Stream.runForEach(stream, (value) =>
-								send({
-									_tag: "publish",
-									topic: "state",
-									message: { filter, value },
-								}),
+								publishState(filter, value),
 							);
 						}).pipe(Effect.scoped),
 					);
