@@ -1,9 +1,14 @@
 import type { StateValidationError } from "@nodecg/core";
 import type { PromisifyObject } from "@nodecg/internal";
 import { Data, type Effect, type Scope, type Stream } from "effect";
-import type { Promisable, JsonValue } from "type-fest";
+import type {
+	Promisable,
+	JsonValue,
+	OverrideProperties,
+	Simplify,
+} from "type-fest";
 
-import type { StateNotFound } from "../services/state-storage/state-storage.ts";
+import type { StateNotFound } from "./services/state-storage/state-storage.ts";
 
 export const stateFieldInternal = Symbol("stateFieldInternal");
 
@@ -26,12 +31,14 @@ export interface StateField<Decoded> {
 		Decoded,
 		StateNotFound | StateValidationError
 	>;
+
 	/**
 	 * Validate value and write it in storage
 	 */
 	readonly set: (
 		value: Decoded,
-	) => Effect.Effect<void, StateValidationError | StateNotFound>;
+	) => Effect.Effect<void, StateNotFound | StateValidationError>;
+
 	/**
 	 * Run provided async function, validate the result, and write it in storage
 	 */
@@ -39,7 +46,7 @@ export interface StateField<Decoded> {
 		fn: (value: Decoded) => Promisable<Decoded>,
 	) => Effect.Effect<
 		void,
-		StateUpdateFnError | StateValidationError | StateNotFound
+		StateNotFound | StateValidationError | StateUpdateFnError
 	>;
 
 	/**
@@ -49,34 +56,40 @@ export interface StateField<Decoded> {
 		value: Decoded,
 	) => Effect.Effect<JsonValue, StateValidationError>;
 
+	/**
+	 * Subscribe to changes
+	 */
 	readonly subscribe: () => Effect.Effect<
 		Stream.Stream<Decoded, StateValidationError>,
 		never,
 		Scope.Scope
 	>;
 
-	readonly [stateFieldInternal]: Pick<
-		StateField<Decoded>,
-		"get" | "set" | "update" | "validate" | "subscribe"
-	> & {
-		readonly getEncoded: () => Effect.Effect<
-			JsonValue,
-			StateNotFound | StateValidationError
-		>;
-		readonly setEncoded: (
-			value: unknown,
-		) => Effect.Effect<void, StateValidationError | StateNotFound>;
-		readonly subscribeEncoded: () => Effect.Effect<
-			Stream.Stream<JsonValue>,
-			never,
-			Scope.Scope
-		>;
-	};
+	readonly [stateFieldInternal]: Simplify<
+		{
+			[K in keyof StateField<Decoded> as K extends string
+				? K
+				: never]: StateField<Decoded>[K];
+		} & {
+			readonly getEncoded: () => Effect.Effect<
+				JsonValue,
+				StateNotFound | StateValidationError
+			>;
+			readonly setEncoded: (
+				value: unknown,
+			) => Effect.Effect<void, StateNotFound | StateValidationError>;
+			readonly subscribeEncoded: () => Effect.Effect<
+				Stream.Stream<JsonValue>,
+				never,
+				Scope.Scope
+			>;
+		}
+	>;
 }
 
-export type StateFieldPromise<Decoded> = Omit<
+export type StateFieldPromise<Decoded> = OverrideProperties<
 	PromisifyObject<StateField<Decoded>>,
-	"subscribe"
-> & {
-	subscribe: (handler: (value: Decoded) => void) => void;
-};
+	{
+		subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
+	}
+>;

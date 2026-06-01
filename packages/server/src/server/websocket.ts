@@ -18,7 +18,7 @@ import {
 import type { JsonValue } from "type-fest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import { type StateField, stateFieldInternal } from "../models/state-field.ts";
+import { type StateField, stateFieldInternal } from "../state-field.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));

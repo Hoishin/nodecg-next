@@ -22,7 +22,7 @@ import {
 	StateSubscriptionError,
 	StateValueError,
 	UpdateStateError,
-} from "./models/state-field.ts";
+} from "./state-field.ts";
 import {
 	type MessageChannel,
 	MessageChannelService,
@@ -234,7 +234,7 @@ export async function loadState<
 		StateFieldEffectLambda,
 		StateFieldPromiseLambda,
 		Definitions
-	>(effectState, (field) => ({
+	>(effectState, (field, name) => ({
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
@@ -245,7 +245,20 @@ export async function loadState<
 					const stream = yield* field.subscribe().pipe(Scope.extend(scope));
 					yield* stream.pipe(
 						Stream.runForEach((value) =>
-							Effect.tryPromise(async () => callback(value)),
+							Effect.tryPromise(async () => callback(value)).pipe(
+								Effect.catchAll((error) =>
+									Effect.logError(
+										`State subscription handler for "${manifest.namespace}/${name}" threw`,
+										error,
+									),
+								),
+							),
+						),
+						Effect.catchAll((error) =>
+							Effect.logError(
+								`State subscription stream for "${manifest.namespace}/${name}" failed`,
+								error,
+							),
 						),
 						Effect.forkIn(scope),
 					);

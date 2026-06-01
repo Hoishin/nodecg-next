@@ -3,7 +3,7 @@ import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import { stateFieldInternal, type StateField } from "../models/state-field.ts";
+import { stateFieldInternal, type StateField } from "../state-field.ts";
 
 type LoadedStateFieldInternal = StateField<unknown>[typeof stateFieldInternal];
 

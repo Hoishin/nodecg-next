@@ -9,7 +9,7 @@ import { Effect, Option, Queue, Schema, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state.ts";
-import { stateFieldInternal } from "./models/state-field.ts";
+import { stateFieldInternal } from "./state-field.ts";
 import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	type StateChange,

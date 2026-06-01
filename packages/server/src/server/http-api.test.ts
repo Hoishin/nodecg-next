@@ -4,7 +4,7 @@ import { Effect, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import { type StateField, stateFieldInternal } from "../models/state-field.ts";
+import { type StateField, stateFieldInternal } from "../state-field.ts";
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 

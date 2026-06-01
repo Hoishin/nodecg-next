@@ -20,7 +20,7 @@ import {
 	type StateFieldPromise,
 	StateUpdateFnError,
 	stateFieldInternal,
-} from "./models/state-field.ts";
+} from "./state-field.ts";
 import { createInMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	StateStorageService,
@@ -205,7 +205,7 @@ export async function loadState<
 		StateFieldLambda,
 		StateFieldPromiseLambda,
 		Definitions
-	>(effectState, (field) => ({
+	>(effectState, (field, name) => ({
 		get: promisifyEffectFn(field.get, runtime),
 		set: promisifyEffectFn(field.set, runtime),
 		update: promisifyEffectFn(field.update, runtime),
@@ -213,11 +213,24 @@ export async function loadState<
 		subscribe: (handler) => {
 			field.subscribe().pipe(
 				Effect.andThen((stream) =>
-					Stream.runForEach(
-						stream,
-						(value) => Effect.sync(() => handler(value)), // TODO: properly handle defects
+					Stream.runForEach(stream, (value) =>
+						Effect.tryPromise(async () => handler(value)).pipe(
+							Effect.catchAll((error) =>
+								Effect.logError(
+									`State subscription handler for "${manifest.namespace}/${name}" threw`,
+									error,
+								),
+							),
+						),
 					),
 				),
+				Effect.catchTag("StateValidationError", (error) =>
+					Effect.logError(
+						`State subscription stream for "${manifest.namespace}/${name}" failed`,
+						error,
+					),
+				),
+				Effect.ensureErrorType<never>(),
 				Effect.scoped,
 				runtime.runFork,
 			);
