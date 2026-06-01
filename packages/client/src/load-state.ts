@@ -4,7 +4,6 @@ import {
 	Deferred,
 	Effect,
 	Exit,
-	Fiber,
 	type HKT,
 	Layer,
 	ManagedRuntime,
@@ -239,25 +238,19 @@ export async function loadState<
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
-		subscribe: async (callback) => {
-			// TODO: build effect and do one runtime.run*
-			const scope = await runtime.runPromise(Scope.make());
-			const stream = await runtime.runPromise(
-				field.subscribe().pipe(Scope.extend(scope)),
-			);
-			const fiber = stream.pipe(
-				Stream.runForEach((value) =>
-					Effect.tryPromise(async () => callback(value)),
-				),
-				runtime.runFork,
-			);
-			return () => {
-				runtime.runFork(
-					Fiber.interrupt(fiber).pipe(
-						Effect.andThen(Scope.close(scope, Exit.void)),
-					),
-				);
-			};
-		},
+		subscribe: async (callback) =>
+			runtime.runPromise(
+				Effect.gen(function* () {
+					const scope = yield* Scope.make();
+					const stream = yield* field.subscribe().pipe(Scope.extend(scope));
+					yield* stream.pipe(
+						Stream.runForEach((value) =>
+							Effect.tryPromise(async () => callback(value)),
+						),
+						Effect.forkIn(scope),
+					);
+					return () => runtime.runFork(Scope.close(scope, Exit.void));
+				}),
+			),
 	}));
 }
