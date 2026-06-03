@@ -7,25 +7,27 @@ import {
 } from "@nodecg/internal";
 import {
 	Effect,
+	Exit,
 	type HKT,
 	Layer,
 	ManagedRuntime,
 	type Schema,
+	Scope,
 	Stream,
 } from "effect";
-import type { Promisable, SimplifyDeep } from "type-fest";
+import type { JsonValue, Promisable, SimplifyDeep } from "type-fest";
 
+import { createInMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
+import {
+	StateStorageService,
+	type StateStorage,
+} from "./services/state-storage/state-storage.ts";
 import {
 	type StateField,
 	type StateFieldPromise,
 	StateUpdateFnError,
 	stateFieldInternal,
 } from "./state-field.ts";
-import { createInMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
-import {
-	StateStorageService,
-	type StateStorage,
-} from "./services/state-storage/state-storage.ts";
 
 type InitialValues<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
@@ -44,12 +46,43 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 	const get = Effect.fn("get")(function* () {
 		const current = yield* storage.read(namespace, name);
-		return yield* definition.decode(current);
+		// TODO: support migration
+		return yield* definition
+			.decode(current)
+			.pipe(
+				Effect.orDieWith(
+					() =>
+						new Error(
+							"Currently stored state value failed schema validation. Migration is not supported yet.",
+						),
+				),
+			);
+	});
+
+	const getEncoded = Effect.fn("getEncoded")(function* () {
+		const encoded = yield* storage.read(namespace, name);
+		// TODO: support migration
+		yield* definition
+			.decode(encoded)
+			.pipe(
+				Effect.orDieWith(
+					() =>
+						new Error(
+							"Currently stored state value failed schema validation. Migration is not supported yet.",
+						),
+				),
+			);
+		return encoded;
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* definition.encode(value);
 		yield* storage.update(namespace, name, encoded);
+	});
+
+	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
+		yield* definition.decode(value); // Only for validation
+		yield* storage.update(namespace, name, value);
 	});
 
 	const update = Effect.fn("update")(function* (
@@ -65,34 +98,36 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		yield* storage.update(namespace, name, encoded);
 	});
 
-	const getEncoded = Effect.fn("getEncoded")(function* () {
-		const decoded = yield* get();
-		return yield* definition.encode(decoded);
+	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
+		const changesStream = yield* storage.subscribe();
+		const stateValueStream = changesStream.pipe(
+			Stream.filter(
+				(change) => change.namespace === namespace && change.name === name,
+			),
+			Stream.map((change) => change.value),
+		);
+		const initialValue = yield* getEncoded();
+		return Stream.concat(Stream.succeed(initialValue), stateValueStream);
 	});
 
-	const setEncoded = Effect.fn("setEncoded")(function* (value: unknown) {
-		const decoded = yield* definition.decode(value);
-		yield* set(decoded);
-	});
-
-	const subscribeEncoded = () =>
-		storage.subscribe().pipe(
-			Effect.map((dequeue) =>
-				Stream.fromQueue(dequeue).pipe(
-					Stream.filter(
-						(change) => change.namespace === namespace && change.name === name,
+	const subscribe = Effect.fn("subscribe")(function* () {
+		const stream = yield* subscribeEncoded();
+		return stream.pipe(
+			Stream.flatMap((value) =>
+				// TODO: support migration
+				definition
+					.decode(value)
+					.pipe(
+						Effect.orDieWith(
+							() =>
+								new Error(
+									"Currently stored state value failed schema validation. Migration is not supported yet.",
+								),
+						),
 					),
-					Stream.map((change) => change.value),
-				),
 			),
 		);
-
-	const subscribe = () =>
-		subscribeEncoded().pipe(
-			Effect.map((stream) =>
-				stream.pipe(Stream.flatMap((value) => definition.decode(value))),
-			),
-		);
+	});
 
 	const field: StateField<Decoded> = {
 		get,
@@ -210,29 +245,30 @@ export async function loadState<
 		set: promisifyEffectFn(field.set, runtime),
 		update: promisifyEffectFn(field.update, runtime),
 		validate: promisifyEffectFn(field.validate, runtime),
-		subscribe: (handler) => {
-			field.subscribe().pipe(
-				Effect.andThen((stream) =>
-					Stream.runForEach(stream, (value) =>
-						Effect.tryPromise(async () => handler(value)).pipe(
-							Effect.catchAll((error) =>
-								Effect.logError(
-									`State subscription handler for "${manifest.namespace}/${name}" threw`,
-									error,
+		subscribe: async (handler) => {
+			return runtime.runPromise(
+				Effect.gen(function* () {
+					const scope = yield* Scope.make();
+					const subscription = yield* field
+						.subscribe()
+						.pipe(Scope.extend(scope));
+					yield* Effect.forkIn(
+						Stream.runForEach(subscription, (value) =>
+							Effect.tryPromise(async () => handler(value)).pipe(
+								Effect.catchAll((error) =>
+									Effect.logError(
+										`State subscription handler for "${manifest.namespace}/${name}" threw`,
+										error,
+									),
 								),
 							),
-						),
-					),
-				),
-				Effect.catchTag("StateValidationError", (error) =>
-					Effect.logError(
-						`State subscription stream for "${manifest.namespace}/${name}" failed`,
-						error,
-					),
-				),
-				Effect.ensureErrorType<never>(),
-				Effect.scoped,
-				runtime.runFork,
+						).pipe(Effect.ensureErrorType<never>()),
+						scope,
+					);
+					return async () => {
+						await runtime.runPromise(Scope.close(scope, Exit.void));
+					};
+				}),
 			);
 		},
 		[stateFieldInternal]: field[stateFieldInternal],

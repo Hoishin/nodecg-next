@@ -28,7 +28,7 @@ export interface StateTransport {
 	read: (
 		namespace: string,
 		name: string,
-	) => Effect.Effect<unknown, StateNotFound | StateGetFailed>;
+	) => Effect.Effect<JsonValue, StateNotFound | StateGetFailed>;
 	update: (
 		namespace: string,
 		name: string,

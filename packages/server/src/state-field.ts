@@ -1,4 +1,4 @@
-import type { StateValidationError } from "@nodecg/core";
+import type { StateDecodeError, StateEncodeError } from "@nodecg/core";
 import type { PromisifyObject } from "@nodecg/internal";
 import { Data, type Effect, type Scope, type Stream } from "effect";
 import type {
@@ -27,17 +27,14 @@ export interface StateField<Decoded> {
 	/**
 	 * Read value from state storage and decode
 	 */
-	readonly get: () => Effect.Effect<
-		Decoded,
-		StateNotFound | StateValidationError
-	>;
+	readonly get: () => Effect.Effect<Decoded, StateNotFound>;
 
 	/**
 	 * Validate value and write it in storage
 	 */
 	readonly set: (
 		value: Decoded,
-	) => Effect.Effect<void, StateNotFound | StateValidationError>;
+	) => Effect.Effect<void, StateNotFound | StateEncodeError>;
 
 	/**
 	 * Run provided async function, validate the result, and write it in storage
@@ -46,7 +43,7 @@ export interface StateField<Decoded> {
 		fn: (value: Decoded) => Promisable<Decoded>,
 	) => Effect.Effect<
 		void,
-		StateNotFound | StateValidationError | StateUpdateFnError
+		StateNotFound | StateEncodeError | StateUpdateFnError
 	>;
 
 	/**
@@ -54,14 +51,14 @@ export interface StateField<Decoded> {
 	 */
 	readonly validate: (
 		value: Decoded,
-	) => Effect.Effect<JsonValue, StateValidationError>;
+	) => Effect.Effect<JsonValue, StateEncodeError>;
 
 	/**
-	 * Subscribe to changes
+	 * Subscribe to changes. It emits the current value when subscription is live.
 	 */
 	readonly subscribe: () => Effect.Effect<
-		Stream.Stream<Decoded, StateValidationError>,
-		never,
+		Stream.Stream<Decoded>,
+		StateNotFound,
 		Scope.Scope
 	>;
 
@@ -71,16 +68,13 @@ export interface StateField<Decoded> {
 				? K
 				: never]: StateField<Decoded>[K];
 		} & {
-			readonly getEncoded: () => Effect.Effect<
-				JsonValue,
-				StateNotFound | StateValidationError
-			>;
+			readonly getEncoded: () => Effect.Effect<JsonValue, StateNotFound>;
 			readonly setEncoded: (
-				value: unknown,
-			) => Effect.Effect<void, StateNotFound | StateValidationError>;
+				value: JsonValue,
+			) => Effect.Effect<void, StateNotFound | StateDecodeError>;
 			readonly subscribeEncoded: () => Effect.Effect<
 				Stream.Stream<JsonValue>,
-				never,
+				StateNotFound,
 				Scope.Scope
 			>;
 		}

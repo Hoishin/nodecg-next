@@ -1,11 +1,11 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
-import { StateValidationError } from "@nodecg/core";
+import { StateDecodeError } from "@nodecg/core";
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import { type StateField, stateFieldInternal } from "../state-field.ts";
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
+import { type StateField, stateFieldInternal } from "../state-field.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];
@@ -99,25 +99,6 @@ describe("get", () => {
 		const res = await handler(new Request(getUrl));
 		expect(res.status).toBe(404);
 	});
-
-	test("500 when the field reports StateValidationError", async () => {
-		const handler = webHandler([
-			loadedState("root", {
-				count: stubField({
-					getEncoded: () =>
-						Effect.fail(
-							new StateValidationError({
-								name: "count",
-								cause: new Error("boom"),
-							}),
-						),
-					setEncoded: () => Effect.void,
-				}),
-			}),
-		]);
-		const res = await handler(new Request(getUrl));
-		expect(res.status).toBe(500);
-	});
 });
 
 describe("update", () => {
@@ -147,15 +128,16 @@ describe("update", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("400 when the field reports StateValidationError", async () => {
+	test("400 when the field reports StateDecodeError", async () => {
 		const handler = webHandler([
 			loadedState("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
-							new StateValidationError({
-								name: "count",
+							new StateDecodeError({
+								fieldName: "count",
+								value: 7,
 								cause: new Error("boom"),
 							}),
 						),

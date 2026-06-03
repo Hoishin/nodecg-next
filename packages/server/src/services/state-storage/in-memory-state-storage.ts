@@ -1,4 +1,4 @@
-import { Effect, Layer, PubSub } from "effect";
+import { Effect, Layer, PubSub, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
@@ -59,7 +59,7 @@ export const createInMemoryStateStorage = Effect.fn(
 		read,
 		create,
 		update,
-		subscribe: () => PubSub.subscribe(changes),
+		subscribe: () => Stream.fromPubSub(changes, { scoped: true }),
 		persistInterval: 0,
 	};
 });

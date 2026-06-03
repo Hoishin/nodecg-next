@@ -7,12 +7,14 @@ import {
 } from "@effect/platform";
 import { Schema } from "effect";
 
+import { JsonValueSchema } from "./json-value-schema.ts";
+
 const StateGroup = HttpApiGroup.make("State")
 	.add(
 		HttpApiEndpoint.get(
 			"get",
 		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
-			.addSuccess(Schema.Unknown)
+			.addSuccess(JsonValueSchema)
 			.addError(HttpApiError.NotFound)
 			.addError(HttpApiError.InternalServerError),
 	)
@@ -20,7 +22,7 @@ const StateGroup = HttpApiGroup.make("State")
 		HttpApiEndpoint.put(
 			"update",
 		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
-			.setPayload(Schema.Unknown)
+			.setPayload(JsonValueSchema)
 			.addError(HttpApiError.NotFound)
 			.addError(HttpApiError.BadRequest)
 			.addError(HttpApiError.InternalServerError),

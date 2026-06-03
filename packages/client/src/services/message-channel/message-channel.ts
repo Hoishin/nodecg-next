@@ -4,6 +4,7 @@ import {
 	Data,
 	type Effect,
 	type ParseResult,
+	type Scope,
 	type Stream,
 } from "effect";
 
@@ -15,7 +16,11 @@ export class MessageEncodeError extends Data.TaggedError("MessageEncodeError")<{
 
 export interface MessageChannel {
 	send: (message: ClientMessage) => Effect.Effect<void, MessageEncodeError>;
-	receive: () => Stream.Stream<ServerMessage>;
+	receive: () => Effect.Effect<
+		Stream.Stream<ServerMessage>,
+		never,
+		Scope.Scope
+	>;
 }
 
 export class MessageChannelService extends Context.Tag("MessageChannel")<

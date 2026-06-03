@@ -35,18 +35,14 @@ export const buildNodecgApi = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					return yield* field.getEncoded().pipe(
-						Effect.mapError((error) =>
-							Match.value(error).pipe(
-								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
-								Match.tag(
-									"StateValidationError",
-									() => new HttpApiError.InternalServerError(),
-								),
-								Match.exhaustive,
+					return yield* field
+						.getEncoded()
+						.pipe(
+							Effect.catchTag(
+								"StateNotFound",
+								() => new HttpApiError.NotFound(),
 							),
-						),
-					);
+						);
 				}),
 			)
 			.handle("update", ({ path: { namespace, name }, payload }) =>
@@ -59,7 +55,7 @@ export const buildNodecgApi = (options: {
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag(
-									"StateValidationError",
+									"StateDecodeError",
 									() => new HttpApiError.BadRequest(),
 								),
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),

@@ -1,28 +1,19 @@
 import type { StateDefinition, StateManifest } from "@nodecg/core";
 import { mapEffectValues, mapValues } from "@nodecg/internal";
 import {
-	Deferred,
 	Effect,
 	Exit,
 	type HKT,
 	Layer,
 	ManagedRuntime,
-	Match,
 	Option,
 	type Schema,
 	Scope,
 	Stream,
+	SubscriptionRef,
 } from "effect";
 import type { Promisable } from "type-fest";
 
-import {
-	GetStateError,
-	type StateFieldEffect,
-	type StateFieldPromise,
-	StateSubscriptionError,
-	StateValueError,
-	UpdateStateError,
-} from "./state-field.ts";
 import {
 	type MessageChannel,
 	MessageChannelService,
@@ -33,6 +24,13 @@ import {
 	StateTransportService,
 	type StateTransport,
 } from "./services/state-transport/state-transport.ts";
+import {
+	GetStateError,
+	type StateFieldEffect,
+	type StateFieldPromise,
+	StateSubscriptionError,
+	UpdateStateError,
+} from "./state-field.ts";
 
 const implementState = Effect.fn("implementState")(function* <Decoded>(
 	namespace: string,
@@ -41,6 +39,9 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 ) {
 	const transport = yield* StateTransportService;
 	const messageChannel = yield* MessageChannelService;
+	const latest = yield* SubscriptionRef.make<Option.Option<Decoded>>(
+		Option.none(),
+	);
 	let refcount = 0;
 
 	const get = Effect.fn("get")(
@@ -59,8 +60,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			yield* transport.update(namespace, name, encoded);
 		},
 		Effect.mapError(
-			(error) =>
-				new UpdateStateError({ namespace, name, cause: error.message }),
+			(error) => new UpdateStateError({ namespace, name, cause: error }),
 		),
 	);
 
@@ -71,26 +71,40 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			const encoded = yield* definition.encode(next);
 			yield* transport.update(namespace, name, encoded);
 		},
-		Effect.mapError((error) => {
-			const cause = Match.value(error).pipe(
-				Match.tag(
-					"UnknownException",
-					"GetStateError",
-					"StateValidationError",
-					"StateNotFound",
-					"StateSaveFailed",
-					(e) => e.message,
+		Effect.mapError(
+			(error) => new UpdateStateError({ namespace, name, cause: error }),
+		),
+	);
+
+	const stream = yield* messageChannel.receive();
+
+	yield* Effect.forkScoped(
+		stream.pipe(
+			Stream.filterMap((msg) =>
+				msg._tag === "publish" &&
+				msg.message.filter.namespace === namespace &&
+				msg.message.filter.name === name
+					? Option.some(msg.message.value)
+					: Option.none(),
+			),
+			Stream.runForEach((value) =>
+				definition.decode(value).pipe(
+					Effect.flatMap((decoded) =>
+						SubscriptionRef.set(latest, Option.some(decoded)),
+					),
+					Effect.catchAll((error) =>
+						Effect.logError(
+							`Failed to decode published value for "${namespace}/${name}":`,
+							error,
+						),
+					),
 				),
-				Match.exhaustive,
-			);
-			return new UpdateStateError({ namespace, name, cause });
-		}),
+			),
+		),
 	);
 
 	const subscribe = () =>
 		Effect.gen(function* () {
-			const established = yield* Deferred.make<void>();
-
 			yield* Effect.acquireRelease(
 				Effect.gen(function* () {
 					refcount += 1;
@@ -106,8 +120,6 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 									(cause) => new StateSubscriptionError({ cause }),
 								),
 							);
-					} else {
-						yield* Deferred.succeed(established, void 0);
 					}
 				}),
 				() =>
@@ -133,31 +145,13 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 					}),
 			);
 
-			const decoded = messageChannel.receive().pipe(
-				Stream.filterMap((msg) =>
-					msg._tag === "publish" &&
-					msg.message.filter.namespace === namespace &&
-					msg.message.filter.name === name
-						? Option.some(msg.message.value)
-						: Option.none(),
-				),
-				Stream.tap(() => Deferred.succeed(established, void 0)),
-				Stream.mapEffect((value) =>
-					definition
-						.decode(value)
-						.pipe(
-							Effect.mapError(
-								(cause) => new StateValueError({ namespace, name, cause }),
-							),
-						),
-				),
+			yield* latest.changes.pipe(
+				Stream.filterMap((value) => value),
+				Stream.take(1),
+				Stream.runDrain,
 			);
 
-			const queue = yield* Stream.toQueue(decoded);
-
-			yield* Deferred.await(established);
-
-			return Stream.fromQueue(queue).pipe(Stream.flattenTake);
+			return latest.changes.pipe(Stream.filterMap((value) => value));
 		});
 
 	const field: StateFieldEffect<Decoded> = {
@@ -187,15 +181,13 @@ interface StateFieldPromiseLambda extends HKT.TypeLambda {
 export function loadStateEffect<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
 >(manifest: StateManifest<Definitions>) {
-	return Effect.gen(function* () {
-		return yield* mapEffectValues<
-			StateDefinitionLambda,
-			StateFieldEffectLambda,
-			Definitions
-		>()(manifest.definitions, (definition, name) =>
-			implementState(manifest.namespace, name, definition),
-		);
-	});
+	return mapEffectValues<
+		StateDefinitionLambda,
+		StateFieldEffectLambda,
+		Definitions
+	>()(manifest.definitions, (definition, name) =>
+		implementState(manifest.namespace, name, definition),
+	);
 }
 
 export async function loadState<
@@ -225,8 +217,9 @@ export async function loadState<
 			: Layer.sync(MessageChannelService, messageChannel)
 		: WebSocketMessageChannel;
 
+	// TODO: expose a cleanup function that calls runtime.dispose()
 	const runtime = ManagedRuntime.make(
-		Layer.mergeAll(transportLayer, messageChannelLayer),
+		Layer.mergeAll(transportLayer, messageChannelLayer, Layer.scope),
 	);
 
 	const effectState = await runtime.runPromise(loadStateEffect(manifest));
@@ -252,12 +245,6 @@ export async function loadState<
 										error,
 									),
 								),
-							),
-						),
-						Effect.catchAll((error) =>
-							Effect.logError(
-								`State subscription stream for "${manifest.namespace}/${name}" failed`,
-								error,
 							),
 						),
 						Effect.forkIn(scope),

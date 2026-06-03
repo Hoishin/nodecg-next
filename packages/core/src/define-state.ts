@@ -2,15 +2,20 @@ import { mapValues } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 
-export class StateValidationError extends Data.TaggedError(
-	"StateValidationError",
-)<{
-	readonly name: string;
+export class StateEncodeError extends Data.TaggedError("StateEncodeError")<{
+	readonly fieldName: string;
+	readonly value: unknown;
 	readonly cause: Error;
 }> {
-	override get message() {
-		return `Failed to validate state "${this.name}": ${this.cause.message}`;
-	}
+	override readonly message = `Failed to encode state "${this.fieldName}": ${this.cause.message}`;
+}
+
+export class StateDecodeError extends Data.TaggedError("StateDecodeError")<{
+	readonly fieldName: string;
+	readonly value: JsonValue;
+	readonly cause: Error;
+}> {
+	override readonly message = `Failed to decode state "${this.fieldName}": ${this.cause.message}`;
 }
 
 interface StateOption<S extends Schema.Schema<any, any, never>> {
@@ -21,10 +26,10 @@ export interface StateDefinition<Decoded> {
 	readonly name: string;
 	readonly encode: (
 		value: Decoded,
-	) => Effect.Effect<JsonValue, StateValidationError>;
+	) => Effect.Effect<JsonValue, StateEncodeError>;
 	readonly decode: (
-		value: unknown,
-	) => Effect.Effect<Decoded, StateValidationError>;
+		value: JsonValue,
+	) => Effect.Effect<Decoded, StateDecodeError>;
 }
 
 export interface StateManifest<
@@ -48,15 +53,17 @@ function implementDefinition<S extends Schema.Schema<any, JsonValue, never>>(
 			return yield* Schema.encode(schema)(value).pipe(
 				Effect.catchTag(
 					"ParseError",
-					(error) => new StateValidationError({ name, cause: error }),
+					(error) =>
+						new StateEncodeError({ fieldName: name, value, cause: error }),
 				),
 			);
 		}),
-		decode: Effect.fn("decode")(function* (value: unknown) {
-			return yield* Schema.decodeUnknown(schema)(value).pipe(
+		decode: Effect.fn("decode")(function* (value: JsonValue) {
+			return yield* Schema.decode(schema)(value).pipe(
 				Effect.catchTag(
 					"ParseError",
-					(error) => new StateValidationError({ name, cause: error }),
+					(error) =>
+						new StateDecodeError({ fieldName: name, value, cause: error }),
 				),
 			);
 		}),

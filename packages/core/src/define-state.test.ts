@@ -5,7 +5,8 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 
 import {
 	defineState,
-	StateValidationError,
+	StateDecodeError,
+	StateEncodeError,
 	type StateDefinition,
 } from "./define-state.ts";
 
@@ -120,7 +121,7 @@ describe("does not allow schemas whose Encoded is not JsonValue-compatible", () 
 	});
 });
 
-test("encode returns StateValidationError on bad input", () => {
+test("encode returns StateEncodeError on bad input", () => {
 	const manifest = defineState("test", {
 		count: { schema: Schema.Number },
 	});
@@ -132,11 +133,11 @@ test("encode returns StateValidationError on bad input", () => {
 	);
 	expect(result._tag).toBe("Left");
 	if (result._tag === "Left") {
-		expect(result.left).toBeInstanceOf(StateValidationError);
+		expect(result.left).toBeInstanceOf(StateEncodeError);
 	}
 });
 
-test("decode returns StateValidationError on bad input", () => {
+test("decode returns StateDecodeError on bad input", () => {
 	const manifest = defineState("test", {
 		count: { schema: Schema.Number },
 	});
@@ -146,7 +147,7 @@ test("decode returns StateValidationError on bad input", () => {
 	);
 	expect(result._tag).toBe("Left");
 	if (result._tag === "Left") {
-		expect(result.left).toBeInstanceOf(StateValidationError);
+		expect(result.left).toBeInstanceOf(StateDecodeError);
 	}
 });
 
@@ -156,6 +157,6 @@ test("Encoded type flows through StateDefinition.encode return", () => {
 	});
 
 	expectTypeOf(manifest.definitions.count.encode).toEqualTypeOf<
-		(value: number) => Effect.Effect<JsonValue, StateValidationError>
+		(value: number) => Effect.Effect<JsonValue, StateEncodeError>
 	>();
 });

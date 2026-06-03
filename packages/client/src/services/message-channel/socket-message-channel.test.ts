@@ -81,6 +81,7 @@ describe("receive", () => {
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
+					const stream = yield* channel.receive();
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
@@ -92,7 +93,7 @@ describe("receive", () => {
 						}),
 					);
 
-					const first = yield* Stream.runHead(channel.receive());
+					const first = yield* Stream.runHead(stream);
 					assert(Option.isSome(first));
 					expect(first.value).toEqual({
 						_tag: "publish",
@@ -115,11 +116,12 @@ describe("receive", () => {
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
+					const stream = yield* channel.receive();
 					yield* closeClean;
-					const all = yield* Stream.runCollect(channel.receive()).pipe(
+					const all = yield* Stream.runCollect(stream).pipe(
 						Effect.timeoutFail({
 							duration: "1 second",
-							onTimeout: () => Effect.fail("Stream did not finish"),
+							onTimeout: () => "Stream did not finish",
 						}),
 					);
 					expect(Array.from(all)).toEqual([]);
@@ -136,16 +138,17 @@ describe("receive", () => {
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
+					const stream = yield* channel.receive();
 					yield* closeWithError(
 						new Socket.SocketGenericError({
 							reason: "Read",
 							cause: new Error("simulated"),
 						}),
 					);
-					const all = yield* Stream.runCollect(channel.receive()).pipe(
+					const all = yield* Stream.runCollect(stream).pipe(
 						Effect.timeoutFail({
 							duration: "1 second",
-							onTimeout: () => Effect.fail("Stream did not finish"),
+							onTimeout: () => "Stream did not finish",
 						}),
 					);
 					expect(Array.from(all)).toEqual([]);
@@ -162,6 +165,7 @@ describe("receive", () => {
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
+					const stream = yield* channel.receive();
 					yield* deliver("not valid json");
 					yield* deliver(
 						JSON.stringify({
@@ -174,7 +178,7 @@ describe("receive", () => {
 						}),
 					);
 
-					const first = yield* Stream.runHead(channel.receive());
+					const first = yield* Stream.runHead(stream);
 					assert(Option.isSome(first));
 					expect(first.value).toMatchObject({
 						_tag: "publish",
@@ -193,6 +197,7 @@ describe("receive", () => {
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
+					const stream = yield* channel.receive();
 					yield* deliver(new Uint8Array([1, 2, 3]));
 					yield* deliver(
 						JSON.stringify({
@@ -205,7 +210,7 @@ describe("receive", () => {
 						}),
 					);
 
-					const first = yield* Stream.runHead(channel.receive());
+					const first = yield* Stream.runHead(stream);
 					assert(Option.isSome(first));
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),

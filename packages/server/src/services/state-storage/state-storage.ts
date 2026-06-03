@@ -3,8 +3,8 @@ import {
 	Data,
 	type Duration,
 	type Effect,
-	type Queue,
 	type Scope,
+	type Stream,
 } from "effect";
 import type { JsonValue } from "type-fest";
 
@@ -28,23 +28,45 @@ export class StateAlreadyExists extends Data.TaggedError("StateAlreadyExists")<{
 	override readonly message = `State "${this.name}" in "${this.namespace}" already exists`;
 }
 
+/**
+ * StateStorage is platform-agnostic layer to persist state values.
+ * Combination of namespace + name can be considered unique.
+ * Values here must be JSON-compatible objects, which means
+ * it only has JSON-compatible primitives and does not change
+ * after `JSON.parse(JSON.stringify(value))`
+ */
 export interface StateStorage {
+	/**
+	 * Create a new state entry in storage. Must supply valid initial value.
+	 */
 	create: (
 		namespace: string,
 		name: string,
 		value: JsonValue,
 	) => Effect.Effect<void, StateAlreadyExists>;
+
+	/**
+	 * Get the current value with namespace and name
+	 */
 	read: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<JsonValue, StateNotFound>;
+
+	/**
+	 * Update the already-existing state value with a new value
+	 */
 	update: (
 		namespace: string,
 		name: string,
 		value: JsonValue,
 	) => Effect.Effect<void, StateNotFound>;
+
+	/**
+	 * Subscribe to changes. Returns one stream that contains all changes.
+	 */
 	subscribe: () => Effect.Effect<
-		Queue.Dequeue<StateChange>,
+		Stream.Stream<StateChange>,
 		never,
 		Scope.Scope
 	>;

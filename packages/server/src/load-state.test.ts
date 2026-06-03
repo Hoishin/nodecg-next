@@ -1,15 +1,14 @@
 import {
 	defineState,
-	StateValidationError,
+	StateEncodeError,
 	type StateDefinition,
 	type StateManifest,
 } from "@nodecg/core";
 import { testEffect } from "@nodecg/private";
-import { Effect, Option, Queue, Schema, Stream } from "effect";
+import { Cause, Chunk, Effect, Option, Queue, Schema, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state.ts";
-import { stateFieldInternal } from "./state-field.ts";
 import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	type StateChange,
@@ -17,6 +16,7 @@ import {
 	type StateStorage,
 	StateStorageService,
 } from "./services/state-storage/state-storage.ts";
+import { stateFieldInternal } from "./state-field.ts";
 
 const createStorageStub = () =>
 	({
@@ -112,8 +112,9 @@ describe("loadStateEffect seeding", () => {
 					name: "broken",
 					encode: () =>
 						Effect.fail(
-							new StateValidationError({
-								name: "broken",
+							new StateEncodeError({
+								fieldName: "broken",
+								value: 42,
 								cause: new Error("rejected on seed"),
 							}),
 						),
@@ -131,7 +132,7 @@ describe("loadStateEffect seeding", () => {
 					Effect.provideService(StateStorageService, storageStub),
 					Effect.flip,
 				);
-				expect(error._tag).toBe("StateValidationError");
+				expect(error._tag).toBe("StateEncodeError");
 			}),
 		),
 	);
@@ -177,13 +178,19 @@ describe("get", () => {
 					initialValues: { count: () => 0 },
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				const error = yield* state.count
+				const cause = yield* state.count
 					.get()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.sandbox,
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateValidationError");
+				const defect = Cause.dieOption(cause);
+				assert(Option.isSome(defect));
+				assert(defect.value instanceof Error);
+				expect(defect.value.message).toContain(
+					"Migration is not supported yet",
+				);
 			}),
 		),
 	);
@@ -243,7 +250,7 @@ describe("getEncoded", () => {
 	);
 
 	test(
-		"fails with StateValidationError when storage holds an unmatched value",
+		"dies when storage holds an unmatched value",
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
@@ -257,13 +264,19 @@ describe("getEncoded", () => {
 					initialValues: { count: () => 0 },
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
-				const error = yield* state.count[stateFieldInternal]
+				const cause = yield* state.count[stateFieldInternal]
 					.getEncoded()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.sandbox,
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateValidationError");
+				const defect = Cause.dieOption(cause);
+				assert(Option.isSome(defect));
+				assert(defect.value instanceof Error);
+				expect(defect.value.message).toContain(
+					"Migration is not supported yet",
+				);
 			}),
 		),
 	);
@@ -314,7 +327,7 @@ describe("set", () => {
 						Effect.provideService(StateStorageService, storageStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateValidationError");
+				expect(error._tag).toBe("StateEncodeError");
 			}),
 		),
 	);
@@ -411,9 +424,8 @@ describe("field subscribe", () => {
 					yield* state.count[stateFieldInternal].subscribeEncoded();
 				yield* state.count.set(42);
 
-				const head = yield* Stream.runHead(stream);
-				assert(Option.isSome(head));
-				expect(head.value).toBe("42");
+				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
+				expect(Chunk.toArray(events)).toEqual(["0", "42"]);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -430,9 +442,8 @@ describe("field subscribe", () => {
 				const stream = yield* state.count.subscribe();
 				yield* state.count.set(7);
 
-				const head = yield* Stream.runHead(stream);
-				assert(Option.isSome(head));
-				expect(head.value).toBe(7);
+				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
+				expect(Chunk.toArray(events)).toEqual([0, 7]);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -450,9 +461,8 @@ describe("field subscribe", () => {
 				yield* state.other.set(99);
 				yield* state.count.set(3);
 
-				const head = yield* Stream.runHead(stream);
-				assert(Option.isSome(head));
-				expect(head.value).toBe(3);
+				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
+				expect(Chunk.toArray(events)).toEqual([0, 3]);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -469,9 +479,8 @@ describe("field subscribe", () => {
 				const stream = yield* state.count.subscribe();
 				yield* state.count.update((v) => v + 3);
 
-				const head = yield* Stream.runHead(stream);
-				assert(Option.isSome(head));
-				expect(head.value).toBe(8);
+				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
+				expect(Chunk.toArray(events)).toEqual([5, 8]);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);

@@ -72,6 +72,6 @@ export const SocketMessageChannel = Layer.scoped(
 			);
 		}, Scope.extend(scope));
 
-		return { send, receive: () => Stream.fromPubSub(pubsub) };
+		return { send, receive: () => Stream.fromPubSub(pubsub, { scoped: true }) };
 	}),
 );

@@ -7,6 +7,7 @@ import {
 	Fiber,
 	Mailbox,
 	Option,
+	PubSub,
 	Schema,
 	Scope,
 	Stream,
@@ -33,7 +34,7 @@ const createTransportStub = () =>
 const createMessageChannelStub = () =>
 	({
 		send: vi.fn<MessageChannel["send"]>(() => Effect.void),
-		receive: () => Stream.never,
+		receive: () => Effect.succeed(Stream.never),
 	}) satisfies MessageChannel;
 
 describe("get", () => {
@@ -296,7 +297,7 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Mailbox.toStream(mailbox),
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -334,7 +335,7 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Mailbox.toStream(mailbox),
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -378,7 +379,7 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Mailbox.toStream(mailbox),
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -389,7 +390,9 @@ describe("subscribe", () => {
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const fiber = yield* state.count.subscribe().pipe(Effect.fork);
+				const fiber = yield* state.count
+					.subscribe()
+					.pipe(Effect.asVoid, Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
@@ -412,7 +415,7 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Mailbox.toStream(mailbox),
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -426,7 +429,7 @@ describe("subscribe", () => {
 				const scope = yield* Scope.make();
 				const fiber = yield* state.count
 					.subscribe()
-					.pipe(Scope.extend(scope), Effect.fork);
+					.pipe(Effect.asVoid, Scope.extend(scope), Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
@@ -454,7 +457,7 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Mailbox.toStream(mailbox),
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const manifest = defineState("root", {
 					count: { schema: Schema.Number },
@@ -468,7 +471,7 @@ describe("subscribe", () => {
 				const scope1 = yield* Scope.make();
 				const sub1 = yield* state.count
 					.subscribe()
-					.pipe(Scope.extend(scope1), Effect.fork);
+					.pipe(Effect.asVoid, Scope.extend(scope1), Effect.fork);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
@@ -480,7 +483,7 @@ describe("subscribe", () => {
 				const scope2 = yield* Scope.make();
 				const sub2 = yield* state.count
 					.subscribe()
-					.pipe(Scope.extend(scope2), Effect.fork);
+					.pipe(Effect.asVoid, Scope.extend(scope2), Effect.fork);
 				yield* Fiber.join(sub2);
 
 				const subscribeCount = send.mock.calls.filter(
@@ -504,6 +507,74 @@ describe("subscribe", () => {
 						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
 					}),
 				);
+			}),
+		),
+	);
+
+	test(
+		"a later subscriber receives the current value on subscribe",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const pubsub = yield* PubSub.unbounded<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+				};
+				const manifest = defineState("root", {
+					count: { schema: Schema.Number },
+				});
+
+				const state = yield* loadStateEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const received1: number[] = [];
+				const scope1 = yield* Scope.make();
+				const sub1 = yield* state.count.subscribe().pipe(
+					Effect.flatMap((stream) =>
+						Stream.runForEach(stream, (value) =>
+							Effect.sync(() => received1.push(value)),
+						),
+					),
+					Scope.extend(scope1),
+					Effect.fork,
+				);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+				yield* pubsub.publish(publishFrame(5));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(received1).toEqual([5]);
+					}),
+				);
+
+				const received2: number[] = [];
+				const scope2 = yield* Scope.make();
+				const sub2 = yield* state.count.subscribe().pipe(
+					Effect.flatMap((stream) =>
+						Stream.runForEach(stream, (value) =>
+							Effect.sync(() => received2.push(value)),
+						),
+					),
+					Scope.extend(scope2),
+					Effect.fork,
+				);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(received2).toEqual([5]);
+					}),
+				);
+
+				yield* Fiber.interrupt(sub1);
+				yield* Fiber.interrupt(sub2);
+				yield* Scope.close(scope1, Exit.void);
+				yield* Scope.close(scope2, Exit.void);
 			}),
 		),
 	);

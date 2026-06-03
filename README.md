@@ -58,7 +58,7 @@ Experimental new version of NodeCG in active development from scratch
 - ✅ State is reactive: it provides subscription API to listen to changes
 
   ```ts
-  const unsubscribe = state.counter.subscribe((newValue) => {
+  const unsubscribe = await state.counter.subscribe((newValue) => {
     console.log("Counter updated:", newValue);
   });
 
@@ -75,16 +75,6 @@ Experimental new version of NodeCG in active development from scratch
       return value;
     });
     state.games.update((value) => [...value, "New Game"]);
-  });
-  ```
-
-- 🚧 State supports optimistic updates: client can update state immediately and sync with server in the background
-
-  ```ts
-  // Client-side
-  state.counter.updateOptimistic((value) => {
-    value.timestamp = Date.now();
-    return value;
   });
   ```
 
@@ -136,9 +126,10 @@ Experimental new version of NodeCG in active development from scratch
   );
   ```
 
-- 🚧 State supports computed values: state can define computed values that are derived from other state values in server side, and limit scope of subscription to those computed values
+- 🚧 State supports computed values derived from other state on the server. The manifest declares the schema; the compute function is provided on the server.
 
   ```ts
+  // Manifest: declare schema only
   const manifest = defineState(
     "match",
     {
@@ -147,15 +138,23 @@ Experimental new version of NodeCG in active development from scratch
     },
     {
       computed: {
-        firstGameId: {
-          schema,
-          compute: async (state) => (await state.games.get())[0]?.id || null,
-        },
+        firstGameId: { schema },
       },
     },
   );
 
-  state.firstGameId.subscribe((firstGameId) => {
+  // Server: provide the compute function
+  const state = await loadState({
+    manifest,
+    initialValues: { counter: () => 0, games: () => [] },
+    computed: {
+      firstGameId: (sources) => sources.games[0]?.id ?? null,
+    },
+  });
+
+  // Client: read-only
+  const state = await loadState({ manifest });
+  await state.firstGameId.subscribe((firstGameId) => {
     console.log("First game updated:", firstGameId);
   });
   ```
@@ -177,10 +176,6 @@ Experimental new version of NodeCG in active development from scratch
     },
   );
   ```
-
-- 🚧 State supports configurable laziness — whether the up-to-date value is kept in memory for immediate access. Independent of `subscribe` and optimistic updates
-  - Server-side: eager by default, can opt into lazy
-  - Client-side: always lazy
 
 - 🚧 Admin dashboard (view, clear, export, import, freeze)
 - 🚧 boolean option for persistence

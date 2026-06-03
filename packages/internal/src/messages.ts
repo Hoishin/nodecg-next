@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { JsonValueSchema } from "./json-value-schema.ts";
+
 const StateFilter = Schema.Struct({
 	namespace: Schema.String,
 	name: Schema.String,
@@ -25,7 +27,7 @@ export type ClientMessage = typeof ClientMessage.Type;
 export const ServerMessage = Schema.Union(
 	Schema.TaggedStruct("publish", {
 		topic: Schema.Literal("state"),
-		message: Schema.Struct({ filter: StateFilter, value: Schema.Unknown }),
+		message: Schema.Struct({ filter: StateFilter, value: JsonValueSchema }),
 	}),
 	PingMessage,
 );

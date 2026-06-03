@@ -4,7 +4,7 @@ import {
 	HttpServerResponse,
 	type Socket,
 } from "@effect/platform";
-import type { StateValidationError } from "@nodecg/core";
+import type { StateEncodeError } from "@nodecg/core";
 import { ClientMessage, ServerMessage } from "@nodecg/internal";
 import {
 	Effect,
@@ -18,8 +18,8 @@ import {
 import type { JsonValue } from "type-fest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import { type StateField, stateFieldInternal } from "../state-field.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
+import { type StateField, stateFieldInternal } from "../state-field.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
@@ -31,6 +31,7 @@ interface StateFilter {
 	readonly name: string;
 }
 
+// TODO: use Effect-ts Equals
 const filterEquals = (a: StateFilter, b: StateFilter) =>
 	a.namespace === b.namespace && a.name === b.name;
 
@@ -63,7 +64,7 @@ export const websocketRoute = (options: {
 					| ParseResult.ParseError
 					| Socket.SocketError
 					| StateNotFound
-					| StateValidationError
+					| StateEncodeError
 				>;
 			}>
 		>([]);
@@ -98,7 +99,6 @@ export const websocketRoute = (options: {
 					const fiber = yield* Effect.forkScoped(
 						Effect.gen(function* () {
 							const stream = yield* internal.subscribeEncoded();
-							yield* sendCurrent(filter, internal);
 							yield* Stream.runForEach(stream, (value) =>
 								publishState(filter, value),
 							);

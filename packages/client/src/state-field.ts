@@ -1,4 +1,3 @@
-import type { StateValidationError } from "@nodecg/core";
 import type { PromisifyObject } from "@nodecg/internal";
 import { Data, type Effect, type Scope, type Stream } from "effect";
 import type { Promisable } from "type-fest";
@@ -16,10 +15,10 @@ export class GetStateError extends Data.TaggedError("GetStateError")<{
 export class UpdateStateError extends Data.TaggedError("UpdateStateError")<{
 	readonly namespace: string;
 	readonly name: string;
-	readonly cause: string;
+	readonly cause: Error;
 }> {
 	override get message() {
-		return `Failed to update state "${this.name}" in "${this.namespace}": ${this.cause}`;
+		return `Failed to update state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 	}
 }
 
@@ -33,16 +32,6 @@ export class StateSubscriptionError extends Data.TaggedError(
 	}
 }
 
-export class StateValueError extends Data.TaggedError("StateValueError")<{
-	readonly namespace: string;
-	readonly name: string;
-	readonly cause: StateValidationError;
-}> {
-	override get message() {
-		return `Received an invalid value for state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
-	}
-}
-
 export interface StateFieldEffect<Decoded> {
 	get: () => Effect.Effect<Decoded, GetStateError>;
 	set: (value: Decoded) => Effect.Effect<void, UpdateStateError>;
@@ -50,7 +39,7 @@ export interface StateFieldEffect<Decoded> {
 		fn: (value: Decoded) => Promisable<Decoded>,
 	) => Effect.Effect<void, UpdateStateError>;
 	subscribe: () => Effect.Effect<
-		Stream.Stream<Decoded, StateValueError>,
+		Stream.Stream<Decoded>,
 		StateSubscriptionError,
 		Scope.Scope
 	>;
