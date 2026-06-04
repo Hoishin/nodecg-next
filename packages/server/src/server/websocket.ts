@@ -19,12 +19,15 @@ import type { JsonValue } from "type-fest";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
-import { type StateField, stateFieldInternal } from "../state-field.ts";
+import {
+	type RegisteredFieldInternal,
+	stateFieldInternal,
+} from "../state-field.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
 
-type FieldInternal = StateField<unknown>[typeof stateFieldInternal];
+type FieldInternal = RegisteredFieldInternal;
 
 interface StateFilter {
 	readonly namespace: string;

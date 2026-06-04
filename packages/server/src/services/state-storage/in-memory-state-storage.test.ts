@@ -7,12 +7,11 @@ import { StateStorageService } from "./state-storage.ts";
 
 describe("read", () => {
 	test(
-		"fails with StateNotFound on a missing key",
+		"returns None on a missing key",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* StateStorageService;
-				const error = yield* storage.read("ns", "missing").pipe(Effect.flip);
-				expect(error._tag).toBe("StateNotFound");
+				expect(storage.read("ns", "missing")).toStrictEqual(Option.none());
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -26,8 +25,8 @@ describe("create", () => {
 				const storage = yield* StateStorageService;
 				yield* storage.create("ns", "a", 1);
 				yield* storage.create("ns", "b", "two");
-				expect(yield* storage.read("ns", "a")).toBe(1);
-				expect(yield* storage.read("ns", "b")).toBe("two");
+				expect(storage.read("ns", "a")).toStrictEqual(Option.some(1));
+				expect(storage.read("ns", "b")).toStrictEqual(Option.some("two"));
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -40,7 +39,7 @@ describe("create", () => {
 				yield* storage.create("ns", "a", 1);
 				const error = yield* storage.create("ns", "a", 2).pipe(Effect.flip);
 				expect(error._tag).toBe("StateAlreadyExists");
-				expect(yield* storage.read("ns", "a")).toBe(1);
+				expect(storage.read("ns", "a")).toStrictEqual(Option.some(1));
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -54,7 +53,7 @@ describe("update", () => {
 				const storage = yield* StateStorageService;
 				yield* storage.create("ns", "a", 1);
 				yield* storage.update("ns", "a", 2);
-				expect(yield* storage.read("ns", "a")).toBe(2);
+				expect(storage.read("ns", "a")).toStrictEqual(Option.some(2));
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);
@@ -66,18 +65,6 @@ describe("update", () => {
 				const storage = yield* StateStorageService;
 				const error = yield* storage.update("ns", "x", 1).pipe(Effect.flip);
 				expect(error._tag).toBe("StateNotFound");
-			}).pipe(Effect.provide(InMemoryStateStorage)),
-		),
-	);
-});
-
-describe("persistInterval", () => {
-	test(
-		"is exposed",
-		testEffect(
-			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
-				expect(storage.persistInterval).toBe(0);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
 		),
 	);

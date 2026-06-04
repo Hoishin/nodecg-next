@@ -3,18 +3,19 @@ import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
 import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import { stateFieldInternal, type StateField } from "../state-field.ts";
-
-type LoadedStateFieldInternal = StateField<unknown>[typeof stateFieldInternal];
+import {
+	stateFieldInternal,
+	type RegisteredFieldInternal,
+} from "../state-field.ts";
 
 export const buildNodecgApi = (options: {
 	states: ReadonlyArray<LoadedState>;
 }) => {
-	const registry = new Map<string, Map<string, LoadedStateFieldInternal>>();
+	const registry = new Map<string, Map<string, RegisteredFieldInternal>>();
 	for (const state of options.states) {
 		const { namespace } = state[stateMetadataKey];
 		const fields =
-			registry.get(namespace) ?? new Map<string, LoadedStateFieldInternal>();
+			registry.get(namespace) ?? new Map<string, RegisteredFieldInternal>();
 		for (const [name, field] of Object.entries(state)) {
 			fields.set(name, field[stateFieldInternal]);
 		}
@@ -35,20 +36,20 @@ export const buildNodecgApi = (options: {
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
-					return yield* field
-						.getEncoded()
-						.pipe(
-							Effect.catchTag(
-								"StateNotFound",
-								() => new HttpApiError.NotFound(),
-							),
-						);
+					return yield* field.getEncoded().pipe(
+						Effect.catchTags({
+							StateNotFound: () => new HttpApiError.NotFound(),
+							StateComputeError: () => new HttpApiError.InternalServerError(),
+							StateEncodeError: () => new HttpApiError.InternalServerError(),
+						}),
+					);
 				}),
 			)
 			.handle("update", ({ path: { namespace, name }, payload }) =>
 				Effect.gen(function* () {
 					const field = registry.get(namespace)?.get(name);
-					if (typeof field === "undefined") {
+					// Computed fields have no setEncoded — they aren't writable.
+					if (typeof field?.setEncoded === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
 					yield* field.setEncoded(payload).pipe(

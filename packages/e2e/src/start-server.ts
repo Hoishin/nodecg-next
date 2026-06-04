@@ -1,8 +1,12 @@
 import { loadNodecg, loadState } from "@nodecg/server";
 
-import { fixtureManifest, initialValues } from "./fixture-state.ts";
+import { computed, fixtureManifest, initialValues } from "./fixture-state.ts";
 
-const loaded = await loadState({ manifest: fixtureManifest, initialValues });
+const loaded = await loadState({
+	manifest: fixtureManifest,
+	initialValues,
+	computed,
+});
 
 loadNodecg({
 	states: [loaded],

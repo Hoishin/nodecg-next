@@ -53,3 +53,21 @@ export type StateFieldPromise<Decoded> = Omit<
 		callback: (value: Decoded) => Promisable<void>,
 	) => Promise<() => void>;
 };
+
+export interface ComputedFieldEffect<Decoded> {
+	get: () => Effect.Effect<Decoded, GetStateError>;
+	subscribe: () => Effect.Effect<
+		Stream.Stream<Decoded>,
+		StateSubscriptionError,
+		Scope.Scope
+	>;
+}
+
+export type ComputedFieldPromise<Decoded> = Omit<
+	PromisifyObject<ComputedFieldEffect<Decoded>>,
+	"subscribe"
+> & {
+	subscribe: (
+		callback: (value: Decoded) => Promisable<void>,
+	) => Promise<() => void>;
+};

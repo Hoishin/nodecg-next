@@ -25,6 +25,8 @@ import {
 	type StateTransport,
 } from "./services/state-transport/state-transport.ts";
 import {
+	type ComputedFieldEffect,
+	type ComputedFieldPromise,
 	GetStateError,
 	type StateFieldEffect,
 	type StateFieldPromise,
@@ -163,6 +165,17 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	return field;
 });
 
+const implementComputedState = Effect.fn("implementComputedState")(function* <
+	Decoded,
+>(namespace: string, name: string, definition: StateDefinition<Decoded>) {
+	const field = yield* implementState(namespace, name, definition);
+	const computed: ComputedFieldEffect<Decoded> = {
+		get: field.get,
+		subscribe: field.subscribe,
+	};
+	return computed;
+});
+
 interface StateDefinitionLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
 	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
@@ -178,26 +191,61 @@ interface StateFieldPromiseLambda extends HKT.TypeLambda {
 	readonly type: StateFieldPromise<Schema.Schema.Type<this["Target"]>>;
 }
 
+interface ComputedFieldEffectLambda extends HKT.TypeLambda {
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: ComputedFieldEffect<Schema.Schema.Type<this["Target"]>>;
+}
+
+interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: ComputedFieldPromise<Schema.Schema.Type<this["Target"]>>;
+}
+
+const buildState = <
+	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+	Computed extends Record<string, Schema.Schema<any, any, never>>,
+>(
+	manifest: StateManifest<Definitions, Computed>,
+) =>
+	Effect.gen(function* () {
+		const fields = yield* mapEffectValues<
+			StateDefinitionLambda,
+			StateFieldEffectLambda,
+			Definitions
+		>()(manifest.definitions, (definition, name) =>
+			implementState(manifest.namespace, name, definition),
+		);
+		const computedFields = yield* mapEffectValues<
+			StateDefinitionLambda,
+			ComputedFieldEffectLambda,
+			Computed
+		>()(manifest.computed, (definition, name) =>
+			implementComputedState(manifest.namespace, name, definition),
+		);
+		return { fields, computedFields };
+	});
+
 export function loadStateEffect<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
->(manifest: StateManifest<Definitions>) {
-	return mapEffectValues<
-		StateDefinitionLambda,
-		StateFieldEffectLambda,
-		Definitions
-	>()(manifest.definitions, (definition, name) =>
-		implementState(manifest.namespace, name, definition),
+	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
+>(manifest: StateManifest<Definitions, Computed>) {
+	return buildState(manifest).pipe(
+		Effect.map(({ fields, computedFields }) => ({
+			...fields,
+			...computedFields,
+		})),
 	);
 }
 
 export async function loadState<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
 >({
 	manifest,
 	stateTransport,
 	messageChannel,
 }: {
-	manifest: StateManifest<Definitions>;
+	manifest: StateManifest<Definitions, Computed>;
 	stateTransport?:
 		| (() => StateTransport)
 		| Effect.Effect<StateTransport, never, never>;
@@ -222,20 +270,19 @@ export async function loadState<
 		Layer.mergeAll(transportLayer, messageChannelLayer, Layer.scope),
 	);
 
-	const effectState = await runtime.runPromise(loadStateEffect(manifest));
-	return mapValues<
-		StateFieldEffectLambda,
-		StateFieldPromiseLambda,
-		Definitions
-	>(effectState, (field, name) => ({
-		get: () => runtime.runPromise(field.get()),
-		set: (value) => runtime.runPromise(field.set(value)),
-		update: (fn) => runtime.runPromise(field.update(fn)),
-		subscribe: async (callback) =>
+	const { fields: effectFields, computedFields: effectComputedFields } =
+		await runtime.runPromise(buildState(manifest));
+
+	const subscribeAdapter =
+		<Decoded, E>(
+			subscribe: () => Effect.Effect<Stream.Stream<Decoded>, E, Scope.Scope>,
+			name: string,
+		) =>
+		async (callback: (value: Decoded) => Promisable<void>) =>
 			runtime.runPromise(
 				Effect.gen(function* () {
 					const scope = yield* Scope.make();
-					const stream = yield* field.subscribe().pipe(Scope.extend(scope));
+					const stream = yield* subscribe().pipe(Scope.extend(scope));
 					yield* stream.pipe(
 						Stream.runForEach((value) =>
 							Effect.tryPromise(async () => callback(value)).pipe(
@@ -251,6 +298,27 @@ export async function loadState<
 					);
 					return () => runtime.runFork(Scope.close(scope, Exit.void));
 				}),
-			),
+			);
+
+	const fields = mapValues<
+		StateFieldEffectLambda,
+		StateFieldPromiseLambda,
+		Definitions
+	>(effectFields, (field, name) => ({
+		get: () => runtime.runPromise(field.get()),
+		set: (value) => runtime.runPromise(field.set(value)),
+		update: (fn) => runtime.runPromise(field.update(fn)),
+		subscribe: subscribeAdapter(field.subscribe, name),
 	}));
+
+	const computedFields = mapValues<
+		ComputedFieldEffectLambda,
+		ComputedFieldPromiseLambda,
+		Computed
+	>(effectComputedFields, (field, name) => ({
+		get: () => runtime.runPromise(field.get()),
+		subscribe: subscribeAdapter(field.subscribe, name),
+	}));
+
+	return { ...fields, ...computedFields };
 }

@@ -17,11 +17,7 @@ const forceShutdownServer = Effect.fn("forceShutdownServer")(function* (
 
 const boundedClose = (server: Server) =>
 	Layer.scopedDiscard(
-		Effect.gen(function* () {
-			yield* Effect.addFinalizer(() =>
-				Effect.forkDaemon(forceShutdownServer(server)),
-			);
-		}),
+		Effect.addFinalizer(() => Effect.forkDaemon(forceShutdownServer(server))),
 	);
 
 export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({

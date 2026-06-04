@@ -12,6 +12,100 @@ Experimental new version of NodeCG in active development from scratch
 - Immutable data structures and updates
 - TypeScript first and complete type safety
 
+### Draft
+
+```ts
+const roles = defineRoles({
+  judge: {
+    description: "Judge standing next to the players",
+    permission: ["all"], // Or "state-read" | "state-write" | "computed-read" | "topic-subscribe" | "topic-publish"
+  },
+  monitor: {
+    permission: ["state-read", "computed-read", "topic-subscribe"],
+  },
+  viewer: {
+    permission: ["state-read", "computed-read"],
+  },
+
+  // Reserved role for all users by default
+  everyone: {
+    permission: ["state-read", "computed-read"],
+  },
+}); // Automatically adds "everyone" which means all users, no permissions
+
+const match = defineNamespace("match", {
+  state: {
+    score: {
+      schema: Schema.Struct({ left: Schema.Number, right: Schema.Number }),
+      permission: {
+        read: {
+          deny: [roles.viewer],
+        },
+      },
+    },
+    label: {
+      schema: Schema.NonEmptyTrimmedString,
+      permission: {
+        write: {
+          allow: [roles.monitor],
+        },
+      },
+    },
+  },
+
+  computed: {
+    winning: {
+      schema: Schema.OptionFromNullOr(Schema.Literal("left", "right")),
+      permission: {
+        read: {
+          deny: [roles.judge],
+        },
+      },
+    },
+  },
+
+  // Not yet
+  data: {
+    upcoming: {
+      schema: Schema.Array(Schema.Struct({ id: Schema.UUID /* ... */ })),
+    },
+  },
+  topic: {
+    start: {
+      schema: Schema.Boolean,
+      permission: {
+        subscribe: {
+          deny: [roles.viewer],
+        },
+      },
+    },
+  },
+});
+
+// Server-side
+const match = loadNamespace(match, {
+  seedState: {
+    score: () => ({ left: 0, right: 0 }),
+    label: () => "Match 1",
+  },
+  implementComputed: {
+    winning: (state) => {
+      const leftAdvantage = state.score.left - state.score.right;
+      return leftAdvantage > 0 ? "left" : leftAdvantage < 0 ? "right" : null;
+    },
+  },
+});
+
+match.state.label.get() === "Match 123";
+
+// Client-side
+const match = loadNamespace(match);
+
+match.state.label.subscribe((label) => {
+  dom.innerText = label;
+});
+```
+
 ### Shared State
 
 - ✅ State is declarative: it is defined in a single place with name and schema
@@ -33,13 +127,13 @@ Experimental new version of NodeCG in active development from scratch
     manifest,
     initialValues: { counter: () => 0, games: () => [] },
   });
-  console.log(await state.counter.get());
+  console.log(state.counter.get()); // synchronous on the server
 
   // Client-side
   import { loadState } from "@nodecg/client";
 
   const state = await loadState({ manifest });
-  console.log(await state.counter.get());
+  console.log(await state.counter.get()); // asynchronous over the network
   ```
 
 - ✅ State is immutable: it provides read-only value, and can be set or updated by returning a new value from the updater (which may be async)
@@ -126,7 +220,7 @@ Experimental new version of NodeCG in active development from scratch
   );
   ```
 
-- 🚧 State supports computed values derived from other state on the server. The manifest declares the schema; the compute function is provided on the server.
+- ✅ State supports computed values derived from other state on the server. The manifest declares the schema; the compute function is provided on the server.
 
   ```ts
   // Manifest: declare schema only
@@ -220,6 +314,10 @@ Experimental new version of NodeCG in active development from scratch
     console.log("Received message:", message);
   });
   ```
+
+### 🚧 Data
+
+For datasets too large to keep in memory. Unlike State, which is mirrored in memory and read synchronously, Data is read and written asynchronously, straight from the store, and never kept in-memory permanently.
 
 ### Data Persistence
 

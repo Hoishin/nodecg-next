@@ -20,6 +20,14 @@ export class StateUpdateFnError extends Data.TaggedError("StateUpdateFnError")<{
 	override readonly message = `Update function for state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
+export class StateComputeError extends Data.TaggedError("StateComputeError")<{
+	namespace: string;
+	name: string;
+	cause: Error;
+}> {
+	override readonly message = `Computing state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
+
 /**
  * Defines server-side behavior of a field of a state
  */
@@ -84,6 +92,67 @@ export interface StateField<Decoded> {
 export type StateFieldPromise<Decoded> = OverrideProperties<
 	PromisifyObject<StateField<Decoded>>,
 	{
+		get: () => Decoded;
+		set: (value: Decoded) => void;
 		subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
 	}
 >;
+
+/**
+ * Defines server-side behavior of a computed (server-derived) field
+ */
+export interface ComputedField<Decoded> {
+	/**
+	 * Compute the current value from the source fields and decode it
+	 */
+	readonly get: () => Effect.Effect<Decoded, StateNotFound | StateComputeError>;
+
+	/**
+	 * Subscribe to changes. It emits the current value when subscription is live.
+	 */
+	readonly subscribe: () => Effect.Effect<
+		Stream.Stream<Decoded>,
+		never,
+		Scope.Scope
+	>;
+
+	readonly [stateFieldInternal]: {
+		readonly getEncoded: () => Effect.Effect<
+			JsonValue,
+			StateNotFound | StateComputeError | StateEncodeError
+		>;
+		readonly subscribeEncoded: () => Effect.Effect<
+			Stream.Stream<JsonValue>,
+			never,
+			Scope.Scope
+		>;
+	};
+}
+
+export type ComputedFieldPromise<Decoded> = OverrideProperties<
+	PromisifyObject<ComputedField<Decoded>>,
+	{
+		// Computed from the live in-memory snapshot, so get is synchronous.
+		get: () => Decoded;
+		subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
+	}
+>;
+
+/**
+ * What the server needs to serve a field over the wire: every field can be read
+ * and subscribed; only regular (non-computed) fields can be written.
+ */
+export interface RegisteredFieldInternal {
+	readonly getEncoded: () => Effect.Effect<
+		JsonValue,
+		StateNotFound | StateComputeError | StateEncodeError
+	>;
+	readonly subscribeEncoded: () => Effect.Effect<
+		Stream.Stream<JsonValue>,
+		StateNotFound,
+		Scope.Scope
+	>;
+	readonly setEncoded?: (
+		value: JsonValue,
+	) => Effect.Effect<void, StateNotFound | StateDecodeError>;
+}

@@ -31,6 +31,24 @@ test(
 	),
 );
 
+test("computed declarations produce StateDefinitions in manifest.computed", () => {
+	const manifest = defineState(
+		"match",
+		{ games: { schema: Schema.Array(Schema.String) } },
+		{ computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } } },
+	);
+
+	expectTypeOf(manifest.computed.firstGameId).toEqualTypeOf<
+		StateDefinition<string | null>
+	>();
+	expect(manifest.computed.firstGameId.name).toBe("firstGameId");
+});
+
+test("manifest.computed is empty when no computed are declared", () => {
+	const manifest = defineState("match", { count: { schema: Schema.Number } });
+	expect(manifest.computed).toEqual({});
+});
+
 test("allows JsonValue-compatible schemas", () => {
 	const manifest = defineState("test", {
 		player: { schema: Schema.String },

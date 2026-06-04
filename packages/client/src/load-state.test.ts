@@ -580,6 +580,101 @@ describe("subscribe", () => {
 	);
 });
 
+describe("computed", () => {
+	const computedManifest = defineState(
+		"root",
+		{ games: { schema: Schema.Array(Schema.Struct({ id: Schema.String })) } },
+		{ computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } } },
+	);
+
+	test(
+		"get decodes the computed value from the transport",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.read.mockReturnValue(Effect.succeed("a"));
+
+				const state = yield* loadStateEffect(computedManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				expect(
+					yield* state.firstGameId
+						.get()
+						.pipe(Effect.provideService(StateTransportService, transportStub)),
+				).toBe("a");
+			}),
+		),
+	);
+
+	test(
+		"is read-only (no set)",
+		testEffect(
+			Effect.gen(function* () {
+				const state = yield* loadStateEffect(computedManifest).pipe(
+					Effect.provideService(StateTransportService, createTransportStub()),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				expect("set" in state.firstGameId).toBe(false);
+			}),
+		),
+	);
+
+	test(
+		"subscribe emits decoded matching publishes",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const pubsub = yield* PubSub.unbounded<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+				};
+
+				const state = yield* loadStateEffect(computedManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const head = yield* state.firstGameId
+					.subscribe()
+					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith({
+							_tag: "subscribe",
+							topic: "state",
+							message: { filter: { namespace: "root", name: "firstGameId" } },
+						});
+					}),
+				);
+
+				yield* pubsub.publish({
+					_tag: "publish",
+					topic: "state",
+					message: {
+						filter: { namespace: "root", name: "firstGameId" },
+						value: "z",
+					},
+				});
+
+				const result = yield* Fiber.join(head);
+				assert(Option.isSome(result));
+				expect(result.value).toBe("z");
+			}),
+		),
+	);
+});
+
 describe("loadState (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();

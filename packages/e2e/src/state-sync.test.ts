@@ -28,4 +28,38 @@ describe("client ⇄ server state sync", () => {
 		await vi.waitFor(() => expect(received).toEqual([5, 7]));
 		cancel();
 	});
+
+	test("reads a server-computed value over HTTP", async () => {
+		const state = await loadState({ manifest: fixtureManifest });
+		await state.count.set(10);
+		expect(await state.doubledCount.get()).toBe(20);
+	});
+
+	test("subscribe to a computed value receives recomputed updates", async () => {
+		const state = await loadState({ manifest: fixtureManifest });
+		await state.count.set(3);
+		const received: number[] = [];
+		const cancel = await state.doubledCount.subscribe((value) => {
+			received.push(value);
+		});
+		await vi.waitFor(() => expect(received.at(-1)).toBe(6));
+		await state.count.set(4);
+		await vi.waitFor(() => expect(received.at(-1)).toBe(8));
+		cancel();
+	});
+
+	test("a branching computed dedupes source changes it doesn't depend on", async () => {
+		const state = await loadState({ manifest: fixtureManifest });
+		await state.count.set(0);
+		await state.label.set("first");
+		const received: string[] = [];
+		const cancel = await state.summary.subscribe((value) => {
+			received.push(value);
+		});
+		await vi.waitFor(() => expect(received).toEqual(["idle"]));
+		await state.label.set("second");
+		await state.count.set(3);
+		await vi.waitFor(() => expect(received).toEqual(["idle", "second x3"]));
+		cancel();
+	});
 });

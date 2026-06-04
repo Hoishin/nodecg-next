@@ -5,14 +5,22 @@ import {
 	type StateManifest,
 } from "@nodecg/core";
 import { testEffect } from "@nodecg/private";
-import { Cause, Chunk, Effect, Option, Queue, Schema, Stream } from "effect";
+import {
+	Cause,
+	Chunk,
+	Effect,
+	Fiber,
+	Option,
+	Queue,
+	Schema,
+	Stream,
+} from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { loadState, loadStateEffect } from "./load-state.ts";
 import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	type StateChange,
-	StateNotFound,
 	type StateStorage,
 	StateStorageService,
 } from "./services/state-storage/state-storage.ts";
@@ -20,13 +28,13 @@ import { stateFieldInternal } from "./state-field.ts";
 
 const createStorageStub = () =>
 	({
-		read: vi.fn<StateStorage["read"]>(),
+		read: vi.fn<StateStorage["read"]>(() => Option.none()),
 		create: vi.fn<StateStorage["create"]>(() => Effect.void),
 		update: vi.fn<StateStorage["update"]>(() => Effect.void),
 		subscribe: vi.fn<StateStorage["subscribe"]>(() =>
 			Queue.unbounded<StateChange>(),
 		),
-		persistInterval: 0,
+		flush: vi.fn<StateStorage["flush"]>(() => Effect.void),
 	}) satisfies StateStorage;
 
 describe("loadStateEffect seeding", () => {
@@ -35,9 +43,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(
-					Effect.fail(new StateNotFound({ namespace: "ns", name: "count" })),
-				);
+				storageStub.read.mockReturnValue(Option.none());
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -58,9 +64,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(
-					Effect.fail(new StateNotFound({ namespace: "ns", name: "count" })),
-				);
+				storageStub.read.mockReturnValue(Option.none());
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -85,7 +89,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed(5));
+				storageStub.read.mockReturnValue(Option.some(5));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -105,9 +109,7 @@ describe("loadStateEffect seeding", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(
-					Effect.fail(new StateNotFound({ namespace: "ns", name: "broken" })),
-				);
+				storageStub.read.mockReturnValue(Option.none());
 				const definition: StateDefinition<number> = {
 					name: "broken",
 					encode: () =>
@@ -123,6 +125,7 @@ describe("loadStateEffect seeding", () => {
 				const manifest: StateManifest<{ broken: typeof Schema.Number }> = {
 					namespace: "ns",
 					definitions: { broken: definition },
+					computed: {},
 				};
 
 				const error = yield* loadStateEffect({
@@ -144,7 +147,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed(42));
+				storageStub.read.mockReturnValue(Option.some(42));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -168,7 +171,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed("not a number"));
+				storageStub.read.mockReturnValue(Option.some("not a number"));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -201,7 +204,7 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(
-					Effect.succeed("2026-05-14T00:00:00.000Z"),
+					Option.some("2026-05-14T00:00:00.000Z"),
 				);
 				const manifest = defineState("ns", {
 					when: { schema: Schema.DateFromString },
@@ -229,7 +232,7 @@ describe("getEncoded", () => {
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(
-					Effect.succeed("2026-05-14T00:00:00.000Z"),
+					Option.some("2026-05-14T00:00:00.000Z"),
 				);
 				const manifest = defineState("ns", {
 					when: { schema: Schema.DateFromString },
@@ -254,7 +257,7 @@ describe("getEncoded", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed("not a number"));
+				storageStub.read.mockReturnValue(Option.some("not a number"));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -288,7 +291,7 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed(0));
+				storageStub.read.mockReturnValue(Option.some(0));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -311,7 +314,7 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed(0));
+				storageStub.read.mockReturnValue(Option.some(0));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -338,7 +341,7 @@ describe("set", () => {
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(
-					Effect.succeed("1970-01-01T00:00:00.000Z"),
+					Option.some("1970-01-01T00:00:00.000Z"),
 				);
 				const manifest = defineState("ns", {
 					when: { schema: Schema.DateFromString },
@@ -368,7 +371,7 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
-				storageStub.read.mockReturnValue(Effect.succeed(10));
+				storageStub.read.mockReturnValue(Option.some(10));
 				const manifest = defineState("ns", {
 					count: { schema: Schema.Number },
 				});
@@ -390,7 +393,7 @@ describe("update", () => {
 describe("loadState (Promise wrapper)", () => {
 	test("forwards to the injected storage", async () => {
 		const storageStub = createStorageStub();
-		storageStub.read.mockReturnValue(Effect.succeed(42));
+		storageStub.read.mockReturnValue(Option.some(42));
 		const manifest = defineState("ns", { count: { schema: Schema.Number } });
 
 		const state = await loadState({
@@ -399,10 +402,119 @@ describe("loadState (Promise wrapper)", () => {
 			storage: storageStub,
 		});
 
-		expect(await state.count.get()).toBe(42);
-		await state.count.set(9);
+		expect(state.count.get()).toBe(42);
+		state.count.set(9);
 		expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 9);
 	});
+});
+
+describe("computed", () => {
+	const computedManifest = defineState(
+		"ns",
+		{
+			games: {
+				schema: Schema.Array(Schema.Struct({ id: Schema.String })),
+			},
+		},
+		{ computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } } },
+	);
+
+	const firstGameId = (sources: {
+		readonly games: readonly { readonly id: string }[];
+	}) => sources.games[0]?.id ?? null;
+
+	test(
+		"get computes from the decoded source snapshot",
+		testEffect(
+			Effect.gen(function* () {
+				const state = yield* loadStateEffect({
+					manifest: computedManifest,
+					initialValues: { games: () => [] },
+					computed: { firstGameId },
+				});
+
+				expect(yield* state.firstGameId.get()).toBe(null);
+
+				yield* state.games.set([{ id: "a" }, { id: "b" }]);
+				expect(yield* state.firstGameId.get()).toBe("a");
+			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
+
+	test("is read-only (no set/update)", () => {
+		expect("set" in computedManifest.computed).toBe(false);
+	});
+
+	test(
+		"subscribe seeds, recomputes on source change, and dedupes unchanged values",
+		testEffect(
+			Effect.gen(function* () {
+				const state = yield* loadStateEffect({
+					manifest: computedManifest,
+					initialValues: { games: () => [] },
+					computed: { firstGameId },
+				});
+
+				const received: (string | null)[] = [];
+				const fiber = yield* state.firstGameId.subscribe().pipe(
+					Effect.flatMap((stream) =>
+						Stream.runForEach(stream, (value) =>
+							Effect.sync(() => received.push(value)),
+						),
+					),
+					Effect.fork,
+				);
+
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([null])),
+				);
+				yield* state.games.set([{ id: "a" }]);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([null, "a"])),
+				);
+				// firstGameId stays "a" — this change must be deduped away.
+				yield* state.games.set([{ id: "a" }, { id: "c" }]);
+				yield* state.games.set([{ id: "b" }]);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([null, "a", "b"])),
+				);
+
+				yield* Fiber.interrupt(fiber);
+			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
+
+	test(
+		"eager compute at load fails fast when compute throws",
+		testEffect(
+			Effect.gen(function* () {
+				const error = yield* loadStateEffect({
+					manifest: computedManifest,
+					initialValues: { games: () => [] },
+					computed: {
+						firstGameId: () => {
+							throw new Error("boom");
+						},
+					},
+				}).pipe(Effect.flip);
+				expect(error._tag).toBe("StateComputeError");
+			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
+
+	test(
+		"eager compute at load fails fast when the computed value fails its schema",
+		testEffect(
+			Effect.gen(function* () {
+				const error = yield* loadStateEffect({
+					manifest: computedManifest,
+					initialValues: { games: () => [] },
+					computed: { firstGameId: () => 42 as unknown as string },
+				}).pipe(Effect.flip);
+				expect(error._tag).toBe("StateEncodeError");
+			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
 });
 
 describe("field subscribe", () => {

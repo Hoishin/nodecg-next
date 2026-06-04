@@ -1,4 +1,4 @@
-import { mapValues } from "@nodecg/internal";
+import { mapValues, mapValuesOptional } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 
@@ -34,11 +34,17 @@ export interface StateDefinition<Decoded> {
 
 export interface StateManifest<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
 > {
 	namespace: string;
 	definitions: {
 		[K in keyof Definitions & string]: StateDefinition<
 			Schema.Schema.Type<Definitions[K]>
+		>;
+	};
+	computed: {
+		[K in keyof Computed & string]: StateDefinition<
+			Schema.Schema.Type<Computed[K]>
 		>;
 	};
 }
@@ -82,18 +88,33 @@ interface StateDefinitionLambda extends HKT.TypeLambda {
 
 export function defineState<
 	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
 >(
 	namespace: string,
 	defs: {
 		[K in keyof Definitions & string]: StateOption<Definitions[K]>;
 	},
-): StateManifest<Definitions> {
+	...[options]: [keyof Computed] extends [never]
+		? [options?: { computed?: never }]
+		: [
+				options: {
+					computed: {
+						[K in keyof Computed & string]: StateOption<Computed[K]>;
+					};
+				},
+			]
+): StateManifest<Definitions, Computed> {
 	return {
 		namespace,
 		definitions: mapValues<
 			StateOptionLambda,
 			StateDefinitionLambda,
 			Definitions
-		>(defs, (options, name) => implementDefinition(name, options)),
+		>(defs, (option, name) => implementDefinition(name, option)),
+		computed: mapValuesOptional<
+			StateOptionLambda,
+			StateDefinitionLambda,
+			Computed
+		>(options?.computed, (option, name) => implementDefinition(name, option)),
 	};
 }

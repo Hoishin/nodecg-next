@@ -1,8 +1,8 @@
 import {
 	Context,
 	Data,
-	type Duration,
 	type Effect,
+	type Option,
 	type Scope,
 	type Stream,
 } from "effect";
@@ -28,12 +28,14 @@ export class StateAlreadyExists extends Data.TaggedError("StateAlreadyExists")<{
 	override readonly message = `State "${this.name}" in "${this.namespace}" already exists`;
 }
 
+export class StatePersistError extends Data.TaggedError("StatePersistError")<{
+	cause: Error;
+}> {
+	override readonly message = `Failed to persist state: ${this.cause.message}`;
+}
+
 /**
  * StateStorage is platform-agnostic layer to persist state values.
- * Combination of namespace + name can be considered unique.
- * Values here must be JSON-compatible objects, which means
- * it only has JSON-compatible primitives and does not change
- * after `JSON.parse(JSON.stringify(value))`
  */
 export interface StateStorage {
 	/**
@@ -46,12 +48,9 @@ export interface StateStorage {
 	) => Effect.Effect<void, StateAlreadyExists>;
 
 	/**
-	 * Get the current value with namespace and name
+	 * Read the current in-memory value synchronously.
 	 */
-	read: (
-		namespace: string,
-		name: string,
-	) => Effect.Effect<JsonValue, StateNotFound>;
+	read: (namespace: string, name: string) => Option.Option<JsonValue>;
 
 	/**
 	 * Update the already-existing state value with a new value
@@ -70,7 +69,11 @@ export interface StateStorage {
 		never,
 		Scope.Scope
 	>;
-	persistInterval: Duration.DurationInput;
+
+	/**
+	 * Force a durable write of all pending in-memory state and confirm it.
+	 */
+	flush: () => Effect.Effect<void, StatePersistError>;
 }
 
 export class StateStorageService extends Context.Tag("StateStorage")<

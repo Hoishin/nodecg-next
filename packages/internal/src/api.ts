@@ -9,6 +9,7 @@ import { Schema } from "effect";
 
 import { JsonValueSchema } from "./json-value-schema.ts";
 
+// TODO: separate state and computed endpoints
 const StateGroup = HttpApiGroup.make("State")
 	.add(
 		HttpApiEndpoint.get(
