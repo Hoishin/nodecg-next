@@ -1,8 +1,8 @@
 import { testEffect } from "@nodecg/private";
-import { Context, Data, Effect, type HKT } from "effect";
+import { Context, Data, Effect, Schema, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
-import { mapEffectValues, mapValues } from "./map-values.ts";
+import { mapEffectValues, mapSchemaValues, mapValues } from "./map-values.ts";
 
 interface IdentityLambda extends HKT.TypeLambda {
 	readonly type: this["Target"];
@@ -52,11 +52,10 @@ class BoxService extends Context.Tag("BoxService")<
 
 describe("mapValues", () => {
 	test("applies the transform to every value, preserving keys and per-key value types", () => {
-		const result = mapValues<
-			IdentityLambda,
-			ArrayLambda,
-			{ a: number; b: string }
-		>({ a: 1, b: "two" }, (value) => [value]);
+		const result = mapValues<IdentityLambda, ArrayLambda>()(
+			{ a: 1, b: "two" },
+			(value) => [value],
+		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: ReadonlyArray<number>;
 			readonly b: ReadonlyArray<string>;
@@ -66,31 +65,25 @@ describe("mapValues", () => {
 
 	test("passes the key to the transform", () => {
 		const keys: string[] = [];
-		mapValues<IdentityLambda, ArrayLambda, { a: number; b: number }>(
-			{ a: 1, b: 2 },
-			(value, key) => {
-				keys.push(key);
-				return [value];
-			},
-		);
+		mapValues<IdentityLambda, ArrayLambda>()({ a: 1, b: 2 }, (value, key) => {
+			keys.push(key);
+			return [value];
+		});
 		expect(keys.sort()).toEqual(["a", "b"]);
 	});
 
 	test("returns an empty object for an empty input", () => {
-		const result = mapValues<
-			IdentityLambda,
-			ArrayLambda,
-			Record<string, number>
-		>({}, (value) => [value]);
+		const result = mapValues<IdentityLambda, ArrayLambda>()({}, (value) => [
+			value,
+		]);
 		expect(result).toEqual({});
 	});
 
 	test("maps each value into a mapped-object shape, keeping value types distinct per key", () => {
-		const result = mapValues<
-			IdentityLambda,
-			HeadTailLambda,
-			{ a: number; b: string }
-		>({ a: 1, b: "two" }, (value) => ({ head: value, tail: value }));
+		const result = mapValues<IdentityLambda, HeadTailLambda>()(
+			{ a: 1, b: "two" },
+			(value) => ({ head: value, tail: value }),
+		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: { readonly head: number; readonly tail: number };
 			readonly b: { readonly head: string; readonly tail: string };
@@ -102,11 +95,10 @@ describe("mapValues", () => {
 	});
 
 	test("preserves distinct per-key return types when the transform produces functions", () => {
-		const result = mapValues<
-			IdentityLambda,
-			ThunkLambda,
-			{ count: number; label: string }
-		>({ count: 2, label: "x" }, (value) => () => value);
+		const result = mapValues<IdentityLambda, ThunkLambda>()(
+			{ count: 2, label: "x" },
+			(value) => () => value,
+		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly count: () => number;
 			readonly label: () => string;
@@ -116,11 +108,10 @@ describe("mapValues", () => {
 	});
 
 	test("reduces a non-identity F lambda on the input side", () => {
-		const result = mapValues<
-			BoxLambda,
-			IdentityLambda,
-			{ a: number; b: string }
-		>({ a: { value: 1 }, b: { value: "two" } }, (value) => value.value);
+		const result = mapValues<BoxLambda, IdentityLambda>()(
+			{ a: { value: 1 }, b: { value: "two" } },
+			(value) => value.value,
+		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: number;
 			readonly b: string;
@@ -129,11 +120,10 @@ describe("mapValues", () => {
 	});
 
 	test("resolves a keyof-remapped, indexed mapped-object G lambda per key", () => {
-		const result = mapValues<
-			IdentityLambda,
-			PrefixedBoxLambda,
-			{ a: number; b: string }
-		>({ a: 1, b: "two" }, (value) => ({ box_value: value }));
+		const result = mapValues<IdentityLambda, PrefixedBoxLambda>()(
+			{ a: 1, b: "two" },
+			(value) => ({ box_value: value }),
+		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: { readonly box_value: number };
 			readonly b: { readonly box_value: string };
@@ -142,11 +132,10 @@ describe("mapValues", () => {
 	});
 
 	test("respects a Lambda that specifies a constrained Target", () => {
-		const result = mapValues<
-			WithIdLambda,
-			BoxLambda,
-			{ a: { id: number; tag: string }; b: { id: number; tag: number } }
-		>({ a: { id: 1, tag: "x" }, b: { id: 2, tag: 9 } }, (value) => ({ value }));
+		const result = mapValues<WithIdLambda, BoxLambda>()(
+			{ a: { id: 1, tag: "x" }, b: { id: 2, tag: 9 } },
+			(value) => ({ value }),
+		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: { readonly value: { id: number; tag: string } };
 			readonly b: { readonly value: { id: number; tag: number } };
@@ -155,7 +144,7 @@ describe("mapValues", () => {
 			a: { value: { id: 1, tag: "x" } },
 			b: { value: { id: 2, tag: 9 } },
 		});
-		mapValues<WithIdLambda, BoxLambda, { a: string }>(
+		mapValues<WithIdLambda, BoxLambda>()(
 			// @ts-expect-error Target must satisfy { id: number }
 			{ a: "no id" },
 			(value) => ({ value }),
@@ -319,4 +308,51 @@ describe("mapEffectValues", () => {
 			}),
 		),
 	);
+});
+
+interface ArrayLambda extends HKT.TypeLambda {
+	readonly type: ReadonlyArray<this["Target"]>;
+}
+type Option = { readonly schema?: Schema.Schema<any, any, never> };
+
+describe("mapSchemaValues", () => {
+	test("maps only the entries carrying a schema, keyed by the schema-bearing subset", () => {
+		const result = mapSchemaValues<Option, ArrayLambda>()(
+			{ a: { schema: Schema.Number }, b: { schema: Schema.String }, skip: {} },
+			(value) => [value.schema],
+		);
+		expectTypeOf(result).toEqualTypeOf<{
+			readonly a: ReadonlyArray<typeof Schema.Number>;
+			readonly b: ReadonlyArray<typeof Schema.String>;
+		}>();
+		expect(result).toEqual({ a: [Schema.Number], b: [Schema.String] });
+	});
+
+	test("passes the key to the transform, skipping schema-less entries", () => {
+		const keys: string[] = [];
+		mapSchemaValues<Option, ArrayLambda>()(
+			{ a: { schema: Schema.Number }, b: { schema: Schema.Number }, skip: {} },
+			(value, key) => {
+				keys.push(key);
+				return [value.schema];
+			},
+		);
+		expect(keys.sort()).toEqual(["a", "b"]);
+	});
+
+	test("returns an empty object for an undefined input", () => {
+		const input: Record<string, Option> | undefined = undefined;
+		const result = mapSchemaValues<Option, ArrayLambda>()(input, (value) => [
+			value.schema,
+		]);
+		expect(result).toEqual({});
+	});
+
+	test("rejects a value that is not option-shaped", () => {
+		mapSchemaValues<Option, ArrayLambda>()(
+			// @ts-expect-error 123 is not `{ schema?: Schema }`
+			{ bogus: 123 },
+			(value) => [value.schema],
+		);
+	});
 });

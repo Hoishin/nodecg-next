@@ -25,6 +25,8 @@
 			{
 				"name": "@effect/language-service"
 			}
-		]
+		],
+
+		"noErrorTruncation": true
 	}
 }

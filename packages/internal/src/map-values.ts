@@ -1,107 +1,66 @@
-import { Effect, type HKT } from "effect";
+import { Effect, Schema, type HKT } from "effect";
 
-export function mapValues<
-	F extends HKT.TypeLambda,
-	G extends HKT.TypeLambda,
-	T extends Record<string, unknown>,
->(
-	obj: {
-		readonly [K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]>;
-	},
-	transform: <V>(
-		value: HKT.Kind<F, never, never, never, V>,
-		key: keyof T & string,
-	) => HKT.Kind<G, never, never, never, V>,
-): {
-	readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
-} {
-	const result: Partial<{
-		readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
-	}> = {};
+const unsafeObjectKeys = <T extends object>(obj: T) =>
+	Object.keys(obj) as (keyof T & string)[];
 
-	for (const key of Object.keys(obj) as (keyof T & string)[]) {
-		result[key] = transform(obj[key], key);
-	}
+type ApplyLambdaToObjectValues<
+	Target extends Record<string, unknown>,
+	Lambda extends HKT.TypeLambda,
+	In = never,
+	Out2 = never,
+	Out1 = never,
+> = {
+	readonly [K in keyof Target & string]: HKT.Kind<
+		Lambda,
+		In,
+		Out2,
+		Out1,
+		Target[K]
+	>;
+};
 
-	return result as {
-		readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
+export const mapValues =
+	<InLambda extends HKT.TypeLambda, OutLambda extends HKT.TypeLambda>() =>
+	<Target extends Record<string, unknown>>(
+		obj: ApplyLambdaToObjectValues<Target, InLambda> | undefined,
+		transform: <K extends keyof Target & string>(
+			value: HKT.Kind<InLambda, never, never, never, Target[K]>,
+			key: K,
+		) => HKT.Kind<OutLambda, never, never, never, Target[K]>,
+	): ApplyLambdaToObjectValues<Target, OutLambda> => {
+		if (typeof obj === "undefined") {
+			return {} as any;
+		}
+		const result: any = {};
+		for (const key of unsafeObjectKeys(obj)) {
+			result[key] = transform(obj[key], key);
+		}
+		return result;
 	};
-}
-
-export function mapValuesOptional<
-	F extends HKT.TypeLambda,
-	G extends HKT.TypeLambda,
-	T extends Record<string, unknown>,
->(
-	obj:
-		| {
-				readonly [K in keyof T & string]: HKT.Kind<
-					F,
-					never,
-					never,
-					never,
-					T[K]
-				>;
-		  }
-		| undefined,
-	transform: <V>(
-		value: HKT.Kind<F, never, never, never, V>,
-		key: keyof T & string,
-	) => HKT.Kind<G, never, never, never, V>,
-) {
-	if (typeof obj === "undefined") {
-		return {} as {
-			readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
-		};
-	}
-	return mapValues<F, G, T>(obj, transform);
-}
-
-// TODO: nowhere near type safe. Result can do anything.
-export function mergeRecords<Result>(
-	base: Readonly<Record<string, unknown>> | undefined,
-	extra: Readonly<Record<string, unknown>> | undefined,
-): Result {
-	return { ...base, ...extra } as Result;
-}
 
 export const mapEffectValues =
 	<
-		F extends HKT.TypeLambda,
-		G extends HKT.TypeLambda,
-		T extends Record<string, unknown>,
+		InLambda extends HKT.TypeLambda,
+		OutLambda extends HKT.TypeLambda,
+		Target extends Record<string, unknown>,
 	>() =>
 	<E, R>(
-		obj: {
-			readonly [K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]>;
-		},
-		transform: <V>(
-			value: HKT.Kind<F, never, never, never, V>,
-			key: keyof T & string,
-		) => Effect.Effect<HKT.Kind<G, never, never, never, V>, E, R>,
+		obj: ApplyLambdaToObjectValues<Target, InLambda>,
+		transform: <K extends keyof Target & string>(
+			value: HKT.Kind<InLambda, never, never, never, Target[K]>,
+			key: keyof Target & string,
+		) => Effect.Effect<
+			HKT.Kind<OutLambda, never, never, never, Target[K]>,
+			E,
+			R
+		>,
 	) =>
 		Effect.gen(function* () {
-			const result: Partial<{
-				readonly [K in keyof T & string]: HKT.Kind<
-					G,
-					never,
-					never,
-					never,
-					T[K]
-				>;
-			}> = {};
-			for (const key of Object.keys(obj) as (keyof T & string)[]) {
+			const result: Partial<ApplyLambdaToObjectValues<Target, OutLambda>> = {};
+			for (const key of unsafeObjectKeys(obj)) {
 				result[key] = yield* transform(obj[key], key);
 			}
-			return result as {
-				readonly [K in keyof T & string]: HKT.Kind<
-					G,
-					never,
-					never,
-					never,
-					T[K]
-				>;
-			};
+			return result as ApplyLambdaToObjectValues<Target, OutLambda>;
 		});
 
 export const zipEffectValues =
@@ -110,54 +69,74 @@ export const zipEffectValues =
 		C extends HKT.TypeLambda,
 		G extends HKT.TypeLambda,
 		In,
-		T extends Record<string, unknown>,
+		Target extends Record<string, unknown>,
 	>() =>
 	<E, R>(
-		obj: {
-			readonly [K in keyof T & string]: HKT.Kind<F, never, never, never, T[K]>;
-		},
-		ctx:
-			| {
-					readonly [K in keyof T & string]: HKT.Kind<C, In, never, never, T[K]>;
-			  }
-			| undefined,
-		transform: <V>(
-			value: HKT.Kind<F, never, never, never, V>,
-			context: HKT.Kind<C, In, never, never, V>,
-			key: keyof T & string,
-		) => Effect.Effect<HKT.Kind<G, never, never, never, V>, E, R>,
+		obj: ApplyLambdaToObjectValues<Target, F>,
+		ctx: ApplyLambdaToObjectValues<Target, C, In> | undefined,
+		transform: <K extends keyof Target & string>(
+			value: HKT.Kind<F, never, never, never, Target[K]>,
+			context: HKT.Kind<C, In, never, never, Target[K]>,
+			key: keyof Target & string,
+		) => Effect.Effect<HKT.Kind<G, never, never, never, Target[K]>, E, R>,
 	) =>
 		Effect.gen(function* () {
-			const result: Partial<{
-				readonly [K in keyof T & string]: HKT.Kind<
-					G,
-					never,
-					never,
-					never,
-					T[K]
-				>;
-			}> = {};
+			const result: Partial<ApplyLambdaToObjectValues<Target, G>> = {};
 			if (typeof ctx === "undefined") {
-				return result as {
-					readonly [K in keyof T & string]: HKT.Kind<
-						G,
-						never,
-						never,
-						never,
-						T[K]
-					>;
-				};
+				return result as ApplyLambdaToObjectValues<Target, G>;
 			}
-			for (const key of Object.keys(obj) as (keyof T & string)[]) {
+			for (const key of Object.keys(obj) as (keyof Target & string)[]) {
 				result[key] = yield* transform(obj[key], ctx[key], key);
 			}
-			return result as {
-				readonly [K in keyof T & string]: HKT.Kind<
-					G,
-					never,
-					never,
-					never,
-					T[K]
-				>;
-			};
+			return result as ApplyLambdaToObjectValues<Target, G>;
 		});
+
+type SchemaKeys<In> = {
+	[K in keyof In]: In[K] extends { readonly schema: {} } ? K : never;
+}[keyof In] &
+	string;
+
+export type AddedSchemas<In> = {
+	readonly [K in SchemaKeys<In>]: In[K] extends {
+		readonly schema: infer S extends Schema.Schema<any, any, never>;
+	}
+		? S
+		: never;
+};
+
+export const mapSchemaValues =
+	<
+		Option extends { readonly schema?: Schema.Schema<any, any, never> },
+		G extends HKT.TypeLambda,
+	>() =>
+	<In extends Record<string, Option>>(
+		obj: In | undefined,
+		transform: (
+			value: Option & { readonly schema: Schema.Schema<any, any, never> },
+			key: string,
+		) => HKT.Kind<G, never, never, never, Schema.Schema<any, any, never>>,
+	): ApplyLambdaToObjectValues<AddedSchemas<In>, G> => {
+		const result: any = {};
+		if (typeof obj !== "undefined") {
+			for (const key of Object.keys(obj)) {
+				const value = obj[key];
+				if (typeof value === "undefined") {
+					continue;
+				}
+				const schema = value.schema;
+				if (typeof schema === "undefined") {
+					continue;
+				}
+				result[key] = transform({ ...value, schema }, key);
+			}
+		}
+		return result as ApplyLambdaToObjectValues<AddedSchemas<In>, G>;
+	};
+
+// TODO: nowhere near type safe. Result can do anything.
+export function mergeRecords<Result>(
+	base: Readonly<Record<string, unknown>> | undefined,
+	extra: Readonly<Record<string, unknown>> | undefined,
+): Result {
+	return { ...base, ...extra } as Result;
+}

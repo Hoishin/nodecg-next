@@ -2,7 +2,6 @@ import {
 	type AddedSchemas,
 	mapSchemaValues,
 	mapValues,
-	mapValuesOptional,
 	mergeRecords,
 } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
@@ -272,11 +271,10 @@ export function defineNamespace<
 			namedRoles,
 		);
 
-	const state = mapValuesOptional<
+	const state = mapValues<
 		FieldOptionLambda<StatePermission>,
-		FieldManifestLambda<ResolvedStatePermission>,
-		State
-	>(def.state, (option, name) => ({
+		FieldManifestLambda<ResolvedStatePermission>
+	>()(def.state, (option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
 			read: resolve("state-read", option.permission?.read),
@@ -284,22 +282,20 @@ export function defineNamespace<
 		},
 	}));
 
-	const computed = mapValuesOptional<
+	const computed = mapValues<
 		FieldOptionLambda<ComputedPermission>,
-		FieldManifestLambda<ResolvedComputedPermission>,
-		Computed
-	>(def.computed, (option, name) => ({
+		FieldManifestLambda<ResolvedComputedPermission>
+	>()(def.computed, (option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
 			read: resolve("computed-read", option.permission?.read),
 		},
 	}));
 
-	const topic = mapValuesOptional<
+	const topic = mapValues<
 		FieldOptionLambda<TopicPermission>,
-		FieldManifestLambda<ResolvedTopicPermission>,
-		Topic
-	>(def.topic, (option, name) => ({
+		FieldManifestLambda<ResolvedTopicPermission>
+	>()(def.topic, (option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
 			subscribe: resolve("topic-subscribe", option.permission?.subscribe),
@@ -421,9 +417,8 @@ export function extendNamespace<
 
 	const stateRemap = mapValues<
 		FieldManifestLambda<ResolvedStatePermission>,
-		FieldManifestLambda<ResolvedStatePermission>,
-		PState
-	>(manifest.state, (field, name) => {
+		FieldManifestLambda<ResolvedStatePermission>
+	>()(manifest.state, (field, name) => {
 		const override = concrete.state?.[name];
 		return {
 			...field,
@@ -441,8 +436,9 @@ export function extendNamespace<
 			},
 		};
 	});
+
 	const stateAdded = mapSchemaValues<
-		FieldOptionLambda<StatePermission>,
+		ExtendStateOption,
 		FieldManifestLambda<ResolvedStatePermission>
 	>()(concrete.state, (option, name) => ({
 		...implementCodec(name, option.schema),
@@ -461,9 +457,8 @@ export function extendNamespace<
 
 	const computedRemap = mapValues<
 		FieldManifestLambda<ResolvedComputedPermission>,
-		FieldManifestLambda<ResolvedComputedPermission>,
-		PComputed
-	>(manifest.computed, (field, name) => {
+		FieldManifestLambda<ResolvedComputedPermission>
+	>()(manifest.computed, (field, name) => {
 		const override = concrete.computed?.[name];
 		return {
 			...field,
@@ -477,7 +472,7 @@ export function extendNamespace<
 		};
 	});
 	const computedAdded = mapSchemaValues<
-		FieldOptionLambda<ComputedPermission>,
+		ExtendComputedOption,
 		FieldManifestLambda<ResolvedComputedPermission>
 	>()(concrete.computed, (option, name) => ({
 		...implementCodec(name, option.schema),
@@ -495,9 +490,8 @@ export function extendNamespace<
 
 	const topicRemap = mapValues<
 		FieldManifestLambda<ResolvedTopicPermission>,
-		FieldManifestLambda<ResolvedTopicPermission>,
-		PTopic
-	>(manifest.topic, (field, name) => {
+		FieldManifestLambda<ResolvedTopicPermission>
+	>()(manifest.topic, (field, name) => {
 		const override = concrete.topic?.[name];
 		return {
 			...field,
@@ -516,7 +510,7 @@ export function extendNamespace<
 		};
 	});
 	const topicAdded = mapSchemaValues<
-		FieldOptionLambda<TopicPermission>,
+		ExtendTopicOption,
 		FieldManifestLambda<ResolvedTopicPermission>
 	>()(concrete.topic, (option, name) => ({
 		...implementCodec(name, option.schema),
@@ -535,3 +529,30 @@ export function extendNamespace<
 
 	return { namespace: manifest.namespace, roles, state, computed, topic };
 }
+
+// function filterValuesBySchemaExistance<
+// 	In extends Record<
+// 		string,
+// 		{ readonly schema?: Schema.Schema<any, any, never> }
+// 	>,
+// >(
+// 	obj?: In,
+// ): {
+// 	readonly [K in keyof In as [In[K]["schema"]] extends [
+// 		Schema.Schema<any, any, never>,
+// 	]
+// 		? K
+// 		: never]: Omit<In[K], "schema"> & { schema: NonNullable<In[K]["schema"]> };
+// } {
+// 	const result: any = {};
+// 	for (const key in obj) {
+// 		const value = obj[key];
+// 		if (typeof value?.schema !== "undefined") {
+// 			result[key] = {
+// 				...obj[key],
+// 				schema: value.schema,
+// 			};
+// 		}
+// 	}
+// 	return result;
+// }

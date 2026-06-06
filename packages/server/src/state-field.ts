@@ -1,12 +1,7 @@
 import type { StateDecodeError, StateEncodeError } from "@nodecg/core";
 import type { PromisifyObject } from "@nodecg/internal";
 import { Data, type Effect, type Scope, type Stream } from "effect";
-import type {
-	Promisable,
-	JsonValue,
-	OverrideProperties,
-	Simplify,
-} from "type-fest";
+import type { Promisable, JsonValue } from "type-fest";
 
 import type { StateNotFound } from "./services/state-storage/state-storage.ts";
 
@@ -31,7 +26,7 @@ export class StateComputeError extends Data.TaggedError("StateComputeError")<{
 /**
  * Defines server-side behavior of a field of a state
  */
-export interface StateField<Decoded> {
+interface StateFieldBase<Decoded> {
 	/**
 	 * Read value from state storage and decode
 	 */
@@ -69,34 +64,29 @@ export interface StateField<Decoded> {
 		StateNotFound,
 		Scope.Scope
 	>;
-
-	readonly [stateFieldInternal]: Simplify<
-		{
-			[K in keyof StateField<Decoded> as K extends string
-				? K
-				: never]: StateField<Decoded>[K];
-		} & {
-			readonly getEncoded: () => Effect.Effect<JsonValue, StateNotFound>;
-			readonly setEncoded: (
-				value: JsonValue,
-			) => Effect.Effect<void, StateNotFound | StateDecodeError>;
-			readonly subscribeEncoded: () => Effect.Effect<
-				Stream.Stream<JsonValue>,
-				StateNotFound,
-				Scope.Scope
-			>;
-		}
-	>;
 }
 
-export type StateFieldPromise<Decoded> = OverrideProperties<
-	PromisifyObject<StateField<Decoded>>,
-	{
-		get: () => Decoded;
-		set: (value: Decoded) => void;
-		subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
-	}
->;
+export interface StateField<Decoded> extends StateFieldBase<Decoded> {
+	readonly [stateFieldInternal]: StateFieldBase<Decoded> & {
+		readonly getEncoded: () => Effect.Effect<JsonValue, StateNotFound>;
+		readonly setEncoded: (
+			value: JsonValue,
+		) => Effect.Effect<void, StateNotFound | StateDecodeError>;
+		readonly subscribeEncoded: () => Effect.Effect<
+			Stream.Stream<JsonValue>,
+			StateNotFound,
+			Scope.Scope
+		>;
+	};
+}
+
+export type StateFieldPromise<Decoded> = PromisifyObject<
+	Omit<StateField<Decoded>, "get" | "set" | "subscribe">
+> & {
+	get: () => Decoded;
+	set: (value: Decoded) => void;
+	subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
+};
 
 /**
  * Defines server-side behavior of a computed (server-derived) field
@@ -129,14 +119,12 @@ export interface ComputedField<Decoded> {
 	};
 }
 
-export type ComputedFieldPromise<Decoded> = OverrideProperties<
-	PromisifyObject<ComputedField<Decoded>>,
-	{
-		// Computed from the live in-memory snapshot, so get is synchronous.
-		get: () => Decoded;
-		subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
-	}
->;
+export type ComputedFieldPromise<Decoded> = PromisifyObject<
+	Omit<ComputedField<Decoded>, "get" | "subscribe">
+> & {
+	get: () => Decoded;
+	subscribe: (handler: (value: Decoded) => Promisable<void>) => void;
+};
 
 /**
  * What the server needs to serve a field over the wire: every field can be read
