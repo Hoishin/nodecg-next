@@ -57,40 +57,6 @@ export function mapValuesOptional<
 	return mapValues<F, G, T>(obj, transform);
 }
 
-// Maps only the entries whose value carries a defined `schema` (the rest are skipped),
-// keyed by the result type T — the schema-bearing subset. Tolerates an undefined object.
-// `schema` is optional per entry, so the input is loosely typed; both the per-entry cast to
-// the F-kind and the result cast live here, the same way mapValues owns its cast.
-export function mapOptionalSchemaValues<
-	F extends HKT.TypeLambda,
-	G extends HKT.TypeLambda,
-	T extends Record<string, unknown>,
->(
-	// TODO: restrict with T
-	obj: Record<string, { readonly schema?: unknown }> | undefined,
-	transform: <V>(
-		value: HKT.Kind<F, never, never, never, V>,
-		key: keyof T & string,
-	) => HKT.Kind<G, never, never, never, V>,
-): {
-	readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
-} {
-	const result: Record<string, unknown> = {};
-	if (typeof obj !== "undefined") {
-		for (const [key, value] of Object.entries(obj)) {
-			if (typeof value.schema !== "undefined") {
-				result[key] = transform(
-					value as HKT.Kind<F, never, never, never, unknown>,
-					key as keyof T & string,
-				);
-			}
-		}
-	}
-	return result as {
-		readonly [K in keyof T & string]: HKT.Kind<G, never, never, never, T[K]>;
-	};
-}
-
 // TODO: nowhere near type safe. Result can do anything.
 export function mergeRecords<Result>(
 	base: Readonly<Record<string, unknown>> | undefined,

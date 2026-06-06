@@ -1,7 +1,9 @@
 import {
-	mapOptionalSchemaValues,
+	type AddedSchemas,
+	mapSchemaValues,
 	mapValues,
 	mapValuesOptional,
+	mergeRecords,
 } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
@@ -330,41 +332,34 @@ interface ExtendTopicOption {
 	readonly schema?: Schema.Schema<any, any, never>;
 	readonly permission?: TopicPermission;
 }
-interface ExtendDef {
+interface ExtendDef<StateDef, ComputedDef, TopicDef> {
 	readonly roles?: Record<string, RoleDefinition>;
-	readonly state?: Record<string, ExtendStateOption>;
-	readonly computed?: Record<string, ExtendComputedOption>;
-	readonly topic?: Record<string, ExtendTopicOption>;
+	readonly state?: StateDef;
+	readonly computed?: ComputedDef;
+	readonly topic?: TopicDef;
 }
 
-// schema-bearing entries of a group → their schema types (the fields the extend adds)
-type AddedSchemas<R> = {
-	[K in keyof R as R[K] extends { schema: Schema.Schema<any, any, never> }
-		? K
-		: never]: R[K] extends {
-		schema: infer S extends Schema.Schema<any, any, never>;
-	}
-		? S
-		: never;
-};
-type GroupOf<Def, Key extends keyof ExtendDef> =
-	Def extends Record<Key, infer G> ? G : {};
 // TODO: use type-fest
 type Merge<Precedent, Added> = Omit<Precedent, keyof Added> & Added;
 
-// TODO: separate file
 export function extendNamespace<
 	PState extends Record<string, Schema.Schema<any, any, never>>,
 	PComputed extends Record<string, Schema.Schema<any, any, never>>,
 	PTopic extends Record<string, Schema.Schema<any, any, never>>,
-	const Def extends ExtendDef,
+	const StateDef extends Record<string, ExtendStateOption> = {},
+	const ComputedDef extends Record<string, ExtendComputedOption> = {},
+	const TopicDef extends Record<string, ExtendTopicOption> = {},
 >(
 	manifest: NamespaceManifest<PState, PComputed, PTopic>,
-	def: Def | ((precedent: NamespaceManifest<PState, PComputed, PTopic>) => Def),
+	def:
+		| ExtendDef<StateDef, ComputedDef, TopicDef>
+		| ((
+				precedent: NamespaceManifest<PState, PComputed, PTopic>,
+		  ) => ExtendDef<StateDef, ComputedDef, TopicDef>),
 ): NamespaceManifest<
-	Merge<PState, AddedSchemas<GroupOf<Def, "state">>>,
-	Merge<PComputed, AddedSchemas<GroupOf<Def, "computed">>>,
-	Merge<PTopic, AddedSchemas<GroupOf<Def, "topic">>>
+	Merge<PState, AddedSchemas<StateDef>>,
+	Merge<PComputed, AddedSchemas<ComputedDef>>,
+	Merge<PTopic, AddedSchemas<TopicDef>>
 > {
 	const concrete = typeof def === "function" ? def(manifest) : def;
 
@@ -424,107 +419,119 @@ export function extendNamespace<
 		);
 	};
 
-	const state = {
-		...mapValues<
-			FieldManifestLambda<ResolvedStatePermission>,
-			FieldManifestLambda<ResolvedStatePermission>,
-			PState
-		>(manifest.state, (field, name) => {
-			const override = concrete.state?.[name];
-			return {
-				...field,
-				permission: {
-					read: remap(
-						"state-read",
-						field.permission.read,
-						override?.permission?.read,
-					),
-					write: remap(
-						"state-write",
-						field.permission.write,
-						override?.permission?.write,
-					),
-				},
-			};
-		}),
-		...mapOptionalSchemaValues<
-			FieldOptionLambda<StatePermission>,
-			FieldManifestLambda<ResolvedStatePermission>,
-			AddedSchemas<GroupOf<Def, "state">>
-		>(concrete.state, (option, name) => ({
-			...implementCodec(name, option.schema),
+	const stateRemap = mapValues<
+		FieldManifestLambda<ResolvedStatePermission>,
+		FieldManifestLambda<ResolvedStatePermission>,
+		PState
+	>(manifest.state, (field, name) => {
+		const override = concrete.state?.[name];
+		return {
+			...field,
 			permission: {
-				read: resolve("state-read", option.permission?.read),
-				write: resolve("state-write", option.permission?.write),
+				read: remap(
+					"state-read",
+					field.permission.read,
+					override?.permission?.read,
+				),
+				write: remap(
+					"state-write",
+					field.permission.write,
+					override?.permission?.write,
+				),
 			},
-		})),
-	};
-
-	const computed = {
-		...mapValues<
-			FieldManifestLambda<ResolvedComputedPermission>,
-			FieldManifestLambda<ResolvedComputedPermission>,
-			PComputed
-		>(manifest.computed, (field, name) => {
-			const override = concrete.computed?.[name];
-			return {
-				...field,
-				permission: {
-					read: remap(
-						"computed-read",
-						field.permission.read,
-						override?.permission?.read,
-					),
-				},
-			};
-		}),
-		...mapOptionalSchemaValues<
-			FieldOptionLambda<ComputedPermission>,
-			FieldManifestLambda<ResolvedComputedPermission>,
-			AddedSchemas<GroupOf<Def, "computed">>
-		>(concrete.computed, (option, name) => ({
-			...implementCodec(name, option.schema),
-			permission: {
-				read: resolve("computed-read", option.permission?.read),
-			},
-		})),
-	};
-
-	const topic = {
-		...mapValues<
-			FieldManifestLambda<ResolvedTopicPermission>,
-			FieldManifestLambda<ResolvedTopicPermission>,
+		};
+	});
+	const stateAdded = mapSchemaValues<
+		FieldOptionLambda<StatePermission>,
+		FieldManifestLambda<ResolvedStatePermission>
+	>()(concrete.state, (option, name) => ({
+		...implementCodec(name, option.schema),
+		permission: {
+			read: resolve("state-read", option.permission?.read),
+			write: resolve("state-write", option.permission?.write),
+		},
+	}));
+	const state = mergeRecords<
+		NamespaceManifest<
+			Merge<PState, AddedSchemas<StateDef>>,
+			PComputed,
 			PTopic
-		>(manifest.topic, (field, name) => {
-			const override = concrete.topic?.[name];
-			return {
-				...field,
-				permission: {
-					subscribe: remap(
-						"topic-subscribe",
-						field.permission.subscribe,
-						override?.permission?.subscribe,
-					),
-					publish: remap(
-						"topic-publish",
-						field.permission.publish,
-						override?.permission?.publish,
-					),
-				},
-			};
-		}),
-		...mapOptionalSchemaValues<
-			FieldOptionLambda<TopicPermission>,
-			FieldManifestLambda<ResolvedTopicPermission>,
-			AddedSchemas<GroupOf<Def, "topic">>
-		>(concrete.topic, (option, name) => ({
-			...implementCodec(name, option.schema),
+		>["state"]
+	>(stateRemap, stateAdded);
+
+	const computedRemap = mapValues<
+		FieldManifestLambda<ResolvedComputedPermission>,
+		FieldManifestLambda<ResolvedComputedPermission>,
+		PComputed
+	>(manifest.computed, (field, name) => {
+		const override = concrete.computed?.[name];
+		return {
+			...field,
 			permission: {
-				subscribe: resolve("topic-subscribe", option.permission?.subscribe),
-				publish: resolve("topic-publish", option.permission?.publish),
+				read: remap(
+					"computed-read",
+					field.permission.read,
+					override?.permission?.read,
+				),
 			},
-		})),
-	};
+		};
+	});
+	const computedAdded = mapSchemaValues<
+		FieldOptionLambda<ComputedPermission>,
+		FieldManifestLambda<ResolvedComputedPermission>
+	>()(concrete.computed, (option, name) => ({
+		...implementCodec(name, option.schema),
+		permission: {
+			read: resolve("computed-read", option.permission?.read),
+		},
+	}));
+	const computed = mergeRecords<
+		NamespaceManifest<
+			PState,
+			Merge<PComputed, AddedSchemas<ComputedDef>>,
+			PTopic
+		>["computed"]
+	>(computedRemap, computedAdded);
+
+	const topicRemap = mapValues<
+		FieldManifestLambda<ResolvedTopicPermission>,
+		FieldManifestLambda<ResolvedTopicPermission>,
+		PTopic
+	>(manifest.topic, (field, name) => {
+		const override = concrete.topic?.[name];
+		return {
+			...field,
+			permission: {
+				subscribe: remap(
+					"topic-subscribe",
+					field.permission.subscribe,
+					override?.permission?.subscribe,
+				),
+				publish: remap(
+					"topic-publish",
+					field.permission.publish,
+					override?.permission?.publish,
+				),
+			},
+		};
+	});
+	const topicAdded = mapSchemaValues<
+		FieldOptionLambda<TopicPermission>,
+		FieldManifestLambda<ResolvedTopicPermission>
+	>()(concrete.topic, (option, name) => ({
+		...implementCodec(name, option.schema),
+		permission: {
+			subscribe: resolve("topic-subscribe", option.permission?.subscribe),
+			publish: resolve("topic-publish", option.permission?.publish),
+		},
+	}));
+	const topic = mergeRecords<
+		NamespaceManifest<
+			PState,
+			PComputed,
+			Merge<PTopic, AddedSchemas<TopicDef>>
+		>["topic"]
+	>(topicRemap, topicAdded);
 
 	return { namespace: manifest.namespace, roles, state, computed, topic };
 }
