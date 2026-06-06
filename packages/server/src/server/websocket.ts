@@ -17,18 +17,16 @@ import {
 } from "effect";
 import type { JsonValue } from "type-fest";
 
-import { stateMetadataKey, type LoadedState } from "../load-state.ts";
+import { buildFieldRegistry, type LoadedNamespace } from "../load-namespace.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
-import {
-	type RegisteredFieldInternal,
-	stateFieldInternal,
-} from "../state-field.ts";
+import type { RegisteredFieldInternal } from "../state-field.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
 
 type FieldInternal = RegisteredFieldInternal;
 
+// TODO: this is no longer "State" filter
 interface StateFilter {
 	readonly namespace: string;
 	readonly name: string;
@@ -38,23 +36,10 @@ interface StateFilter {
 const filterEquals = (a: StateFilter, b: StateFilter) =>
 	a.namespace === b.namespace && a.name === b.name;
 
-const buildRegistry = (states: ReadonlyArray<LoadedState>) => {
-	const registry = new Map<string, Map<string, FieldInternal>>();
-	for (const state of states) {
-		const { namespace } = state[stateMetadataKey];
-		const fields = registry.get(namespace) ?? new Map<string, FieldInternal>();
-		for (const [name, field] of Object.entries(state)) {
-			fields.set(name, field[stateFieldInternal]);
-		}
-		registry.set(namespace, fields);
-	}
-	return registry;
-};
-
 export const websocketRoute = (options: {
-	states: ReadonlyArray<LoadedState>;
+	namespaces: ReadonlyArray<LoadedNamespace>;
 }) => {
-	const registry = buildRegistry(options.states);
+	const registry = buildFieldRegistry(options.namespaces);
 
 	const wsHandler = Effect.gen(function* () {
 		const socket = yield* HttpServerRequest.upgrade;

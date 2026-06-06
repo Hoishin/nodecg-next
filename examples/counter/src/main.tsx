@@ -1,10 +1,10 @@
-import { loadState, type StateFieldPromise } from "@nodecg/client";
+import { loadNamespace, type StateFieldPromise } from "@nodecg/client";
 import { StrictMode, Suspense, useSyncExternalStore } from "react";
 import ReactDOM from "react-dom/client";
 
-import { counterState } from "./state.ts";
+import { counterManifest } from "./state.ts";
 
-const counter = await loadState({ manifest: counterState });
+const counter = await loadNamespace(counterManifest);
 
 type Snapshot<T> = { readonly value: T };
 
@@ -54,7 +54,7 @@ const toSyncStore = <T,>(
 	};
 };
 
-const countStore = toSyncStore(counter.count);
+const countStore = toSyncStore(counter.state.count);
 const useCount = () => {
 	const snapshot = useSyncExternalStore(
 		countStore.subscribe,
@@ -71,7 +71,11 @@ function Counter() {
 	return (
 		<div>
 			<p>count = {value}</p>
-			<button type="button" onClick={() => counter.count.update((v) => v + 1)}>
+			<button
+				type="button"
+				//  TODO: proper async handling. maybe with tanstack query
+				onClick={() => counter.state.count.update((v) => v + 1)}
+			>
 				+1
 			</button>
 		</div>

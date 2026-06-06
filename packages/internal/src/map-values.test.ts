@@ -2,7 +2,11 @@ import { testEffect } from "@nodecg/private";
 import { Context, Data, Effect, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
-import { mapEffectValues, mapValues } from "./map-values.ts";
+import {
+	mapEffectValues,
+	mapOptionalSchemaValues,
+	mapValues,
+} from "./map-values.ts";
 
 interface IdentityLambda extends HKT.TypeLambda {
 	readonly type: this["Target"];
@@ -22,6 +26,11 @@ type WithId = { readonly id: number };
 
 interface BoxLambda extends HKT.TypeLambda {
 	readonly type: Box<this["Target"]>;
+}
+
+type SchemaBox<T> = { readonly schema: T };
+interface SchemaBoxLambda extends HKT.TypeLambda {
+	readonly type: SchemaBox<this["Target"]>;
 }
 
 interface ThunkLambda extends HKT.TypeLambda {
@@ -319,4 +328,49 @@ describe("mapEffectValues", () => {
 			}),
 		),
 	);
+});
+
+describe("mapOptionalSchemaValues", () => {
+	test("maps only the entries carrying a schema, keyed by T", () => {
+		const entries: Record<
+			string,
+			{ readonly schema?: unknown; readonly permission?: ReadonlyArray<string> }
+		> = {
+			a: { schema: 1 },
+			b: { schema: "two" },
+			skip: { permission: ["someone"] },
+		};
+		const result = mapOptionalSchemaValues<
+			SchemaBoxLambda,
+			ArrayLambda,
+			{ a: number; b: string }
+		>(entries, (value) => [value.schema]);
+		expectTypeOf(result).toEqualTypeOf<{
+			readonly a: ReadonlyArray<number>;
+			readonly b: ReadonlyArray<string>;
+		}>();
+		expect(result).toEqual({ a: [1], b: ["two"] });
+	});
+
+	test("passes the key to the transform, skipping schema-less entries", () => {
+		const keys: string[] = [];
+		mapOptionalSchemaValues<
+			SchemaBoxLambda,
+			ArrayLambda,
+			{ a: number; b: number }
+		>({ a: { schema: 1 }, b: { schema: 2 }, skip: {} }, (value, key) => {
+			keys.push(key);
+			return [value.schema];
+		});
+		expect(keys.sort()).toEqual(["a", "b"]);
+	});
+
+	test("returns an empty object for an undefined input", () => {
+		const result = mapOptionalSchemaValues<
+			SchemaBoxLambda,
+			ArrayLambda,
+			Record<string, number>
+		>(undefined, (value) => [value.schema]);
+		expect(result).toEqual({});
+	});
 });

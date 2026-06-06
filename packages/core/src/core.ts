@@ -1,7 +1,13 @@
 export {
-	defineState,
-	StateEncodeError,
+	defineNamespace,
+	extendNamespace,
 	StateDecodeError,
-	type StateDefinition,
-	type StateManifest,
-} from "./define-state.ts";
+	StateEncodeError,
+	type Capability,
+	type FieldCodec,
+	type NamespaceManifest,
+	type ResolvedComputedPermission,
+	type ResolvedStatePermission,
+	type ResolvedTopicPermission,
+	type RoleDefinition,
+} from "./define-namespace.ts";

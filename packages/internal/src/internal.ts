@@ -3,6 +3,7 @@ export { ClientMessage, ServerMessage } from "./messages.ts";
 export {
 	mapValues,
 	mapValuesOptional,
+	mapOptionalSchemaValues,
 	mapEffectValues,
 	zipEffectValues,
 } from "./map-values.ts";

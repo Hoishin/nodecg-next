@@ -1,4 +1,4 @@
-import { defineState } from "@nodecg/core";
+import { defineNamespace } from "@nodecg/core";
 import type { ServerMessage } from "@nodecg/internal";
 import { testEffect } from "@nodecg/private";
 import {
@@ -14,7 +14,7 @@ import {
 } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
-import { loadState, loadStateEffect } from "./load-state.ts";
+import { loadNamespace, loadNamespaceEffect } from "./load-namespace.ts";
 import {
 	type MessageChannel,
 	MessageChannelService,
@@ -44,11 +44,11 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				transportStub.read.mockReturnValue(Effect.succeed(42));
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -57,7 +57,7 @@ describe("get", () => {
 				);
 
 				expect(
-					yield* state.count
+					yield* loaded.state.count
 						.get()
 						.pipe(Effect.provideService(StateTransportService, transportStub)),
 				).toBe(42);
@@ -71,11 +71,11 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				transportStub.read.mockReturnValue(Effect.succeed("not a number"));
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -83,7 +83,7 @@ describe("get", () => {
 					),
 				);
 
-				const error = yield* state.count
+				const error = yield* loaded.state.count
 					.get()
 					.pipe(
 						Effect.provideService(StateTransportService, transportStub),
@@ -102,11 +102,11 @@ describe("get", () => {
 				transportStub.read.mockReturnValue(
 					Effect.fail(new StateNotFound({ namespace: "root", name: "count" })),
 				);
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -114,7 +114,7 @@ describe("get", () => {
 					),
 				);
 
-				const error = yield* state.count
+				const error = yield* loaded.state.count
 					.get()
 					.pipe(
 						Effect.provideService(StateTransportService, transportStub),
@@ -133,11 +133,11 @@ describe("get", () => {
 				transportStub.read.mockReturnValue(
 					Effect.succeed("2030-01-01T00:00:00.000Z"),
 				);
-				const manifest = defineState("root", {
-					when: { schema: Schema.DateFromString },
+				const manifest = defineNamespace("root", {
+					state: { when: { schema: Schema.DateFromString } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -146,7 +146,7 @@ describe("get", () => {
 				);
 
 				expect(
-					yield* state.when
+					yield* loaded.state.when
 						.get()
 						.pipe(Effect.provideService(StateTransportService, transportStub)),
 				).toEqual(new Date("2030-01-01T00:00:00.000Z"));
@@ -161,11 +161,11 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -173,7 +173,7 @@ describe("set", () => {
 					),
 				);
 
-				yield* state.count
+				yield* loaded.state.count
 					.set(7)
 					.pipe(Effect.provideService(StateTransportService, transportStub));
 				expect(transportStub.update).toHaveBeenCalledWith("root", "count", 7);
@@ -186,11 +186,11 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -198,7 +198,7 @@ describe("set", () => {
 					),
 				);
 
-				const error = yield* state.count
+				const error = yield* loaded.state.count
 					.set("not a number" as unknown as number)
 					.pipe(
 						Effect.provideService(StateTransportService, transportStub),
@@ -214,11 +214,11 @@ describe("set", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const manifest = defineState("root", {
-					when: { schema: Schema.DateFromString },
+				const manifest = defineNamespace("root", {
+					state: { when: { schema: Schema.DateFromString } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -226,7 +226,7 @@ describe("set", () => {
 					),
 				);
 
-				yield* state.when
+				yield* loaded.state.when
 					.set(new Date("2030-01-01T00:00:00.000Z"))
 					.pipe(Effect.provideService(StateTransportService, transportStub));
 				expect(transportStub.update).toHaveBeenLastCalledWith(
@@ -246,11 +246,11 @@ describe("update", () => {
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				transportStub.read.mockReturnValue(Effect.succeed(10));
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -258,7 +258,7 @@ describe("update", () => {
 					),
 				);
 
-				yield* state.count
+				yield* loaded.state.count
 					.update((v) => v + 5)
 					.pipe(Effect.provideService(StateTransportService, transportStub));
 				expect(transportStub.update).toHaveBeenLastCalledWith(
@@ -299,16 +299,16 @@ describe("subscribe", () => {
 					send,
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const head = yield* state.count
+				const head = yield* loaded.state.count
 					.subscribe()
 					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
 				yield* Effect.promise(() =>
@@ -337,17 +337,19 @@ describe("subscribe", () => {
 					send,
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
-					other: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: {
+						count: { schema: Schema.Number },
+						other: { schema: Schema.Number },
+					},
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const head = yield* state.count
+				const head = yield* loaded.state.count
 					.subscribe()
 					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
 				yield* Effect.promise(() =>
@@ -381,16 +383,16 @@ describe("subscribe", () => {
 					send,
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const fiber = yield* state.count
+				const fiber = yield* loaded.state.count
 					.subscribe()
 					.pipe(Effect.asVoid, Effect.fork);
 				yield* Effect.promise(() =>
@@ -417,17 +419,17 @@ describe("subscribe", () => {
 					send,
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
 				const scope = yield* Scope.make();
-				const fiber = yield* state.count
+				const fiber = yield* loaded.state.count
 					.subscribe()
 					.pipe(Effect.asVoid, Scope.extend(scope), Effect.fork);
 				yield* Effect.promise(() =>
@@ -459,17 +461,17 @@ describe("subscribe", () => {
 					send,
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
 				const scope1 = yield* Scope.make();
-				const sub1 = yield* state.count
+				const sub1 = yield* loaded.state.count
 					.subscribe()
 					.pipe(Effect.asVoid, Scope.extend(scope1), Effect.fork);
 				yield* Effect.promise(() =>
@@ -481,7 +483,7 @@ describe("subscribe", () => {
 				yield* Fiber.join(sub1);
 
 				const scope2 = yield* Scope.make();
-				const sub2 = yield* state.count
+				const sub2 = yield* loaded.state.count
 					.subscribe()
 					.pipe(Effect.asVoid, Scope.extend(scope2), Effect.fork);
 				yield* Fiber.join(sub2);
@@ -522,18 +524,18 @@ describe("subscribe", () => {
 					send,
 					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
 				};
-				const manifest = defineState("root", {
-					count: { schema: Schema.Number },
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
 				});
 
-				const state = yield* loadStateEffect(manifest).pipe(
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
 				const received1: number[] = [];
 				const scope1 = yield* Scope.make();
-				const sub1 = yield* state.count.subscribe().pipe(
+				const sub1 = yield* loaded.state.count.subscribe().pipe(
 					Effect.flatMap((stream) =>
 						Stream.runForEach(stream, (value) =>
 							Effect.sync(() => received1.push(value)),
@@ -556,7 +558,7 @@ describe("subscribe", () => {
 
 				const received2: number[] = [];
 				const scope2 = yield* Scope.make();
-				const sub2 = yield* state.count.subscribe().pipe(
+				const sub2 = yield* loaded.state.count.subscribe().pipe(
 					Effect.flatMap((stream) =>
 						Stream.runForEach(stream, (value) =>
 							Effect.sync(() => received2.push(value)),
@@ -581,11 +583,12 @@ describe("subscribe", () => {
 });
 
 describe("computed", () => {
-	const computedManifest = defineState(
-		"root",
-		{ games: { schema: Schema.Array(Schema.Struct({ id: Schema.String })) } },
-		{ computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } } },
-	);
+	const computedManifest = defineNamespace("root", {
+		state: {
+			games: { schema: Schema.Array(Schema.Struct({ id: Schema.String })) },
+		},
+		computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } },
+	});
 
 	test(
 		"get decodes the computed value from the transport",
@@ -594,7 +597,7 @@ describe("computed", () => {
 				const transportStub = createTransportStub();
 				transportStub.read.mockReturnValue(Effect.succeed("a"));
 
-				const state = yield* loadStateEffect(computedManifest).pipe(
+				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
@@ -603,7 +606,7 @@ describe("computed", () => {
 				);
 
 				expect(
-					yield* state.firstGameId
+					yield* loaded.computed.firstGameId
 						.get()
 						.pipe(Effect.provideService(StateTransportService, transportStub)),
 				).toBe("a");
@@ -615,7 +618,7 @@ describe("computed", () => {
 		"is read-only (no set)",
 		testEffect(
 			Effect.gen(function* () {
-				const state = yield* loadStateEffect(computedManifest).pipe(
+				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
 					Effect.provideService(StateTransportService, createTransportStub()),
 					Effect.provideService(
 						MessageChannelService,
@@ -623,7 +626,7 @@ describe("computed", () => {
 					),
 				);
 
-				expect("set" in state.firstGameId).toBe(false);
+				expect("set" in loaded.computed.firstGameId).toBe(false);
 			}),
 		),
 	);
@@ -640,12 +643,12 @@ describe("computed", () => {
 					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
 				};
 
-				const state = yield* loadStateEffect(computedManifest).pipe(
+				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
-				const head = yield* state.firstGameId
+				const head = yield* loaded.computed.firstGameId
 					.subscribe()
 					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
 				yield* Effect.promise(() =>
@@ -675,21 +678,22 @@ describe("computed", () => {
 	);
 });
 
-describe("loadState (Promise wrapper)", () => {
+describe("loadNamespace (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();
 		transportStub.read.mockReturnValue(Effect.succeed(42));
-		const manifest = defineState("root", { count: { schema: Schema.Number } });
+		const manifest = defineNamespace("root", {
+			state: { count: { schema: Schema.Number } },
+		});
 
 		const messageChannelStub = createMessageChannelStub();
-		const state = await loadState({
-			manifest,
+		const loaded = await loadNamespace(manifest, {
 			stateTransport: () => transportStub,
 			messageChannel: () => messageChannelStub,
 		});
 
-		expect(await state.count.get()).toBe(42);
-		await state.count.set(9);
+		expect(await loaded.state.count.get()).toBe(42);
+		await loaded.state.count.set(9);
 		expect(transportStub.update).toHaveBeenCalledWith("root", "count", 9);
 	});
 });

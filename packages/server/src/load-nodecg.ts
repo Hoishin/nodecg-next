@@ -2,13 +2,13 @@ import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 
-import type { LoadedState } from "./load-state.ts";
+import type { LoadedNamespace } from "./load-namespace.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
 
 export type LoadNodecgOptions = {
-	states: ReadonlyArray<LoadedState>;
+	namespaces: ReadonlyArray<LoadedNamespace>;
 	onReady?: () => void;
 };
 
@@ -21,7 +21,7 @@ export const loadNodecgEffect = Effect.fn(function* (
 		Layer.provide(yield* makeNodeHttpServer({ onReady: options.onReady })),
 	);
 
-	yield* Layer.launch(ServerLive);
+	return yield* Layer.launch(ServerLive);
 });
 
 export const loadNodecg = (options: LoadNodecgOptions) =>

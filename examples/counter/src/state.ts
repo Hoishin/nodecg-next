@@ -1,6 +1,8 @@
-import { defineState } from "@nodecg/core";
+import { defineNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
-export const counterState = defineState("counter", {
-	count: { schema: Schema.Number },
+export const counterManifest = defineNamespace("counter", {
+	state: {
+		count: { schema: Schema.Number },
+	},
 });

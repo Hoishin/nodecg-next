@@ -1,4 +1,4 @@
-import type { StateDefinition, StateManifest } from "@nodecg/core";
+import type { NamespaceManifest, FieldCodec } from "@nodecg/core";
 import { mapEffectValues, mapValues } from "@nodecg/internal";
 import {
 	Effect,
@@ -37,7 +37,7 @@ import {
 const implementState = Effect.fn("implementState")(function* <Decoded>(
 	namespace: string,
 	name: string,
-	definition: StateDefinition<Decoded>,
+	codec: FieldCodec<Decoded>,
 ) {
 	const transport = yield* StateTransportService;
 	const messageChannel = yield* MessageChannelService;
@@ -49,7 +49,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	const get = Effect.fn("get")(
 		function* () {
 			const current = yield* transport.read(namespace, name);
-			return yield* definition.decode(current);
+			return yield* codec.decode(current);
 		},
 		Effect.mapError(
 			(error) => new GetStateError({ namespace, name, cause: error.message }),
@@ -58,7 +58,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 	const set = Effect.fn("set")(
 		function* (value: Decoded) {
-			const encoded = yield* definition.encode(value);
+			const encoded = yield* codec.encode(value);
 			yield* transport.update(namespace, name, encoded);
 		},
 		Effect.mapError(
@@ -70,7 +70,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		function* (fn: (value: Decoded) => Promisable<Decoded>) {
 			const current = yield* get();
 			const next = yield* Effect.tryPromise(async () => fn(current));
-			const encoded = yield* definition.encode(next);
+			const encoded = yield* codec.encode(next);
 			yield* transport.update(namespace, name, encoded);
 		},
 		Effect.mapError(
@@ -90,7 +90,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 					: Option.none(),
 			),
 			Stream.runForEach((value) =>
-				definition.decode(value).pipe(
+				codec.decode(value).pipe(
 					Effect.flatMap((decoded) =>
 						SubscriptionRef.set(latest, Option.some(decoded)),
 					),
@@ -167,8 +167,8 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 const implementComputedState = Effect.fn("implementComputedState")(function* <
 	Decoded,
->(namespace: string, name: string, definition: StateDefinition<Decoded>) {
-	const field = yield* implementState(namespace, name, definition);
+>(namespace: string, name: string, codec: FieldCodec<Decoded>) {
+	const field = yield* implementState(namespace, name, codec);
 	const computed: ComputedFieldEffect<Decoded> = {
 		get: field.get,
 		subscribe: field.subscribe,
@@ -176,9 +176,9 @@ const implementComputedState = Effect.fn("implementComputedState")(function* <
 	return computed;
 });
 
-interface StateDefinitionLambda extends HKT.TypeLambda {
+interface FieldCodecLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateDefinition<Schema.Schema.Type<this["Target"]>>;
+	readonly type: FieldCodec<Schema.Schema.Type<this["Target"]>>;
 }
 
 interface StateFieldEffectLambda extends HKT.TypeLambda {
@@ -201,58 +201,62 @@ interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
 	readonly type: ComputedFieldPromise<Schema.Schema.Type<this["Target"]>>;
 }
 
-const buildState = <
-	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+const buildNamespace = <
+	State extends Record<string, Schema.Schema<any, any, never>>,
 	Computed extends Record<string, Schema.Schema<any, any, never>>,
+	Topic extends Record<string, Schema.Schema<any, any, never>>,
 >(
-	manifest: StateManifest<Definitions, Computed>,
+	manifest: NamespaceManifest<State, Computed, Topic>,
 ) =>
 	Effect.gen(function* () {
 		const fields = yield* mapEffectValues<
-			StateDefinitionLambda,
+			FieldCodecLambda,
 			StateFieldEffectLambda,
-			Definitions
-		>()(manifest.definitions, (definition, name) =>
-			implementState(manifest.namespace, name, definition),
+			State
+		>()(manifest.state, (codec, name) =>
+			implementState(manifest.namespace, name, codec),
 		);
 		const computedFields = yield* mapEffectValues<
-			StateDefinitionLambda,
+			FieldCodecLambda,
 			ComputedFieldEffectLambda,
 			Computed
-		>()(manifest.computed, (definition, name) =>
-			implementComputedState(manifest.namespace, name, definition),
+		>()(manifest.computed, (codec, name) =>
+			implementComputedState(manifest.namespace, name, codec),
 		);
 		return { fields, computedFields };
 	});
 
-export function loadStateEffect<
-	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+export function loadNamespaceEffect<
+	State extends Record<string, Schema.Schema<any, any, never>> = {},
 	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
->(manifest: StateManifest<Definitions, Computed>) {
-	return buildState(manifest).pipe(
+	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+>(manifest: NamespaceManifest<State, Computed, Topic>) {
+	return buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields }) => ({
-			...fields,
-			...computedFields,
+			state: fields,
+			computed: computedFields,
 		})),
 	);
 }
 
-export async function loadState<
-	Definitions extends Record<string, Schema.Schema<any, any, never>>,
+export async function loadNamespace<
+	State extends Record<string, Schema.Schema<any, any, never>> = {},
 	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
->({
-	manifest,
-	stateTransport,
-	messageChannel,
-}: {
-	manifest: StateManifest<Definitions, Computed>;
-	stateTransport?:
-		| (() => StateTransport)
-		| Effect.Effect<StateTransport, never, never>;
-	messageChannel?:
-		| (() => MessageChannel)
-		| Effect.Effect<MessageChannel, never, never>;
-}) {
+	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+>(
+	manifest: NamespaceManifest<State, Computed, Topic>,
+	adapter?: {
+		stateTransport?:
+			| (() => StateTransport)
+			| Effect.Effect<StateTransport, never, never>;
+		messageChannel?:
+			| (() => MessageChannel)
+			| Effect.Effect<MessageChannel, never, never>;
+	},
+) {
+	const stateTransport = adapter?.stateTransport;
+	const messageChannel = adapter?.messageChannel;
+
 	const transportLayer = stateTransport
 		? Effect.isEffect(stateTransport)
 			? Layer.effect(StateTransportService, stateTransport)
@@ -271,9 +275,9 @@ export async function loadState<
 	);
 
 	const { fields: effectFields, computedFields: effectComputedFields } =
-		await runtime.runPromise(buildState(manifest));
+		await runtime.runPromise(buildNamespace(manifest));
 
-	const subscribeAdapter =
+	const subscribeEffectToPromise =
 		<Decoded, E>(
 			subscribe: () => Effect.Effect<Stream.Stream<Decoded>, E, Scope.Scope>,
 			name: string,
@@ -300,25 +304,25 @@ export async function loadState<
 				}),
 			);
 
-	const fields = mapValues<
+	const state = mapValues<
 		StateFieldEffectLambda,
 		StateFieldPromiseLambda,
-		Definitions
+		State
 	>(effectFields, (field, name) => ({
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
-		subscribe: subscribeAdapter(field.subscribe, name),
+		subscribe: subscribeEffectToPromise(field.subscribe, name),
 	}));
 
-	const computedFields = mapValues<
+	const computed = mapValues<
 		ComputedFieldEffectLambda,
 		ComputedFieldPromiseLambda,
 		Computed
 	>(effectComputedFields, (field, name) => ({
 		get: () => runtime.runPromise(field.get()),
-		subscribe: subscribeAdapter(field.subscribe, name),
+		subscribe: subscribeEffectToPromise(field.subscribe, name),
 	}));
 
-	return { ...fields, ...computedFields };
+	return { state, computed };
 }

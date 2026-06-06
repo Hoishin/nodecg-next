@@ -3,7 +3,7 @@ import { StateDecodeError } from "@nodecg/core";
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { stateMetadataKey, type LoadedState } from "../load-state.ts";
+import { stateMetadataKey, type LoadedNamespace } from "../load-namespace.ts";
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { type StateField, stateFieldInternal } from "../state-field.ts";
 import { buildNodecgApi } from "./http-api.ts";
@@ -35,19 +35,21 @@ function stubField(
 	};
 }
 
-function loadedState(
+// TODO: test for computed?
+function loadedNamespace(
 	namespace: string,
 	fields: Record<string, StateField<unknown>>,
-): LoadedState {
+): LoadedNamespace {
 	return {
-		...fields,
+		state: fields,
+		computed: {},
 		[stateMetadataKey]: { namespace },
 	};
 }
 
-function webHandler(states: ReadonlyArray<LoadedState>) {
+function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
 	const { handler } = HttpApiBuilder.toWebHandler(
-		Layer.mergeAll(buildNodecgApi({ states }), HttpServer.layerContext),
+		Layer.mergeAll(buildNodecgApi({ namespaces }), HttpServer.layerContext),
 	);
 	return handler;
 }
@@ -66,7 +68,7 @@ describe("ping", () => {
 describe("get", () => {
 	test("returns the stored value", async () => {
 		const handler = webHandler([
-			loadedState("root", {
+			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(42),
 					setEncoded: () => Effect.void,
@@ -86,7 +88,7 @@ describe("get", () => {
 
 	test("404 when the field reports StateNotFound", async () => {
 		const handler = webHandler([
-			loadedState("root", {
+			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () =>
 						Effect.fail(
@@ -113,7 +115,7 @@ describe("update", () => {
 	test("stores the decoded payload and returns 204", async () => {
 		const setEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
-			loadedState("root", {
+			loadedNamespace("root", {
 				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
 			}),
 		]);
@@ -130,7 +132,7 @@ describe("update", () => {
 
 	test("400 when the field reports StateDecodeError", async () => {
 		const handler = webHandler([
-			loadedState("root", {
+			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
@@ -150,7 +152,7 @@ describe("update", () => {
 
 	test("404 when the field reports StateNotFound", async () => {
 		const handler = webHandler([
-			loadedState("root", {
+			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>

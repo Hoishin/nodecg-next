@@ -2,25 +2,12 @@ import { HttpApiBuilder, HttpApiError } from "@effect/platform";
 import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
-import { stateMetadataKey, type LoadedState } from "../load-state.ts";
-import {
-	stateFieldInternal,
-	type RegisteredFieldInternal,
-} from "../state-field.ts";
+import { buildFieldRegistry, type LoadedNamespace } from "../load-namespace.ts";
 
 export const buildNodecgApi = (options: {
-	states: ReadonlyArray<LoadedState>;
+	namespaces: ReadonlyArray<LoadedNamespace>;
 }) => {
-	const registry = new Map<string, Map<string, RegisteredFieldInternal>>();
-	for (const state of options.states) {
-		const { namespace } = state[stateMetadataKey];
-		const fields =
-			registry.get(namespace) ?? new Map<string, RegisteredFieldInternal>();
-		for (const [name, field] of Object.entries(state)) {
-			fields.set(name, field[stateFieldInternal]);
-		}
-		registry.set(namespace, fields);
-	}
+	const registry = buildFieldRegistry(options.namespaces);
 
 	const HealthGroupLive = HttpApiBuilder.group(
 		NodecgApi,
