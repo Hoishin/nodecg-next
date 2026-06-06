@@ -35,14 +35,25 @@ function stubField(
 	};
 }
 
-// TODO: test for computed?
+function stubComputed(
+	getEncoded: Internal["getEncoded"],
+): LoadedNamespace["computed"][string] {
+	return {
+		[stateFieldInternal]: {
+			getEncoded,
+			subscribeEncoded: () => Effect.succeed(Stream.empty),
+		},
+	};
+}
+
 function loadedNamespace(
 	namespace: string,
 	fields: Record<string, StateField<unknown>>,
+	computed: LoadedNamespace["computed"] = {},
 ): LoadedNamespace {
 	return {
 		state: fields,
-		computed: {},
+		computed,
 		[stateMetadataKey]: { namespace },
 	};
 }
@@ -100,6 +111,19 @@ describe("get", () => {
 		]);
 		const res = await handler(new Request(getUrl));
 		expect(res.status).toBe(404);
+	});
+
+	test("returns a computed field's value", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{ count: stubComputed(() => Effect.succeed(84)) },
+			),
+		]);
+		const res = await handler(new Request(getUrl));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toBe(84);
 	});
 });
 

@@ -26,14 +26,13 @@ const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
 
 type FieldInternal = RegisteredFieldInternal;
 
-// TODO: this is no longer "State" filter
-interface StateFilter {
+interface FieldFilter {
 	readonly namespace: string;
 	readonly name: string;
 }
 
 // TODO: use Effect-ts Equals
-const filterEquals = (a: StateFilter, b: StateFilter) =>
+const filterEquals = (a: FieldFilter, b: FieldFilter) =>
 	a.namespace === b.namespace && a.name === b.name;
 
 export const websocketRoute = (options: {
@@ -46,7 +45,7 @@ export const websocketRoute = (options: {
 		const write = yield* socket.writer;
 		const subscriptions = yield* SynchronizedRef.make<
 			ReadonlyArray<{
-				readonly filter: StateFilter;
+				readonly filter: FieldFilter;
 				readonly fiber: Fiber.RuntimeFiber<
 					void,
 					| ParseResult.ParseError
@@ -62,15 +61,15 @@ export const websocketRoute = (options: {
 				Effect.andThen((encodedMessage) => write(encodedMessage)),
 			);
 
-		const publishState = (filter: StateFilter, value: JsonValue) =>
+		const publishState = (filter: FieldFilter, value: JsonValue) =>
 			send({ _tag: "publish", topic: "state", message: { filter, value } });
 
-		const sendCurrent = (filter: StateFilter, internal: FieldInternal) =>
+		const sendCurrent = (filter: FieldFilter, internal: FieldInternal) =>
 			internal
 				.getEncoded()
 				.pipe(Effect.flatMap((value) => publishState(filter, value)));
 
-		const startSubscription = (filter: StateFilter) =>
+		const startSubscription = (filter: FieldFilter) =>
 			SynchronizedRef.updateEffect(subscriptions, (list) =>
 				Effect.gen(function* () {
 					const internal = registry.get(filter.namespace)?.get(filter.name);
@@ -96,7 +95,7 @@ export const websocketRoute = (options: {
 				}),
 			);
 
-		const stopSubscription = (filter: StateFilter) =>
+		const stopSubscription = (filter: FieldFilter) =>
 			SynchronizedRef.updateEffect(subscriptions, (list) =>
 				Effect.gen(function* () {
 					const match = list.find((s) => filterEquals(s.filter, filter));

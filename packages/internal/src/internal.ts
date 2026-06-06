@@ -5,6 +5,7 @@ export {
 	mapValuesOptional,
 	mapOptionalSchemaValues,
 	mapEffectValues,
+	mergeRecords,
 	zipEffectValues,
 } from "./map-values.ts";
 export { type PromisifyObject, promisifyEffectFn } from "./promisify.ts";

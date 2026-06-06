@@ -1,7 +1,7 @@
 import { loadNamespace } from "@nodecg/client";
 import { describe, expect, test, vi } from "vitest";
 
-import { fixtureManifest } from "./fixture-state.ts";
+import { extendedManifest, fixtureManifest } from "./fixture-state.ts";
 
 describe("client ⇄ server state sync", () => {
 	test("reads the server-seeded value", async () => {
@@ -60,6 +60,31 @@ describe("client ⇄ server state sync", () => {
 		await ns.state.label.set("second");
 		await ns.state.count.set(3);
 		await vi.waitFor(() => expect(received).toEqual(["idle", "second x3"]));
+		cancel();
+	});
+});
+
+describe("extended namespace sync", () => {
+	test("reads original + added state and a computed over both", async () => {
+		const ns = await loadNamespace(extendedManifest);
+		await ns.state.score.set(4);
+		await ns.state.bonus.set(3);
+		expect(await ns.state.score.get()).toBe(4);
+		expect(await ns.state.bonus.get()).toBe(3);
+		expect(await ns.computed.total.get()).toBe(7);
+	});
+
+	test("the extend-added computed recomputes when the original state changes", async () => {
+		const ns = await loadNamespace(extendedManifest);
+		await ns.state.score.set(1);
+		await ns.state.bonus.set(0);
+		const received: number[] = [];
+		const cancel = await ns.computed.total.subscribe((value) => {
+			received.push(value);
+		});
+		await vi.waitFor(() => expect(received.at(-1)).toBe(1));
+		await ns.state.score.set(10);
+		await vi.waitFor(() => expect(received.at(-1)).toBe(10));
 		cancel();
 	});
 });

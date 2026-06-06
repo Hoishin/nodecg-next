@@ -349,7 +349,6 @@ type AddedSchemas<R> = {
 };
 type GroupOf<Def, Key extends keyof ExtendDef> =
 	Def extends Record<Key, infer G> ? G : {};
-// added/redefined fields win on key clash; pure permission overrides keep the precedent type
 // TODO: use type-fest
 type Merge<Precedent, Added> = Omit<Precedent, keyof Added> & Added;
 

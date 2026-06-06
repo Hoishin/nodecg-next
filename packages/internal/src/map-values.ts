@@ -91,6 +91,14 @@ export function mapOptionalSchemaValues<
 	};
 }
 
+// TODO: nowhere near type safe. Result can do anything.
+export function mergeRecords<Result>(
+	base: Readonly<Record<string, unknown>> | undefined,
+	extra: Readonly<Record<string, unknown>> | undefined,
+): Result {
+	return { ...base, ...extra } as Result;
+}
+
 export const mapEffectValues =
 	<
 		F extends HKT.TypeLambda,

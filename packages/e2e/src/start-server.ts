@@ -1,6 +1,15 @@
-import { loadNamespace, loadNodecg } from "@nodecg/server";
+import {
+	implementNamespace,
+	loadExtendedNamespace,
+	loadNamespace,
+	loadNodecg,
+} from "@nodecg/server";
 
-import { fixtureManifest } from "./fixture-state.ts";
+import {
+	baseManifest,
+	extendedManifest,
+	fixtureManifest,
+} from "./fixture-state.ts";
 
 const loaded = await loadNamespace(fixtureManifest, {
 	seedState: {
@@ -14,8 +23,22 @@ const loaded = await loadNamespace(fixtureManifest, {
 	},
 });
 
+const baseImplemented = implementNamespace(baseManifest, {
+	seedState: { score: () => 0 },
+});
+const extended = await loadExtendedNamespace(
+	extendedManifest,
+	baseImplemented,
+	{
+		seedState: { bonus: () => 0 },
+		implementComputed: {
+			total: (sources) => sources.score + sources.bonus,
+		},
+	},
+);
+
 loadNodecg({
-	namespaces: [loaded],
+	namespaces: [loaded, extended],
 	onReady: () => {
 		if (typeof process.send === "undefined") {
 			throw new Error("start-server.ts must be spawned with an IPC channel");

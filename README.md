@@ -108,51 +108,49 @@ match.state.label.subscribe((label) => {
 
 ### Shared State
 
-- ✅ State is declarative: it is defined in a single place with name and schema
+- ✅ State is declarative: defined in one place with name and schema
 
   ```ts
-  const manifest = defineState("match", {
-    counter: { schema },
-    games: { schema },
+  const manifest = defineNamespace("match", {
+    state: { counter: { schema }, games: { schema } },
   });
   ```
 
-- ✅ State is platform agnostic: it can be loaded with dedicated server or client API
+- ✅ State is platform agnostic: loaded with a dedicated server or client API
 
   ```ts
   // Server-side
-  import { loadState } from "@nodecg/server";
+  import { loadNamespace } from "@nodecg/server";
 
-  const state = await loadState({
-    manifest,
-    initialValues: { counter: () => 0, games: () => [] },
+  const ns = await loadNamespace(manifest, {
+    seedState: { counter: () => 0, games: () => [] },
   });
-  console.log(state.counter.get()); // synchronous on the server
+  console.log(ns.state.counter.get()); // synchronous on the server
 
   // Client-side
-  import { loadState } from "@nodecg/client";
+  import { loadNamespace } from "@nodecg/client";
 
-  const state = await loadState({ manifest });
-  console.log(await state.counter.get()); // asynchronous over the network
+  const ns = await loadNamespace(manifest);
+  console.log(await ns.state.counter.get()); // asynchronous over the network
   ```
 
-- ✅ State is immutable: it provides read-only value, and can be set or updated by returning a new value from the updater (which may be async)
+- ✅ State is immutable: read-only value, set or updated by returning a new value from the updater (which may be async)
 
   ```ts
-  console.log(await state.counter.get()); // Returns read-only value
+  console.log(await ns.state.counter.get()); // Returns read-only value
 
-  await state.counter.set({ count: n, timestamp: Date.now() });
+  await ns.state.counter.set({ count: n, timestamp: Date.now() });
 
-  await state.counter.update((value) => {
-    value.timestamp = Date.now();
-    return value;
-  });
+  await ns.state.counter.update((value) => ({
+    ...value,
+    timestamp: Date.now(),
+  }));
   ```
 
-- ✅ State is reactive: it provides subscription API to listen to changes
+- ✅ State is reactive: subscribe to listen to changes
 
   ```ts
-  const unsubscribe = await state.counter.subscribe((newValue) => {
+  const unsubscribe = await ns.state.counter.subscribe((newValue) => {
     console.log("Counter updated:", newValue);
   });
 
@@ -160,115 +158,103 @@ match.state.label.subscribe((label) => {
   unsubscribe();
   ```
 
-- 🚧 State supports transactions: multiple updates can be batched together to ensure consistency
+- 🚧 State supports transactions: batch multiple updates for consistency
 
   ```ts
-  await state.transaction(() => {
-    state.counter.update((value) => {
-      value.timestamp = Date.now();
-      return value;
-    });
-    state.games.update((value) => [...value, "New Game"]);
+  await ns.transaction(() => {
+    ns.state.counter.update((value) => ({ ...value, timestamp: Date.now() }));
+    ns.state.games.update((value) => [...value, "New Game"]);
   });
   ```
 
-- 🚧 State supports migrations: when schema changes, state can be migrated to new schema without data loss
+- 🚧 State supports migrations: when a schema changes, migrate without data loss
 
   ```ts
-  const newManifest = defineState("match", {
-    counter: { schema },
-    games: {
-      schema,
-      migration: [
-        {
-          oldSchema,
-          migrate: (oldValue) => {
-            return oldValue.map((game) => {
-              // ...
-            });
-          },
-        },
-      ],
-    },
-  });
-  ```
-
-- 🚧 State supports access control: permissions can be defined for each state to control who can read or update it
-
-  ```ts
-  const manifest = defineState(
-    "match",
-    {
-      counter: {
-        schema,
-        permissions: {
-          read: ["judge", "producer"],
-        },
-      },
+  const newManifest = defineNamespace("match", {
+    state: {
+      counter: { schema },
       games: {
-        permissions: {
-          update: [], // Only system can update
-        },
+        schema,
+        migration: [
+          {
+            oldSchema,
+            migrate: (oldValue) => oldValue.map((game) => /* ... */ game),
+          },
+        ],
       },
     },
-    {
-      permissions: {
-        read: ["viewer"],
-        update: ["admin"],
-      },
-    },
-  );
+  });
   ```
 
-- ✅ State supports computed values derived from other state on the server. The manifest declares the schema; the compute function is provided on the server.
+- 🚧 State supports access control: roles declare default capabilities; per-field `allow`/`deny` refine them
+
+  ```ts
+  const manifest = defineNamespace("match", {
+    roles: {
+      judge: { permission: ["state-read", "state-write"] },
+      viewer: { permission: ["state-read"] },
+    },
+    state: {
+      counter: { schema, permission: { read: { deny: ["viewer"] } } },
+      games: { schema, permission: { write: { allow: ["server"] } } }, // server-owned
+    },
+  });
+  ```
+
+- ✅ State supports computed values derived from other state: the manifest declares the schema, the compute function is provided on the server at load
 
   ```ts
   // Manifest: declare schema only
-  const manifest = defineState(
-    "match",
-    {
-      counter: { schema },
-      games: { schema },
-    },
-    {
-      computed: {
-        firstGameId: { schema },
-      },
-    },
-  );
+  const manifest = defineNamespace("match", {
+    state: { counter: { schema }, games: { schema } },
+    computed: { firstGameId: { schema } },
+  });
 
   // Server: provide the compute function
-  const state = await loadState({
-    manifest,
-    initialValues: { counter: () => 0, games: () => [] },
-    computed: {
+  const ns = await loadNamespace(manifest, {
+    seedState: { counter: () => 0, games: () => [] },
+    implementComputed: {
       firstGameId: (sources) => sources.games[0]?.id ?? null,
     },
   });
 
   // Client: read-only
-  const state = await loadState({ manifest });
-  await state.firstGameId.subscribe((firstGameId) => {
+  const ns = await loadNamespace(manifest);
+  await ns.computed.firstGameId.subscribe((firstGameId) => {
     console.log("First game updated:", firstGameId);
   });
   ```
 
-- ✅ State supports namespaces: states can be grouped into namespaces to avoid name conflicts and manage permissions more easily
+- ✅ State is grouped into namespaces to avoid name conflicts and scope permissions
 
   ```ts
-  const commercialManifest = defineState(
-    "commercial",
-    {
-      isRunning: { schema },
+  const commercialManifest = defineNamespace("commercial", {
+    roles: { producer: { permission: ["state-read", "state-write"] } },
+    state: {
+      isRunning: { schema, permission: { write: { allow: ["producer"] } } },
       remainingTime: { schema },
     },
-    {
-      permissions: {
-        read: ["producer"],
-        update: ["producer"],
-      },
-    },
-  );
+  });
+  ```
+
+- ✅ Namespaces can be extended: add fields and roles or override permissions
+
+  ```ts
+  // Library
+  const base = implementNamespace(baseManifest, {
+    seedState: { score: () => 0 },
+  });
+
+  // Application
+  const extendedManifest = extendNamespace(baseManifest, {
+    state: { round: { schema } },
+    computed: { total: { schema } }, // may read original + newly-added state
+  });
+
+  const loaded = await loadExtendedNamespace(extendedManifest, base, {
+    seedState: { round: () => 0 },
+    implementComputed: { total: (sources) => sources.score + sources.round },
+  });
   ```
 
 - 🚧 Admin dashboard (view, clear, export, import, freeze)

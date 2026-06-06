@@ -1,2 +1,8 @@
 export { loadNodecgEffect, loadNodecg } from "./load-nodecg.ts";
-export { loadState, loadStateEffect } from "./load-state.ts";
+export {
+	implementNamespace,
+	loadExtendedNamespace,
+	loadNamespace,
+	loadNamespaceEffect,
+	type LoadedNamespace,
+} from "./load-namespace.ts";
