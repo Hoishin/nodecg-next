@@ -102,66 +102,36 @@ describe("defineNamespace", () => {
 		});
 
 		test("no rule → inherits the role-level base", () => {
-			expect(manifest.state.label.permission.read).toEqual(["judge", "viewer"]);
-			expect(manifest.state.label.permission.write).toEqual(["judge"]);
+			expect(manifest.state.label.permission.read).toEqual(
+				new Set(["judge", "viewer"]),
+			);
+			expect(manifest.state.label.permission.write).toEqual(new Set(["judge"]));
 		});
 
 		test("deny subtracts from the base", () => {
-			expect(manifest.state.score.permission.read).toEqual(["judge"]);
+			expect(manifest.state.score.permission.read).toEqual(new Set(["judge"]));
 		});
 
 		test("allow overrides the base", () => {
-			expect(manifest.state.score.permission.write).toEqual(["judge"]);
+			expect(manifest.state.score.permission.write).toEqual(new Set(["judge"]));
 		});
 
-		test("client expands to all named roles + public", () => {
-			expect(manifest.state.banner.permission.read).toEqual([
-				"judge",
-				"monitor",
-				"public",
-				"viewer",
-			]);
+		test("client expands to all named roles", () => {
+			expect(manifest.state.banner.permission.read).toEqual(
+				new Set(["judge", "monitor", "viewer"]),
+			);
 		});
 
 		test("server-owned write", () => {
-			expect(manifest.state.banner.permission.write).toEqual(["server"]);
+			expect(manifest.state.banner.permission.write).toEqual(
+				new Set(["server"]),
+			);
 		});
 
 		test("computed resolves its read base", () => {
-			expect(manifest.computed.winning.permission.read).toEqual([
-				"judge",
-				"monitor",
-				"viewer",
-			]);
-		});
-
-		test("role-level deny vetoes a field allow", () => {
-			const vetoed = defineNamespace("match", {
-				roles: {
-					judge: { permission: ["state-write"] },
-					intern: { permission: ["state-read"], deny: ["state-write"] },
-				},
-				state: {
-					score: {
-						schema: Schema.Number,
-						permission: { write: { allow: ["judge", "intern"] } },
-					},
-				},
-			});
-
-			expect(vetoed.state.score.permission.write).toEqual(["judge"]);
-		});
-
-		test("role-level deny does not touch a sibling capability", () => {
-			const vetoed = defineNamespace("match", {
-				roles: {
-					intern: { permission: ["state-read"], deny: ["state-write"] },
-				},
-				state: { note: { schema: Schema.String } },
-			});
-
-			expect(vetoed.state.note.permission.read).toEqual(["intern"]);
-			expect(vetoed.state.note.permission.write).toEqual([]);
+			expect(manifest.computed.winning.permission.read).toEqual(
+				new Set(["judge", "monitor", "viewer"]),
+			);
 		});
 	});
 
@@ -240,8 +210,8 @@ describe("extendNamespace", () => {
 				state: { score: { permission: { read: { deny: ["viewer"] } } } },
 			});
 
-			expect(extended.state.score.permission.read).toEqual(["judge"]);
-			expect(extended.state.score.permission.write).toEqual(["judge"]);
+			expect(extended.state.score.permission.read).toEqual(new Set(["judge"]));
+			expect(extended.state.score.permission.write).toEqual(new Set(["judge"]));
 		});
 
 		test(
@@ -258,38 +228,42 @@ describe("extendNamespace", () => {
 					});
 
 					expect(yield* extended.state.pinned.encode("hi")).toBe("hi");
-					expect(extended.state.pinned.permission.write).toEqual(["judge"]);
-					expect(extended.state.score.permission.read).toEqual([
-						"judge",
-						"viewer",
-					]);
+					expect(extended.state.pinned.permission.write).toEqual(
+						new Set(["judge"]),
+					);
+					expect(extended.state.score.permission.read).toEqual(
+						new Set(["judge", "viewer"]),
+					);
 				}),
 			),
 		);
-
-		test("role-level deny retroactively vetoes existing fields, even allow-pinned", () => {
-			const extended = extendNamespace(base, {
-				roles: { judge: { permission: [], deny: ["state-write"] } },
-			});
-
-			expect(extended.state.score.permission.write).toEqual([]);
-			expect(extended.state.secret.permission.write).toEqual([]);
-		});
 
 		test("role-level grant retroactively adds to existing lists, including pinned", () => {
 			const extended = extendNamespace(base, {
 				roles: { auditor: { permission: ["state-read"] } },
 			});
 
-			expect(extended.state.score.permission.read).toEqual([
-				"auditor",
-				"judge",
-				"viewer",
-			]);
-			expect(extended.state.secret.permission.read).toEqual([
-				"auditor",
-				"judge",
-			]);
+			expect(extended.state.score.permission.read).toEqual(
+				new Set(["auditor", "judge", "viewer"]),
+			);
+			expect(extended.state.secret.permission.read).toEqual(
+				new Set(["auditor", "judge"]),
+			);
+		});
+
+		test("re-listing a role's permissions overrides the previous set, vetoing dropped capabilities", () => {
+			const extended = extendNamespace(base, {
+				roles: { judge: { permission: ["state-read"] } },
+			});
+
+			expect(extended.state.score.permission.write).toEqual(new Set());
+			expect(extended.computed.total.permission.read).toEqual(
+				new Set(["viewer"]),
+			);
+			expect(extended.state.secret.permission.read).toEqual(new Set(["judge"]));
+			expect(extended.state.score.permission.read).toEqual(
+				new Set(["judge", "viewer"]),
+			);
 		});
 
 		test("callback form receives the resolved precedent", () => {
@@ -298,16 +272,15 @@ describe("extendNamespace", () => {
 					mirror: {
 						schema: Schema.Number,
 						permission: {
-							read: { allow: precedent.state.score.permission.read },
+							read: { allow: [...precedent.state.score.permission.read] },
 						},
 					},
 				},
 			}));
 
-			expect(extended.state.mirror.permission.read).toEqual([
-				"judge",
-				"viewer",
-			]);
+			expect(extended.state.mirror.permission.read).toEqual(
+				new Set(["judge", "viewer"]),
+			);
 		});
 
 		test(
@@ -321,11 +294,10 @@ describe("extendNamespace", () => {
 
 					expect(yield* extended.computed.ratio.encode(0.5)).toBe(0.5);
 					expect(yield* extended.topic.ping.encode("x")).toBe("x");
-					expect(extended.computed.ratio.permission.read).toEqual([
-						"judge",
-						"viewer",
-					]);
-					expect(extended.topic.ping.permission.subscribe).toEqual([]);
+					expect(extended.computed.ratio.permission.read).toEqual(
+						new Set(["judge", "viewer"]),
+					);
+					expect(extended.topic.ping.permission.read).toEqual(new Set());
 				}),
 			),
 		);

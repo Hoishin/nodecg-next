@@ -2,7 +2,7 @@ import {
 	defineNamespace,
 	extendNamespace,
 	type NamespaceManifest,
-	type FieldCodec,
+	type FieldManifest,
 	StateEncodeError,
 } from "@nodecg/core";
 import { testEffect } from "@nodecg/private";
@@ -113,7 +113,7 @@ describe("loadNamespaceEffect seeding", () => {
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.none());
-				const codec: FieldCodec<number> = {
+				const field: FieldManifest<number> = {
 					name: "broken",
 					encode: () =>
 						Effect.fail(
@@ -124,6 +124,7 @@ describe("loadNamespaceEffect seeding", () => {
 							}),
 						),
 					decode: () => Effect.succeed(0),
+					permission: { read: new Set(), write: new Set() },
 				};
 				const manifest: NamespaceManifest<
 					{ broken: typeof Schema.Number },
@@ -131,10 +132,8 @@ describe("loadNamespaceEffect seeding", () => {
 					{}
 				> = {
 					namespace: "ns",
-					roles: {},
-					state: {
-						broken: { ...codec, permission: { read: [], write: [] } },
-					},
+					roles: new Map(),
+					state: { broken: field },
 					computed: {},
 					topic: {},
 				};

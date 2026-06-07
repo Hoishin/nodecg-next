@@ -5,14 +5,18 @@ import { describe, expect, test, vi } from "vitest";
 
 import { stateMetadataKey, type LoadedNamespace } from "../load-namespace.ts";
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
-import { type StateField, stateFieldInternal } from "../state-field.ts";
+import {
+	type StateField,
+	type StateFieldPromise,
+	stateFieldInternal,
+} from "../state-field.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];
 
 function stubField(
 	internal: Pick<Internal, "getEncoded" | "setEncoded">,
-): StateField<unknown> {
+): StateFieldPromise<unknown> {
 	const unused = vi.fn();
 	const subscribeEncoded = () => Effect.succeed(Stream.empty);
 	const subscribe = () => Effect.succeed(Stream.empty);
@@ -38,7 +42,10 @@ function stubField(
 function stubComputed(
 	getEncoded: Internal["getEncoded"],
 ): LoadedNamespace["computed"][string] {
+	const unused = vi.fn();
 	return {
+		get: unused,
+		subscribe: unused,
 		[stateFieldInternal]: {
 			getEncoded,
 			subscribeEncoded: () => Effect.succeed(Stream.empty),
@@ -48,7 +55,7 @@ function stubComputed(
 
 function loadedNamespace(
 	namespace: string,
-	fields: Record<string, StateField<unknown>>,
+	fields: Record<string, StateFieldPromise<unknown>>,
 	computed: LoadedNamespace["computed"] = {},
 ): LoadedNamespace {
 	return {

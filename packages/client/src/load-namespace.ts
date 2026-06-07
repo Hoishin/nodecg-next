@@ -1,4 +1,4 @@
-import type { NamespaceManifest, FieldCodec } from "@nodecg/core";
+import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
 import { mapEffectValues, mapValues } from "@nodecg/internal";
 import {
 	Effect,
@@ -37,7 +37,7 @@ import {
 const implementState = Effect.fn("implementState")(function* <Decoded>(
 	namespace: string,
 	name: string,
-	codec: FieldCodec<Decoded>,
+	codec: FieldManifest<Decoded>,
 ) {
 	const transport = yield* StateTransportService;
 	const messageChannel = yield* MessageChannelService;
@@ -167,7 +167,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 const implementComputedState = Effect.fn("implementComputedState")(function* <
 	Decoded,
->(namespace: string, name: string, codec: FieldCodec<Decoded>) {
+>(namespace: string, name: string, codec: FieldManifest<Decoded>) {
 	const field = yield* implementState(namespace, name, codec);
 	const computed: ComputedFieldEffect<Decoded> = {
 		get: field.get,
@@ -176,9 +176,9 @@ const implementComputedState = Effect.fn("implementComputedState")(function* <
 	return computed;
 });
 
-interface FieldCodecLambda extends HKT.TypeLambda {
+interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: FieldCodec<Schema.Schema.Type<this["Target"]>>;
+	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
 }
 
 interface StateFieldEffectLambda extends HKT.TypeLambda {
@@ -210,14 +210,14 @@ const buildNamespace = <
 ) =>
 	Effect.gen(function* () {
 		const fields = yield* mapEffectValues<
-			FieldCodecLambda,
+			FieldManifestLambda,
 			StateFieldEffectLambda,
 			State
 		>()(manifest.state, (codec, name) =>
 			implementState(manifest.namespace, name, codec),
 		);
 		const computedFields = yield* mapEffectValues<
-			FieldCodecLambda,
+			FieldManifestLambda,
 			ComputedFieldEffectLambda,
 			Computed
 		>()(manifest.computed, (codec, name) =>
