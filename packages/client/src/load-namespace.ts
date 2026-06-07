@@ -239,6 +239,28 @@ export function loadNamespaceEffect<
 	);
 }
 
+export interface LoadedNamespace<
+	State extends Record<string, Schema.Schema<any, any, never>> = Record<
+		string,
+		Schema.Schema<any, any, never>
+	>,
+	Computed extends Record<string, Schema.Schema<any, any, never>> = Record<
+		string,
+		Schema.Schema<any, any, never>
+	>,
+> {
+	readonly state: {
+		readonly [K in keyof State & string]: StateFieldPromise<
+			Schema.Schema.Type<State[K]>
+		>;
+	};
+	readonly computed: {
+		readonly [K in keyof Computed & string]: ComputedFieldPromise<
+			Schema.Schema.Type<Computed[K]>
+		>;
+	};
+}
+
 export async function loadNamespace<
 	State extends Record<string, Schema.Schema<any, any, never>> = {},
 	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
@@ -253,7 +275,7 @@ export async function loadNamespace<
 			| (() => MessageChannel)
 			| Effect.Effect<MessageChannel, never, never>;
 	},
-) {
+): Promise<LoadedNamespace<State, Computed>> {
 	const stateTransport = adapter?.stateTransport;
 	const messageChannel = adapter?.messageChannel;
 

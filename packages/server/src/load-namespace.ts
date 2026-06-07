@@ -400,7 +400,7 @@ async function loadNamespacePromise<
 	options:
 		| (NamespaceOptions<State, Computed> & { readonly storage?: StorageOption })
 		| undefined,
-) {
+): Promise<LoadedNamespace<State, Computed>> {
 	const storage = options?.storage;
 	const runtime = ManagedRuntime.make(
 		storage
@@ -573,19 +573,28 @@ export function loadExtendedNamespace<
 	return loadNamespacePromise(manifest, { ...merged, storage });
 }
 
-export type LoadedNamespace = {
+export interface LoadedNamespace<
+	State extends Record<string, Schema.Schema<any, any, never>> = Record<
+		string,
+		Schema.Schema<any, any, never>
+	>,
+	Computed extends Record<string, Schema.Schema<any, any, never>> = Record<
+		string,
+		Schema.Schema<any, any, never>
+	>,
+> {
 	readonly [stateMetadataKey]: { readonly namespace: string };
 	readonly state: {
-		readonly [name: string]: {
-			readonly [stateFieldInternal]: RegisteredFieldInternal;
-		};
+		readonly [K in keyof State & string]: StateFieldPromise<
+			Schema.Schema.Type<State[K]>
+		>;
 	};
 	readonly computed: {
-		readonly [name: string]: {
-			readonly [stateFieldInternal]: RegisteredFieldInternal;
-		};
+		readonly [K in keyof Computed & string]: ComputedFieldPromise<
+			Schema.Schema.Type<Computed[K]>
+		>;
 	};
-};
+}
 
 // TODO: move to its own file. Also state/computed/topic should be completely separated (could be same name!)
 export const buildFieldRegistry = (
