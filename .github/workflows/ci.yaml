@@ -13,33 +13,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-      - run: corepack enable pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-      - run: corepack enable pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
   fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-      - run: corepack enable pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm fmt --check
 
@@ -53,11 +53,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+      - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-      - run: corepack enable pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
