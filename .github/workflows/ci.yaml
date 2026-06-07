@@ -59,18 +59,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-
-      - id: playwright-version
-        run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/playwright" >> "$GITHUB_ENV"
-          echo "version=$(pnpm exec playwright --version)" >> "$GITHUB_OUTPUT"
-        shell: bash
-
-      - uses: actions/cache@v5
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
       - run: pnpm exec playwright install --with-deps
       - run: pnpm test
 
