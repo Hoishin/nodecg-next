@@ -652,4 +652,23 @@ describe("loadExtendedNamespace", () => {
 
 		expect(loaded.computed.doubled.get()).toBe(10);
 	});
+
+	test("omitting impl for a newly-added field is a type error", async () => {
+		const base = defineNamespace("match", {
+			state: { score: { schema: Schema.Number } },
+		});
+		const baseImplemented = implementNamespace(base, {
+			seedState: { score: () => 1 },
+		});
+		const extended = extendNamespace(base, {
+			state: { round: { schema: Schema.Number } },
+		});
+
+		await expect(
+			loadExtendedNamespace(extended, baseImplemented, {
+				// @ts-expect-error missing seedState for the newly-added "round"
+				seedState: {},
+			}),
+		).rejects.toThrow(/Missing seed value for state "round"/);
+	});
 });
