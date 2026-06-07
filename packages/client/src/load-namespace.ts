@@ -326,23 +326,22 @@ export async function loadNamespace<
 				}),
 			);
 
-	const state = mapValues<
-		StateFieldEffectLambda,
-		StateFieldPromiseLambda
-	>()<State>(effectFields, (field, name) => ({
-		get: () => runtime.runPromise(field.get()),
-		set: (value) => runtime.runPromise(field.set(value)),
-		update: (fn) => runtime.runPromise(field.update(fn)),
-		subscribe: subscribeEffectToPromise(field.subscribe, name),
-	}));
+	const state = mapValues<StateFieldEffectLambda, StateFieldPromiseLambda>(
+		(field, name) => ({
+			get: () => runtime.runPromise(field.get()),
+			set: (value) => runtime.runPromise(field.set(value)),
+			update: (fn) => runtime.runPromise(field.update(fn)),
+			subscribe: subscribeEffectToPromise(field.subscribe, name),
+		}),
+	)(effectFields);
 
 	const computed = mapValues<
 		ComputedFieldEffectLambda,
 		ComputedFieldPromiseLambda
-	>()(effectComputedFields, (field, name) => ({
+	>((field, name) => ({
 		get: () => runtime.runPromise(field.get()),
 		subscribe: subscribeEffectToPromise(field.subscribe, name),
-	}));
+	}))(effectComputedFields);
 
 	return { state, computed };
 }

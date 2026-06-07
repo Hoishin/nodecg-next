@@ -2,7 +2,13 @@ import { testEffect } from "@nodecg/private";
 import { Context, Data, Effect, Schema, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
-import { mapEffectValues, mapSchemaValues, mapValues } from "./map-values.ts";
+import {
+	mapEffectValues,
+	mapSchemaValues,
+	mapValues,
+	mergeRecords,
+	zipEffectValues,
+} from "./map-values.ts";
 
 interface IdentityLambda extends HKT.TypeLambda {
 	readonly type: this["Target"];
@@ -41,6 +47,12 @@ interface WithIdLambda extends HKT.TypeLambda {
 	readonly type: this["Target"];
 }
 
+type SharedContext<In, Target> = { readonly shared: In; readonly own: Target };
+
+interface SharedContextLambda extends HKT.TypeLambda {
+	readonly type: SharedContext<this["In"], this["Target"]>;
+}
+
 class TransformError extends Data.TaggedError("TransformError")<{
 	key: string;
 }> {}
@@ -50,12 +62,15 @@ class BoxService extends Context.Tag("BoxService")<
 	{ readonly box: <X>(value: X) => ReadonlyArray<X> }
 >() {}
 
+type Option = { readonly schema?: Schema.Schema<any, any, never> };
+
 describe("mapValues", () => {
+	const identitiesToArrays = mapValues<IdentityLambda, ArrayLambda>((value) => [
+		value,
+	]);
+
 	test("applies the transform to every value, preserving keys and per-key value types", () => {
-		const result = mapValues<IdentityLambda, ArrayLambda>()(
-			{ a: 1, b: "two" },
-			(value) => [value],
-		);
+		const result = identitiesToArrays({ a: 1, b: "two" });
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: ReadonlyArray<number>;
 			readonly b: ReadonlyArray<string>;
@@ -63,27 +78,50 @@ describe("mapValues", () => {
 		expect(result).toEqual({ a: [1], b: ["two"] });
 	});
 
-	test("passes the key to the transform", () => {
+	test("reuses one bound mapper across differently-shaped inputs, inferring each result independently", () => {
+		const first = identitiesToArrays({ a: 1, b: "two" });
+		const second = identitiesToArrays({ x: true });
+		expectTypeOf(first).toEqualTypeOf<{
+			readonly a: ReadonlyArray<number>;
+			readonly b: ReadonlyArray<string>;
+		}>();
+		expectTypeOf(second).toEqualTypeOf<{
+			readonly x: ReadonlyArray<boolean>;
+		}>();
+		expect(first).toEqual({ a: [1], b: ["two"] });
+		expect(second).toEqual({ x: [true] });
+	});
+
+	test("passes the string key to the transform", () => {
 		const keys: string[] = [];
-		mapValues<IdentityLambda, ArrayLambda>()({ a: 1, b: 2 }, (value, key) => {
-			keys.push(key);
-			return [value];
-		});
+		const recordKeys = mapValues<IdentityLambda, IdentityLambda>(
+			(value, key) => {
+				expectTypeOf(key).toEqualTypeOf<string>();
+				keys.push(key);
+				return value;
+			},
+		);
+		recordKeys({ a: 1, b: 2 });
 		expect(keys.sort()).toEqual(["a", "b"]);
 	});
 
 	test("returns an empty object for an empty input", () => {
-		const result = mapValues<IdentityLambda, ArrayLambda>()({}, (value) => [
-			value,
-		]);
+		const result = identitiesToArrays({});
 		expect(result).toEqual({});
 	});
 
+	test("returns a fresh object without mutating the input", () => {
+		const input = { a: 1, b: 2 };
+		const result = identitiesToArrays(input);
+		expect(result).not.toBe(input);
+		expect(input).toEqual({ a: 1, b: 2 });
+	});
+
 	test("maps each value into a mapped-object shape, keeping value types distinct per key", () => {
-		const result = mapValues<IdentityLambda, HeadTailLambda>()(
-			{ a: 1, b: "two" },
-			(value) => ({ head: value, tail: value }),
-		);
+		const result = mapValues<IdentityLambda, HeadTailLambda>((value) => ({
+			head: value,
+			tail: value,
+		}))({ a: 1, b: "two" });
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: { readonly head: number; readonly tail: number };
 			readonly b: { readonly head: string; readonly tail: string };
@@ -95,10 +133,9 @@ describe("mapValues", () => {
 	});
 
 	test("preserves distinct per-key return types when the transform produces functions", () => {
-		const result = mapValues<IdentityLambda, ThunkLambda>()(
-			{ count: 2, label: "x" },
+		const result = mapValues<IdentityLambda, ThunkLambda>(
 			(value) => () => value,
-		);
+		)({ count: 2, label: "x" });
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly count: () => number;
 			readonly label: () => string;
@@ -108,9 +145,11 @@ describe("mapValues", () => {
 	});
 
 	test("reduces a non-identity F lambda on the input side", () => {
-		const result = mapValues<BoxLambda, IdentityLambda>()(
-			{ a: { value: 1 }, b: { value: "two" } },
-			(value) => value.value,
+		const result = mapValues<BoxLambda, IdentityLambda>((value) => value.value)(
+			{
+				a: { value: 1 },
+				b: { value: "two" },
+			},
 		);
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: number;
@@ -119,11 +158,17 @@ describe("mapValues", () => {
 		expect(result).toEqual({ a: 1, b: "two" });
 	});
 
-	test("resolves a keyof-remapped, indexed mapped-object G lambda per key", () => {
-		const result = mapValues<IdentityLambda, PrefixedBoxLambda>()(
-			{ a: 1, b: "two" },
-			(value) => ({ box_value: value }),
+	test("rejects an input whose values do not match the F lambda", () => {
+		mapValues<BoxLambda, IdentityLambda>((value) => value.value)(
+			// @ts-expect-error values must be Box-shaped
+			{ a: 1 },
 		);
+	});
+
+	test("resolves a keyof-remapped, indexed mapped-object G lambda per key", () => {
+		const result = mapValues<IdentityLambda, PrefixedBoxLambda>((value) => ({
+			box_value: value,
+		}))({ a: 1, b: "two" });
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: { readonly box_value: number };
 			readonly b: { readonly box_value: string };
@@ -132,10 +177,10 @@ describe("mapValues", () => {
 	});
 
 	test("respects a Lambda that specifies a constrained Target", () => {
-		const result = mapValues<WithIdLambda, BoxLambda>()(
-			{ a: { id: 1, tag: "x" }, b: { id: 2, tag: 9 } },
-			(value) => ({ value }),
-		);
+		const boxWithIds = mapValues<WithIdLambda, BoxLambda>((value) => ({
+			value,
+		}));
+		const result = boxWithIds({ a: { id: 1, tag: "x" }, b: { id: 2, tag: 9 } });
 		expectTypeOf(result).toEqualTypeOf<{
 			readonly a: { readonly value: { id: number; tag: string } };
 			readonly b: { readonly value: { id: number; tag: number } };
@@ -144,10 +189,9 @@ describe("mapValues", () => {
 			a: { value: { id: 1, tag: "x" } },
 			b: { value: { id: 2, tag: 9 } },
 		});
-		mapValues<WithIdLambda, BoxLambda>()(
+		boxWithIds(
 			// @ts-expect-error Target must satisfy { id: number }
 			{ a: "no id" },
-			(value) => ({ value }),
 		);
 	});
 });
@@ -191,6 +235,22 @@ describe("mapEffectValues", () => {
 					return Effect.succeed([value]);
 				});
 				expect(keys.sort()).toEqual(["a", "b"]);
+			}),
+		),
+	);
+
+	test(
+		"reduces a non-identity In lambda on the input side",
+		testEffect(
+			Effect.gen(function* () {
+				const result = yield* mapEffectValues<
+					BoxLambda,
+					IdentityLambda,
+					{ a: number; b: string }
+				>()({ a: { value: 1 }, b: { value: "two" } }, (value) =>
+					Effect.succeed(value.value),
+				);
+				expect(result).toEqual({ a: 1, b: "two" });
 			}),
 		),
 	);
@@ -310,10 +370,155 @@ describe("mapEffectValues", () => {
 	);
 });
 
-interface ArrayLambda extends HKT.TypeLambda {
-	readonly type: ReadonlyArray<this["Target"]>;
-}
-type Option = { readonly schema?: Schema.Schema<any, any, never> };
+describe("zipEffectValues", () => {
+	test(
+		"correlates obj and ctx by key, threading the shared In into each context",
+		testEffect(
+			Effect.gen(function* () {
+				const shareds: string[] = [];
+				const effect = zipEffectValues<
+					IdentityLambda,
+					SharedContextLambda,
+					ArrayLambda,
+					"v1",
+					{ a: number; b: string }
+				>()(
+					{ a: 1, b: "two" },
+					{ a: { shared: "v1", own: 10 }, b: { shared: "v1", own: "twenty" } },
+					(value, context) => {
+						shareds.push(context.shared);
+						return Effect.succeed([value, context.own]);
+					},
+				);
+				expectTypeOf(effect).toEqualTypeOf<
+					Effect.Effect<
+						{
+							readonly a: ReadonlyArray<number>;
+							readonly b: ReadonlyArray<string>;
+						},
+						never,
+						never
+					>
+				>();
+				expect(yield* effect).toEqual({ a: [1, 10], b: ["two", "twenty"] });
+				expect(shareds).toEqual(["v1", "v1"]);
+			}),
+		),
+	);
+
+	test(
+		"returns an empty object when ctx is undefined, ignoring obj",
+		testEffect(
+			Effect.gen(function* () {
+				const effect = zipEffectValues<
+					IdentityLambda,
+					SharedContextLambda,
+					ArrayLambda,
+					"v1",
+					{ a: number; b: string }
+				>()({ a: 1, b: "two" }, undefined, (value) => Effect.succeed([value]));
+				expect(yield* effect).toEqual({});
+			}),
+		),
+	);
+
+	test(
+		"passes the key to the transform",
+		testEffect(
+			Effect.gen(function* () {
+				const keys: string[] = [];
+				yield* zipEffectValues<
+					IdentityLambda,
+					SharedContextLambda,
+					ArrayLambda,
+					"v1",
+					{ a: number; b: number }
+				>()(
+					{ a: 1, b: 2 },
+					{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
+					(value, _context, key) => {
+						keys.push(key);
+						return Effect.succeed([value]);
+					},
+				);
+				expect(keys.sort()).toEqual(["a", "b"]);
+			}),
+		),
+	);
+
+	test(
+		"propagates the transform's error channel",
+		testEffect(
+			Effect.gen(function* () {
+				const effect = zipEffectValues<
+					IdentityLambda,
+					SharedContextLambda,
+					ArrayLambda,
+					"v1",
+					{ a: number; b: number }
+				>()(
+					{ a: 1, b: 2 },
+					{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
+					(value, _context, key) =>
+						key === "b"
+							? Effect.fail(new TransformError({ key }))
+							: Effect.succeed([value]),
+				);
+				expectTypeOf(effect).toEqualTypeOf<
+					Effect.Effect<
+						{
+							readonly a: ReadonlyArray<number>;
+							readonly b: ReadonlyArray<number>;
+						},
+						TransformError,
+						never
+					>
+				>();
+				const error = yield* effect.pipe(Effect.flip);
+				expect(error._tag).toBe("TransformError");
+			}),
+		),
+	);
+
+	test(
+		"propagates the transform's context channel",
+		testEffect(
+			Effect.gen(function* () {
+				const effect = zipEffectValues<
+					IdentityLambda,
+					SharedContextLambda,
+					ArrayLambda,
+					"v1",
+					{ a: number; b: number }
+				>()(
+					{ a: 1, b: 2 },
+					{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
+					(value) =>
+						Effect.gen(function* () {
+							const service = yield* BoxService;
+							return service.box(value);
+						}),
+				);
+				expectTypeOf(effect).toEqualTypeOf<
+					Effect.Effect<
+						{
+							readonly a: ReadonlyArray<number>;
+							readonly b: ReadonlyArray<number>;
+						},
+						never,
+						BoxService
+					>
+				>();
+				const result = yield* effect.pipe(
+					Effect.provideService(BoxService, {
+						box: (value) => [value, value],
+					}),
+				);
+				expect(result).toEqual({ a: [1, 1], b: [2, 2] });
+			}),
+		),
+	);
+});
 
 describe("mapSchemaValues", () => {
 	test("maps only the entries carrying a schema, keyed by the schema-bearing subset", () => {
@@ -340,6 +545,26 @@ describe("mapSchemaValues", () => {
 		expect(keys.sort()).toEqual(["a", "b"]);
 	});
 
+	test("returns an empty object when no entry carries a schema", () => {
+		const result = mapSchemaValues<Option, ArrayLambda>()(
+			{ a: {}, b: {} },
+			(value) => [value.schema],
+		);
+		expectTypeOf(result).toEqualTypeOf<{}>();
+		expect(result).toEqual({});
+	});
+
+	test("skips an entry whose schema is explicitly undefined", () => {
+		const result = mapSchemaValues<Option, ArrayLambda>()(
+			{ a: { schema: Schema.Number }, b: { schema: undefined } },
+			(value) => [value.schema],
+		);
+		expectTypeOf(result).toEqualTypeOf<{
+			readonly a: ReadonlyArray<typeof Schema.Number>;
+		}>();
+		expect(result).toEqual({ a: [Schema.Number] });
+	});
+
 	test("returns an empty object for an undefined input", () => {
 		const input: Record<string, Option> | undefined = undefined;
 		const result = mapSchemaValues<Option, ArrayLambda>()(input, (value) => [
@@ -353,6 +578,54 @@ describe("mapSchemaValues", () => {
 			// @ts-expect-error 123 is not `{ schema?: Schema }`
 			{ bogus: 123 },
 			(value) => [value.schema],
+		);
+	});
+});
+
+describe("mergeRecords", () => {
+	test("shallow-merges base and extra into the declared result type", () => {
+		const result = mergeRecords<{ readonly a: number; readonly b: string }>(
+			{ a: 1 },
+			{ b: "two" },
+		);
+		expectTypeOf(result).toEqualTypeOf<{
+			readonly a: number;
+			readonly b: string;
+		}>();
+		expect(result).toEqual({ a: 1, b: "two" });
+	});
+
+	test("lets extra override base on colliding keys", () => {
+		const result = mergeRecords<Record<string, number>>(
+			{ a: 1, b: 2 },
+			{ b: 3 },
+		);
+		expect(result).toEqual({ a: 1, b: 3 });
+	});
+
+	test("replaces colliding values wholesale rather than deep-merging", () => {
+		const result = mergeRecords<{ readonly a: { readonly y: number } }>(
+			{ a: { x: 1 } },
+			{ a: { y: 2 } },
+		);
+		expect(result).toEqual({ a: { y: 2 } });
+	});
+
+	test("treats an undefined base as empty", () => {
+		expect(mergeRecords<Record<string, number>>(undefined, { a: 1 })).toEqual({
+			a: 1,
+		});
+	});
+
+	test("treats an undefined extra as empty", () => {
+		expect(mergeRecords<Record<string, number>>({ a: 1 }, undefined)).toEqual({
+			a: 1,
+		});
+	});
+
+	test("returns an empty object when both are undefined", () => {
+		expect(mergeRecords<Record<string, never>>(undefined, undefined)).toEqual(
+			{},
 		);
 	});
 });

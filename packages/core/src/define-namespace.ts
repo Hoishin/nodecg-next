@@ -238,35 +238,35 @@ export function defineNamespace<
 	const state = mapValues<
 		FieldOptionLambda<PermissionArg>,
 		FieldManifestLambda
-	>()(defineOption.state, (option, name) => ({
+	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
 			read: resolve("state-read", option.permission?.read),
 			write: resolve("state-write", option.permission?.write),
 		},
-	}));
+	}))(defineOption.state);
 
 	const computed = mapValues<
 		FieldOptionLambda<ReadOnlyPermissionArg>,
 		FieldManifestLambda
-	>()(defineOption.computed, (option, name) => ({
+	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
 			read: resolve("computed-read", option.permission?.read),
 			write: new Set(),
 		},
-	}));
+	}))(defineOption.computed);
 
 	const topic = mapValues<
 		FieldOptionLambda<PermissionArg>,
 		FieldManifestLambda
-	>()(defineOption.topic, (option, name) => ({
+	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
 			read: resolve("topic-subscribe", option.permission?.read),
 			write: resolve("topic-publish", option.permission?.write),
 		},
-	}));
+	}))(defineOption.topic);
 
 	return {
 		namespace,
@@ -377,8 +377,7 @@ export function extendNamespace<
 		return resolveFieldAllowedRoles(base, rule, namedRoles);
 	};
 
-	const stateRemap = mapValues<FieldManifestLambda, FieldManifestLambda>()(
-		manifest.state,
+	const stateRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
 			const override = extendOption.state?.[name];
 			return {
@@ -397,7 +396,7 @@ export function extendNamespace<
 				},
 			};
 		},
-	);
+	)(manifest.state);
 
 	const stateAdded = mapSchemaValues<
 		ExtendFieldOption<PermissionArg>,
@@ -417,8 +416,7 @@ export function extendNamespace<
 		>["state"]
 	>(stateRemap, stateAdded);
 
-	const computedRemap = mapValues<FieldManifestLambda, FieldManifestLambda>()(
-		manifest.computed,
+	const computedRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
 			const override = extendOption.computed?.[name];
 			return {
@@ -433,7 +431,7 @@ export function extendNamespace<
 				},
 			};
 		},
-	);
+	)(manifest.computed);
 	const computedAdded = mapSchemaValues<
 		ExtendFieldOption<ReadOnlyPermissionArg>,
 		FieldManifestLambda
@@ -452,8 +450,7 @@ export function extendNamespace<
 		>["computed"]
 	>(computedRemap, computedAdded);
 
-	const topicRemap = mapValues<FieldManifestLambda, FieldManifestLambda>()(
-		manifest.topic,
+	const topicRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
 			const override = extendOption.topic?.[name];
 			return {
@@ -472,7 +469,7 @@ export function extendNamespace<
 				},
 			};
 		},
-	);
+	)(manifest.topic);
 	const topicAdded = mapSchemaValues<
 		ExtendFieldOption<PermissionArg>,
 		FieldManifestLambda

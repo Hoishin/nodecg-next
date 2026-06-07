@@ -5,29 +5,24 @@ const unsafeObjectKeys = <T extends object>(obj: T) =>
 
 type ApplyLambdaToObjectValues<
 	Target extends Record<string, unknown>,
-	Lambda extends HKT.TypeLambda,
+	F extends HKT.TypeLambda,
 	In = never,
 	Out2 = never,
 	Out1 = never,
 > = {
-	readonly [K in keyof Target & string]: HKT.Kind<
-		Lambda,
-		In,
-		Out2,
-		Out1,
-		Target[K]
-	>;
+	readonly [K in keyof Target & string]: HKT.Kind<F, In, Out2, Out1, Target[K]>;
 };
 
 export const mapValues =
-	<InLambda extends HKT.TypeLambda, OutLambda extends HKT.TypeLambda>() =>
+	<F extends HKT.TypeLambda, G extends HKT.TypeLambda>(
+		transform: <A>(
+			value: HKT.Kind<F, never, never, never, A>,
+			key: string,
+		) => HKT.Kind<G, never, never, never, A>,
+	) =>
 	<Target extends Record<string, unknown>>(
-		obj: ApplyLambdaToObjectValues<Target, InLambda> | undefined,
-		transform: <K extends keyof Target & string>(
-			value: HKT.Kind<InLambda, never, never, never, Target[K]>,
-			key: K,
-		) => HKT.Kind<OutLambda, never, never, never, Target[K]>,
-	): ApplyLambdaToObjectValues<Target, OutLambda> => {
+		obj: ApplyLambdaToObjectValues<Target, F> | undefined,
+	): ApplyLambdaToObjectValues<Target, G> => {
 		if (typeof obj === "undefined") {
 			return {} as any;
 		}

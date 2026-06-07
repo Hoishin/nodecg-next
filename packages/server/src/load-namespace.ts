@@ -443,8 +443,7 @@ async function loadNamespacePromise<
 			);
 		};
 
-	const state = mapValues<StateFieldLambda, StateFieldPromiseLambda>()<State>(
-		effectFields,
+	const state = mapValues<StateFieldLambda, StateFieldPromiseLambda>(
 		(field, name) => ({
 			get: () => runtime.runSync(field.get()),
 			set: (value) => runtime.runSync(field.set(value)),
@@ -453,16 +452,15 @@ async function loadNamespacePromise<
 			subscribe: subscribeAdapter(field.subscribe, name),
 			[stateFieldInternal]: field[stateFieldInternal],
 		}),
-	);
+	)(effectFields);
 
-	const computed = mapValues<ComputedFieldLambda, ComputedFieldPromiseLambda>()(
-		effectComputedFields,
+	const computed = mapValues<ComputedFieldLambda, ComputedFieldPromiseLambda>(
 		(field, name) => ({
 			get: () => runtime.runSync(field.get()),
 			subscribe: subscribeAdapter(field.subscribe, name),
 			[stateFieldInternal]: field[stateFieldInternal],
 		}),
-	);
+	)(effectComputedFields);
 
 	return {
 		state,
