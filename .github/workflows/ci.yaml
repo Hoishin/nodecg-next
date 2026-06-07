@@ -59,7 +59,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install
+      - run: pnpm exec playwright install --with-deps
       - run: pnpm test
 
   test:
