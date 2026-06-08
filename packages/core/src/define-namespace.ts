@@ -5,7 +5,7 @@ import {
 	mergeRecords,
 } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
-import type { JsonValue } from "type-fest";
+import type { IsEqual, JsonValue } from "type-fest";
 
 import { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "./role.ts";
 
@@ -36,16 +36,18 @@ export interface RoleArg {
 	readonly description?: string;
 	readonly permission: ReadonlyArray<RoleCapability>;
 }
-export interface PermissionRuleArg {
-	readonly allow?: readonly string[];
-	readonly deny?: readonly string[];
+
+// TODO: add tests for the restriction, both runtime and types
+export interface PermissionRuleArg<InputRole extends string> {
+	readonly allow?: readonly (InputRole | keyof typeof RESERVED_ROLE)[];
+	readonly deny?: readonly (InputRole | keyof typeof RESERVED_ROLE)[];
 }
-export interface PermissionArg {
-	readonly read?: PermissionRuleArg;
-	readonly write?: PermissionRuleArg;
+export interface PermissionArg<InputRole extends string> {
+	readonly read?: PermissionRuleArg<InputRole>;
+	readonly write?: PermissionRuleArg<InputRole>;
 }
-export interface ReadOnlyPermissionArg {
-	readonly read?: PermissionRuleArg;
+export interface ReadOnlyPermissionArg<InputRole extends string> {
+	readonly read?: PermissionRuleArg<InputRole>;
 }
 
 export interface RoleManifest {
@@ -77,7 +79,7 @@ const expandClientRoles = (
 
 const resolveFieldAllowedRoles = (
 	base: ReadonlySet<RoleName>,
-	rule: PermissionRuleArg | undefined,
+	rule: PermissionRuleArg<string> | undefined,
 	namedRoles: ReadonlySet<RoleName>,
 ): ReadonlySet<RoleName> => {
 	let result = new Set(base);
@@ -107,63 +109,71 @@ const findRolesWithCapability = (
 	return holders;
 };
 
-export interface FieldManifest<Decoded> {
+export interface FieldManifest<D> {
 	readonly name: string;
-	readonly encode: (
-		value: Decoded,
-	) => Effect.Effect<JsonValue, StateEncodeError>;
-	readonly decode: (
-		value: JsonValue,
-	) => Effect.Effect<Decoded, StateDecodeError>;
+	readonly encode: (value: D) => Effect.Effect<JsonValue, StateEncodeError>;
+	readonly decode: (value: JsonValue) => Effect.Effect<D, StateDecodeError>;
 	readonly permission: ResolvedPermission;
 }
 
+type GateEmpty<T, U> = IsEqual<T, {}> extends true ? {} : U;
+
 export interface NamespaceManifest<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
-	Topic extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 > {
 	readonly namespace: string;
+
 	// TODO: make it private, provide helper for manual permission check
 	readonly roles: Map<RoleName, RoleManifest>;
-	readonly state: {
-		[K in keyof State & string]: FieldManifest<Schema.Schema.Type<State[K]>>;
-	};
-	readonly computed: {
-		[K in keyof Computed & string]: FieldManifest<
-			Schema.Schema.Type<Computed[K]>
-		>;
-	};
-	readonly topic: {
-		[K in keyof Topic & string]: FieldManifest<Schema.Schema.Type<Topic[K]>>;
-	};
+
+	readonly state: GateEmpty<
+		State,
+		{
+			[K in keyof State & string]: FieldManifest<State[K]>;
+		}
+	>;
+	readonly computed: GateEmpty<
+		Computed,
+		{
+			[K in keyof Computed & string]: FieldManifest<Computed[K]>;
+		}
+	>;
+	readonly topic: GateEmpty<
+		Topic,
+		{
+			[K in keyof Topic & string]: FieldManifest<Topic[K]>;
+		}
+	>;
 }
 
 interface FieldOption<
-	S extends Schema.Schema<any, any, never>,
-	P extends PermissionArg | ReadOnlyPermissionArg,
+	D,
+	E extends JsonValue,
+	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema: [Schema.Schema.Encoded<S>] extends [JsonValue] ? S : never;
+	readonly schema: Schema.Schema<D, E>;
 	readonly permission?: P;
 }
 
-interface FieldOptionLambda<P extends PermissionArg | ReadOnlyPermissionArg>
+interface FieldOptionLambda<
+	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
+>
 	extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: FieldOption<this["Target"], P>;
+	readonly type: FieldOption<this["Target"], JsonValue, P>;
 }
 interface FieldManifestLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
+	readonly type: FieldManifest<this["Target"]>;
 }
 
-function implementCodec<S extends Schema.Schema<any, JsonValue, never>>(
+function implementCodec<D, E extends JsonValue>(
 	name: string,
-	schema: S,
+	schema: Schema.Schema<D, E>,
 ) {
 	return {
 		name,
-		encode: Effect.fn("encode")(function* (value: Schema.Schema.Type<S>) {
+		encode: Effect.fn("encode")(function* (value: D) {
 			return yield* Schema.encode(schema)(value).pipe(
 				Effect.catchTag(
 					"ParseError",
@@ -172,7 +182,7 @@ function implementCodec<S extends Schema.Schema<any, JsonValue, never>>(
 				),
 			);
 		}),
-		decode: Effect.fn("decode")(function* (value: JsonValue) {
+		decode: Effect.fn("decode")(function* (value: E) {
 			return yield* Schema.decode(schema)(value).pipe(
 				Effect.catchTag(
 					"ParseError",
@@ -185,27 +195,42 @@ function implementCodec<S extends Schema.Schema<any, JsonValue, never>>(
 }
 
 export function defineNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	const Roles extends Record<string, RoleArg>,
+	StateDecodes extends Record<string, unknown> = {},
+	StateEncodes extends Record<string, JsonValue> = {},
+	ComputedDecodes extends Record<string, unknown> = {},
+	ComputedEncodes extends Record<string, JsonValue> = {},
+	TopicDecodes extends Record<string, unknown> = {},
+	TopicEncodes extends Record<string, JsonValue> = {},
 >(
 	namespace: string,
 	defineOption: {
-		roles?: Record<string, RoleArg>;
+		roles?: Roles;
 		state?: {
-			[K in keyof State & string]: FieldOption<State[K], PermissionArg>;
+			[K in keyof StateDecodes & keyof StateEncodes & string]: FieldOption<
+				StateDecodes[K],
+				StateEncodes[K],
+				PermissionArg<keyof Roles & string>
+			>;
 		};
 		computed?: {
-			[K in keyof Computed & string]: FieldOption<
-				Computed[K],
-				ReadOnlyPermissionArg
+			[K in keyof ComputedDecodes &
+				keyof ComputedEncodes &
+				string]: FieldOption<
+				ComputedDecodes[K],
+				ComputedEncodes[K],
+				ReadOnlyPermissionArg<keyof Roles & string>
 			>;
 		};
 		topic?: {
-			[K in keyof Topic & string]: FieldOption<Topic[K], PermissionArg>;
+			[K in keyof TopicDecodes & keyof TopicEncodes & string]: FieldOption<
+				TopicDecodes[K],
+				TopicEncodes[K],
+				PermissionArg<keyof Roles & string>
+			>;
 		};
 	},
-): NamespaceManifest<State, Computed, Topic> {
+): NamespaceManifest<StateDecodes, ComputedDecodes, TopicDecodes> {
 	const roles = new Map<RoleName, RoleManifest>();
 
 	if (defineOption.roles) {
@@ -227,7 +252,7 @@ export function defineNamespace<
 
 	const resolve = (
 		capability: RoleCapability,
-		rule: PermissionRuleArg | undefined,
+		rule: PermissionRuleArg<keyof Roles & string> | undefined,
 	) =>
 		resolveFieldAllowedRoles(
 			findRolesWithCapability(capability, roles),
@@ -236,7 +261,7 @@ export function defineNamespace<
 		);
 
 	const state = mapValues<
-		FieldOptionLambda<PermissionArg>,
+		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
 		FieldManifestLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
@@ -247,7 +272,7 @@ export function defineNamespace<
 	}))(defineOption.state);
 
 	const computed = mapValues<
-		FieldOptionLambda<ReadOnlyPermissionArg>,
+		FieldOptionLambda<ReadOnlyPermissionArg<keyof Roles & string>>,
 		FieldManifestLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
@@ -258,7 +283,7 @@ export function defineNamespace<
 	}))(defineOption.computed);
 
 	const topic = mapValues<
-		FieldOptionLambda<PermissionArg>,
+		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
 		FieldManifestLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),

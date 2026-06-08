@@ -24,6 +24,9 @@ describe("defineNamespace", () => {
 									right: Schema.Number,
 								}),
 							},
+							count: {
+								schema: Schema.BigInt,
+							},
 						},
 					});
 
@@ -41,15 +44,6 @@ describe("defineNamespace", () => {
 				}),
 			),
 		);
-
-		test("empty groups are present as empty objects", () => {
-			const manifest = defineNamespace("match", {
-				state: { count: { schema: Schema.Number } },
-			});
-
-			expect(manifest.computed).toEqual({});
-			expect(manifest.topic).toEqual({});
-		});
 
 		test("decode surfaces StateDecodeError on bad wire input", () => {
 			const manifest = defineNamespace("match", {
@@ -136,6 +130,41 @@ describe("defineNamespace", () => {
 	});
 
 	describe("types", () => {
+		test("options not specified are hidden", () => {
+			const manifest = defineNamespace("match", {
+				state: {
+					count: { schema: Schema.Number },
+				},
+			});
+			expectTypeOf(manifest.roles).not.toBeNever();
+			expectTypeOf(manifest.state).not.toBeNever();
+			expectTypeOf(manifest.computed).toEqualTypeOf({});
+			expectTypeOf(manifest.topic).toEqualTypeOf({});
+
+			const manifest2 = defineNamespace("match", {
+				state: {
+					count: { schema: Schema.Number },
+				},
+				computed: {
+					double: { schema: Schema.Number },
+				},
+			});
+			expectTypeOf(manifest2.roles).not.toBeNever();
+			expectTypeOf(manifest2.state).not.toBeNever();
+			expectTypeOf(manifest2.computed).not.toBeNever();
+			expectTypeOf(manifest2.topic).toEqualTypeOf({});
+
+			const manifest3 = defineNamespace("match", {
+				topic: {
+					count: { schema: Schema.Number },
+				},
+			});
+			expectTypeOf(manifest3.roles).not.toBeNever();
+			expectTypeOf(manifest3.state).toEqualTypeOf({});
+			expectTypeOf(manifest3.computed).toEqualTypeOf({});
+			expectTypeOf(manifest3.topic).not.toBeNever();
+		});
+
 		test("decoded type flows into the field codec per group", () => {
 			const manifest = defineNamespace("match", {
 				state: { label: { schema: Schema.NonEmptyTrimmedString } },
@@ -180,7 +209,7 @@ describe("defineNamespace", () => {
 
 			test("BigIntFromSelf (Encoded = bigint)", () => {
 				defineNamespace("match", {
-					// @ts-expect-error BigIntFromSelf Encoded is bigint, not JsonValue
+					// @ts-expect-error bigint is not assignable to JsonValue
 					state: { count: { schema: Schema.BigIntFromSelf } },
 				});
 			});
