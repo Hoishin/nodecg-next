@@ -2,10 +2,13 @@ import { HttpApiBuilder, HttpApiError } from "@effect/platform";
 import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
-import { buildFieldRegistry, type LoadedNamespace } from "../load-namespace.ts";
+import {
+	buildFieldRegistry,
+	type RegistryNamespace,
+} from "../load-namespace.ts";
 
 export const buildNodecgApi = (options: {
-	namespaces: ReadonlyArray<LoadedNamespace>;
+	namespaces: ReadonlyArray<RegistryNamespace>;
 }) => {
 	const registry = buildFieldRegistry(options.namespaces);
 

@@ -126,11 +126,7 @@ describe("loadNamespaceEffect seeding", () => {
 					decode: () => Effect.succeed(0),
 					permission: { read: new Set(), write: new Set() },
 				};
-				const manifest: NamespaceManifest<
-					{ broken: typeof Schema.Number },
-					{},
-					{}
-				> = {
+				const manifest: NamespaceManifest<{ broken: number }, {}, {}> = {
 					namespace: "ns",
 					roles: new Map(),
 					state: { broken: field },

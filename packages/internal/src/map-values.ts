@@ -21,9 +21,13 @@ export const mapValues =
 		) => HKT.Kind<G, In, never, never, Target>,
 	) =>
 	<Target extends Record<string, unknown>, In = unknown>(
-		obj: ApplyLambdaToObjectValues<F, Target, never, never, In>,
+		obj: ApplyLambdaToObjectValues<F, Target, never, never, In> | undefined,
 	): ApplyLambdaToObjectValues<G, Target, never, never, In> => {
 		const result: any = {};
+		// TODO: handle undefined before this function is called
+		if (typeof obj === "undefined") {
+			return result;
+		}
 		for (const key of unsafeObjectKeys(obj)) {
 			result[key] = transform(obj[key], key);
 		}

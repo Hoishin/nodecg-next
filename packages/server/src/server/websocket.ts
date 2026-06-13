@@ -17,7 +17,10 @@ import {
 } from "effect";
 import type { JsonValue } from "type-fest";
 
-import { buildFieldRegistry, type LoadedNamespace } from "../load-namespace.ts";
+import {
+	buildFieldRegistry,
+	type RegistryNamespace,
+} from "../load-namespace.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
 import type { RegisteredFieldInternal } from "../state-field.ts";
 
@@ -36,7 +39,7 @@ const filterEquals = (a: FieldFilter, b: FieldFilter) =>
 	a.namespace === b.namespace && a.name === b.name;
 
 export const websocketRoute = (options: {
-	namespaces: ReadonlyArray<LoadedNamespace>;
+	namespaces: ReadonlyArray<RegistryNamespace>;
 }) => {
 	const registry = buildFieldRegistry(options.namespaces);
 

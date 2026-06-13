@@ -5,7 +5,7 @@ import {
 	mergeRecords,
 } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
-import type { IsEqual, JsonValue } from "type-fest";
+import type { JsonValue } from "type-fest";
 
 import { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "./role.ts";
 
@@ -116,8 +116,6 @@ export interface FieldManifest<D> {
 	readonly permission: ResolvedPermission;
 }
 
-type GateEmpty<T, U> = IsEqual<T, {}> extends true ? {} : U;
-
 export interface NamespaceManifest<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
@@ -128,32 +126,22 @@ export interface NamespaceManifest<
 	// TODO: make it private, provide helper for manual permission check
 	readonly roles: Map<RoleName, RoleManifest>;
 
-	readonly state: GateEmpty<
-		State,
-		{
-			[K in keyof State & string]: FieldManifest<State[K]>;
-		}
-	>;
-	readonly computed: GateEmpty<
-		Computed,
-		{
-			[K in keyof Computed & string]: FieldManifest<Computed[K]>;
-		}
-	>;
-	readonly topic: GateEmpty<
-		Topic,
-		{
-			[K in keyof Topic & string]: FieldManifest<Topic[K]>;
-		}
-	>;
+	readonly state: {
+		[K in keyof State & string]: FieldManifest<State[K]>;
+	};
+	readonly computed: {
+		[K in keyof Computed & string]: FieldManifest<Computed[K]>;
+	};
+	readonly topic: {
+		[K in keyof Topic & string]: FieldManifest<Topic[K]>;
+	};
 }
 
 interface FieldOption<
-	D,
-	E extends JsonValue,
+	S extends Schema.Schema<any, any, never>,
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema: Schema.Schema<D, E>;
+	readonly schema: [Schema.Schema.Encoded<S>] extends [JsonValue] ? S : never;
 	readonly permission?: P;
 }
 
@@ -161,7 +149,12 @@ interface FieldOptionLambda<
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 >
 	extends HKT.TypeLambda {
-	readonly type: FieldOption<this["Target"], JsonValue, P>;
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: FieldOption<this["Target"], P>;
+}
+interface FieldManifestFromSchemaLambda extends HKT.TypeLambda {
+	readonly Target: Schema.Schema<any, any, never>;
+	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
 }
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
@@ -195,42 +188,38 @@ function implementCodec<D, E extends JsonValue>(
 }
 
 export function defineNamespace<
-	const Roles extends Record<string, RoleArg>,
-	StateDecodes extends Record<string, unknown> = {},
-	StateEncodes extends Record<string, JsonValue> = {},
-	ComputedDecodes extends Record<string, unknown> = {},
-	ComputedEncodes extends Record<string, JsonValue> = {},
-	TopicDecodes extends Record<string, unknown> = {},
-	TopicEncodes extends Record<string, JsonValue> = {},
+	const Roles extends Record<string, RoleArg> = {},
+	State extends Record<string, Schema.Schema<any, any, never>> = {},
+	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
+	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
 >(
 	namespace: string,
 	defineOption: {
 		roles?: Roles;
 		state?: {
-			[K in keyof StateDecodes & keyof StateEncodes & string]: FieldOption<
-				StateDecodes[K],
-				StateEncodes[K],
+			[K in keyof State & string]: FieldOption<
+				State[K],
 				PermissionArg<keyof Roles & string>
 			>;
 		};
 		computed?: {
-			[K in keyof ComputedDecodes &
-				keyof ComputedEncodes &
-				string]: FieldOption<
-				ComputedDecodes[K],
-				ComputedEncodes[K],
+			[K in keyof Computed & string]: FieldOption<
+				Computed[K],
 				ReadOnlyPermissionArg<keyof Roles & string>
 			>;
 		};
 		topic?: {
-			[K in keyof TopicDecodes & keyof TopicEncodes & string]: FieldOption<
-				TopicDecodes[K],
-				TopicEncodes[K],
+			[K in keyof Topic & string]: FieldOption<
+				Topic[K],
 				PermissionArg<keyof Roles & string>
 			>;
 		};
 	},
-): NamespaceManifest<StateDecodes, ComputedDecodes, TopicDecodes> {
+): NamespaceManifest<
+	{ [K in keyof State]: Schema.Schema.Type<State[K]> },
+	{ [K in keyof Computed]: Schema.Schema.Type<Computed[K]> },
+	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> }
+> {
 	const roles = new Map<RoleName, RoleManifest>();
 
 	if (defineOption.roles) {
@@ -262,7 +251,7 @@ export function defineNamespace<
 
 	const state = mapValues<
 		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
-		FieldManifestLambda
+		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
@@ -273,7 +262,7 @@ export function defineNamespace<
 
 	const computed = mapValues<
 		FieldOptionLambda<ReadOnlyPermissionArg<keyof Roles & string>>,
-		FieldManifestLambda
+		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
@@ -284,7 +273,7 @@ export function defineNamespace<
 
 	const topic = mapValues<
 		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
-		FieldManifestLambda
+		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: {
@@ -304,23 +293,37 @@ export function defineNamespace<
 
 /** extend **/
 
-interface ExtendFieldOption<P extends PermissionArg | ReadOnlyPermissionArg> {
+interface ExtendFieldOption<
+	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
+> {
 	readonly schema?: Schema.Schema<any, any, never>;
 	readonly permission?: P;
 }
 
 type Override<Precedent, Added> = Omit<Precedent, keyof Added> & Added;
 
+type AddedDecoded<In> = {
+	readonly [K in keyof AddedSchemas<In>]: Schema.Schema.Type<
+		AddedSchemas<In>[K]
+	>;
+};
+
 export function extendNamespace<
-	PState extends Record<string, Schema.Schema<any, any, never>>,
-	PComputed extends Record<string, Schema.Schema<any, any, never>>,
-	PTopic extends Record<string, Schema.Schema<any, any, never>>,
-	const EState extends Record<string, ExtendFieldOption<PermissionArg>> = {},
+	PState extends Record<string, unknown>,
+	PComputed extends Record<string, unknown>,
+	PTopic extends Record<string, unknown>,
+	const EState extends Record<
+		string,
+		ExtendFieldOption<PermissionArg<string>>
+	> = {},
 	const EComputed extends Record<
 		string,
-		ExtendFieldOption<ReadOnlyPermissionArg>
+		ExtendFieldOption<ReadOnlyPermissionArg<string>>
 	> = {},
-	const ETopic extends Record<string, ExtendFieldOption<PermissionArg>> = {},
+	const ETopic extends Record<
+		string,
+		ExtendFieldOption<PermissionArg<string>>
+	> = {},
 >(
 	manifest: NamespaceManifest<PState, PComputed, PTopic>,
 	extendOptionOrFn:
@@ -337,9 +340,9 @@ export function extendNamespace<
 				readonly topic?: ETopic;
 		  }),
 ): NamespaceManifest<
-	Override<PState, AddedSchemas<EState>>,
-	Override<PComputed, AddedSchemas<EComputed>>,
-	Override<PTopic, AddedSchemas<ETopic>>
+	Override<PState, AddedDecoded<EState>>,
+	Override<PComputed, AddedDecoded<EComputed>>,
+	Override<PTopic, AddedDecoded<ETopic>>
 > {
 	const extendOption =
 		typeof extendOptionOrFn === "function"
@@ -378,7 +381,7 @@ export function extendNamespace<
 
 	const resolve = (
 		capability: RoleCapability,
-		rule: PermissionRuleArg | undefined,
+		rule: PermissionRuleArg<string> | undefined,
 	) =>
 		resolveFieldAllowedRoles(
 			findRolesWithCapability(capability, roles),
@@ -389,7 +392,7 @@ export function extendNamespace<
 	const remap = (
 		capability: RoleCapability,
 		current: ReadonlySet<RoleName>,
-		rule: PermissionRuleArg | undefined,
+		rule: PermissionRuleArg<string> | undefined,
 	) => {
 		const base = new Set(current);
 		for (const [role, roleManifest] of granted) {
@@ -424,7 +427,7 @@ export function extendNamespace<
 	)(manifest.state);
 
 	const stateAdded = mapSchemaValues<
-		ExtendFieldOption<PermissionArg>,
+		ExtendFieldOption<PermissionArg<string>>,
 		FieldManifestLambda
 	>()(extendOption.state, (option, name) => ({
 		...implementCodec(name, option.schema),
@@ -435,7 +438,7 @@ export function extendNamespace<
 	}));
 	const state = mergeRecords<
 		NamespaceManifest<
-			Override<PState, AddedSchemas<EState>>,
+			Override<PState, AddedDecoded<EState>>,
 			PComputed,
 			PTopic
 		>["state"]
@@ -458,7 +461,7 @@ export function extendNamespace<
 		},
 	)(manifest.computed);
 	const computedAdded = mapSchemaValues<
-		ExtendFieldOption<ReadOnlyPermissionArg>,
+		ExtendFieldOption<ReadOnlyPermissionArg<string>>,
 		FieldManifestLambda
 	>()(extendOption.computed, (option, name) => ({
 		...implementCodec(name, option.schema),
@@ -470,7 +473,7 @@ export function extendNamespace<
 	const computed = mergeRecords<
 		NamespaceManifest<
 			PState,
-			Override<PComputed, AddedSchemas<EComputed>>,
+			Override<PComputed, AddedDecoded<EComputed>>,
 			PTopic
 		>["computed"]
 	>(computedRemap, computedAdded);
@@ -496,7 +499,7 @@ export function extendNamespace<
 		},
 	)(manifest.topic);
 	const topicAdded = mapSchemaValues<
-		ExtendFieldOption<PermissionArg>,
+		ExtendFieldOption<PermissionArg<string>>,
 		FieldManifestLambda
 	>()(extendOption.topic, (option, name) => ({
 		...implementCodec(name, option.schema),
@@ -509,7 +512,7 @@ export function extendNamespace<
 		NamespaceManifest<
 			PState,
 			PComputed,
-			Override<PTopic, AddedSchemas<ETopic>>
+			Override<PTopic, AddedDecoded<ETopic>>
 		>["topic"]
 	>(topicRemap, topicAdded);
 

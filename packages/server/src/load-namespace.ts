@@ -14,7 +14,6 @@ import {
 	Layer,
 	ManagedRuntime,
 	Option,
-	type Schema,
 	Scope,
 	Stream,
 } from "effect";
@@ -37,40 +36,34 @@ import {
 	stateFieldInternal,
 } from "./state-field.ts";
 
-export type SeedState<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-> = {
-	readonly [K in keyof State & string]: () => Promisable<
-		Schema.Schema.Type<State[K]>
-	>;
+export type SeedState<State extends Record<string, unknown>> = {
+	readonly [K in keyof State & string]: () => Promisable<State[K]>;
 };
 
-type SourceSnapshot<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-> = {
-	readonly [K in keyof State & string]: Schema.Schema.Type<State[K]>;
+type SourceSnapshot<State extends Record<string, unknown>> = {
+	readonly [K in keyof State & string]: State[K];
 };
 
 export type ImplementComputed<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
 > = {
 	readonly [K in keyof Computed & string]: (
 		sources: SourceSnapshot<State>,
-	) => Schema.Schema.Type<Computed[K]>;
+	) => Computed[K];
 };
 
 type NamespaceOptions<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
 > = {
 	readonly seedState?: SeedState<State>;
 	readonly implementComputed?: ImplementComputed<State, Computed>;
 };
 
 export type RequiredOptions<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
 > = ([keyof State] extends [never]
 	? {}
 	: { readonly seedState: SeedState<State> }) &
@@ -239,46 +232,39 @@ const implementComputedState = <Sources, Decoded>(
 };
 
 interface FieldManifestLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
+	readonly type: FieldManifest<this["Target"]>;
 }
 
 interface DecodedLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: Schema.Schema.Type<this["Target"]>;
+	readonly type: this["Target"];
 }
 
 interface ComputeFnLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: (sources: this["In"]) => Schema.Schema.Type<this["Target"]>;
+	readonly type: (sources: this["In"]) => this["Target"];
 }
 
 interface StateFieldLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateField<Schema.Schema.Type<this["Target"]>>;
+	readonly type: StateField<this["Target"]>;
 }
 
 interface StateFieldPromiseLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateFieldPromise<Schema.Schema.Type<this["Target"]>>;
+	readonly type: StateFieldPromise<this["Target"]>;
 }
 
 interface ComputedFieldLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: ComputedField<Schema.Schema.Type<this["Target"]>>;
+	readonly type: ComputedField<this["Target"]>;
 }
 
 interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: ComputedFieldPromise<Schema.Schema.Type<this["Target"]>>;
+	readonly type: ComputedFieldPromise<this["Target"]>;
 }
 
 export const stateMetadataKey = Symbol("stateMetadataKey");
 
 const buildNamespace = <
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
-	Topic extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	options:
@@ -291,22 +277,24 @@ const buildNamespace = <
 		const storage = yield* StateStorageService;
 
 		yield* Effect.all(
-			Object.entries(manifest.state).map(([name, codec]) => {
-				const seed = Effect.gen(function* () {
-					const thunk = seedState?.[name];
-					if (typeof thunk === "undefined") {
-						return yield* Effect.die(
-							new Error(`Missing seed value for state "${name}"`),
-						);
-					}
-					const value = yield* Effect.tryPromise(async () => thunk());
-					const encoded = yield* codec.encode(value);
-					yield* storage.create(manifest.namespace, name, encoded);
-				});
-				return Option.isNone(storage.read(manifest.namespace, name))
-					? seed
-					: Effect.void;
-			}),
+			Object.entries(manifest.state).map(
+				([name, codec]: [string, FieldManifest<unknown>]) => {
+					const seed = Effect.gen(function* () {
+						const thunk = seedState?.[name];
+						if (typeof thunk === "undefined") {
+							return yield* Effect.die(
+								new Error(`Missing seed value for state "${name}"`),
+							);
+						}
+						const value = yield* Effect.tryPromise(async () => thunk());
+						const encoded = yield* codec.encode(value);
+						yield* storage.create(manifest.namespace, name, encoded);
+					});
+					return Option.isNone(storage.read(manifest.namespace, name))
+						? seed
+						: Effect.void;
+				},
+			),
 			{ concurrency: "unbounded" },
 		);
 
@@ -370,9 +358,9 @@ const buildNamespace = <
 };
 
 export function loadNamespaceEffect<
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	State extends Record<string, unknown> = {},
+	Computed extends Record<string, unknown> = {},
+	Topic extends Record<string, unknown> = {},
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	...rest: [keyof State | keyof Computed] extends [never]
@@ -392,9 +380,9 @@ export function loadNamespaceEffect<
 type StorageOption = StateStorage | Effect.Effect<StateStorage, never, never>;
 
 async function loadNamespacePromise<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
-	Topic extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	options:
@@ -470,9 +458,9 @@ async function loadNamespacePromise<
 }
 
 export function loadNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	State extends Record<string, unknown> = {},
+	Computed extends Record<string, unknown> = {},
+	Topic extends Record<string, unknown> = {},
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	...rest: [keyof State | keyof Computed] extends [never]
@@ -487,9 +475,9 @@ export function loadNamespace<
 }
 
 interface Implemented<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
-	Topic extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 > {
 	readonly manifest: NamespaceManifest<State, Computed, Topic>;
 	readonly impl: RequiredOptions<State, Computed> | undefined;
@@ -500,9 +488,9 @@ interface Implemented<
 
 // pure declaration — no storage dependency; `load` is the single injection point
 export function implementNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	State extends Record<string, unknown> = {},
+	Computed extends Record<string, unknown> = {},
+	Topic extends Record<string, unknown> = {},
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	...rest: [keyof State | keyof Computed] extends [never]
@@ -521,8 +509,8 @@ type RelaxCovered<O, Covered extends PropertyKey> = Omit<O, Covered> &
 	Partial<Pick<O, Extract<keyof O, Covered>>>;
 
 type ExtensionSupplement<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
 	CoveredState extends PropertyKey,
 	CoveredComputed extends PropertyKey,
 > = ([keyof Omit<State, CoveredState>] extends [never]
@@ -543,9 +531,9 @@ type ExtensionSupplement<
 			});
 
 export function loadExtendedNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
-	Topic extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 	const Base extends Implemented<any, any, any>,
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
@@ -572,31 +560,31 @@ export function loadExtendedNamespace<
 }
 
 export interface LoadedNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>> = Record<
-		string,
-		Schema.Schema<any, any, never>
-	>,
-	Computed extends Record<string, Schema.Schema<any, any, never>> = Record<
-		string,
-		Schema.Schema<any, any, never>
-	>,
+	State extends Record<string, unknown> = Record<string, unknown>,
+	Computed extends Record<string, unknown> = Record<string, unknown>,
 > {
 	readonly [stateMetadataKey]: { readonly namespace: string };
 	readonly state: {
-		readonly [K in keyof State & string]: StateFieldPromise<
-			Schema.Schema.Type<State[K]>
-		>;
+		readonly [K in keyof State & string]: StateFieldPromise<State[K]>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: ComputedFieldPromise<
-			Schema.Schema.Type<Computed[K]>
-		>;
+		readonly [K in keyof Computed & string]: ComputedFieldPromise<Computed[K]>;
 	};
 }
 
+export type RegistryNamespace = {
+	readonly [stateMetadataKey]: { readonly namespace: string };
+	readonly state: Readonly<
+		Record<string, { readonly [stateFieldInternal]: RegisteredFieldInternal }>
+	>;
+	readonly computed: Readonly<
+		Record<string, { readonly [stateFieldInternal]: RegisteredFieldInternal }>
+	>;
+};
+
 // TODO: move to its own file. Also state/computed/topic should be completely separated (could be same name!)
 export const buildFieldRegistry = (
-	namespaces: ReadonlyArray<LoadedNamespace>,
+	namespaces: ReadonlyArray<RegistryNamespace>,
 ) => {
 	const registry = new Map<string, Map<string, RegisteredFieldInternal>>();
 	for (const loaded of namespaces) {

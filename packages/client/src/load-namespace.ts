@@ -7,7 +7,6 @@ import {
 	Layer,
 	ManagedRuntime,
 	Option,
-	type Schema,
 	Scope,
 	Stream,
 	SubscriptionRef,
@@ -177,34 +176,29 @@ const implementComputedState = Effect.fn("implementComputedState")(function* <
 });
 
 interface FieldManifestLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
+	readonly type: FieldManifest<this["Target"]>;
 }
 
 interface StateFieldEffectLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateFieldEffect<Schema.Schema.Type<this["Target"]>>;
+	readonly type: StateFieldEffect<this["Target"]>;
 }
 
 interface StateFieldPromiseLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: StateFieldPromise<Schema.Schema.Type<this["Target"]>>;
+	readonly type: StateFieldPromise<this["Target"]>;
 }
 
 interface ComputedFieldEffectLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: ComputedFieldEffect<Schema.Schema.Type<this["Target"]>>;
+	readonly type: ComputedFieldEffect<this["Target"]>;
 }
 
 interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
-	readonly type: ComputedFieldPromise<Schema.Schema.Type<this["Target"]>>;
+	readonly type: ComputedFieldPromise<this["Target"]>;
 }
 
 const buildNamespace = <
-	State extends Record<string, Schema.Schema<any, any, never>>,
-	Computed extends Record<string, Schema.Schema<any, any, never>>,
-	Topic extends Record<string, Schema.Schema<any, any, never>>,
+	State extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 ) =>
@@ -227,9 +221,9 @@ const buildNamespace = <
 	});
 
 export function loadNamespaceEffect<
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	State extends Record<string, unknown> = {},
+	Computed extends Record<string, unknown> = {},
+	Topic extends Record<string, unknown> = {},
 >(manifest: NamespaceManifest<State, Computed, Topic>) {
 	return buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields }) => ({
@@ -240,31 +234,21 @@ export function loadNamespaceEffect<
 }
 
 export interface LoadedNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>> = Record<
-		string,
-		Schema.Schema<any, any, never>
-	>,
-	Computed extends Record<string, Schema.Schema<any, any, never>> = Record<
-		string,
-		Schema.Schema<any, any, never>
-	>,
+	State extends Record<string, unknown> = Record<string, unknown>,
+	Computed extends Record<string, unknown> = Record<string, unknown>,
 > {
 	readonly state: {
-		readonly [K in keyof State & string]: StateFieldPromise<
-			Schema.Schema.Type<State[K]>
-		>;
+		readonly [K in keyof State & string]: StateFieldPromise<State[K]>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: ComputedFieldPromise<
-			Schema.Schema.Type<Computed[K]>
-		>;
+		readonly [K in keyof Computed & string]: ComputedFieldPromise<Computed[K]>;
 	};
 }
 
 export async function loadNamespace<
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	State extends Record<string, unknown> = {},
+	Computed extends Record<string, unknown> = {},
+	Topic extends Record<string, unknown> = {},
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	adapter?: {
