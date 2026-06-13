@@ -8,7 +8,6 @@ const counter = await loadNamespace(extendedCounterManifest);
 
 type Snapshot<T> = { readonly value: T };
 
-// state and computed fields both expose get + subscribe — enough to drive a sync store.
 interface ReadableField<T> {
 	get: () => Promise<T>;
 	subscribe: (callback: (value: T) => void) => Promise<() => void>;

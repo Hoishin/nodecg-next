@@ -486,7 +486,6 @@ interface Implemented<
 	) => ReturnType<typeof loadNamespacePromise<State, Computed, Topic>>;
 }
 
-// pure declaration — no storage dependency; `load` is the single injection point
 export function implementNamespace<
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},

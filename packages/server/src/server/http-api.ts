@@ -38,7 +38,7 @@ export const buildNodecgApi = (options: {
 			.handle("update", ({ path: { namespace, name }, payload }) =>
 				Effect.gen(function* () {
 					const field = registry.get(namespace)?.get(name);
-					// Computed fields have no setEncoded — they aren't writable.
+					// Computed fields have no setEncoded
 					if (typeof field?.setEncoded === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
