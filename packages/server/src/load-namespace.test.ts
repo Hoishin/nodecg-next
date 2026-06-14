@@ -30,7 +30,7 @@ import {
 	type StateStorage,
 	StateStorageService,
 } from "./services/state-storage/state-storage.ts";
-import { stateFieldInternal } from "./state-field.ts";
+import { stateFieldInternal } from "./load-namespace.ts";
 
 const createStorageStub = () =>
 	({

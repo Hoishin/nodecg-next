@@ -1,18 +1,57 @@
-import { Effect, type ManagedRuntime } from "effect";
+import { Effect, HKT, Stream } from "effect";
+import type { Promisable } from "type-fest";
 
-export type PromisifyObject<T> = {
-	readonly [K in keyof T]: T[K] extends (
+type Subscribe<A> = (
+	callback: (value: A) => Promisable<void>,
+) => Promise<() => Promise<void>>;
+
+export interface EffectToPromiseLambda extends HKT.TypeLambda {
+	type: this["Target"] extends (
 		...args: infer Args
 	) => Effect.Effect<infer A, any, any>
 		? (...args: Args) => Promise<A>
-		: T[K] extends Effect.Effect<infer A, any, any>
+		: this["Target"] extends Effect.Effect<infer A, any, any>
 			? Promise<A>
-			: T[K];
-};
+			: never;
+}
 
-export const promisifyEffectFn = <Args extends unknown[], A, E, MRR, MRE>(
-	effectFn: (...args: Args) => Effect.Effect<A, E, never>,
-	runtime?: ManagedRuntime.ManagedRuntime<MRR, MRE>,
-) => {
-	return (...args: Args) => (runtime ?? Effect).runPromise(effectFn(...args));
+export interface EffectToSyncLambda extends HKT.TypeLambda {
+	type: this["Target"] extends (
+		...args: infer Args
+	) => Effect.Effect<infer A, any, any>
+		? (...args: Args) => A
+		: this["Target"] extends Effect.Effect<infer A, any, any>
+			? A
+			: never;
+}
+
+export interface StreamToSubscribeLambda extends HKT.TypeLambda {
+	type: this["Target"] extends () => Effect.Effect<
+		Stream.Stream<infer A, any, any>,
+		any,
+		any
+	>
+		? Subscribe<A>
+		: this["Target"] extends () => Stream.Stream<infer A, any, any>
+			? Subscribe<A>
+			: this["Target"] extends Effect.Effect<
+						Stream.Stream<infer A, any, any>,
+						any,
+						any
+				  >
+				? Subscribe<A>
+				: this["Target"] extends Stream.Stream<infer A, any, any>
+					? Subscribe<A>
+					: never;
+}
+
+export interface IdentityLambda extends HKT.TypeLambda {
+	type: this["Target"];
+}
+
+export type ApplyLambdaToObject<
+	T,
+	M extends { [K in keyof T]: HKT.TypeLambda },
+> = {
+	[K in keyof T]: HKT.Kind<M[K], unknown, never, never, T[K]>;
 };

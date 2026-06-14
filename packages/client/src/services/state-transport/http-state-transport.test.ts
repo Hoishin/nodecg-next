@@ -36,7 +36,7 @@ describe("get", () => {
 				const calls: Call[] = [];
 				const transport = yield* StateTransportService;
 
-				const value = yield* transport.read("root", "count").pipe(
+				const value = yield* transport.readState("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(calls, () => new Response(JSON.stringify(42))),
@@ -57,7 +57,7 @@ describe("get", () => {
 				const calls: Call[] = [];
 				const transport = yield* StateTransportService;
 
-				const error = yield* transport.read("root", "count").pipe(
+				const error = yield* transport.readState("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(calls, () => new Response(null, { status: 404 })),
@@ -79,7 +79,7 @@ describe("update", () => {
 				const calls: Call[] = [];
 				const transport = yield* StateTransportService;
 
-				yield* transport.update("root", "count", 7).pipe(
+				yield* transport.updateState("root", "count", 7).pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(calls, () => new Response(null, { status: 204 })),

@@ -15,7 +15,7 @@ export const HttpStateTransport = Layer.effect(
 	Effect.gen(function* () {
 		const client = yield* HttpApiClient.make(NodecgApi);
 
-		const read = Effect.fn("StateTransport.read")(function* (
+		const readState = Effect.fn("StateTransport.readState")(function* (
 			namespace: string,
 			name: string,
 		) {
@@ -31,7 +31,23 @@ export const HttpStateTransport = Layer.effect(
 			);
 		});
 
-		const update = Effect.fn("StateTransport.update")(function* (
+		const readComputed = Effect.fn("StateTransport.readComputed")(function* (
+			namespace: string,
+			name: string,
+		) {
+			return yield* client.Computed.get({ path: { namespace, name } }).pipe(
+				Effect.mapError((error) =>
+					Match.value(error).pipe(
+						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.orElse(
+							(e) => new StateGetFailed({ namespace, name, cause: toError(e) }),
+						),
+					),
+				),
+			);
+		});
+
+		const updateState = Effect.fn("StateTransport.updateState")(function* (
 			namespace: string,
 			name: string,
 			value: JsonValue,
@@ -52,6 +68,6 @@ export const HttpStateTransport = Layer.effect(
 			);
 		});
 
-		return { read, update };
+		return { readState, readComputed, updateState };
 	}).pipe(Effect.provide(FetchHttpClient.layer)),
 );

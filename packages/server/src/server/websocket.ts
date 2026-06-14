@@ -4,8 +4,12 @@ import {
 	HttpServerResponse,
 	type Socket,
 } from "@effect/platform";
-import type { StateEncodeError } from "@nodecg/core";
-import { ClientMessage, ServerMessage } from "@nodecg/internal";
+import {
+	ClientMessage,
+	type FieldIdentifier,
+	fieldIdentifierEquivalence,
+	ServerMessage,
+} from "@nodecg/internal";
 import {
 	Effect,
 	Fiber,
@@ -17,29 +21,15 @@ import {
 } from "effect";
 import type { JsonValue } from "type-fest";
 
-import {
-	buildFieldRegistry,
-	type RegistryNamespace,
-} from "../load-namespace.ts";
+import { buildFieldRegistry } from "../field-registry.ts";
+import type { LoadedNamespace } from "../load-namespace.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
-import type { RegisteredFieldInternal } from "../state-field.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
 
-type FieldInternal = RegisteredFieldInternal;
-
-interface FieldFilter {
-	readonly namespace: string;
-	readonly name: string;
-}
-
-// TODO: use Effect-ts Equals
-const filterEquals = (a: FieldFilter, b: FieldFilter) =>
-	a.namespace === b.namespace && a.name === b.name;
-
 export const websocketRoute = (options: {
-	namespaces: ReadonlyArray<RegistryNamespace>;
+	namespaces: ReadonlyArray<LoadedNamespace>;
 }) => {
 	const registry = buildFieldRegistry(options.namespaces);
 
@@ -48,13 +38,10 @@ export const websocketRoute = (options: {
 		const write = yield* socket.writer;
 		const subscriptions = yield* SynchronizedRef.make<
 			ReadonlyArray<{
-				readonly filter: FieldFilter;
+				readonly field: FieldIdentifier;
 				readonly fiber: Fiber.RuntimeFiber<
 					void,
-					| ParseResult.ParseError
-					| Socket.SocketError
-					| StateNotFound
-					| StateEncodeError
+					ParseResult.ParseError | Socket.SocketError | StateNotFound
 				>;
 			}>
 		>([]);
@@ -64,49 +51,57 @@ export const websocketRoute = (options: {
 				Effect.andThen((encodedMessage) => write(encodedMessage)),
 			);
 
-		const publishState = (filter: FieldFilter, value: JsonValue) =>
-			send({ _tag: "publish", topic: "state", message: { filter, value } });
+		const publish = (field: FieldIdentifier, value: JsonValue) =>
+			send({ _tag: "publish", field, value });
 
-		const sendCurrent = (filter: FieldFilter, internal: FieldInternal) =>
-			internal
-				.getEncoded()
-				.pipe(Effect.flatMap((value) => publishState(filter, value)));
-
-		const startSubscription = (filter: FieldFilter) =>
+		const startSubscription = (field: FieldIdentifier) =>
 			SynchronizedRef.updateEffect(subscriptions, (list) =>
 				Effect.gen(function* () {
-					const internal = registry.get(filter.namespace)?.get(filter.name);
+					const internal = Match.value(field.type).pipe(
+						Match.when("state", () =>
+							registry.state.get(field.namespace)?.get(field.name),
+						),
+						Match.when("computed", () =>
+							registry.computed.get(field.namespace)?.get(field.name),
+						),
+						Match.exhaustive,
+					);
 					if (typeof internal === "undefined") {
 						yield* Effect.logWarning(
-							`Subscribe: unknown state "${filter.name}" in "${filter.namespace}"`,
+							`Subscribe: unknown ${field.type} "${field.name}" in "${field.namespace}"`,
 						);
 						return list;
 					}
-					if (list.some((s) => filterEquals(s.filter, filter))) {
-						yield* sendCurrent(filter, internal);
+					if (list.some((s) => fieldIdentifierEquivalence(s.field, field))) {
+						const value = yield* internal.getEncoded();
+						yield* publish(field, value);
 						return list;
 					}
 					const fiber = yield* Effect.forkScoped(
 						Effect.gen(function* () {
 							const stream = yield* internal.subscribeEncoded();
 							yield* Stream.runForEach(stream, (value) =>
-								publishState(filter, value),
+								publish(field, value),
 							);
 						}).pipe(Effect.scoped),
 					);
-					return [...list, { filter, fiber }];
+					return [...list, { field, fiber }];
 				}),
 			);
 
-		const stopSubscription = (filter: FieldFilter) =>
+		const stopSubscription = (field: FieldIdentifier) =>
 			SynchronizedRef.updateEffect(subscriptions, (list) =>
 				Effect.gen(function* () {
-					const match = list.find((s) => filterEquals(s.filter, filter));
+					const match = list.find((s) =>
+						fieldIdentifierEquivalence(s.field, field),
+					);
 					if (typeof match === "undefined") {
 						return list;
 					}
 					yield* Fiber.interrupt(match.fiber);
-					return list.filter((s) => !filterEquals(s.filter, filter));
+					return list.filter(
+						(s) => !fieldIdentifierEquivalence(s.field, field),
+					);
 				}),
 			);
 
@@ -121,11 +116,11 @@ export const websocketRoute = (options: {
 				Match.when({ _tag: "ping", topic: "pong" }, () =>
 					Effect.logDebug("Received pong"),
 				),
-				Match.when({ _tag: "subscribe", topic: "state" }, (msg) =>
-					startSubscription(msg.message.filter),
+				Match.when({ _tag: "subscribe" }, (msg) =>
+					startSubscription(msg.field),
 				),
-				Match.when({ _tag: "unsubscribe", topic: "state" }, (msg) =>
-					stopSubscription(msg.message.filter),
+				Match.when({ _tag: "unsubscribe" }, (msg) =>
+					stopSubscription(msg.field),
 				),
 				Match.exhaustive,
 			);

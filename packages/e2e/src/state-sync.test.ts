@@ -26,7 +26,7 @@ describe("client ⇄ server state sync", () => {
 		await vi.waitFor(() => expect(received).toEqual([5]));
 		await ns.state.count.set(7);
 		await vi.waitFor(() => expect(received).toEqual([5, 7]));
-		cancel();
+		await cancel();
 	});
 
 	test("reads a server-computed value over HTTP", async () => {
@@ -45,7 +45,7 @@ describe("client ⇄ server state sync", () => {
 		await vi.waitFor(() => expect(received.at(-1)).toBe(6));
 		await ns.state.count.set(4);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(8));
-		cancel();
+		await cancel();
 	});
 
 	test("a branching computed dedupes source changes it doesn't depend on", async () => {
@@ -60,7 +60,7 @@ describe("client ⇄ server state sync", () => {
 		await ns.state.label.set("second");
 		await ns.state.count.set(3);
 		await vi.waitFor(() => expect(received).toEqual(["idle", "second x3"]));
-		cancel();
+		await cancel();
 	});
 });
 
@@ -85,6 +85,6 @@ describe("extended namespace sync", () => {
 		await vi.waitFor(() => expect(received.at(-1)).toBe(1));
 		await ns.state.score.set(10);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(10));
-		cancel();
+		await cancel();
 	});
 });

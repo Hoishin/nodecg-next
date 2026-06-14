@@ -56,16 +56,14 @@ describe("send", () => {
 					const channel = yield* MessageChannelService;
 					yield* channel.send({
 						_tag: "subscribe",
-						topic: "state",
-						message: { filter: { namespace: "root", name: "count" } },
+						field: { type: "state", namespace: "root", name: "count" },
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
 
 				expect(write).toHaveBeenCalledTimes(1);
 				expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual({
 					_tag: "subscribe",
-					topic: "state",
-					message: { filter: { namespace: "root", name: "count" } },
+					field: { type: "state", namespace: "root", name: "count" },
 				});
 			}),
 		),
@@ -85,11 +83,8 @@ describe("receive", () => {
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
-							topic: "state",
-							message: {
-								filter: { namespace: "root", name: "count" },
-								value: 42,
-							},
+							field: { type: "state", namespace: "root", name: "count" },
+							value: 42,
 						}),
 					);
 
@@ -97,11 +92,8 @@ describe("receive", () => {
 					assert(Option.isSome(first));
 					expect(first.value).toEqual({
 						_tag: "publish",
-						topic: "state",
-						message: {
-							filter: { namespace: "root", name: "count" },
-							value: 42,
-						},
+						field: { type: "state", namespace: "root", name: "count" },
+						value: 42,
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
@@ -170,11 +162,8 @@ describe("receive", () => {
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
-							topic: "state",
-							message: {
-								filter: { namespace: "root", name: "count" },
-								value: 7,
-							},
+							field: { type: "state", namespace: "root", name: "count" },
+							value: 7,
 						}),
 					);
 
@@ -182,7 +171,7 @@ describe("receive", () => {
 					assert(Option.isSome(first));
 					expect(first.value).toMatchObject({
 						_tag: "publish",
-						message: { value: 7 },
+						value: 7,
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
@@ -202,11 +191,8 @@ describe("receive", () => {
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
-							topic: "state",
-							message: {
-								filter: { namespace: "root", name: "ok" },
-								value: 1,
-							},
+							field: { type: "state", namespace: "root", name: "ok" },
+							value: 1,
 						}),
 					);
 

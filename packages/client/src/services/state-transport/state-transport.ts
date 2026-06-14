@@ -25,11 +25,15 @@ export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
 }
 
 export interface StateTransport {
-	read: (
+	readState: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<JsonValue, StateNotFound | StateGetFailed>;
-	update: (
+	readComputed: (
+		namespace: string,
+		name: string,
+	) => Effect.Effect<JsonValue, StateNotFound | StateGetFailed>;
+	updateState: (
 		namespace: string,
 		name: string,
 		value: JsonValue,

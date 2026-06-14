@@ -1,11 +1,19 @@
 import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
-import { mapEffectValues, mapValues } from "@nodecg/internal";
+import {
+	type FieldIdentifier,
+	mapEffectValues,
+	mapValues,
+	type EffectToPromiseLambda,
+	type StreamToSubscribeLambda,
+	type ApplyLambdaToObject,
+} from "@nodecg/internal";
 import {
 	Effect,
 	Exit,
 	type HKT,
 	Layer,
 	ManagedRuntime,
+	Match,
 	Option,
 	Scope,
 	Stream,
@@ -23,79 +31,36 @@ import {
 	StateTransportService,
 	type StateTransport,
 } from "./services/state-transport/state-transport.ts";
-import {
-	type ComputedFieldEffect,
-	type ComputedFieldPromise,
-	GetStateError,
-	type StateFieldEffect,
-	type StateFieldPromise,
-	StateSubscriptionError,
-	UpdateStateError,
-} from "./state-field.ts";
 
-const implementState = Effect.fn("implementState")(function* <Decoded>(
-	namespace: string,
-	name: string,
-	codec: FieldManifest<Decoded>,
-) {
-	const transport = yield* StateTransportService;
+const implementSubscription = Effect.fn("implementSubscription")(function* <
+	Decoded,
+>(field: FieldIdentifier, manifest: FieldManifest<Decoded>) {
 	const messageChannel = yield* MessageChannelService;
 	const latest = yield* SubscriptionRef.make<Option.Option<Decoded>>(
 		Option.none(),
 	);
 	let refcount = 0;
 
-	const get = Effect.fn("get")(
-		function* () {
-			const current = yield* transport.read(namespace, name);
-			return yield* codec.decode(current);
-		},
-		Effect.mapError(
-			(error) => new GetStateError({ namespace, name, cause: error.message }),
-		),
-	);
-
-	const set = Effect.fn("set")(
-		function* (value: Decoded) {
-			const encoded = yield* codec.encode(value);
-			yield* transport.update(namespace, name, encoded);
-		},
-		Effect.mapError(
-			(error) => new UpdateStateError({ namespace, name, cause: error }),
-		),
-	);
-
-	const update = Effect.fn("update")(
-		function* (fn: (value: Decoded) => Promisable<Decoded>) {
-			const current = yield* get();
-			const next = yield* Effect.tryPromise(async () => fn(current));
-			const encoded = yield* codec.encode(next);
-			yield* transport.update(namespace, name, encoded);
-		},
-		Effect.mapError(
-			(error) => new UpdateStateError({ namespace, name, cause: error }),
-		),
-	);
-
 	const stream = yield* messageChannel.receive();
 
 	yield* Effect.forkScoped(
 		stream.pipe(
 			Stream.filterMap((msg) =>
-				msg._tag === "publish" &&
-				msg.message.filter.namespace === namespace &&
-				msg.message.filter.name === name
-					? Option.some(msg.message.value)
-					: Option.none(),
+				Match.value(msg).pipe(
+					Match.when({ _tag: "publish", field }, (msg) =>
+						Option.some(msg.value),
+					),
+					Match.orElse(() => Option.none()),
+				),
 			),
 			Stream.runForEach((value) =>
-				codec.decode(value).pipe(
+				manifest.decode(value).pipe(
 					Effect.flatMap((decoded) =>
 						SubscriptionRef.set(latest, Option.some(decoded)),
 					),
 					Effect.catchAll((error) =>
 						Effect.logError(
-							`Failed to decode published value for "${namespace}/${name}":`,
+							`Failed to decode published value for "${field.namespace}/${field.name}":`,
 							error,
 						),
 					),
@@ -110,17 +75,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 				Effect.gen(function* () {
 					refcount += 1;
 					if (refcount === 1) {
-						yield* messageChannel
-							.send({
-								_tag: "subscribe",
-								topic: "state",
-								message: { filter: { namespace, name } },
-							})
-							.pipe(
-								Effect.mapError(
-									(cause) => new StateSubscriptionError({ cause }),
-								),
-							);
+						yield* messageChannel.send({ _tag: "subscribe", field });
 					}
 				}),
 				() =>
@@ -130,15 +85,11 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 							return;
 						}
 						yield* messageChannel
-							.send({
-								_tag: "unsubscribe",
-								topic: "state",
-								message: { filter: { namespace, name } },
-							})
+							.send({ _tag: "unsubscribe", field })
 							.pipe(
 								Effect.catchAll((error) =>
 									Effect.logError(
-										`Failed to send unsubscribe for "${namespace}/${name}":`,
+										`Failed to send unsubscribe for "${field.namespace}/${field.name}":`,
 										error,
 									),
 								),
@@ -155,25 +106,84 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			return latest.changes.pipe(Stream.filterMap((value) => value));
 		});
 
-	const field: StateFieldEffect<Decoded> = {
-		get,
-		set,
-		update,
-		subscribe,
-	};
-	return field;
+	return subscribe;
 });
 
-const implementComputedState = Effect.fn("implementComputedState")(function* <
-	Decoded,
->(namespace: string, name: string, codec: FieldManifest<Decoded>) {
-	const field = yield* implementState(namespace, name, codec);
-	const computed: ComputedFieldEffect<Decoded> = {
-		get: field.get,
-		subscribe: field.subscribe,
-	};
-	return computed;
+const implementState = Effect.fn("implementState")(function* <Decoded>(
+	namespace: string,
+	name: string,
+	manifest: FieldManifest<Decoded>,
+) {
+	const transport = yield* StateTransportService;
+	const subscribe = yield* implementSubscription(
+		{ type: "state", namespace, name },
+		manifest,
+	);
+
+	const get = Effect.fn("get")(function* () {
+		const current = yield* transport.readState(namespace, name);
+		return yield* manifest.decode(current);
+	});
+
+	const set = Effect.fn("set")(function* (value: Decoded) {
+		const encoded = yield* manifest.encode(value);
+		yield* transport.updateState(namespace, name, encoded);
+	});
+
+	const update = Effect.fn("update")(function* (
+		fn: (value: Decoded) => Promisable<Decoded>,
+	) {
+		const current = yield* get();
+		const next = yield* Effect.tryPromise(async () => fn(current));
+		const encoded = yield* manifest.encode(next);
+		yield* transport.updateState(namespace, name, encoded);
+	});
+
+	return { get, set, update, subscribe };
 });
+
+type StateFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementState<Decoded>>
+>;
+type StateField<Decoded> = ApplyLambdaToObject<
+	StateFieldEffect<Decoded>,
+	{
+		get: EffectToPromiseLambda;
+		set: EffectToPromiseLambda;
+		update: EffectToPromiseLambda;
+		subscribe: StreamToSubscribeLambda;
+	}
+>;
+
+const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
+	namespace: string,
+	name: string,
+	manifest: FieldManifest<Decoded>,
+) {
+	const transport = yield* StateTransportService;
+	const subscribe = yield* implementSubscription(
+		{ type: "computed", namespace, name },
+		manifest,
+	);
+
+	const get = Effect.fn("get")(function* () {
+		const current = yield* transport.readComputed(namespace, name);
+		return yield* manifest.decode(current);
+	});
+
+	return { get, subscribe };
+});
+
+type ComputedFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementComputed<Decoded>>
+>;
+type ComputedField<Decoded> = ApplyLambdaToObject<
+	ComputedFieldEffect<Decoded>,
+	{
+		get: EffectToPromiseLambda;
+		subscribe: StreamToSubscribeLambda;
+	}
+>;
 
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
@@ -184,7 +194,7 @@ interface StateFieldEffectLambda extends HKT.TypeLambda {
 }
 
 interface StateFieldPromiseLambda extends HKT.TypeLambda {
-	readonly type: StateFieldPromise<this["Target"]>;
+	readonly type: StateField<this["Target"]>;
 }
 
 interface ComputedFieldEffectLambda extends HKT.TypeLambda {
@@ -192,7 +202,7 @@ interface ComputedFieldEffectLambda extends HKT.TypeLambda {
 }
 
 interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
-	readonly type: ComputedFieldPromise<this["Target"]>;
+	readonly type: ComputedField<this["Target"]>;
 }
 
 const buildNamespace = <
@@ -215,7 +225,7 @@ const buildNamespace = <
 			ComputedFieldEffectLambda,
 			Computed
 		>()(manifest.computed, (codec, name) =>
-			implementComputedState(manifest.namespace, name, codec),
+			implementComputed(manifest.namespace, name, codec),
 		);
 		return { fields, computedFields };
 	});
@@ -238,11 +248,13 @@ export interface LoadedNamespace<
 	Computed extends Record<string, unknown> = Record<string, unknown>,
 > {
 	readonly state: {
-		readonly [K in keyof State & string]: StateFieldPromise<State[K]>;
+		readonly [K in keyof State & string]: StateField<State[K]>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: ComputedFieldPromise<Computed[K]>;
+		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
 	};
+	readonly dispose: () => void;
+	readonly [Symbol.dispose]: () => void;
 }
 
 export async function loadNamespace<
@@ -306,7 +318,7 @@ export async function loadNamespace<
 						),
 						Effect.forkIn(scope),
 					);
-					return () => runtime.runFork(Scope.close(scope, Exit.void));
+					return () => runtime.runPromise(Scope.close(scope, Exit.void));
 				}),
 			);
 
@@ -327,5 +339,10 @@ export async function loadNamespace<
 		subscribe: subscribeEffectToPromise(field.subscribe, name),
 	}))(effectComputedFields);
 
-	return { state, computed };
+	return {
+		state,
+		computed,
+		dispose: runtime.dispose,
+		[Symbol.dispose]: () => runtime.dispose(),
+	};
 }

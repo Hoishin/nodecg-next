@@ -27,8 +27,9 @@ import {
 
 const createTransportStub = () =>
 	({
-		read: vi.fn<StateTransport["read"]>(),
-		update: vi.fn<StateTransport["update"]>(() => Effect.void),
+		readState: vi.fn<StateTransport["readState"]>(),
+		readComputed: vi.fn<StateTransport["readComputed"]>(),
+		updateState: vi.fn<StateTransport["updateState"]>(() => Effect.void),
 	}) satisfies StateTransport;
 
 const createMessageChannelStub = () =>
@@ -43,7 +44,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.read.mockReturnValue(Effect.succeed(42));
+				transportStub.readState.mockReturnValue(Effect.succeed(42));
 				const manifest = defineNamespace("root", {
 					state: { count: { schema: Schema.Number } },
 				});
@@ -70,7 +71,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.read.mockReturnValue(Effect.succeed("not a number"));
+				transportStub.readState.mockReturnValue(Effect.succeed("not a number"));
 				const manifest = defineNamespace("root", {
 					state: { count: { schema: Schema.Number } },
 				});
@@ -89,7 +90,7 @@ describe("get", () => {
 						Effect.provideService(StateTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("GetStateError");
+				expect(error._tag).toBe("StateDecodeError");
 			}),
 		),
 	);
@@ -99,7 +100,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.read.mockReturnValue(
+				transportStub.readState.mockReturnValue(
 					Effect.fail(new StateNotFound({ namespace: "root", name: "count" })),
 				);
 				const manifest = defineNamespace("root", {
@@ -120,7 +121,7 @@ describe("get", () => {
 						Effect.provideService(StateTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("GetStateError");
+				expect(error._tag).toBe("StateNotFound");
 			}),
 		),
 	);
@@ -130,7 +131,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.read.mockReturnValue(
+				transportStub.readState.mockReturnValue(
 					Effect.succeed("2030-01-01T00:00:00.000Z"),
 				);
 				const manifest = defineNamespace("root", {
@@ -176,7 +177,11 @@ describe("set", () => {
 				yield* loaded.state.count
 					.set(7)
 					.pipe(Effect.provideService(StateTransportService, transportStub));
-				expect(transportStub.update).toHaveBeenCalledWith("root", "count", 7);
+				expect(transportStub.updateState).toHaveBeenCalledWith(
+					"root",
+					"count",
+					7,
+				);
 			}),
 		),
 	);
@@ -204,7 +209,7 @@ describe("set", () => {
 						Effect.provideService(StateTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("UpdateStateError");
+				expect(error._tag).toBe("StateEncodeError");
 			}),
 		),
 	);
@@ -229,7 +234,7 @@ describe("set", () => {
 				yield* loaded.state.when
 					.set(new Date("2030-01-01T00:00:00.000Z"))
 					.pipe(Effect.provideService(StateTransportService, transportStub));
-				expect(transportStub.update).toHaveBeenLastCalledWith(
+				expect(transportStub.updateState).toHaveBeenLastCalledWith(
 					"root",
 					"when",
 					"2030-01-01T00:00:00.000Z",
@@ -245,7 +250,7 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.read.mockReturnValue(Effect.succeed(10));
+				transportStub.readState.mockReturnValue(Effect.succeed(10));
 				const manifest = defineNamespace("root", {
 					state: { count: { schema: Schema.Number } },
 				});
@@ -261,7 +266,7 @@ describe("update", () => {
 				yield* loaded.state.count
 					.update((v) => v + 5)
 					.pipe(Effect.provideService(StateTransportService, transportStub));
-				expect(transportStub.update).toHaveBeenLastCalledWith(
+				expect(transportStub.updateState).toHaveBeenLastCalledWith(
 					"root",
 					"count",
 					15,
@@ -274,18 +279,16 @@ describe("update", () => {
 describe("subscribe", () => {
 	const subscribeFrame = {
 		_tag: "subscribe",
-		topic: "state",
-		message: { filter: { namespace: "root", name: "count" } },
+		field: { type: "state", namespace: "root", name: "count" },
 	};
 	const unsubscribeFrame = {
 		_tag: "unsubscribe",
-		topic: "state",
-		message: { filter: { namespace: "root", name: "count" } },
+		field: { type: "state", namespace: "root", name: "count" },
 	};
 	const publishFrame = (value: number): ServerMessage => ({
 		_tag: "publish",
-		topic: "state",
-		message: { filter: { namespace: "root", name: "count" }, value },
+		field: { type: "state", namespace: "root", name: "count" },
+		value,
 	});
 
 	test(
@@ -360,8 +363,8 @@ describe("subscribe", () => {
 
 				yield* mailbox.offer({
 					_tag: "publish",
-					topic: "state",
-					message: { filter: { namespace: "root", name: "other" }, value: 99 },
+					field: { type: "state", namespace: "root", name: "other" },
+					value: 99,
 				});
 				yield* mailbox.offer(publishFrame(7));
 
@@ -595,7 +598,7 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.read.mockReturnValue(Effect.succeed("a"));
+				transportStub.readComputed.mockReturnValue(Effect.succeed("a"));
 
 				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
 					Effect.provideService(StateTransportService, transportStub),
@@ -655,19 +658,15 @@ describe("computed", () => {
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith({
 							_tag: "subscribe",
-							topic: "state",
-							message: { filter: { namespace: "root", name: "firstGameId" } },
+							field: { type: "computed", namespace: "root", name: "firstGameId" },
 						});
 					}),
 				);
 
 				yield* pubsub.publish({
 					_tag: "publish",
-					topic: "state",
-					message: {
-						filter: { namespace: "root", name: "firstGameId" },
-						value: "z",
-					},
+					field: { type: "computed", namespace: "root", name: "firstGameId" },
+					value: "z",
 				});
 
 				const result = yield* Fiber.join(head);
@@ -681,7 +680,7 @@ describe("computed", () => {
 describe("loadNamespace (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();
-		transportStub.read.mockReturnValue(Effect.succeed(42));
+		transportStub.readState.mockReturnValue(Effect.succeed(42));
 		const manifest = defineNamespace("root", {
 			state: { count: { schema: Schema.Number } },
 		});
@@ -694,6 +693,6 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 		expect(await loaded.state.count.get()).toBe(42);
 		await loaded.state.count.set(9);
-		expect(transportStub.update).toHaveBeenCalledWith("root", "count", 9);
+		expect(transportStub.updateState).toHaveBeenCalledWith("root", "count", 9);
 	});
 });

@@ -1,7 +1,5 @@
-export { loadNamespace, loadNamespaceEffect } from "./load-namespace.ts";
-export type {
-	ComputedFieldEffect,
-	ComputedFieldPromise,
-	StateFieldEffect,
-	StateFieldPromise,
-} from "./state-field.ts";
+export {
+	loadNamespace,
+	loadNamespaceEffect,
+	type LoadedNamespace,
+} from "./load-namespace.ts";

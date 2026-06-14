@@ -3,20 +3,20 @@ import { StateDecodeError } from "@nodecg/core";
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { stateMetadataKey, type LoadedNamespace } from "../load-namespace.ts";
-import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import {
+	type LoadedNamespace,
 	type StateField,
-	type StateFieldPromise,
 	stateFieldInternal,
-} from "../state-field.ts";
+	stateMetadataKey,
+} from "../load-namespace.ts";
+import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];
 
 function stubField(
 	internal: Pick<Internal, "getEncoded" | "setEncoded">,
-): StateFieldPromise<unknown> {
+): StateField<unknown> {
 	const unused = vi.fn();
 	const subscribeEncoded = () => Effect.succeed(Stream.empty);
 	const subscribe = () => Effect.succeed(Stream.empty);
@@ -25,7 +25,7 @@ function stubField(
 		set: unused,
 		update: unused,
 		validate: unused,
-		subscribe,
+		subscribe: unused,
 		[stateFieldInternal]: {
 			get: unused,
 			set: unused,
@@ -47,6 +47,8 @@ function stubComputed(
 		get: unused,
 		subscribe: unused,
 		[stateFieldInternal]: {
+			get: unused,
+			subscribe: () => Effect.succeed(Stream.empty),
 			getEncoded,
 			subscribeEncoded: () => Effect.succeed(Stream.empty),
 		},
@@ -55,7 +57,7 @@ function stubComputed(
 
 function loadedNamespace(
 	namespace: string,
-	fields: Record<string, StateFieldPromise<unknown>>,
+	fields: Record<string, StateField<unknown>>,
 	computed: LoadedNamespace["computed"] = {},
 ): LoadedNamespace {
 	return {
@@ -73,6 +75,7 @@ function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
 }
 
 const getUrl = "http://x/api/namespaces/root/state/count";
+const computedUrl = "http://x/api/namespaces/root/computed/count";
 
 describe("ping", () => {
 	test("returns pong", async () => {
@@ -128,7 +131,7 @@ describe("get", () => {
 				{ count: stubComputed(() => Effect.succeed(84)) },
 			),
 		]);
-		const res = await handler(new Request(getUrl));
+		const res = await handler(new Request(computedUrl));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toBe(84);
 	});

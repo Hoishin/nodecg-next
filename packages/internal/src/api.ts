@@ -9,7 +9,6 @@ import { Schema } from "effect";
 
 import { JsonValueSchema } from "./json-value-schema.ts";
 
-// TODO: separate state and computed endpoints
 const StateGroup = HttpApiGroup.make("State")
 	.add(
 		HttpApiEndpoint.get(
@@ -29,6 +28,15 @@ const StateGroup = HttpApiGroup.make("State")
 			.addError(HttpApiError.InternalServerError),
 	);
 
+const ComputedGroup = HttpApiGroup.make("Computed").add(
+	HttpApiEndpoint.get(
+		"get",
+	)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/computed/${HttpApiSchema.param("name", Schema.String)}`
+		.addSuccess(JsonValueSchema)
+		.addError(HttpApiError.NotFound)
+		.addError(HttpApiError.InternalServerError),
+);
+
 const HealthGroup = HttpApiGroup.make("Health").add(
 	HttpApiEndpoint.get("ping", "/ping").addSuccess(Schema.String),
 );
@@ -36,4 +44,5 @@ const HealthGroup = HttpApiGroup.make("Health").add(
 export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(HealthGroup)
 	.add(StateGroup)
+	.add(ComputedGroup)
 	.prefix("/api");

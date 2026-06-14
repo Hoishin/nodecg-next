@@ -5,9 +5,14 @@ import {
 	mergeRecords,
 	zipEffectValues,
 	toError,
-	promisifyEffectFn,
+	type EffectToPromiseLambda,
+	type EffectToSyncLambda,
+	type StreamToSubscribeLambda,
+	type IdentityLambda,
+	type ApplyLambdaToObject,
 } from "@nodecg/internal";
 import {
+	Data,
 	Effect,
 	Exit,
 	type HKT,
@@ -25,16 +30,24 @@ import {
 	StateStorageService,
 	type StateStorage,
 } from "./services/state-storage/state-storage.ts";
-import {
-	type ComputedField,
-	type ComputedFieldPromise,
-	type RegisteredFieldInternal,
-	type StateField,
-	type StateFieldPromise,
-	StateComputeError,
-	StateUpdateFnError,
-	stateFieldInternal,
-} from "./state-field.ts";
+
+export const stateFieldInternal = Symbol("stateFieldInternal");
+
+export class StateUpdateFnError extends Data.TaggedError("StateUpdateFnError")<{
+	namespace: string;
+	name: string;
+	cause: Error;
+}> {
+	override readonly message = `Update function for state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
+
+export class StateComputeError extends Data.TaggedError("StateComputeError")<{
+	namespace: string;
+	name: string;
+	cause: Error;
+}> {
+	override readonly message = `Computing state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
 
 export type SeedState<State extends Record<string, unknown>> = {
 	readonly [K in keyof State & string]: () => Promisable<State[K]>;
@@ -145,7 +158,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		);
 	});
 
-	const field: StateField<Decoded> = {
+	return {
 		get,
 		set,
 		update,
@@ -156,24 +169,42 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			set,
 			update,
 			validate: codec.encode,
+			subscribe,
 			getEncoded,
 			setEncoded,
-			subscribe,
 			subscribeEncoded,
 		},
 	};
-	return field;
 });
 
-const implementComputedState = <Sources, Decoded>(
+type StateFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementState<Decoded>>
+>;
+export type StateField<Decoded> = ApplyLambdaToObject<
+	StateFieldEffect<Decoded>,
+	{
+		get: EffectToSyncLambda;
+		set: EffectToSyncLambda;
+		update: EffectToPromiseLambda;
+		validate: EffectToPromiseLambda;
+		subscribe: StreamToSubscribeLambda;
+		[stateFieldInternal]: IdentityLambda;
+	}
+>;
+
+const implementComputed = Effect.fn("implementComputed")(function* <
+	Sources,
+	Decoded,
+>(
 	namespace: string,
 	name: string,
 	codec: FieldManifest<Decoded>,
 	compute: (sources: Sources) => Decoded,
 	readSnapshot: Effect.Effect<Sources, StateNotFound>,
-	storage: StateStorage,
-): ComputedField<Decoded> => {
-	const computeValue = Effect.fn("compute")(function* () {
+) {
+	const storage = yield* StateStorageService;
+
+	const get = Effect.fn("compute")(function* () {
 		const sources = yield* readSnapshot;
 		return yield* Effect.try({
 			try: () => compute(sources),
@@ -183,7 +214,7 @@ const implementComputedState = <Sources, Decoded>(
 	});
 
 	const getEncoded = Effect.fn("getEncoded")(function* () {
-		const value = yield* computeValue();
+		const value = yield* get();
 		return yield* codec.encode(value);
 	});
 
@@ -223,13 +254,29 @@ const implementComputedState = <Sources, Decoded>(
 		);
 	});
 
-	const field: ComputedField<Decoded> = {
-		get: computeValue,
+	return {
+		get,
 		subscribe,
-		[stateFieldInternal]: { getEncoded, subscribeEncoded },
+		[stateFieldInternal]: {
+			get,
+			subscribe,
+			getEncoded,
+			subscribeEncoded,
+		},
 	};
-	return field;
-};
+});
+
+type ComputedFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementComputed<unknown, Decoded>>
+>;
+export type ComputedField<Decoded> = ApplyLambdaToObject<
+	ComputedFieldEffect<Decoded>,
+	{
+		get: EffectToSyncLambda;
+		subscribe: StreamToSubscribeLambda;
+		[stateFieldInternal]: IdentityLambda;
+	}
+>;
 
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
@@ -243,20 +290,20 @@ interface ComputeFnLambda extends HKT.TypeLambda {
 	readonly type: (sources: this["In"]) => this["Target"];
 }
 
-interface StateFieldLambda extends HKT.TypeLambda {
-	readonly type: StateField<this["Target"]>;
+interface StateFieldEffectLambda extends HKT.TypeLambda {
+	readonly type: StateFieldEffect<this["Target"]>;
 }
 
 interface StateFieldPromiseLambda extends HKT.TypeLambda {
-	readonly type: StateFieldPromise<this["Target"]>;
+	readonly type: StateField<this["Target"]>;
 }
 
-interface ComputedFieldLambda extends HKT.TypeLambda {
-	readonly type: ComputedField<this["Target"]>;
+interface ComputedFieldEffectLambda extends HKT.TypeLambda {
+	readonly type: ComputedFieldEffect<this["Target"]>;
 }
 
 interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
-	readonly type: ComputedFieldPromise<this["Target"]>;
+	readonly type: ComputedField<this["Target"]>;
 }
 
 export const stateMetadataKey = Symbol("stateMetadataKey");
@@ -272,7 +319,7 @@ const buildNamespace = <
 		| undefined,
 ) => {
 	const seedState = options?.seedState;
-	const implementComputed = options?.implementComputed;
+	const computeFns = options?.implementComputed;
 	return Effect.gen(function* () {
 		const storage = yield* StateStorageService;
 
@@ -300,7 +347,7 @@ const buildNamespace = <
 
 		const fields = yield* mapEffectValues<
 			FieldManifestLambda,
-			StateFieldLambda,
+			StateFieldEffectLambda,
 			State
 		>()(manifest.state, (codec, name) =>
 			implementState(manifest.namespace, name, codec),
@@ -330,20 +377,11 @@ const buildNamespace = <
 		const computedFields = yield* zipEffectValues<
 			FieldManifestLambda,
 			ComputeFnLambda,
-			ComputedFieldLambda,
+			ComputedFieldEffectLambda,
 			SourceSnapshot<State>,
 			Computed
-		>()(manifest.computed, implementComputed, (codec, compute, name) =>
-			Effect.succeed(
-				implementComputedState(
-					manifest.namespace,
-					name,
-					codec,
-					compute,
-					readSnapshot,
-					storage,
-				),
-			),
+		>()(manifest.computed, computeFns, (codec, compute, name) =>
+			implementComputed(manifest.namespace, name, codec, compute, readSnapshot),
 		);
 
 		// Eager compute at load and fail-fast validation
@@ -431,24 +469,25 @@ async function loadNamespacePromise<
 			);
 		};
 
-	const state = mapValues<StateFieldLambda, StateFieldPromiseLambda>(
+	const state = mapValues<StateFieldEffectLambda, StateFieldPromiseLambda>(
 		(field, name) => ({
 			get: () => runtime.runSync(field.get()),
 			set: (value) => runtime.runSync(field.set(value)),
-			update: promisifyEffectFn(field.update, runtime),
-			validate: promisifyEffectFn(field.validate, runtime),
+			update: (fn) => runtime.runPromise(field.update(fn)),
+			validate: (value) => runtime.runPromise(field.validate(value)),
 			subscribe: subscribeAdapter(field.subscribe, name),
 			[stateFieldInternal]: field[stateFieldInternal],
 		}),
 	)(effectFields);
 
-	const computed = mapValues<ComputedFieldLambda, ComputedFieldPromiseLambda>(
-		(field, name) => ({
-			get: () => runtime.runSync(field.get()),
-			subscribe: subscribeAdapter(field.subscribe, name),
-			[stateFieldInternal]: field[stateFieldInternal],
-		}),
-	)(effectComputedFields);
+	const computed = mapValues<
+		ComputedFieldEffectLambda,
+		ComputedFieldPromiseLambda
+	>((field, name) => ({
+		get: () => runtime.runSync(field.get()),
+		subscribe: subscribeAdapter(field.subscribe, name),
+		[stateFieldInternal]: field[stateFieldInternal],
+	}))(effectComputedFields);
 
 	return {
 		state,
@@ -474,7 +513,7 @@ export function loadNamespace<
 	return loadNamespacePromise(manifest, rest[0]);
 }
 
-interface Implemented<
+interface ImplementedNamespace<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
@@ -495,7 +534,7 @@ export function implementNamespace<
 	...rest: [keyof State | keyof Computed] extends [never]
 		? []
 		: [impl: RequiredOptions<State, Computed>]
-): Implemented<State, Computed, Topic> {
+): ImplementedNamespace<State, Computed, Topic> {
 	const [impl] = rest;
 	return {
 		manifest,
@@ -533,7 +572,7 @@ export function loadExtendedNamespace<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
-	const Base extends Implemented<any, any, any>,
+	const Base extends ImplementedNamespace<any, any, any>,
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	implemented: Base,
@@ -564,39 +603,9 @@ export interface LoadedNamespace<
 > {
 	readonly [stateMetadataKey]: { readonly namespace: string };
 	readonly state: {
-		readonly [K in keyof State & string]: StateFieldPromise<State[K]>;
+		readonly [K in keyof State & string]: StateField<State[K]>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: ComputedFieldPromise<Computed[K]>;
+		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
 	};
 }
-
-export type RegistryNamespace = {
-	readonly [stateMetadataKey]: { readonly namespace: string };
-	readonly state: Readonly<
-		Record<string, { readonly [stateFieldInternal]: RegisteredFieldInternal }>
-	>;
-	readonly computed: Readonly<
-		Record<string, { readonly [stateFieldInternal]: RegisteredFieldInternal }>
-	>;
-};
-
-// TODO: move to its own file. Also state/computed/topic should be completely separated (could be same name!)
-export const buildFieldRegistry = (
-	namespaces: ReadonlyArray<RegistryNamespace>,
-) => {
-	const registry = new Map<string, Map<string, RegisteredFieldInternal>>();
-	for (const loaded of namespaces) {
-		const { namespace } = loaded[stateMetadataKey];
-		const fields =
-			registry.get(namespace) ?? new Map<string, RegisteredFieldInternal>();
-		for (const [name, field] of Object.entries(loaded.state)) {
-			fields.set(name, field[stateFieldInternal]);
-		}
-		for (const [name, field] of Object.entries(loaded.computed)) {
-			fields.set(name, field[stateFieldInternal]);
-		}
-		registry.set(namespace, fields);
-	}
-	return registry;
-};

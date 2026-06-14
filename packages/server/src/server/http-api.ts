@@ -2,13 +2,11 @@ import { HttpApiBuilder, HttpApiError } from "@effect/platform";
 import { NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
-import {
-	buildFieldRegistry,
-	type RegistryNamespace,
-} from "../load-namespace.ts";
+import { buildFieldRegistry } from "../field-registry.ts";
+import type { LoadedNamespace } from "../load-namespace.ts";
 
 export const buildNodecgApi = (options: {
-	namespaces: ReadonlyArray<RegistryNamespace>;
+	namespaces: ReadonlyArray<LoadedNamespace>;
 }) => {
 	const registry = buildFieldRegistry(options.namespaces);
 
@@ -22,24 +20,21 @@ export const buildNodecgApi = (options: {
 		handlers
 			.handle("get", ({ path: { namespace, name } }) =>
 				Effect.gen(function* () {
-					const field = registry.get(namespace)?.get(name);
+					const field = registry.state.get(namespace)?.get(name);
 					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
 					return yield* field.getEncoded().pipe(
 						Effect.catchTags({
 							StateNotFound: () => new HttpApiError.NotFound(),
-							StateComputeError: () => new HttpApiError.InternalServerError(),
-							StateEncodeError: () => new HttpApiError.InternalServerError(),
 						}),
 					);
 				}),
 			)
 			.handle("update", ({ path: { namespace, name }, payload }) =>
 				Effect.gen(function* () {
-					const field = registry.get(namespace)?.get(name);
-					// Computed fields have no setEncoded
-					if (typeof field?.setEncoded === "undefined") {
+					const field = registry.state.get(namespace)?.get(name);
+					if (typeof field === "undefined") {
 						return yield* new HttpApiError.NotFound();
 					}
 					yield* field.setEncoded(payload).pipe(
@@ -58,8 +53,30 @@ export const buildNodecgApi = (options: {
 			),
 	);
 
+	const ComputedGroupLive = HttpApiBuilder.group(
+		NodecgApi,
+		"Computed",
+		(handlers) =>
+			handlers.handle("get", ({ path: { namespace, name } }) =>
+				Effect.gen(function* () {
+					const field = registry.computed.get(namespace)?.get(name);
+					if (typeof field === "undefined") {
+						return yield* new HttpApiError.NotFound();
+					}
+					return yield* field.getEncoded().pipe(
+						Effect.catchTags({
+							StateNotFound: () => new HttpApiError.NotFound(),
+							StateComputeError: () => new HttpApiError.InternalServerError(),
+							StateEncodeError: () => new HttpApiError.InternalServerError(),
+						}),
+					);
+				}),
+			),
+	);
+
 	return HttpApiBuilder.api(NodecgApi).pipe(
 		Layer.provide(HealthGroupLive),
 		Layer.provide(StateGroupLive),
+		Layer.provide(ComputedGroupLive),
 	);
 };

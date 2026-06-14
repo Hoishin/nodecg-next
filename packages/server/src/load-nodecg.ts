@@ -2,13 +2,13 @@ import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 
-import type { RegistryNamespace } from "./load-namespace.ts";
+import { type LoadedNamespace } from "./load-namespace.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
 
 export type LoadNodecgOptions = {
-	namespaces: ReadonlyArray<RegistryNamespace>;
+	namespaces: ReadonlyArray<LoadedNamespace<{}, {}>>;
 	onReady?: () => void;
 };
 
