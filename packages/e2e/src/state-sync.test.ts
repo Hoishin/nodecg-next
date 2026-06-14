@@ -64,6 +64,30 @@ describe("client ⇄ server state sync", () => {
 	});
 });
 
+describe("namespace asset serving", () => {
+	test("serves the namespace's static index", async () => {
+		const response = await fetch("/assets/namespaces/e2e/");
+		expect(response.ok).toBe(true);
+		expect(await response.text()).toContain("hello from assets");
+	});
+
+	test("serves a static file under the namespace", async () => {
+		const response = await fetch("/assets/namespaces/e2e/app.js");
+		expect(response.ok).toBe(true);
+		expect(await response.text()).toContain("asset module loaded");
+	});
+
+	test("404s for an unknown namespace", async () => {
+		const response = await fetch("/assets/namespaces/unknown/index.html");
+		expect(response.status).toBe(404);
+	});
+
+	test("404s for a missing file in a known namespace", async () => {
+		const response = await fetch("/assets/namespaces/e2e/missing.js");
+		expect(response.status).toBe(404);
+	});
+});
+
 describe("extended namespace sync", () => {
 	test("reads original + added state and a computed over both", async () => {
 		const ns = await loadNamespace(extendedManifest);

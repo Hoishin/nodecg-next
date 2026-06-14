@@ -1,7 +1,7 @@
 {
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
-		"module": "preserve",
+		"module": "nodenext",
 		"lib": ["ESNext", "DOM"],
 		"jsx": "react-jsx",
 		"allowImportingTsExtensions": true,

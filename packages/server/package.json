@@ -16,12 +16,22 @@
 		"@nodecg/core": "workspace:*",
 		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
+		"sirv": "^3.0.2",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
 		"@nodecg/private": "workspace:*",
 		"@types/node": "catalog:",
 		"typescript": "catalog:",
+		"vite": "catalog:",
 		"vitest": "catalog:"
+	},
+	"peerDependencies": {
+		"vite": "^8.0.0"
+	},
+	"peerDependenciesMeta": {
+		"vite": {
+			"optional": true
+		}
 	}
 }

@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import {
 	implementNamespace,
 	loadExtendedNamespace,
@@ -20,6 +22,9 @@ const loaded = await loadNamespace(fixtureManifest, {
 		doubledCount: (sources: { count: number }) => sources.count * 2,
 		summary: (sources: { count: number; label: string }) =>
 			sources.count > 0 ? `${sources.label} x${sources.count}` : "idle",
+	},
+	assets: {
+		dir: fileURLToPath(new URL("./fixture-assets", import.meta.url)),
 	},
 });
 

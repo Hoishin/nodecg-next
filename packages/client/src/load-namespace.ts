@@ -145,7 +145,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 type StateFieldEffect<Decoded> = Effect.Effect.Success<
 	ReturnType<typeof implementState<Decoded>>
 >;
-type StateField<Decoded> = ApplyLambdaToObject<
+export type StateField<Decoded> = ApplyLambdaToObject<
 	StateFieldEffect<Decoded>,
 	{
 		get: EffectToPromiseLambda;
@@ -177,7 +177,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 type ComputedFieldEffect<Decoded> = Effect.Effect.Success<
 	ReturnType<typeof implementComputed<Decoded>>
 >;
-type ComputedField<Decoded> = ApplyLambdaToObject<
+export type ComputedField<Decoded> = ApplyLambdaToObject<
 	ComputedFieldEffect<Decoded>,
 	{
 		get: EffectToPromiseLambda;

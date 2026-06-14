@@ -33,6 +33,11 @@ import {
 
 export const stateFieldInternal = Symbol("stateFieldInternal");
 
+export type AssetConfig = {
+	readonly dir: string | URL;
+	readonly vite?: { readonly root: string | URL; readonly spa?: boolean };
+};
+
 export class StateUpdateFnError extends Data.TaggedError("StateUpdateFnError")<{
 	namespace: string;
 	name: string;
@@ -421,7 +426,10 @@ async function loadNamespacePromise<
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	options:
-		| (NamespaceOptions<State, Computed> & { readonly storage?: StorageOption })
+		| (NamespaceOptions<State, Computed> & {
+				readonly storage?: StorageOption;
+				readonly assets?: AssetConfig;
+		  })
 		| undefined,
 ): Promise<LoadedNamespace<State, Computed>> {
 	const storage = options?.storage;
@@ -489,7 +497,10 @@ async function loadNamespacePromise<
 	return {
 		state,
 		computed,
-		[stateMetadataKey]: { namespace: manifest.namespace },
+		[stateMetadataKey]: {
+			namespace: manifest.namespace,
+			assets: options?.assets,
+		},
 	};
 }
 
@@ -500,10 +511,18 @@ export function loadNamespace<
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	...rest: [keyof State | keyof Computed] extends [never]
-		? []
+		? [
+				options?: {
+					// TODO: inject storage from loadNodeCG
+					readonly storage?: StorageOption;
+					readonly assets?: AssetConfig;
+				},
+			]
 		: [
 				options: RequiredOptions<State, Computed> & {
+					// TODO: inject storage from loadNodeCG
 					readonly storage?: StorageOption;
+					readonly assets?: AssetConfig;
 				},
 			]
 ) {
@@ -516,7 +535,10 @@ interface ImplementedNamespace<
 	Topic extends Record<string, unknown>,
 > {
 	readonly manifest: NamespaceManifest<State, Computed, Topic>;
-	readonly impl: RequiredOptions<State, Computed> | undefined;
+	readonly impl:
+		| (NamespaceOptions<State, Computed> & { readonly assets?: AssetConfig })
+		| undefined;
+	// TODO: inject storage from loadNodeCG
 	readonly load: (
 		storage?: StorageOption,
 	) => ReturnType<typeof loadNamespacePromise<State, Computed, Topic>>;
@@ -529,8 +551,12 @@ export function implementNamespace<
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	...rest: [keyof State | keyof Computed] extends [never]
-		? []
-		: [impl: RequiredOptions<State, Computed>]
+		? [options?: { readonly assets?: AssetConfig }]
+		: [
+				impl: RequiredOptions<State, Computed> & {
+					readonly assets?: AssetConfig;
+				},
+			]
 ): ImplementedNamespace<State, Computed, Topic> {
 	const [impl] = rest;
 	return {
@@ -579,7 +605,7 @@ export function loadExtendedNamespace<
 		keyof Base["manifest"]["state"] & string,
 		keyof Base["manifest"]["computed"] & string
 	>,
-	storage?: StorageOption,
+	options?: { readonly storage?: StorageOption; readonly assets?: AssetConfig },
 ) {
 	const merged: NamespaceOptions<State, Computed> = {
 		seedState: mergeRecords<SeedState<State>>(
@@ -591,14 +617,21 @@ export function loadExtendedNamespace<
 			additional.implementComputed,
 		),
 	};
-	return loadNamespacePromise(manifest, { ...merged, storage });
+	return loadNamespacePromise(manifest, {
+		...merged,
+		storage: options?.storage,
+		assets: options?.assets ?? implemented.impl?.assets,
+	});
 }
 
 export interface LoadedNamespace<
 	State extends Record<string, unknown> = Record<string, unknown>,
 	Computed extends Record<string, unknown> = Record<string, unknown>,
 > {
-	readonly [stateMetadataKey]: { readonly namespace: string };
+	readonly [stateMetadataKey]: {
+		readonly namespace: string;
+		readonly assets?: AssetConfig;
+	};
 	readonly state: {
 		readonly [K in keyof State & string]: StateField<State[K]>;
 	};
