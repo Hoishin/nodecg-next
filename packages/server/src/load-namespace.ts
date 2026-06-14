@@ -347,32 +347,29 @@ const buildNamespace = <
 
 		const fields = yield* mapEffectValues<
 			FieldManifestLambda,
-			StateFieldEffectLambda,
-			State
-		>()(manifest.state, (codec, name) =>
-			implementState(manifest.namespace, name, codec),
+			StateFieldEffectLambda
+		>()((codec, name) => implementState(manifest.namespace, name, codec))(
+			manifest.state,
 		);
 
 		const readSnapshot: Effect.Effect<
 			SourceSnapshot<State>,
 			StateNotFound
-		> = mapEffectValues<FieldManifestLambda, DecodedLambda, State>()(
-			manifest.state,
-			(codec, name) =>
-				Effect.gen(function* () {
-					const encoded = yield* Option.match(
-						storage.read(manifest.namespace, name),
-						{
-							onNone: () =>
-								new StateNotFound({ namespace: manifest.namespace, name }),
-							onSome: Effect.succeed,
-						},
-					);
-					return yield* codec
-						.decode(encoded)
-						.pipe(Effect.orDieWith(migrationDie));
-				}),
-		);
+		> = mapEffectValues<FieldManifestLambda, DecodedLambda>()((codec, name) =>
+			Effect.gen(function* () {
+				const encoded = yield* Option.match(
+					storage.read(manifest.namespace, name),
+					{
+						onNone: () =>
+							new StateNotFound({ namespace: manifest.namespace, name }),
+						onSome: Effect.succeed,
+					},
+				);
+				return yield* codec
+					.decode(encoded)
+					.pipe(Effect.orDieWith(migrationDie));
+			}),
+		)(manifest.state);
 
 		const computedFields = yield* zipEffectValues<
 			FieldManifestLambda,

@@ -201,11 +201,9 @@ describe("mapEffectValues", () => {
 		"collects the resolved values into a record, with E and R never",
 		testEffect(
 			Effect.gen(function* () {
-				const effect = mapEffectValues<
-					IdentityLambda,
-					ArrayLambda,
-					{ a: number; b: string }
-				>()({ a: 1, b: "two" }, (value) => Effect.succeed([value]));
+				const effect = mapEffectValues<IdentityLambda, ArrayLambda>()((value) =>
+					Effect.succeed([value]),
+				)({ a: 1, b: "two" });
 				expectTypeOf(effect).toEqualTypeOf<
 					Effect.Effect<
 						{
@@ -226,14 +224,10 @@ describe("mapEffectValues", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const keys: string[] = [];
-				yield* mapEffectValues<
-					IdentityLambda,
-					ArrayLambda,
-					{ a: number; b: number }
-				>()({ a: 1, b: 2 }, (value, key) => {
+				yield* mapEffectValues<IdentityLambda, ArrayLambda>()((value, key) => {
 					keys.push(key);
 					return Effect.succeed([value]);
-				});
+				})({ a: 1, b: 2 });
 				expect(keys.sort()).toEqual(["a", "b"]);
 			}),
 		),
@@ -243,13 +237,12 @@ describe("mapEffectValues", () => {
 		"reduces a non-identity In lambda on the input side",
 		testEffect(
 			Effect.gen(function* () {
-				const result = yield* mapEffectValues<
-					BoxLambda,
-					IdentityLambda,
-					{ a: number; b: string }
-				>()({ a: { value: 1 }, b: { value: "two" } }, (value) =>
-					Effect.succeed(value.value),
-				);
+				const result = yield* mapEffectValues<BoxLambda, IdentityLambda>()(
+					(value) => Effect.succeed(value.value),
+				)({
+					a: { value: 1 },
+					b: { value: "two" },
+				});
 				expect(result).toEqual({ a: 1, b: "two" });
 			}),
 		),
@@ -259,15 +252,12 @@ describe("mapEffectValues", () => {
 		"propagates the transform's error channel",
 		testEffect(
 			Effect.gen(function* () {
-				const effect = mapEffectValues<
-					IdentityLambda,
-					ArrayLambda,
-					{ a: number; b: number }
-				>()({ a: 1, b: 2 }, (value, key) =>
-					key === "b"
-						? Effect.fail(new TransformError({ key }))
-						: Effect.succeed([value]),
-				);
+				const effect = mapEffectValues<IdentityLambda, ArrayLambda>()(
+					(value, key) =>
+						key === "b"
+							? Effect.fail(new TransformError({ key }))
+							: Effect.succeed([value]),
+				)({ a: 1, b: 2 });
 				expectTypeOf(effect).toEqualTypeOf<
 					Effect.Effect<
 						{
@@ -288,16 +278,12 @@ describe("mapEffectValues", () => {
 		"propagates the transform's context channel",
 		testEffect(
 			Effect.gen(function* () {
-				const effect = mapEffectValues<
-					IdentityLambda,
-					ArrayLambda,
-					{ a: number; b: number }
-				>()({ a: 1, b: 2 }, (value) =>
+				const effect = mapEffectValues<IdentityLambda, ArrayLambda>()((value) =>
 					Effect.gen(function* () {
 						const service = yield* BoxService;
 						return service.box(value);
 					}),
-				);
+				)({ a: 1, b: 2 });
 				expectTypeOf(effect).toEqualTypeOf<
 					Effect.Effect<
 						{
@@ -322,18 +308,15 @@ describe("mapEffectValues", () => {
 		"maps into a mapped-object shape carrying both the error and context channels",
 		testEffect(
 			Effect.gen(function* () {
-				const effect = mapEffectValues<
-					IdentityLambda,
-					HeadTailLambda,
-					{ a: number; b: number }
-				>()({ a: 1, b: 2 }, (value, key) =>
-					key === "b"
-						? Effect.fail(new TransformError({ key }))
-						: Effect.gen(function* () {
-								yield* BoxService;
-								return { head: value, tail: value };
-							}),
-				);
+				const effect = mapEffectValues<IdentityLambda, HeadTailLambda>()(
+					(value, key) =>
+						key === "b"
+							? Effect.fail(new TransformError({ key }))
+							: Effect.gen(function* () {
+									yield* BoxService;
+									return { head: value, tail: value };
+								}),
+				)({ a: 1, b: 2 });
 				expectTypeOf(effect).toEqualTypeOf<
 					Effect.Effect<
 						{
@@ -359,11 +342,9 @@ describe("mapEffectValues", () => {
 		"returns an empty object for an empty input",
 		testEffect(
 			Effect.gen(function* () {
-				const result = yield* mapEffectValues<
-					IdentityLambda,
-					ArrayLambda,
-					Record<string, number>
-				>()({}, (value) => Effect.succeed([value]));
+				const result = yield* mapEffectValues<IdentityLambda, ArrayLambda>()(
+					(value) => Effect.succeed([value]),
+				)({});
 				expect(result).toEqual({});
 			}),
 		),

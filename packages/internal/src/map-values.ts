@@ -35,28 +35,26 @@ export const mapValues =
 	};
 
 export const mapEffectValues =
-	<
-		InLambda extends HKT.TypeLambda,
-		OutLambda extends HKT.TypeLambda,
-		Target extends Record<string, unknown>,
-	>() =>
+	<F extends HKT.TypeLambda, G extends HKT.TypeLambda>() =>
 	<E, R>(
-		obj: ApplyLambdaToObjectValues<InLambda, Target>,
-		transform: <K extends keyof Target & string>(
-			value: HKT.Kind<InLambda, unknown, never, never, Target[K]>,
-			key: keyof Target & string,
-		) => Effect.Effect<
-			HKT.Kind<OutLambda, unknown, never, never, Target[K]>,
-			E,
-			R
-		>,
+		transform: <Target, In = unknown>(
+			value: HKT.Kind<F, In, never, never, Target>,
+			key: string,
+		) => Effect.Effect<HKT.Kind<G, In, never, never, Target>, E, R>,
 	) =>
+	<Target extends Record<string, unknown>, In = unknown>(
+		obj: ApplyLambdaToObjectValues<F, Target, never, never, In>,
+	): Effect.Effect<
+		ApplyLambdaToObjectValues<G, Target, never, never, In>,
+		E,
+		R
+	> =>
 		Effect.gen(function* () {
-			const result: Partial<ApplyLambdaToObjectValues<OutLambda, Target>> = {};
+			const result: any = {};
 			for (const key of unsafeObjectKeys(obj)) {
 				result[key] = yield* transform(obj[key], key);
 			}
-			return result as ApplyLambdaToObjectValues<OutLambda, Target>;
+			return result as ApplyLambdaToObjectValues<G, Target>;
 		});
 
 export const zipEffectValues =

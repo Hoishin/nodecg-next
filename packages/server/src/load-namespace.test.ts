@@ -24,13 +24,13 @@ import {
 	loadNamespace,
 	loadNamespaceEffect,
 } from "./load-namespace.ts";
+import { stateFieldInternal } from "./load-namespace.ts";
 import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	type StateChange,
 	type StateStorage,
 	StateStorageService,
 } from "./services/state-storage/state-storage.ts";
-import { stateFieldInternal } from "./load-namespace.ts";
 
 const createStorageStub = () =>
 	({

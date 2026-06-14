@@ -215,17 +215,15 @@ const buildNamespace = <
 	Effect.gen(function* () {
 		const fields = yield* mapEffectValues<
 			FieldManifestLambda,
-			StateFieldEffectLambda,
-			State
-		>()(manifest.state, (codec, name) =>
-			implementState(manifest.namespace, name, codec),
+			StateFieldEffectLambda
+		>()((codec, name) => implementState(manifest.namespace, name, codec))(
+			manifest.state,
 		);
 		const computedFields = yield* mapEffectValues<
 			FieldManifestLambda,
-			ComputedFieldEffectLambda,
-			Computed
-		>()(manifest.computed, (codec, name) =>
-			implementComputed(manifest.namespace, name, codec),
+			ComputedFieldEffectLambda
+		>()((codec, name) => implementComputed(manifest.namespace, name, codec))(
+			manifest.computed,
 		);
 		return { fields, computedFields };
 	});

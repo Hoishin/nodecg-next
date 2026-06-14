@@ -658,7 +658,11 @@ describe("computed", () => {
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith({
 							_tag: "subscribe",
-							field: { type: "computed", namespace: "root", name: "firstGameId" },
+							field: {
+								type: "computed",
+								namespace: "root",
+								name: "firstGameId",
+							},
 						});
 					}),
 				);
