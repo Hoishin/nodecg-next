@@ -314,7 +314,15 @@ For datasets too large to keep in memory. Unlike State, which is mirrored in mem
 
 ### 🚧 Authorization
 
+### ✅ Frontend serving
+
+- Each namespace serves its own frontend files from the same origin under `/frontend/namespaces/{ns}/`
+  - built static directory in production
+  - optionally Vite dev server (HMR) for development
+
 ### 🚧 Asset storage
+
+- Operator-managed media (images/videos/audio): upload/list/delete with a reactive metadata index that graphics subscribe to
 
 ### 🚧 Outdated Client Detection
 

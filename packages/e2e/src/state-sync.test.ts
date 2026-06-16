@@ -64,26 +64,26 @@ describe("client ⇄ server state sync", () => {
 	});
 });
 
-describe("namespace asset serving", () => {
-	test("serves the namespace's static index", async () => {
-		const response = await fetch("/assets/namespaces/e2e/");
+describe("namespace frontend serving", () => {
+	test("serves the namespace's index", async () => {
+		const response = await fetch("/frontend/namespaces/e2e/");
 		expect(response.ok).toBe(true);
-		expect(await response.text()).toContain("hello from assets");
+		expect(await response.text()).toContain("hello from the frontend");
 	});
 
-	test("serves a static file under the namespace", async () => {
-		const response = await fetch("/assets/namespaces/e2e/app.js");
+	test("serves a file under the namespace", async () => {
+		const response = await fetch("/frontend/namespaces/e2e/app.js");
 		expect(response.ok).toBe(true);
-		expect(await response.text()).toContain("asset module loaded");
+		expect(await response.text()).toContain("frontend module loaded");
 	});
 
 	test("404s for an unknown namespace", async () => {
-		const response = await fetch("/assets/namespaces/unknown/index.html");
+		const response = await fetch("/frontend/namespaces/unknown/index.html");
 		expect(response.status).toBe(404);
 	});
 
 	test("404s for a missing file in a known namespace", async () => {
-		const response = await fetch("/assets/namespaces/e2e/missing.js");
+		const response = await fetch("/frontend/namespaces/e2e/missing.js");
 		expect(response.status).toBe(404);
 	});
 });

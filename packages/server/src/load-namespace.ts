@@ -33,7 +33,7 @@ import {
 
 export const stateFieldInternal = Symbol("stateFieldInternal");
 
-export type AssetConfig = {
+export type FrontendConfig = {
 	readonly dir: string | URL;
 	readonly vite?: { readonly root: string | URL; readonly spa?: boolean };
 };
@@ -428,7 +428,7 @@ async function loadNamespacePromise<
 	options:
 		| (NamespaceOptions<State, Computed> & {
 				readonly storage?: StorageOption;
-				readonly assets?: AssetConfig;
+				readonly frontend?: FrontendConfig;
 		  })
 		| undefined,
 ): Promise<LoadedNamespace<State, Computed>> {
@@ -499,7 +499,7 @@ async function loadNamespacePromise<
 		computed,
 		[stateMetadataKey]: {
 			namespace: manifest.namespace,
-			assets: options?.assets,
+			frontend: options?.frontend,
 		},
 	};
 }
@@ -515,14 +515,14 @@ export function loadNamespace<
 				options?: {
 					// TODO: inject storage from loadNodeCG
 					readonly storage?: StorageOption;
-					readonly assets?: AssetConfig;
+					readonly frontend?: FrontendConfig;
 				},
 			]
 		: [
 				options: RequiredOptions<State, Computed> & {
 					// TODO: inject storage from loadNodeCG
 					readonly storage?: StorageOption;
-					readonly assets?: AssetConfig;
+					readonly frontend?: FrontendConfig;
 				},
 			]
 ) {
@@ -536,7 +536,9 @@ interface ImplementedNamespace<
 > {
 	readonly manifest: NamespaceManifest<State, Computed, Topic>;
 	readonly impl:
-		| (NamespaceOptions<State, Computed> & { readonly assets?: AssetConfig })
+		| (NamespaceOptions<State, Computed> & {
+				readonly frontend?: FrontendConfig;
+		  })
 		| undefined;
 	// TODO: inject storage from loadNodeCG
 	readonly load: (
@@ -551,10 +553,10 @@ export function implementNamespace<
 >(
 	manifest: NamespaceManifest<State, Computed, Topic>,
 	...rest: [keyof State | keyof Computed] extends [never]
-		? [options?: { readonly assets?: AssetConfig }]
+		? [options?: { readonly frontend?: FrontendConfig }]
 		: [
 				impl: RequiredOptions<State, Computed> & {
-					readonly assets?: AssetConfig;
+					readonly frontend?: FrontendConfig;
 				},
 			]
 ): ImplementedNamespace<State, Computed, Topic> {
@@ -605,7 +607,10 @@ export function loadExtendedNamespace<
 		keyof Base["manifest"]["state"] & string,
 		keyof Base["manifest"]["computed"] & string
 	>,
-	options?: { readonly storage?: StorageOption; readonly assets?: AssetConfig },
+	options?: {
+		readonly storage?: StorageOption;
+		readonly frontend?: FrontendConfig;
+	},
 ) {
 	const merged: NamespaceOptions<State, Computed> = {
 		seedState: mergeRecords<SeedState<State>>(
@@ -620,7 +625,7 @@ export function loadExtendedNamespace<
 	return loadNamespacePromise(manifest, {
 		...merged,
 		storage: options?.storage,
-		assets: options?.assets ?? implemented.impl?.assets,
+		frontend: options?.frontend ?? implemented.impl?.frontend,
 	});
 }
 
@@ -630,7 +635,7 @@ export interface LoadedNamespace<
 > {
 	readonly [stateMetadataKey]: {
 		readonly namespace: string;
-		readonly assets?: AssetConfig;
+		readonly frontend?: FrontendConfig;
 	};
 	readonly state: {
 		readonly [K in keyof State & string]: StateField<State[K]>;

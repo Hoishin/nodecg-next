@@ -4,6 +4,6 @@ export {
 	loadExtendedNamespace,
 	loadNamespace,
 	loadNamespaceEffect,
-	type AssetConfig,
+	type FrontendConfig,
 	type LoadedNamespace,
 } from "./load-namespace.ts";

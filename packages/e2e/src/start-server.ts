@@ -23,8 +23,8 @@ const loaded = await loadNamespace(fixtureManifest, {
 		summary: (sources: { count: number; label: string }) =>
 			sources.count > 0 ? `${sources.label} x${sources.count}` : "idle",
 	},
-	assets: {
-		dir: fileURLToPath(new URL("./fixture-assets", import.meta.url)),
+	frontend: {
+		dir: fileURLToPath(new URL("./fixture-frontend", import.meta.url)),
 	},
 });
 

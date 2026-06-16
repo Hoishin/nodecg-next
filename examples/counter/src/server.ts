@@ -13,7 +13,7 @@ const counter = await loadExtendedNamespace(
 		},
 	},
 	{
-		assets: {
+		frontend: {
 			dir: import.meta.resolve("../dist"),
 			vite: { root: import.meta.resolve("..") },
 		},

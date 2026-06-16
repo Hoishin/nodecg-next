@@ -5,7 +5,7 @@ export default defineConfig({
 	server: {
 		proxy: {
 			"/api": { target: "http://localhost:3000" },
-			"/assets": { target: "http://localhost:3000" },
+			"/frontend": { target: "http://localhost:3000" },
 			"/ws": { target: "ws://localhost:3000", ws: true },
 		},
 	},
