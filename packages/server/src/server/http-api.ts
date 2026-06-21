@@ -1,5 +1,5 @@
 import { HttpApiBuilder, HttpApiError } from "@effect/platform";
-import { NodecgApi } from "@nodecg/internal";
+import { CurrentUser, NodecgApi } from "@nodecg/internal";
 import { Effect, Layer, Match } from "effect";
 
 import { buildFieldRegistry } from "../field-registry.ts";
@@ -74,9 +74,19 @@ export const buildNodecgApi = (options: {
 			),
 	);
 
+	const AuthGroupLive = HttpApiBuilder.group(NodecgApi, "Auth", (handlers) =>
+		handlers.handle("me", () =>
+			Effect.gen(function* () {
+				const identity = yield* CurrentUser;
+				return { identity };
+			}),
+		),
+	);
+
 	return HttpApiBuilder.api(NodecgApi).pipe(
 		Layer.provide(HealthGroupLive),
 		Layer.provide(StateGroupLive),
 		Layer.provide(ComputedGroupLive),
+		Layer.provide(AuthGroupLive),
 	);
 };

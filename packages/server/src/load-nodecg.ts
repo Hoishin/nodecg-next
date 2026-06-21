@@ -2,6 +2,7 @@ import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 
+import { AuthenticationMiddlewareLive } from "./auth/middleware.ts";
 import { type LoadedNamespace } from "./load-namespace.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
@@ -25,7 +26,9 @@ export const loadNodecgEffect = Effect.fn(function* (
 				dev: options.dev ?? false,
 			}),
 		),
-		Layer.provide(buildNodecgApi(options)),
+		Layer.provide(
+			buildNodecgApi(options).pipe(Layer.provide(AuthenticationMiddlewareLive)),
+		),
 		Layer.provide(yield* makeNodeHttpServer({ onReady: options.onReady })),
 	);
 

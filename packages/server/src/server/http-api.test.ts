@@ -3,6 +3,7 @@ import { StateDecodeError } from "@nodecg/core";
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
+import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
 import {
 	type LoadedNamespace,
 	type StateField,
@@ -69,7 +70,12 @@ function loadedNamespace(
 
 function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
 	const { handler } = HttpApiBuilder.toWebHandler(
-		Layer.mergeAll(buildNodecgApi({ namespaces }), HttpServer.layerContext),
+		Layer.mergeAll(
+			buildNodecgApi({ namespaces }).pipe(
+				Layer.provide(AuthenticationMiddlewareLive),
+			),
+			HttpServer.layerContext,
+		),
 	);
 	return handler;
 }
@@ -83,6 +89,15 @@ describe("ping", () => {
 		const res = await handler(new Request("http://x/api/ping"));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toBe("pong");
+	});
+});
+
+describe("me", () => {
+	test("resolves an anonymous request to the public identity", async () => {
+		const handler = webHandler([]);
+		const res = await handler(new Request("http://x/api/me"));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ identity: { _tag: "public" } });
 	});
 });
 

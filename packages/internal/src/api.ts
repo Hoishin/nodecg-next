@@ -7,6 +7,7 @@ import {
 } from "@effect/platform";
 import { Schema } from "effect";
 
+import { AuthenticationMiddleware, IdentitySchema } from "./auth.ts";
 import { JsonValueSchema } from "./json-value-schema.ts";
 
 const StateGroup = HttpApiGroup.make("State")
@@ -41,8 +42,18 @@ const HealthGroup = HttpApiGroup.make("Health").add(
 	HttpApiEndpoint.get("ping", "/ping").addSuccess(Schema.String),
 );
 
+const AuthGroup = HttpApiGroup.make("Auth").add(
+	HttpApiEndpoint.get("me", "/me").addSuccess(
+		Schema.Struct({
+			identity: IdentitySchema,
+		}),
+	),
+);
+
 export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(HealthGroup)
 	.add(StateGroup)
 	.add(ComputedGroup)
+	.add(AuthGroup)
+	.middleware(AuthenticationMiddleware)
 	.prefix("/api");
