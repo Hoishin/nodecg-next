@@ -20,7 +20,7 @@ import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
 import { sessionCookieName } from "../auth/session-cookie-name.ts";
 import { buildFieldRegistry } from "../field-registry.ts";
 import type { LoadedNamespace } from "../load-namespace.ts";
-import { publicOrigin, sessionTtl } from "../server-config.ts";
+import { config } from "../server-config.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { StashStoreService } from "../services/stash-store/stash-store.ts";
 
@@ -54,8 +54,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 	"Authentication",
 	(handlers) =>
 		Effect.gen(function* () {
-			const ttl = yield* sessionTtl;
-			const origin = yield* publicOrigin;
+			const ttl = yield* config.sessionTtl;
+			const origin = yield* config.origin;
 			const registry = yield* AuthProviderRegistry;
 			const sessions = yield* SessionStoreService;
 			const stashes = yield* StashStoreService;

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { HumanIdentity } from "@nodecg/internal";
 import { Clock, Duration, Effect, Layer, Option } from "effect";
 
-import { sessionTtl } from "../../server-config.ts";
+import { config } from "../../server-config.ts";
 import { SessionStoreService } from "./session-store.ts";
 
 interface SessionEntry {
@@ -14,7 +14,7 @@ interface SessionEntry {
 export const InMemorySessionStore = Layer.effect(
 	SessionStoreService,
 	Effect.gen(function* () {
-		const ttlMillis = Duration.toMillis(yield* sessionTtl);
+		const ttlMillis = Duration.toMillis(yield* config.sessionTtl);
 		const sessions = new Map<string, SessionEntry>();
 
 		const create = Effect.fn("SessionStore.create")(function* (

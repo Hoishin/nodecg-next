@@ -5,7 +5,7 @@ import {
 } from "@nodecg/internal";
 import { Effect, Layer, Option } from "effect";
 
-import { requireAuth } from "../server-config.ts";
+import { config } from "../server-config.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { sessionCookieName } from "./session-cookie-name.ts";
 
@@ -14,7 +14,7 @@ const publicIdentity = PublicIdentitySchema.make();
 export const AuthenticationMiddlewareLive = Layer.effect(
 	AuthenticationMiddleware,
 	Effect.gen(function* () {
-		const required = yield* requireAuth;
+		const requireAuth = yield* config.requireAuth;
 		const sessions = yield* SessionStoreService;
 
 		return Effect.gen(function* () {
@@ -27,7 +27,7 @@ export const AuthenticationMiddlewareLive = Layer.effect(
 					return resolved.value;
 				}
 			}
-			if (required) {
+			if (requireAuth) {
 				return yield* new HttpApiError.Unauthorized();
 			}
 			return publicIdentity;
