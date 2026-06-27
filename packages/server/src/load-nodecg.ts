@@ -1,16 +1,22 @@
 import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Effect, HashMap, Layer } from "effect";
 
-import { AuthenticationMiddlewareLive } from "./auth/middleware.ts";
+import {
+	type AuthProvider,
+	AuthProviderRegistry,
+} from "./auth/auth-provider.ts";
 import { type LoadedNamespace } from "./load-namespace.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
+import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
+import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
 
 export type LoadNodecgOptions = {
 	namespaces: ReadonlyArray<LoadedNamespace<{}, {}>>;
+	authProviders?: ReadonlyArray<AuthProvider>;
 	dev?: boolean;
 	onReady?: () => void;
 };
@@ -26,8 +32,20 @@ export const loadNodecgEffect = Effect.fn(function* (
 				dev: options.dev ?? false,
 			}),
 		),
+		Layer.provide(buildNodecgApi({ namespaces: options.namespaces })),
+		Layer.provide(InMemorySessionStore),
+		Layer.provide(InMemoryStashStore),
 		Layer.provide(
-			buildNodecgApi(options).pipe(Layer.provide(AuthenticationMiddlewareLive)),
+			Layer.succeed(
+				AuthProviderRegistry,
+				// TODO: check duplicate names
+				HashMap.fromIterable(
+					(options.authProviders ?? []).map((provider) => [
+						provider.name,
+						provider,
+					]),
+				),
+			),
 		),
 		Layer.provide(yield* makeNodeHttpServer({ onReady: options.onReady })),
 	);

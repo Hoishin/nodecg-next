@@ -1,9 +1,14 @@
 export { NodecgApi } from "./api.ts";
 export {
 	AuthenticationMiddleware,
-	CurrentUser,
+	CurrentIdentity,
 	type Identity,
 	IdentitySchema,
+	type HumanIdentity,
+	HumanIdentitySchema,
+	type MachineIdentity,
+	MachineIdentitySchema,
+	PublicIdentitySchema,
 } from "./auth.ts";
 export {
 	ClientMessage,

@@ -42,18 +42,38 @@ const HealthGroup = HttpApiGroup.make("Health").add(
 	HttpApiEndpoint.get("ping", "/ping").addSuccess(Schema.String),
 );
 
-const AuthGroup = HttpApiGroup.make("Auth").add(
-	HttpApiEndpoint.get("me", "/me").addSuccess(
-		Schema.Struct({
-			identity: IdentitySchema,
-		}),
-	),
-);
+const AuthenticationGroup = HttpApiGroup.make("Authentication")
+	.add(
+		HttpApiEndpoint.get("me", "/me").addSuccess(
+			Schema.Struct({
+				identity: IdentitySchema,
+			}),
+		),
+	)
+	.add(
+		HttpApiEndpoint.post(
+			"login",
+		)`/authentication/login/${HttpApiSchema.param("provider", Schema.String)}`
+			.addSuccess(HttpApiSchema.Empty(302))
+			.addError(HttpApiError.InternalServerError),
+	)
+	.add(
+		HttpApiEndpoint.get(
+			"callback",
+		)`/authentication/callback/${HttpApiSchema.param("provider", Schema.String)}`
+			.addSuccess(HttpApiSchema.Empty(302))
+			.addError(HttpApiError.InternalServerError),
+	)
+	.add(
+		HttpApiEndpoint.post("logout", "/authentication/logout")
+			.addSuccess(HttpApiSchema.Empty(204))
+			.addError(HttpApiError.InternalServerError),
+	);
 
 export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(HealthGroup)
 	.add(StateGroup)
 	.add(ComputedGroup)
-	.add(AuthGroup)
+	.add(AuthenticationGroup)
 	.middleware(AuthenticationMiddleware)
 	.prefix("/api");

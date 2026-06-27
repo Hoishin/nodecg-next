@@ -7,6 +7,7 @@ import {
 	loadNodecg,
 } from "@nodecg/server";
 
+import { makeFakeAuthProvider } from "./fake-auth-provider.ts";
 import {
 	baseManifest,
 	extendedManifest,
@@ -44,6 +45,9 @@ const extended = await loadExtendedNamespace(
 
 loadNodecg({
 	namespaces: [loaded, extended],
+	authProviders: [
+		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
+	],
 	onReady: () => {
 		if (typeof process.send === "undefined") {
 			throw new Error("start-server.ts must be spawned with an IPC channel");

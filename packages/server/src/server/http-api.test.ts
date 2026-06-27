@@ -1,15 +1,20 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { StateDecodeError } from "@nodecg/core";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, HashMap, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
-import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
+import {
+	type AuthProvider,
+	AuthProviderRegistry,
+} from "../auth/auth-provider.ts";
 import {
 	type LoadedNamespace,
 	type StateField,
 	stateFieldInternal,
 	stateMetadataKey,
 } from "../load-namespace.ts";
+import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
+import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
@@ -71,10 +76,17 @@ function loadedNamespace(
 function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
 	const { handler } = HttpApiBuilder.toWebHandler(
 		Layer.mergeAll(
-			buildNodecgApi({ namespaces }).pipe(
-				Layer.provide(AuthenticationMiddlewareLive),
-			),
+			buildNodecgApi({ namespaces }),
 			HttpServer.layerContext,
+		).pipe(
+			Layer.provide(InMemorySessionStore),
+			Layer.provide(InMemoryStashStore),
+			Layer.provide(
+				Layer.succeed(
+					AuthProviderRegistry,
+					HashMap.empty<string, AuthProvider>(),
+				),
+			),
 		),
 	);
 	return handler;
