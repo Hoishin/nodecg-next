@@ -10,7 +10,7 @@ import {
 	type StreamToSubscribeLambda,
 	type IdentityLambda,
 	type ApplyLambdaToObject,
-} from "@nodecg/internal";
+} from "@nodecg/internal/utils";
 import {
 	Data,
 	Effect,

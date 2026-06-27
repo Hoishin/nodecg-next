@@ -1,12 +1,10 @@
+import { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "@nodecg/internal";
 import {
 	type AddedSchemas,
 	mapSchemaValues,
 	mapValues,
 	mergeRecords,
-	RESERVED_ROLE,
-	RESERVED_ROLE_SET,
-	RoleName,
-} from "@nodecg/internal";
+} from "@nodecg/internal/utils";
 import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 

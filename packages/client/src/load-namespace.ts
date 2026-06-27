@@ -1,12 +1,12 @@
 import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
+import { type FieldIdentifier } from "@nodecg/internal";
 import {
-	type FieldIdentifier,
 	mapEffectValues,
 	mapValues,
 	type EffectToPromiseLambda,
 	type StreamToSubscribeLambda,
 	type ApplyLambdaToObject,
-} from "@nodecg/internal";
+} from "@nodecg/internal/utils";
 import {
 	Effect,
 	Exit,

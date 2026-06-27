@@ -4,7 +4,8 @@
 	"license": "MIT",
 	"type": "module",
 	"exports": {
-		".": "./src/_exports.ts"
+		".": "./src/_exports.ts",
+		"./utils": "./src/utils/utils.ts"
 	},
 	"scripts": {
 		"test": "vitest run",

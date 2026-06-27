@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { JsonValueSchema } from "./json-value-schema.ts";
+import { JsonValueSchema } from "./utils/json-value-schema.ts";
 
 const FieldType = Schema.Literal("state", "computed");
 
