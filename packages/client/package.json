@@ -19,7 +19,6 @@
 	},
 	"devDependencies": {
 		"@nodecg/internal": "workspace:*",
-		"@nodecg/private": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

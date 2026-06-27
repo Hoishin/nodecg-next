@@ -20,7 +20,6 @@
 	},
 	"devDependencies": {
 		"@nodecg/internal": "workspace:*",
-		"@nodecg/private": "workspace:*",
 		"@types/node": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",

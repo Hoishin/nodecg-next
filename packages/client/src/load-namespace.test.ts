@@ -1,6 +1,6 @@
 import { defineNamespace } from "@nodecg/core";
 import type { ServerMessage } from "@nodecg/internal";
-import { testEffect } from "@nodecg/private";
+import { testEffect } from "@nodecg/internal/test-utils";
 import {
 	Effect,
 	Exit,

@@ -1,4 +1,4 @@
-import { testEffect } from "@nodecg/private";
+import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Option, TestClock, TestContext } from "effect";
 import { assert, describe, expect, test } from "vitest";
 

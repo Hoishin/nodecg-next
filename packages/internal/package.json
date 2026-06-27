@@ -6,7 +6,8 @@
 	"type": "module",
 	"exports": {
 		".": "./src/_exports.ts",
-		"./utils": "./src/utils/utils.ts"
+		"./utils": "./src/utils/_exports.ts",
+		"./test-utils": "./src/test-utils/_exports.ts"
 	},
 	"scripts": {
 		"test": "vitest run",
@@ -18,7 +19,6 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"@nodecg/private": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

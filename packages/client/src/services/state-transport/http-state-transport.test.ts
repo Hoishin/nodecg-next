@@ -1,5 +1,5 @@
 import { FetchHttpClient } from "@effect/platform";
-import { testEffect } from "@nodecg/private";
+import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
 

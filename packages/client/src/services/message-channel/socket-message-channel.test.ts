@@ -1,5 +1,5 @@
 import { Socket } from "@effect/platform";
-import { testEffect } from "@nodecg/private";
+import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Mailbox, Option, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 

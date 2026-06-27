@@ -5,7 +5,7 @@ import {
 	type FieldManifest,
 	StateEncodeError,
 } from "@nodecg/core";
-import { testEffect } from "@nodecg/private";
+import { testEffect } from "@nodecg/internal/test-utils";
 import {
 	Cause,
 	Chunk,
