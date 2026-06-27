@@ -3,11 +3,12 @@ import {
 	mapSchemaValues,
 	mapValues,
 	mergeRecords,
+	RESERVED_ROLE,
+	RESERVED_ROLE_SET,
+	RoleName,
 } from "@nodecg/internal";
 import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
-
-import { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "./role.ts";
 
 export class StateEncodeError extends Data.TaggedError("StateEncodeError")<{
 	readonly fieldName: string;

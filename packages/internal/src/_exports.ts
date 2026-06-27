@@ -32,3 +32,4 @@ export {
 	type ApplyLambdaToObject,
 } from "./promisify.ts";
 export { toError } from "./to-error.ts";
+export { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "./role.ts";
