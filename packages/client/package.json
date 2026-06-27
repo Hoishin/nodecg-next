@@ -14,11 +14,11 @@
 		"@effect/platform": "catalog:",
 		"@effect/platform-browser": "^0.76.0",
 		"@nodecg/core": "workspace:*",
-		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@nodecg/internal": "workspace:*",
 		"@nodecg/private": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",

@@ -14,12 +14,12 @@
 		"@effect/platform": "catalog:",
 		"@effect/platform-node": "catalog:",
 		"@nodecg/core": "workspace:*",
-		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:",
 		"sirv": "^3.0.2",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@nodecg/internal": "workspace:*",
 		"@nodecg/private": "workspace:*",
 		"@types/node": "catalog:",
 		"typescript": "catalog:",
