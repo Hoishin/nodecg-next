@@ -1,6 +1,7 @@
+import { FetchHttpClient } from "@effect/platform";
 import { defineNamespace } from "@nodecg/core";
 import type { ServerMessage } from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { makeTestEffect } from "@nodecg/internal/test-utils";
 import {
 	Effect,
 	Exit,
@@ -37,6 +38,8 @@ const createMessageChannelStub = () =>
 		send: vi.fn<MessageChannel["send"]>(() => Effect.void),
 		receive: () => Effect.succeed(Stream.never),
 	}) satisfies MessageChannel;
+
+const testEffect = makeTestEffect(FetchHttpClient.layer);
 
 describe("get", () => {
 	test(
