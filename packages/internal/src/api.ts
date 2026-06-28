@@ -18,6 +18,7 @@ const StateGroup = HttpApiGroup.make("State")
 		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
 			.addSuccess(JsonValueSchema)
 			.addError(HttpApiError.NotFound)
+			.addError(HttpApiError.Forbidden)
 			.addError(HttpApiError.InternalServerError),
 	)
 	.add(
@@ -26,6 +27,7 @@ const StateGroup = HttpApiGroup.make("State")
 		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
 			.setPayload(JsonValueSchema)
 			.addError(HttpApiError.NotFound)
+			.addError(HttpApiError.Forbidden)
 			.addError(HttpApiError.BadRequest)
 			.addError(HttpApiError.InternalServerError),
 	);
@@ -36,6 +38,7 @@ const ComputedGroup = HttpApiGroup.make("Computed").add(
 	)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/computed/${HttpApiSchema.param("name", Schema.String)}`
 		.addSuccess(JsonValueSchema)
 		.addError(HttpApiError.NotFound)
+		.addError(HttpApiError.Forbidden)
 		.addError(HttpApiError.InternalServerError),
 );
 

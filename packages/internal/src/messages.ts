@@ -27,11 +27,21 @@ export const ClientMessage = Schema.Union(
 );
 export type ClientMessage = typeof ClientMessage.Type;
 
+export const SubscribeRejectedMessage = Schema.TaggedStruct(
+	"subscribe-rejected",
+	{
+		field: FieldIdentifierSchema,
+		reason: Schema.Literal("forbidden", "not-found"),
+	},
+);
+export type SubscribeRejectedMessage = typeof SubscribeRejectedMessage.Type;
+
 export const ServerMessage = Schema.Union(
 	Schema.TaggedStruct("publish", {
 		field: FieldIdentifierSchema,
 		value: JsonValueSchema,
 	}),
+	SubscribeRejectedMessage,
 	PingMessage,
 );
 export type ServerMessage = typeof ServerMessage.Type;

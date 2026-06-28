@@ -17,6 +17,7 @@ export {
 export {
 	ClientMessage,
 	ServerMessage,
+	SubscribeRejectedMessage,
 	type FieldIdentifier,
 	fieldIdentifierEquivalence,
 } from "./messages.ts";
