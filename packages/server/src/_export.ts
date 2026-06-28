@@ -1,5 +1,9 @@
 export { loadNodecgEffect, loadNodecg } from "./load-nodecg.ts";
 export { type AuthProvider, StateMismatchError } from "./auth/auth-provider.ts";
+export {
+	makeOidcProvider,
+	type OidcProviderConfig,
+} from "./auth/oidc-provider.ts";
 export { type AuthStash } from "./services/stash-store/stash-store.ts";
 export {
 	implementNamespace,

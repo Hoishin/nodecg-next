@@ -5,8 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "vite build",
-		"dev": "node --watch-path=./src src/server.ts",
-		"start": "NODE_ENV=production node src/server.ts",
+		"start": "node src/server.ts",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -23,6 +22,7 @@
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"@vitejs/plugin-react": "^6.0.1",
+		"oauth2-mock-server": "catalog:",
 		"typescript": "catalog:",
 		"vite": "^8.0.11"
 	}

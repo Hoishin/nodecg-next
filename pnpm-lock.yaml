@@ -24,6 +24,9 @@ catalogs:
     effect:
       specifier: ^3.21.2
       version: 3.21.2
+    oauth2-mock-server:
+      specifier: ^9.0.0
+      version: 9.0.0
     playwright:
       specifier: ^1.60.0
       version: 1.60.0
@@ -99,6 +102,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.11(@types/node@24.12.3))
+      oauth2-mock-server:
+        specifier: 'catalog:'
+        version: 9.0.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -127,9 +133,6 @@ importers:
       '@nodecg/internal':
         specifier: workspace:*
         version: link:../internal
-      '@nodecg/private':
-        specifier: workspace:*
-        version: link:../private
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.7(vite@8.0.11(@types/node@24.12.3))(vitest@4.1.7)
@@ -158,9 +161,6 @@ importers:
       '@nodecg/internal':
         specifier: workspace:*
         version: link:../internal
-      '@nodecg/private':
-        specifier: workspace:*
-        version: link:../private
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.7(vite@8.0.11(@types/node@24.12.3))(vitest@4.1.7)
@@ -225,9 +225,6 @@ importers:
         specifier: 'catalog:'
         version: 5.6.0
     devDependencies:
-      '@nodecg/private':
-        specifier: workspace:*
-        version: link:../private
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.7(vite@8.0.11(@types/node@24.12.3))(vitest@4.1.7)
@@ -244,16 +241,6 @@ importers:
         specifier: 'catalog:'
         version: 4.1.7(@types/node@24.12.3)(@vitest/browser-playwright@4.1.7)(vite@8.0.11(@types/node@24.12.3))
 
-  packages/private:
-    dependencies:
-      effect:
-        specifier: 'catalog:'
-        version: 3.21.2
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   packages/server:
     dependencies:
       '@effect/platform':
@@ -268,6 +255,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.2
+      openid-client:
+        specifier: ^6.8.4
+        version: 6.8.4
       sirv:
         specifier: ^3.0.2
         version: 3.0.2
@@ -278,12 +268,12 @@ importers:
       '@nodecg/internal':
         specifier: workspace:*
         version: link:../internal
-      '@nodecg/private':
-        specifier: workspace:*
-        version: link:../private
       '@types/node':
         specifier: 'catalog:'
         version: 24.12.3
+      oauth2-mock-server:
+        specifier: 'catalog:'
+        version: 9.0.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -975,6 +965,10 @@ packages:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
 
+  basic-auth@2.0.1:
+    resolution: {integrity: sha512-NF+epuEdnUYVlGuhaxbbq+dvJttwLnGY+YixlXlME5KpQ5W3CnXA5cVTneY3SPbPDRkcjMbifrwmFYcClgOZeg==}
+    engines: {node: '>= 0.8'}
+
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
@@ -1035,6 +1029,13 @@ packages:
   is-glob@4.0.3:
     resolution: {integrity: sha512-xelSayHH36ZgE7ZWhli7pW34hNbNl8Ojv5KVmkJD4hBdD3th8Tfk9vYasLM+mXWOZhFkgZfxhLSnrwRr4elSSg==}
     engines: {node: '>=0.10.0'}
+
+  is-plain-obj@4.1.0:
+    resolution: {integrity: sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg==}
+    engines: {node: '>=12'}
+
+  jose@6.2.3:
+    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
 
   kubernetes-types@1.30.0:
     resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
@@ -1147,8 +1148,19 @@ packages:
     resolution: {integrity: sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==}
     hasBin: true
 
+  oauth2-mock-server@9.0.0:
+    resolution: {integrity: sha512-fLOtud91LgWzKkx/vQY9DF6C0YPFdQFfPrpUKK4Czl44+BLA8i9bEBQElsFuOItmYKg15cEem1vUiWGBMSXo/g==}
+    engines: {node: ^22.12 || ^24 || ^26}
+    hasBin: true
+
+  oauth4webapi@3.8.6:
+    resolution: {integrity: sha512-iwemM91xz8nryHti2yTmg5fhyEMVOkOXwHNqbvcATjyajb5oQxCQzrNOA6uElRHuMhQQTKUyFKV9y/CNyg25BQ==}
+
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
+
+  openid-client@6.8.4:
+    resolution: {integrity: sha512-QSw0BA08piujetEwfZsHoTrDpMEha7GDZDicQqVwX4u0ChCjefvjDB++TZ8BTg76UpwhzIQgdvvfgfl3HpCSAw==}
 
   oxfmt@0.47.0:
     resolution: {integrity: sha512-OFbkbzxKCpooQEnRmpTDnuwTX8KHXzZTQ4Df/hz85fpS67Pl+lxPEFvUtin56HIIS0B1k4X8oIzTXRZPufA2CA==}
@@ -1213,6 +1225,9 @@ packages:
     resolution: {integrity: sha512-phmyKBpuBdRYDf4hgyynGAYn/rDDe+iZXKVJ7WX5b1zQzpLkP5oJRPGsfJuHdzPMlyyEO/4sPW6yfSx2gf7lVg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
+
+  safe-buffer@5.1.2:
+    resolution: {integrity: sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g==}
 
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
@@ -1866,6 +1881,10 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
+  basic-auth@2.0.1:
+    dependencies:
+      safe-buffer: 5.1.2
+
   chai@6.2.2: {}
 
   convert-source-map@2.0.0: {}
@@ -1908,6 +1927,10 @@ snapshots:
   is-glob@4.0.3:
     dependencies:
       is-extglob: 2.1.1
+
+  is-plain-obj@4.1.0: {}
+
+  jose@6.2.3: {}
 
   kubernetes-types@1.30.0: {}
 
@@ -1995,7 +2018,20 @@ snapshots:
       detect-libc: 2.1.2
     optional: true
 
+  oauth2-mock-server@9.0.0:
+    dependencies:
+      basic-auth: 2.0.1
+      is-plain-obj: 4.1.0
+      jose: 6.2.3
+
+  oauth4webapi@3.8.6: {}
+
   obug@2.1.1: {}
+
+  openid-client@6.8.4:
+    dependencies:
+      jose: 6.2.3
+      oauth4webapi: 3.8.6
 
   oxfmt@0.47.0:
     dependencies:
@@ -2104,6 +2140,8 @@ snapshots:
       '@rolldown/binding-wasm32-wasi': 1.0.0-rc.18
       '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.18
       '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.18
+
+  safe-buffer@5.1.2: {}
 
   scheduler@0.27.0: {}
 

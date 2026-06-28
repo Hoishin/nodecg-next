@@ -1,5 +1,6 @@
 import { StrictMode, Suspense } from "react";
 
+import { Login } from "./login.tsx";
 import { counter, mount, useField } from "./store.tsx";
 
 function Dashboard() {
@@ -31,6 +32,7 @@ function Dashboard() {
 
 mount(
 	<StrictMode>
+		<Login />
 		<Suspense fallback="Loading...">
 			<Dashboard />
 		</Suspense>

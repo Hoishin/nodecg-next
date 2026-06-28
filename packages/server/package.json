@@ -15,12 +15,14 @@
 		"@effect/platform-node": "catalog:",
 		"@nodecg/core": "workspace:*",
 		"effect": "catalog:",
+		"openid-client": "^6.8.4",
 		"sirv": "^3.0.2",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
 		"@nodecg/internal": "workspace:*",
 		"@types/node": "catalog:",
+		"oauth2-mock-server": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"

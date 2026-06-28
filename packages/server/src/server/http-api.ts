@@ -77,13 +77,21 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								{ status: 404 },
 							);
 						}
-						const redirect = yield* provider.value.authorize({
-							redirectUri: callbackUri(origin, name),
-							searchParams: new URL(request.url, "http://example.com")
-								.searchParams,
-						});
-						const stashId = yield* stashes.create(redirect.stash);
-						return yield* HttpServerResponse.redirect(redirect.url, {
+						const redirect = yield* provider.value
+							.authorize({
+								redirectUri: callbackUri(origin, name),
+								searchParams: new URL(request.url, "http://example.com")
+									.searchParams,
+							})
+							.pipe(Effect.either);
+						if (Either.isLeft(redirect)) {
+							return HttpServerResponse.text(
+								"Authentication provider unavailable",
+								{ status: 502 },
+							);
+						}
+						const stashId = yield* stashes.create(redirect.right.stash);
+						return yield* HttpServerResponse.redirect(redirect.right.url, {
 							status: 302,
 						}).pipe(addCookie(stashCookieName, stashId, "10 minutes")); // TODO: avoid hard-coded duration
 					}),
@@ -128,13 +136,27 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 										status: 400,
 									}).pipe(clearStash),
 								),
+								Match.tag("ProviderDiscoveryError", () =>
+									HttpServerResponse.text(
+										"Authentication provider unavailable",
+										{ status: 502 },
+									).pipe(clearStash),
+								),
+								Match.tag("TokenExchangeError", () =>
+									HttpServerResponse.text("Authentication failed", {
+										status: 400,
+									}).pipe(clearStash),
+								),
+								Match.tag("IdentityClaimsError", () =>
+									HttpServerResponse.text("Authentication failed", {
+										status: 400,
+									}).pipe(clearStash),
+								),
 								Match.exhaustive,
 							);
 						}
 						const sessionId = yield* sessions.create(identity.right);
-						return yield* HttpServerResponse.redirect("/", {
-							status: 302,
-						}).pipe(
+						return yield* HttpServerResponse.text("Success").pipe(
 							addCookie(sessionCookieName, sessionId, ttl),
 							Effect.andThen(clearStash),
 						);
