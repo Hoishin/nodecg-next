@@ -12,6 +12,18 @@ export const RESERVED_ROLE = {
 	public: RoleName("public"),
 } as const;
 
-export const RESERVED_ROLE_SET = new Set<RoleName>(
-	Object.values(RESERVED_ROLE),
+export type ReservedRoleName = keyof typeof RESERVED_ROLE;
+
+export const RESERVED_ROLE_SET = new Set(Object.values(RESERVED_ROLE));
+
+export const USABLE_RESERVED_ROLE = {
+	server: RESERVED_ROLE.server,
+	client: RESERVED_ROLE.client,
+	public: RESERVED_ROLE.public,
+} as const;
+
+export type UsableReservedRoleName = keyof typeof USABLE_RESERVED_ROLE;
+
+export const USABLE_RESERVED_ROLE_SET = new Set(
+	Object.values(USABLE_RESERVED_ROLE),
 );

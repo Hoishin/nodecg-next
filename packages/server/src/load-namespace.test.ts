@@ -124,7 +124,12 @@ describe("loadNamespaceEffect seeding", () => {
 							}),
 						),
 					decode: () => Effect.succeed(0),
-					permission: { read: new Set(), write: new Set() },
+					permission: {
+						read: new Set(),
+						write: new Set(),
+						canRead: () => false,
+						canWrite: () => false,
+					},
 				};
 				const manifest: NamespaceManifest<{ broken: number }, {}, {}> = {
 					namespace: "ns",

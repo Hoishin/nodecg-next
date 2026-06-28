@@ -1,4 +1,9 @@
-import { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "@nodecg/internal";
+import {
+	RESERVED_ROLE,
+	RESERVED_ROLE_SET,
+	RoleName,
+	USABLE_RESERVED_ROLE_SET,
+} from "@nodecg/internal";
 import {
 	type AddedSchemas,
 	mapSchemaValues,
@@ -7,6 +12,17 @@ import {
 } from "@nodecg/internal/utils";
 import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
+
+import {
+	buildPermission,
+	type PermissionArg,
+	type PermissionRuleArg,
+	type ReadOnlyPermissionArg,
+	type ResolvedPermission,
+	type RoleArg,
+	type RoleCapability,
+	type RoleManifest,
+} from "./role.ts";
 
 export class StateEncodeError extends Data.TaggedError("StateEncodeError")<{
 	readonly fieldName: string;
@@ -23,89 +39,6 @@ export class StateDecodeError extends Data.TaggedError("StateDecodeError")<{
 }> {
 	override readonly message = `Failed to decode state "${this.fieldName}": ${this.cause.message}`;
 }
-
-export type RoleCapability =
-	| "state-read"
-	| "state-write"
-	| "computed-read"
-	| "topic-subscribe"
-	| "topic-publish";
-
-export interface RoleArg {
-	readonly description?: string;
-	readonly permission: ReadonlyArray<RoleCapability>;
-}
-
-export interface PermissionRuleArg<InputRole extends string> {
-	readonly allow?: readonly (InputRole | keyof typeof RESERVED_ROLE)[];
-	readonly deny?: readonly (InputRole | keyof typeof RESERVED_ROLE)[];
-}
-export interface PermissionArg<InputRole extends string> {
-	readonly read?: PermissionRuleArg<InputRole>;
-	readonly write?: PermissionRuleArg<InputRole>;
-}
-export interface ReadOnlyPermissionArg<InputRole extends string> {
-	readonly read?: PermissionRuleArg<InputRole>;
-}
-
-export interface RoleManifest {
-	readonly name: RoleName;
-	readonly description?: string;
-	readonly capabilities: ReadonlySet<RoleCapability>;
-}
-export interface ResolvedPermission {
-	readonly read: ReadonlySet<RoleName>;
-	readonly write: ReadonlySet<RoleName>;
-}
-
-const expandClientRoles = (
-	roles: ReadonlyArray<RoleName>,
-	namedRoles: ReadonlySet<RoleName>,
-): Set<RoleName> => {
-	const result = new Set<RoleName>();
-	for (const role of roles) {
-		if (role === RESERVED_ROLE.client) {
-			for (const role of namedRoles) {
-				result.add(role);
-			}
-		} else {
-			result.add(role);
-		}
-	}
-	return result;
-};
-
-const resolveFieldAllowedRoles = (
-	base: ReadonlySet<RoleName>,
-	rule: PermissionRuleArg<string> | undefined,
-	namedRoles: ReadonlySet<RoleName>,
-): ReadonlySet<RoleName> => {
-	let result = new Set(base);
-	// If allow exists, override base roles
-	if (rule?.allow) {
-		result = expandClientRoles(rule.allow.map(RoleName), namedRoles);
-	}
-	// Remove explicitly denied roles from the list
-	if (rule?.deny) {
-		result = result.difference(
-			expandClientRoles(rule.deny.map(RoleName), namedRoles),
-		);
-	}
-	return result;
-};
-
-const findRolesWithCapability = (
-	capability: RoleCapability,
-	roles: ReadonlyMap<RoleName, RoleManifest>,
-): ReadonlySet<RoleName> => {
-	const holders = new Set<RoleName>();
-	for (const [role, roleManifest] of roles) {
-		if (roleManifest.capabilities.has(capability)) {
-			holders.add(role);
-		}
-	}
-	return holders;
-};
 
 export interface FieldManifest<D> {
 	readonly name: string;
@@ -185,6 +118,85 @@ function implementCodec<D, E extends JsonValue>(
 	};
 }
 
+const expandClientRoles = (
+	roles: ReadonlyArray<RoleName>,
+	namedRoles: ReadonlySet<RoleName>,
+): Set<RoleName> => {
+	const result = new Set<RoleName>();
+	for (const role of roles) {
+		if (role === RESERVED_ROLE.client) {
+			for (const role of namedRoles) {
+				result.add(role);
+			}
+		} else {
+			result.add(role);
+		}
+	}
+	return result;
+};
+
+const resolveFieldAllowedRoles = (
+	base: ReadonlySet<RoleName>,
+	rule: PermissionRuleArg<string> | undefined,
+	namedRoles: ReadonlySet<RoleName>,
+): ReadonlySet<RoleName> => {
+	let result = new Set(base);
+	if (rule?.allow) {
+		result = expandClientRoles(rule.allow.map(RoleName), namedRoles);
+	}
+	if (rule?.deny) {
+		result = result.difference(
+			expandClientRoles(rule.deny.map(RoleName), namedRoles),
+		);
+	}
+	return result;
+};
+
+type FieldPermissionOptions = {
+	readonly permission?: {
+		readonly read?: PermissionRuleArg<string>;
+		readonly write?: PermissionRuleArg<string>;
+	};
+};
+
+const validatePermissionTokens = (
+	group: "state" | "computed" | "topic",
+	fields: Readonly<Record<string, FieldPermissionOptions>> | undefined,
+	namedRoles: ReadonlySet<RoleName>,
+): void => {
+	for (const [name, field] of Object.entries(fields ?? {})) {
+		for (const operation of ["read", "write"] as const) {
+			const rule = field.permission?.[operation];
+			for (const kind of ["allow", "deny"] as const) {
+				for (const token of rule?.[kind] ?? []) {
+					const roleName = RoleName(token);
+					if (
+						!namedRoles.has(roleName) &&
+						!USABLE_RESERVED_ROLE_SET.has(roleName)
+					) {
+						throw new Error(
+							`Unknown role "${token}" in ${group} "${name}" ${operation}.${kind}`,
+						);
+					}
+				}
+			}
+		}
+	}
+};
+
+const findRolesWithCapability = (
+	capability: RoleCapability,
+	roles: ReadonlyMap<RoleName, RoleManifest>,
+): ReadonlySet<RoleName> => {
+	const holders = new Set<RoleName>();
+	for (const [role, roleManifest] of roles) {
+		if (roleManifest.capabilities.has(capability)) {
+			holders.add(role);
+		}
+	}
+	return holders;
+};
+
 export function defineNamespace<
 	const Roles extends Record<string, RoleArg> = {},
 	State extends Record<string, Schema.Schema<any, any, never>> = {},
@@ -237,6 +249,10 @@ export function defineNamespace<
 	}
 	const namedRoles = new Set(roles.keys());
 
+	validatePermissionTokens("state", defineOption.state, namedRoles);
+	validatePermissionTokens("computed", defineOption.computed, namedRoles);
+	validatePermissionTokens("topic", defineOption.topic, namedRoles);
+
 	const resolve = (
 		capability: RoleCapability,
 		rule: PermissionRuleArg<keyof Roles & string> | undefined,
@@ -252,10 +268,11 @@ export function defineNamespace<
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: {
-			read: resolve("state-read", option.permission?.read),
-			write: resolve("state-write", option.permission?.write),
-		},
+		permission: buildPermission(
+			resolve("state-read", option.permission?.read),
+			resolve("state-write", option.permission?.write),
+			true,
+		),
 	}))(defineOption.state);
 
 	const computed = mapValues<
@@ -263,10 +280,11 @@ export function defineNamespace<
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: {
-			read: resolve("computed-read", option.permission?.read),
-			write: new Set(),
-		},
+		permission: buildPermission(
+			resolve("computed-read", option.permission?.read),
+			new Set(),
+			false,
+		),
 	}))(defineOption.computed);
 
 	const topic = mapValues<
@@ -274,10 +292,11 @@ export function defineNamespace<
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: {
-			read: resolve("topic-subscribe", option.permission?.read),
-			write: resolve("topic-publish", option.permission?.write),
-		},
+		permission: buildPermission(
+			resolve("topic-subscribe", option.permission?.read),
+			resolve("topic-publish", option.permission?.write),
+			true,
+		),
 	}))(defineOption.topic);
 
 	return {
@@ -377,6 +396,10 @@ export function extendNamespace<
 		}
 	}
 
+	validatePermissionTokens("state", extendOption.state, namedRoles);
+	validatePermissionTokens("computed", extendOption.computed, namedRoles);
+	validatePermissionTokens("topic", extendOption.topic, namedRoles);
+
 	const resolve = (
 		capability: RoleCapability,
 		rule: PermissionRuleArg<string> | undefined,
@@ -407,19 +430,22 @@ export function extendNamespace<
 		(field, name) => {
 			const override = extendOption.state?.[name];
 			return {
-				...field,
-				permission: {
-					read: remap(
+				name: field.name,
+				decode: field.decode,
+				encode: field.encode,
+				permission: buildPermission(
+					remap(
 						"state-read",
 						field.permission.read,
 						override?.permission?.read,
 					),
-					write: remap(
+					remap(
 						"state-write",
 						field.permission.write,
 						override?.permission?.write,
 					),
-				},
+					true,
+				),
 			};
 		},
 	)(manifest.state);
@@ -429,10 +455,11 @@ export function extendNamespace<
 		FieldManifestLambda
 	>()(extendOption.state, (option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: {
-			read: resolve("state-read", option.permission?.read),
-			write: resolve("state-write", option.permission?.write),
-		},
+		permission: buildPermission(
+			resolve("state-read", option.permission?.read),
+			resolve("state-write", option.permission?.write),
+			true,
+		),
 	}));
 	const state = mergeRecords<
 		NamespaceManifest<
@@ -446,15 +473,18 @@ export function extendNamespace<
 		(field, name) => {
 			const override = extendOption.computed?.[name];
 			return {
-				...field,
-				permission: {
-					read: remap(
+				name: field.name,
+				decode: field.decode,
+				encode: field.encode,
+				permission: buildPermission(
+					remap(
 						"computed-read",
 						field.permission.read,
 						override?.permission?.read,
 					),
-					write: new Set(),
-				},
+					new Set(),
+					false,
+				),
 			};
 		},
 	)(manifest.computed);
@@ -463,10 +493,11 @@ export function extendNamespace<
 		FieldManifestLambda
 	>()(extendOption.computed, (option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: {
-			read: resolve("computed-read", option.permission?.read),
-			write: new Set(),
-		},
+		permission: buildPermission(
+			resolve("computed-read", option.permission?.read),
+			new Set(),
+			false,
+		),
 	}));
 	const computed = mergeRecords<
 		NamespaceManifest<
@@ -480,19 +511,22 @@ export function extendNamespace<
 		(field, name) => {
 			const override = extendOption.topic?.[name];
 			return {
-				...field,
-				permission: {
-					read: remap(
+				name: field.name,
+				encode: field.encode,
+				decode: field.decode,
+				permission: buildPermission(
+					remap(
 						"topic-subscribe",
 						field.permission.read,
 						override?.permission?.read,
 					),
-					write: remap(
+					remap(
 						"topic-publish",
 						field.permission.write,
 						override?.permission?.write,
 					),
-				},
+					true,
+				),
 			};
 		},
 	)(manifest.topic);
@@ -501,10 +535,11 @@ export function extendNamespace<
 		FieldManifestLambda
 	>()(extendOption.topic, (option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: {
-			read: resolve("topic-subscribe", option.permission?.read),
-			write: resolve("topic-publish", option.permission?.write),
-		},
+		permission: buildPermission(
+			resolve("topic-subscribe", option.permission?.read),
+			resolve("topic-publish", option.permission?.write),
+			true,
+		),
 	}));
 	const topic = mergeRecords<
 		NamespaceManifest<

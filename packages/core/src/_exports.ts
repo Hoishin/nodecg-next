@@ -3,8 +3,7 @@ export {
 	extendNamespace,
 	StateDecodeError,
 	StateEncodeError,
-	type RoleCapability,
 	type FieldManifest,
 	type NamespaceManifest,
-	type RoleArg,
 } from "./define-namespace.ts";
+export { type RoleArg, type RoleCapability } from "./role.ts";

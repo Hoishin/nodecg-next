@@ -24,10 +24,14 @@ export const MachineIdentitySchema = Schema.TaggedStruct("machine", {
 });
 export type MachineIdentity = typeof MachineIdentitySchema.Type;
 
+export const ServerIdentitySchema = Schema.TaggedStruct("server", {});
+export type ServerIdentity = typeof ServerIdentitySchema.Type;
+
 export const IdentitySchema = Schema.Union(
 	PublicIdentitySchema,
 	HumanIdentitySchema,
 	MachineIdentitySchema,
+	ServerIdentitySchema,
 );
 export type Identity = typeof IdentitySchema.Type;
 

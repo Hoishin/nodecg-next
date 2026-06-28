@@ -231,38 +231,47 @@ describe("defineNamespace", () => {
 				});
 			});
 
-			test("rejects an unknown token in allow", () => {
-				defineNamespace("match", {
-					roles: { judge: { permission: ["state-read"] } },
-					state: {
-						score: {
-							schema: Schema.Number,
-							permission: {
-								read: {
-									// @ts-expect-error "viewer" is neither a declared nor a reserved role
-									allow: ["viewer"],
-								},
+			test("rejects an unknown token in allow or deny", () => {
+				expect(() =>
+					defineNamespace("match", {
+						roles: { judge: { permission: ["state-read"] } },
+						state: {
+							score: {
+								schema: Schema.Number,
+								// @ts-expect-error "viewer" is neither a declared nor a reserved role
+								permission: { read: { allow: ["viewer"] } },
 							},
 						},
-					},
-				});
+					}),
+				).toThrow(/Unknown role "viewer" in state "score" read\.allow/);
+
+				expect(() =>
+					defineNamespace("match", {
+						roles: { judge: { permission: ["state-read"] } },
+						state: {
+							score: {
+								schema: Schema.Number,
+								// @ts-expect-error "vewer" is a typo, not a known role
+								permission: { read: { deny: ["vewer"] } },
+							},
+						},
+					}),
+				).toThrow(/Unknown role "vewer" in state "score" read\.deny/);
 			});
 
-			test("rejects an unknown token in deny", () => {
-				defineNamespace("match", {
-					roles: { judge: { permission: ["state-read"] } },
-					state: {
-						score: {
-							schema: Schema.Number,
-							permission: {
-								read: {
-									// @ts-expect-error "vewer" is a typo, not a known role
-									deny: ["vewer"],
-								},
+			test("rejects a tier role (admin/superadmin) as a field token", () => {
+				expect(() =>
+					defineNamespace("match", {
+						roles: { judge: { permission: ["state-read"] } },
+						state: {
+							score: {
+								schema: Schema.Number,
+								// @ts-expect-error admin is a tier role, not a usable field token
+								permission: { read: { allow: ["admin"] } },
 							},
 						},
-					},
-				});
+					}),
+				).toThrow(/Unknown role "admin" in state "score" read\.allow/);
 			});
 		});
 	});
@@ -388,6 +397,35 @@ describe("extendNamespace", () => {
 					roles: { public: { permission: ["state-read"] } },
 				}),
 			).toThrow(/reserved/);
+		});
+
+		test("throws on an unknown token in an added field", () => {
+			expect(() =>
+				extendNamespace(base, {
+					state: {
+						pinned: {
+							schema: Schema.String,
+							permission: { write: { allow: ["jdge"] } },
+						},
+					},
+				}),
+			).toThrow(/Unknown role "jdge" in state "pinned" write\.allow/);
+		});
+
+		test("accepts a role added in the same extend as a field token", () => {
+			const extended = extendNamespace(base, {
+				roles: { auditor: { permission: ["state-read"] } },
+				state: {
+					pinned: {
+						schema: Schema.String,
+						permission: { read: { allow: ["auditor"] } },
+					},
+				},
+			});
+
+			expect(extended.state.pinned.permission.read).toEqual(
+				new Set(["auditor"]),
+			);
 		});
 	});
 

@@ -11,6 +11,8 @@ export {
 	type MachineIdentity,
 	MachineIdentitySchema,
 	PublicIdentitySchema,
+	type ServerIdentity,
+	ServerIdentitySchema,
 } from "./auth.ts";
 export {
 	ClientMessage,
@@ -18,4 +20,11 @@ export {
 	type FieldIdentifier,
 	fieldIdentifierEquivalence,
 } from "./messages.ts";
-export { RESERVED_ROLE, RESERVED_ROLE_SET, RoleName } from "./role.ts";
+export {
+	RESERVED_ROLE,
+	RESERVED_ROLE_SET,
+	RoleName,
+	USABLE_RESERVED_ROLE_SET,
+	type UsableReservedRoleName,
+	type ReservedRoleName,
+} from "./role.ts";
