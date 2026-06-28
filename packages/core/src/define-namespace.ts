@@ -47,15 +47,15 @@ export interface FieldManifest<D> {
 	readonly permission: ResolvedPermission;
 }
 
+const manifestRolesKey = Symbol("manifestRolesKey");
+
 export interface NamespaceManifest<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 > {
 	readonly namespace: string;
-
-	// TODO: make it private, provide helper for manual permission check
-	readonly roles: Map<RoleName, RoleManifest>;
+	readonly [manifestRolesKey]: Map<RoleName, RoleManifest>;
 
 	readonly state: {
 		[K in keyof State & string]: FieldManifest<State[K]>;
@@ -301,10 +301,10 @@ export function defineNamespace<
 
 	return {
 		namespace,
-		roles,
 		state,
 		computed,
 		topic,
+		[manifestRolesKey]: roles,
 	};
 }
 
@@ -367,7 +367,7 @@ export function extendNamespace<
 			: extendOptionOrFn;
 
 	// merge roles
-	const roles = new Map(manifest.roles);
+	const roles = new Map(manifest[manifestRolesKey]);
 	if (extendOption.roles) {
 		for (const [key, arg] of Object.entries(extendOption.roles)) {
 			const roleName = RoleName(key);
@@ -549,7 +549,13 @@ export function extendNamespace<
 		>["topic"]
 	>(topicRemap, topicAdded);
 
-	return { namespace: manifest.namespace, roles, state, computed, topic };
+	return {
+		namespace: manifest.namespace,
+		[manifestRolesKey]: roles,
+		state,
+		computed,
+		topic,
+	};
 }
 
 // function filterValuesBySchemaExistance<

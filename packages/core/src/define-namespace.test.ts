@@ -136,7 +136,6 @@ describe("defineNamespace", () => {
 					count: { schema: Schema.Number },
 				},
 			});
-			expectTypeOf(manifest.roles).not.toBeNever();
 			expectTypeOf(manifest.state).not.toBeNever();
 			expectTypeOf(manifest.computed).toEqualTypeOf({});
 			expectTypeOf(manifest.topic).toEqualTypeOf({});
@@ -149,7 +148,6 @@ describe("defineNamespace", () => {
 					double: { schema: Schema.Number },
 				},
 			});
-			expectTypeOf(manifest2.roles).not.toBeNever();
 			expectTypeOf(manifest2.state).not.toBeNever();
 			expectTypeOf(manifest2.computed).not.toBeNever();
 			expectTypeOf(manifest2.topic).toEqualTypeOf({});
@@ -159,7 +157,6 @@ describe("defineNamespace", () => {
 					count: { schema: Schema.Number },
 				},
 			});
-			expectTypeOf(manifest3.roles).not.toBeNever();
 			expectTypeOf(manifest3.state).toEqualTypeOf({});
 			expectTypeOf(manifest3.computed).toEqualTypeOf({});
 			expectTypeOf(manifest3.topic).not.toBeNever();

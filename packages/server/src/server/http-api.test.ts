@@ -1,5 +1,5 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
-import { StateDecodeError } from "@nodecg/core";
+import { type ResolvedPermission, StateDecodeError } from "@nodecg/core";
 import { Effect, HashMap, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
@@ -20,6 +20,13 @@ import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
 type Internal = StateField<unknown>[typeof stateFieldInternal];
+
+const openPermission: ResolvedPermission = {
+	read: new Set(),
+	write: new Set(),
+	canRead: () => true,
+	canWrite: () => true,
+};
 
 function stubField(
 	internal: Pick<Internal, "getEncoded" | "setEncoded">,
@@ -42,6 +49,7 @@ function stubField(
 			getEncoded: internal.getEncoded,
 			setEncoded: internal.setEncoded,
 			subscribeEncoded,
+			permission: openPermission,
 		},
 	};
 }
@@ -58,6 +66,7 @@ function stubComputed(
 			subscribe: () => Effect.succeed(Stream.empty),
 			getEncoded,
 			subscribeEncoded: () => Effect.succeed(Stream.empty),
+			permission: openPermission,
 		},
 	};
 }

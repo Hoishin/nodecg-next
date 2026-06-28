@@ -98,7 +98,7 @@ const migrationDie = () =>
 const implementState = Effect.fn("implementState")(function* <Decoded>(
 	namespace: string,
 	name: string,
-	codec: FieldManifest<Decoded>,
+	manifest: FieldManifest<Decoded>,
 ) {
 	const storage = yield* StateStorageService;
 
@@ -107,7 +107,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			onNone: () => new StateNotFound({ namespace, name }),
 			onSome: Effect.succeed,
 		});
-		return yield* codec.decode(current).pipe(Effect.orDieWith(migrationDie));
+		return yield* manifest.decode(current).pipe(Effect.orDieWith(migrationDie));
 	});
 
 	const getEncoded = Effect.fn("getEncoded")(function* () {
@@ -115,17 +115,17 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			onNone: () => new StateNotFound({ namespace, name }),
 			onSome: Effect.succeed,
 		});
-		yield* codec.decode(encoded).pipe(Effect.orDieWith(migrationDie));
+		yield* manifest.decode(encoded).pipe(Effect.orDieWith(migrationDie));
 		return encoded;
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
-		const encoded = yield* codec.encode(value);
+		const encoded = yield* manifest.encode(value);
 		yield* storage.update(namespace, name, encoded);
 	});
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
-		yield* codec.decode(value); // Only for validation
+		yield* manifest.decode(value); // Only for validation
 		yield* storage.update(namespace, name, value);
 	});
 
@@ -138,7 +138,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			catch: (error) =>
 				new StateUpdateFnError({ namespace, name, cause: toError(error) }),
 		});
-		const encoded = yield* codec.encode(next);
+		const encoded = yield* manifest.encode(next);
 		yield* storage.update(namespace, name, encoded);
 	});
 
@@ -158,7 +158,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		const stream = yield* subscribeEncoded();
 		return stream.pipe(
 			Stream.flatMap((value) =>
-				codec.decode(value).pipe(Effect.orDieWith(migrationDie)),
+				manifest.decode(value).pipe(Effect.orDieWith(migrationDie)),
 			),
 		);
 	});
@@ -167,17 +167,18 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		get,
 		set,
 		update,
-		validate: codec.encode,
+		validate: manifest.encode,
 		subscribe,
 		[stateFieldInternal]: {
 			get,
 			set,
 			update,
-			validate: codec.encode,
+			validate: manifest.encode,
 			subscribe,
 			getEncoded,
 			setEncoded,
 			subscribeEncoded,
+			permission: manifest.permission,
 		},
 	};
 });
@@ -203,7 +204,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 >(
 	namespace: string,
 	name: string,
-	codec: FieldManifest<Decoded>,
+	manifest: FieldManifest<Decoded>,
 	compute: (sources: Sources) => Decoded,
 	readSnapshot: Effect.Effect<Sources, StateNotFound>,
 ) {
@@ -220,7 +221,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 
 	const getEncoded = Effect.fn("getEncoded")(function* () {
 		const value = yield* get();
-		return yield* codec.encode(value);
+		return yield* manifest.encode(value);
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
@@ -254,7 +255,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 		const stream = yield* subscribeEncoded();
 		return stream.pipe(
 			Stream.mapEffect((value) =>
-				codec.decode(value).pipe(Effect.orDieWith(migrationDie)),
+				manifest.decode(value).pipe(Effect.orDieWith(migrationDie)),
 			),
 		);
 	});
@@ -267,6 +268,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 			subscribe,
 			getEncoded,
 			subscribeEncoded,
+			permission: manifest.permission,
 		},
 	};
 });

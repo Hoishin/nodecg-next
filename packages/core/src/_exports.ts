@@ -6,4 +6,8 @@ export {
 	type FieldManifest,
 	type NamespaceManifest,
 } from "./define-namespace.ts";
-export { type RoleArg, type RoleCapability } from "./role.ts";
+export {
+	type RoleArg,
+	type RoleCapability,
+	type ResolvedPermission,
+} from "./role.ts";

@@ -131,12 +131,12 @@ describe("loadNamespaceEffect seeding", () => {
 						canWrite: () => false,
 					},
 				};
+				const base = defineNamespace("ns", {
+					state: { broken: { schema: Schema.Number } },
+				});
 				const manifest: NamespaceManifest<{ broken: number }, {}, {}> = {
-					namespace: "ns",
-					roles: new Map(),
+					...base,
 					state: { broken: field },
-					computed: {},
-					topic: {},
 				};
 
 				const error = yield* loadNamespaceEffect(manifest, {
