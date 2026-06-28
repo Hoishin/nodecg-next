@@ -214,6 +214,57 @@ describe("defineNamespace", () => {
 				});
 			});
 		});
+
+		describe("permission tokens restricted to declared + reserved roles", () => {
+			test("accepts a declared role and a reserved role", () => {
+				defineNamespace("match", {
+					roles: { judge: { permission: ["state-read"] } },
+					state: {
+						score: {
+							schema: Schema.Number,
+							permission: {
+								read: { allow: ["judge", "client"] },
+								write: { deny: ["public", "server"] },
+							},
+						},
+					},
+				});
+			});
+
+			test("rejects an unknown token in allow", () => {
+				defineNamespace("match", {
+					roles: { judge: { permission: ["state-read"] } },
+					state: {
+						score: {
+							schema: Schema.Number,
+							permission: {
+								read: {
+									// @ts-expect-error "viewer" is neither a declared nor a reserved role
+									allow: ["viewer"],
+								},
+							},
+						},
+					},
+				});
+			});
+
+			test("rejects an unknown token in deny", () => {
+				defineNamespace("match", {
+					roles: { judge: { permission: ["state-read"] } },
+					state: {
+						score: {
+							schema: Schema.Number,
+							permission: {
+								read: {
+									// @ts-expect-error "vewer" is a typo, not a known role
+									deny: ["vewer"],
+								},
+							},
+						},
+					},
+				});
+			});
+		});
 	});
 });
 

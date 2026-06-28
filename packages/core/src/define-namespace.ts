@@ -36,7 +36,6 @@ export interface RoleArg {
 	readonly permission: ReadonlyArray<RoleCapability>;
 }
 
-// TODO: add tests for the restriction, both runtime and types
 export interface PermissionRuleArg<InputRole extends string> {
 	readonly allow?: readonly (InputRole | keyof typeof RESERVED_ROLE)[];
 	readonly deny?: readonly (InputRole | keyof typeof RESERVED_ROLE)[];
