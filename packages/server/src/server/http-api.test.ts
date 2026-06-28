@@ -1,5 +1,6 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { type ResolvedPermission, StateDecodeError } from "@nodecg/core";
+import { CurrentIdentity } from "@nodecg/internal";
 import { Effect, HashMap, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
@@ -9,6 +10,7 @@ import {
 } from "../auth/auth-provider.ts";
 import {
 	type LoadedNamespace,
+	PermissionDenied,
 	type StateField,
 	stateFieldInternal,
 	stateMetadataKey,
@@ -46,6 +48,7 @@ function stubField(
 			update: unused,
 			validate: unused,
 			subscribe,
+			getEncodedNoAuth: unused,
 			getEncoded: internal.getEncoded,
 			setEncoded: internal.setEncoded,
 			subscribeEncoded,
@@ -64,6 +67,7 @@ function stubComputed(
 		[stateFieldInternal]: {
 			get: unused,
 			subscribe: () => Effect.succeed(Stream.empty),
+			getEncodedNoAuth: unused,
 			getEncoded,
 			subscribeEncoded: () => Effect.succeed(Stream.empty),
 			permission: openPermission,
@@ -105,6 +109,13 @@ function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
 
 const getUrl = "http://x/api/namespaces/root/state/count";
 const computedUrl = "http://x/api/namespaces/root/computed/count";
+
+const putRequest = (value: unknown) =>
+	new Request(getUrl, {
+		method: "PUT",
+		body: JSON.stringify(value),
+		headers: { "content-type": "application/json" },
+	});
 
 describe("ping", () => {
 	test("returns pong", async () => {
@@ -204,14 +215,6 @@ describe("get", () => {
 });
 
 describe("update", () => {
-	function putRequest(value: unknown) {
-		return new Request(getUrl, {
-			method: "PUT",
-			body: JSON.stringify(value),
-			headers: { "content-type": "application/json" },
-		});
-	}
-
 	test("stores the decoded payload and returns 204", async () => {
 		const setEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
@@ -264,5 +267,68 @@ describe("update", () => {
 		]);
 		const res = await handler(putRequest(7));
 		expect(res.status).toBe(404);
+	});
+});
+
+describe("permission enforcement", () => {
+	const readDenied = () =>
+		Effect.fail(
+			new PermissionDenied({
+				namespace: "root",
+				name: "count",
+				operation: "read",
+			}),
+		);
+	const writeDenied = () =>
+		Effect.fail(
+			new PermissionDenied({
+				namespace: "root",
+				name: "count",
+				operation: "write",
+			}),
+		);
+
+	test("403 when state getEncoded denies the caller", async () => {
+		const handler = webHandler([
+			loadedNamespace("root", {
+				count: stubField({
+					getEncoded: readDenied,
+					setEncoded: () => Effect.void,
+				}),
+			}),
+		]);
+		const res = await handler(new Request(getUrl));
+		expect(res.status).toBe(403);
+	});
+
+	test("403 when state setEncoded denies the caller", async () => {
+		const setEncoded = vi.fn(writeDenied);
+		const handler = webHandler([
+			loadedNamespace("root", {
+				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
+			}),
+		]);
+		const res = await handler(putRequest(7));
+		expect(res.status).toBe(403);
+	});
+
+	test("403 when computed getEncoded denies the caller", async () => {
+		const handler = webHandler([
+			loadedNamespace("root", {}, { count: stubComputed(readDenied) }),
+		]);
+		const res = await handler(new Request(computedUrl));
+		expect(res.status).toBe(403);
+	});
+
+	test("runs the encoded op with the resolved identity in context", async () => {
+		const getEncoded = () =>
+			CurrentIdentity.pipe(Effect.map((identity) => identity._tag));
+		const handler = webHandler([
+			loadedNamespace("root", {
+				count: stubField({ getEncoded, setEncoded: () => Effect.void }),
+			}),
+		]);
+		const res = await handler(new Request(getUrl));
+		expect(await res.json()).toBe("public");
 	});
 });

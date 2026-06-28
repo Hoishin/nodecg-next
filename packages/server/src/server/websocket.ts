@@ -6,9 +6,12 @@ import {
 } from "@effect/platform";
 import {
 	ClientMessage,
+	CurrentIdentity,
 	type FieldIdentifier,
 	fieldIdentifierEquivalence,
+	PublicIdentitySchema,
 	ServerMessage,
+	SubscribeRejectedMessage,
 } from "@nodecg/internal";
 import {
 	Effect,
@@ -36,6 +39,8 @@ export const websocketRoute = (options: {
 	const wsHandler = Effect.gen(function* () {
 		const socket = yield* HttpServerRequest.upgrade;
 		const write = yield* socket.writer;
+		// TODO: resolve identity from the WS handshake session cookie (04 §7); anonymous until then
+		const identity = PublicIdentitySchema.make();
 		const subscriptions = yield* SynchronizedRef.make<
 			ReadonlyArray<{
 				readonly field: FieldIdentifier;
@@ -67,14 +72,27 @@ export const websocketRoute = (options: {
 						Match.exhaustive,
 					);
 					if (typeof internal === "undefined") {
-						yield* Effect.logWarning(
-							`Subscribe: unknown ${field.type} "${field.name}" in "${field.namespace}"`,
+						yield* send(
+							SubscribeRejectedMessage.make({ field, reason: "not-found" }),
 						);
 						return list;
 					}
 					if (list.some((s) => fieldIdentifierEquivalence(s.field, field))) {
-						const value = yield* internal.getEncoded();
-						yield* publish(field, value);
+						yield* internal.getEncoded().pipe(
+							Effect.provideService(CurrentIdentity, identity),
+							Effect.flatMap((value) => publish(field, value)),
+							Effect.catchTag("PermissionDenied", () =>
+								send(
+									SubscribeRejectedMessage.make({ field, reason: "forbidden" }),
+								),
+							),
+						);
+						return list;
+					}
+					if (!internal.permission.canRead(identity)) {
+						yield* send(
+							SubscribeRejectedMessage.make({ field, reason: "forbidden" }),
+						);
 						return list;
 					}
 					const fiber = yield* Effect.forkScoped(

@@ -219,6 +219,7 @@ export const buildNodecgApi = (options: {
 					}
 					return yield* field.getEncoded().pipe(
 						Effect.catchTags({
+							PermissionDenied: () => new HttpApiError.Forbidden(),
 							StateNotFound: () => new HttpApiError.NotFound(),
 						}),
 					);
@@ -233,6 +234,10 @@ export const buildNodecgApi = (options: {
 					yield* field.setEncoded(payload).pipe(
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
+								Match.tag(
+									"PermissionDenied",
+									() => new HttpApiError.Forbidden(),
+								),
 								Match.tag(
 									"StateDecodeError",
 									() => new HttpApiError.BadRequest(),
@@ -258,6 +263,7 @@ export const buildNodecgApi = (options: {
 					}
 					return yield* field.getEncoded().pipe(
 						Effect.catchTags({
+							PermissionDenied: () => new HttpApiError.Forbidden(),
 							StateNotFound: () => new HttpApiError.NotFound(),
 							StateComputeError: () => new HttpApiError.InternalServerError(),
 							StateEncodeError: () => new HttpApiError.InternalServerError(),

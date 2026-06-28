@@ -1,4 +1,5 @@
 import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
+import { CurrentIdentity } from "@nodecg/internal";
 import {
 	mapValues,
 	mapEffectValues,
@@ -52,6 +53,14 @@ export class StateComputeError extends Data.TaggedError("StateComputeError")<{
 	cause: Error;
 }> {
 	override readonly message = `Computing state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
+
+export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
+	namespace: string;
+	name: string;
+	operation: "read" | "write";
+}> {
+	override readonly message = `Permission denied to ${this.operation} "${this.name}" in "${this.namespace}"`;
 }
 
 export type SeedState<State extends Record<string, unknown>> = {
@@ -110,7 +119,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		return yield* manifest.decode(current).pipe(Effect.orDieWith(migrationDie));
 	});
 
-	const getEncoded = Effect.fn("getEncoded")(function* () {
+	const getEncodedNoAuth = Effect.fn("getEncodedNoAuth")(function* () {
 		const encoded = yield* Option.match(storage.read(namespace, name), {
 			onNone: () => new StateNotFound({ namespace, name }),
 			onSome: Effect.succeed,
@@ -119,14 +128,34 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		return encoded;
 	});
 
+	const getEncoded = Effect.fn("getEncoded")(function* () {
+		const identity = yield* CurrentIdentity;
+		if (!manifest.permission.canRead(identity)) {
+			return yield* new PermissionDenied({
+				namespace,
+				name,
+				operation: "read",
+			});
+		}
+		return yield* getEncodedNoAuth();
+	});
+
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
 		yield* storage.update(namespace, name, encoded);
 	});
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
+		const identity = yield* CurrentIdentity;
+		if (!manifest.permission.canWrite(identity)) {
+			return yield* new PermissionDenied({
+				namespace,
+				name,
+				operation: "write",
+			});
+		}
 		yield* manifest.decode(value); // Only for validation
-		yield* storage.update(namespace, name, value);
+		return yield* storage.update(namespace, name, value);
 	});
 
 	const update = Effect.fn("update")(function* (
@@ -150,7 +179,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			),
 			Stream.map((change) => change.value),
 		);
-		const initialValue = yield* getEncoded();
+		const initialValue = yield* getEncodedNoAuth();
 		return Stream.concat(Stream.succeed(initialValue), stateValueStream);
 	});
 
@@ -175,6 +204,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 			update,
 			validate: manifest.encode,
 			subscribe,
+			getEncodedNoAuth,
 			getEncoded,
 			setEncoded,
 			subscribeEncoded,
@@ -219,14 +249,26 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 		});
 	});
 
-	const getEncoded = Effect.fn("getEncoded")(function* () {
+	const getEncodedNoAuth = Effect.fn("readEncoded")(function* () {
 		const value = yield* get();
 		return yield* manifest.encode(value);
 	});
 
+	const getEncoded = Effect.fn("getEncoded")(function* () {
+		const identity = yield* CurrentIdentity;
+		if (!manifest.permission.canRead(identity)) {
+			return yield* new PermissionDenied({
+				namespace,
+				name,
+				operation: "read",
+			});
+		}
+		return yield* getEncodedNoAuth();
+	});
+
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
 		const changesStream = yield* storage.subscribe();
-		const recompute = getEncoded().pipe(
+		const recompute = getEncodedNoAuth().pipe(
 			Effect.map((encoded) =>
 				Option.some({ encoded, key: JSON.stringify(encoded) }),
 			),
@@ -266,6 +308,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 		[stateFieldInternal]: {
 			get,
 			subscribe,
+			getEncodedNoAuth,
 			getEncoded,
 			subscribeEncoded,
 			permission: manifest.permission,
@@ -391,7 +434,7 @@ const buildNamespace = <
 		// Eager compute at load and fail-fast validation
 		yield* Effect.forEach(
 			Object.values(computedFields),
-			(field) => field[stateFieldInternal].getEncoded(),
+			(field) => field[stateFieldInternal].getEncodedNoAuth(),
 			{ concurrency: "unbounded", discard: true },
 		);
 

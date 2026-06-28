@@ -5,6 +5,7 @@ import {
 	type FieldManifest,
 	StateEncodeError,
 } from "@nodecg/core";
+import { CurrentIdentity, PublicIdentitySchema } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import {
 	Cause,
@@ -232,7 +233,7 @@ describe("get", () => {
 	);
 });
 
-describe("getEncoded", () => {
+describe("getEncodedNoAuth", () => {
 	test(
 		"returns the re-encoded value after validating",
 		testEffect(
@@ -251,7 +252,7 @@ describe("getEncoded", () => {
 
 				expect(
 					yield* loaded.state.when[stateFieldInternal]
-						.getEncoded()
+						.getEncodedNoAuth()
 						.pipe(Effect.provideService(StateStorageService, storageStub)),
 				).toBe("2026-05-14T00:00:00.000Z");
 			}),
@@ -273,7 +274,7 @@ describe("getEncoded", () => {
 				}).pipe(Effect.provideService(StateStorageService, storageStub));
 
 				const cause = yield* loaded.state.count[stateFieldInternal]
-					.getEncoded()
+					.getEncodedNoAuth()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
 						Effect.sandbox,
@@ -702,6 +703,133 @@ describe("permission threading", () => {
 					manifest.computed.doubled.permission,
 				);
 			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
+});
+
+describe("encoded read/write enforce permission", () => {
+	const anonymous = PublicIdentitySchema.make();
+	const manifest = defineNamespace("ns", {
+		state: {
+			open: {
+				schema: Schema.Number,
+				permission: {
+					read: { allow: ["public"] },
+					write: { allow: ["public"] },
+				},
+			},
+			locked: { schema: Schema.Number },
+		},
+		computed: {
+			openComputed: {
+				schema: Schema.Number,
+				permission: { read: { allow: ["public"] } },
+			},
+			lockedComputed: { schema: Schema.Number },
+		},
+	});
+
+	const load = (storageStub: ReturnType<typeof createStorageStub>) =>
+		loadNamespaceEffect(manifest, {
+			seedState: { open: () => 0, locked: () => 0 },
+			implementComputed: {
+				openComputed: (sources) => sources.open,
+				lockedComputed: (sources) => sources.locked,
+			},
+		}).pipe(Effect.provideService(StateStorageService, storageStub));
+
+	test(
+		"getEncoded returns the value for an allowed caller",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(42));
+				const loaded = yield* load(storageStub);
+				expect(
+					yield* loaded.state.open[stateFieldInternal]
+						.getEncoded()
+						.pipe(
+							Effect.provideService(StateStorageService, storageStub),
+							Effect.provideService(CurrentIdentity, anonymous),
+						),
+				).toBe(42);
+			}),
+		),
+	);
+
+	test(
+		"getEncoded fails PermissionDenied for a denied caller",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(42));
+				const loaded = yield* load(storageStub);
+				const error = yield* loaded.state.locked[stateFieldInternal]
+					.getEncoded()
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(CurrentIdentity, anonymous),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("PermissionDenied");
+			}),
+		),
+	);
+
+	test(
+		"setEncoded writes for an allowed caller",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(0));
+				const loaded = yield* load(storageStub);
+				yield* loaded.state.open[stateFieldInternal]
+					.setEncoded(7)
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(CurrentIdentity, anonymous),
+					);
+				expect(storageStub.update).toHaveBeenCalledWith("ns", "open", 7);
+			}),
+		),
+	);
+
+	test(
+		"setEncoded fails PermissionDenied and does not write for a denied caller",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(0));
+				const loaded = yield* load(storageStub);
+				const error = yield* loaded.state.locked[stateFieldInternal]
+					.setEncoded(7)
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(CurrentIdentity, anonymous),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("PermissionDenied");
+				expect(storageStub.update).not.toHaveBeenCalledWith("ns", "locked", 7);
+			}),
+		),
+	);
+
+	test(
+		"computed getEncoded fails PermissionDenied for a denied caller",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(0));
+				const loaded = yield* load(storageStub);
+				const error = yield* loaded.computed.lockedComputed[stateFieldInternal]
+					.getEncoded()
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(CurrentIdentity, anonymous),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("PermissionDenied");
+			}),
 		),
 	);
 });
