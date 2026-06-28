@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { HumanAccountSchema } from "@nodecg/internal";
 import { type AuthProvider, StateMismatchError } from "@nodecg/server";
 import { Effect } from "effect";
 
@@ -33,12 +34,11 @@ export const makeFakeAuthProvider = (
 			}
 			const id = input.searchParams.get("identity") ?? "";
 			const found = identities.get(id);
-			return {
-				_tag: "human",
+			return HumanAccountSchema.make({
 				issuer: name,
 				subject: id,
 				displayName: found?.displayName ?? id,
-			};
+			});
 		}),
 	};
 };

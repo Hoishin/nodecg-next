@@ -6,6 +6,8 @@ export {
 	IdentitySchema,
 	type HumanIdentity,
 	HumanIdentitySchema,
+	type HumanAccount,
+	HumanAccountSchema,
 	type MachineIdentity,
 	MachineIdentitySchema,
 	PublicIdentitySchema,

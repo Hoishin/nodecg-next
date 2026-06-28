@@ -8,6 +8,7 @@ import {
 import { Schema } from "effect";
 
 import { AuthenticationMiddleware, IdentitySchema } from "./auth.ts";
+import { RoleNameSchema } from "./role.ts";
 import { JsonValueSchema } from "./utils/json-value-schema.ts";
 
 const StateGroup = HttpApiGroup.make("State")
@@ -70,10 +71,33 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 			.addError(HttpApiError.InternalServerError),
 	);
 
+const RoleAssignmentSchema = Schema.Struct({
+	issuer: Schema.String,
+	subject: Schema.String,
+	role: RoleNameSchema,
+});
+
+const RoleAssignmentResultSchema = Schema.Struct({
+	roles: Schema.ReadonlySet(RoleNameSchema),
+});
+
+const RolesGroup = HttpApiGroup.make("Roles")
+	.add(
+		HttpApiEndpoint.post("grant", "/roles/grant")
+			.setPayload(RoleAssignmentSchema)
+			.addSuccess(RoleAssignmentResultSchema),
+	)
+	.add(
+		HttpApiEndpoint.post("revoke", "/roles/revoke")
+			.setPayload(RoleAssignmentSchema)
+			.addSuccess(RoleAssignmentResultSchema),
+	);
+
 export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(HealthGroup)
 	.add(StateGroup)
 	.add(ComputedGroup)
 	.add(AuthenticationGroup)
+	.add(RolesGroup)
 	.middleware(AuthenticationMiddleware)
 	.prefix("/api");

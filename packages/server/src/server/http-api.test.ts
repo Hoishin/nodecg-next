@@ -13,6 +13,7 @@ import {
 	stateFieldInternal,
 	stateMetadataKey,
 } from "../load-namespace.ts";
+import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
@@ -81,6 +82,7 @@ function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
 		).pipe(
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
+			Layer.provide(InMemoryRoleStore),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,
@@ -110,6 +112,34 @@ describe("me", () => {
 		const res = await handler(new Request("http://x/api/me"));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ identity: { _tag: "public" } });
+	});
+});
+
+describe("roles", () => {
+	function rolesRequest(action: "grant" | "revoke", role: string) {
+		return new Request(`http://x/api/roles/${action}`, {
+			method: "POST",
+			body: JSON.stringify({ issuer: "dev", subject: "operator", role }),
+			headers: { "content-type": "application/json" },
+		});
+	}
+
+	test("grant returns the updated set, revoke removes it", async () => {
+		const handler = webHandler([]);
+		const grant = await handler(rolesRequest("grant", "superadmin"));
+		expect(grant.status).toBe(200);
+		expect(await grant.json()).toEqual({ roles: ["superadmin"] });
+
+		const revoke = await handler(rolesRequest("revoke", "superadmin"));
+		expect(revoke.status).toBe(200);
+		expect(await revoke.json()).toEqual({ roles: [] });
+	});
+
+	test("accepts an arbitrary named role", async () => {
+		const handler = webHandler([]);
+		const grant = await handler(rolesRequest("grant", "producer"));
+		expect(grant.status).toBe(200);
+		expect(await grant.json()).toEqual({ roles: ["producer"] });
 	});
 });
 

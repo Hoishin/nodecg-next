@@ -21,6 +21,7 @@ import { sessionCookieName } from "../auth/session-cookie-name.ts";
 import { buildFieldRegistry } from "../field-registry.ts";
 import type { LoadedNamespace } from "../load-namespace.ts";
 import { config } from "../server-config.ts";
+import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { StashStoreService } from "../services/stash-store/stash-store.ts";
 
@@ -121,7 +122,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							});
 						}
 						yield* stashes.revoke(stashId);
-						const identity = yield* provider.value
+						const account = yield* provider.value
 							.callback({
 								redirectUri: callbackUri(origin, name),
 								searchParams: new URL(request.url, "http://example.com")
@@ -129,8 +130,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								stash: stash.value,
 							})
 							.pipe(Effect.either);
-						if (Either.isLeft(identity)) {
-							return yield* Match.value(identity.left).pipe(
+						if (Either.isLeft(account)) {
+							return yield* Match.value(account.left).pipe(
 								Match.tag("StateMismatchError", () =>
 									HttpServerResponse.text("State mismatch", {
 										status: 400,
@@ -155,7 +156,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Match.exhaustive,
 							);
 						}
-						const sessionId = yield* sessions.create(identity.right);
+						const sessionId = yield* sessions.create(account.right);
 						return yield* HttpServerResponse.text("Success").pipe(
 							addCookie(sessionCookieName, sessionId, ttl),
 							Effect.andThen(clearStash),
@@ -175,6 +176,26 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 					}),
 				);
 		}),
+);
+
+const RolesGroupLive = HttpApiBuilder.group(NodecgApi, "Roles", (handlers) =>
+	Effect.gen(function* () {
+		const roleStore = yield* RoleStoreService;
+
+		return handlers
+			.handle("grant", ({ payload: { issuer, subject, role } }) =>
+				Effect.gen(function* () {
+					const roles = yield* roleStore.grant({ issuer, subject }, role);
+					return { roles };
+				}),
+			)
+			.handle("revoke", ({ payload: { issuer, subject, role } }) =>
+				Effect.gen(function* () {
+					const roles = yield* roleStore.revoke({ issuer, subject }, role);
+					return { roles };
+				}),
+			);
+	}),
 );
 
 export const buildNodecgApi = (options: {
@@ -251,6 +272,7 @@ export const buildNodecgApi = (options: {
 		Layer.provide(StateGroupLive),
 		Layer.provide(ComputedGroupLive),
 		Layer.provide(AuthenticationGroupLive),
+		Layer.provide(RolesGroupLive),
 		Layer.provide(AuthenticationMiddlewareLive),
 	);
 };

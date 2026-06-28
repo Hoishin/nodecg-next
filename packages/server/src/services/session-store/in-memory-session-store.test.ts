@@ -1,4 +1,4 @@
-import { HumanIdentitySchema } from "@nodecg/internal";
+import { HumanAccountSchema } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import {
 	ConfigProvider,
@@ -13,7 +13,7 @@ import { assert, describe, expect, test } from "vitest";
 import { InMemorySessionStore } from "./in-memory-session-store.ts";
 import { SessionStoreService } from "./session-store.ts";
 
-const alice = HumanIdentitySchema.make({
+const alice = HumanAccountSchema.make({
 	issuer: "https://idp.test",
 	subject: "alice",
 	displayName: "Alice",

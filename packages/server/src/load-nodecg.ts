@@ -11,6 +11,7 @@ import { frontendRoutes } from "./server/frontend-serving.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
+import { InMemoryRoleStore } from "./services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
 
@@ -35,6 +36,7 @@ export const loadNodecgEffect = Effect.fn(function* (
 		Layer.provide(buildNodecgApi({ namespaces: options.namespaces })),
 		Layer.provide(InMemorySessionStore),
 		Layer.provide(InMemoryStashStore),
+		Layer.provide(InMemoryRoleStore),
 		Layer.provide(
 			Layer.succeed(
 				AuthProviderRegistry,

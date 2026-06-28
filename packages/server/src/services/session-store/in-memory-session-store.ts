@@ -1,13 +1,13 @@
 import { randomBytes } from "node:crypto";
 
-import type { HumanIdentity } from "@nodecg/internal";
+import type { HumanAccount } from "@nodecg/internal";
 import { Clock, Duration, Effect, Layer, Option } from "effect";
 
 import { config } from "../../server-config.ts";
 import { SessionStoreService } from "./session-store.ts";
 
 interface SessionEntry {
-	readonly identity: HumanIdentity;
+	readonly account: HumanAccount;
 	expiresAt: number;
 }
 
@@ -18,11 +18,11 @@ export const InMemorySessionStore = Layer.effect(
 		const sessions = new Map<string, SessionEntry>();
 
 		const create = Effect.fn("SessionStore.create")(function* (
-			identity: HumanIdentity,
+			account: HumanAccount,
 		) {
 			const now = yield* Clock.currentTimeMillis;
 			const sessionId = randomBytes(32).toString("base64url");
-			sessions.set(sessionId, { identity, expiresAt: now + ttlMillis });
+			sessions.set(sessionId, { account, expiresAt: now + ttlMillis });
 			return sessionId;
 		});
 
@@ -38,7 +38,7 @@ export const InMemorySessionStore = Layer.effect(
 				sessions.delete(sessionId);
 				return Option.none();
 			}
-			return Option.some(entry.identity);
+			return Option.some(entry.account);
 		});
 
 		const refreshTTL = Effect.fn("SessionStore.refreshTTL")(function* (

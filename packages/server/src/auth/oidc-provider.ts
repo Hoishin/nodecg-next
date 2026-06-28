@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { HumanIdentitySchema } from "@nodecg/internal";
+import { HumanAccountSchema } from "@nodecg/internal";
 import { Effect } from "effect";
 import {
 	allowInsecureRequests,
@@ -42,7 +42,7 @@ const identityFromClaims = (claims: Record<string, unknown>) => {
 		pickString(claims["name"]) ??
 		pickString(claims["preferred_username"]) ??
 		subject;
-	return HumanIdentitySchema.make({ issuer, subject, displayName });
+	return HumanAccountSchema.make({ issuer, subject, displayName });
 };
 
 const callbackUrl = (redirectUri: string, searchParams: URLSearchParams) => {

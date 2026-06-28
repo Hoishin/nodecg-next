@@ -1,4 +1,4 @@
-import type { HumanIdentity } from "@nodecg/internal";
+import type { HumanAccount } from "@nodecg/internal";
 import { Context, Data, type Effect, HashMap } from "effect";
 
 import type { AuthStash } from "../services/stash-store/stash-store.ts";
@@ -54,7 +54,7 @@ export interface AuthProvider {
 		readonly redirectUri: string;
 		readonly searchParams: URLSearchParams;
 		readonly stash: AuthStash;
-	}) => Effect.Effect<HumanIdentity, CallbackError>;
+	}) => Effect.Effect<HumanAccount, CallbackError>;
 }
 
 export class AuthProviderRegistry extends Context.Tag("AuthProviderRegistry")<

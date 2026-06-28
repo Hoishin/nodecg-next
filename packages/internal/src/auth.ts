@@ -1,12 +1,20 @@
 import { HttpApiError, HttpApiMiddleware } from "@effect/platform";
 import { Context, Schema } from "effect";
 
+import { RoleNameSchema } from "./role.ts";
+
 export const PublicIdentitySchema = Schema.TaggedStruct("public", {});
 
-export const HumanIdentitySchema = Schema.TaggedStruct("human", {
+export const HumanAccountSchema = Schema.Struct({
 	issuer: Schema.String,
 	subject: Schema.String,
 	displayName: Schema.String,
+});
+export type HumanAccount = typeof HumanAccountSchema.Type;
+
+export const HumanIdentitySchema = Schema.TaggedStruct("human", {
+	account: HumanAccountSchema,
+	roles: Schema.ReadonlySet(RoleNameSchema),
 });
 export type HumanIdentity = typeof HumanIdentitySchema.Type;
 

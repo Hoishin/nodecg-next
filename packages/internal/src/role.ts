@@ -1,10 +1,12 @@
-import { Brand } from "effect";
+import { Brand, Schema } from "effect";
 
-export type RoleName = Brand.Brand<"Role"> & string;
+export const RoleNameSchema = Schema.String.pipe(Schema.brand("Role"));
+export type RoleName = typeof RoleNameSchema.Type;
 export const RoleName = Brand.nominal<RoleName>();
 
 export const RESERVED_ROLE = {
 	superadmin: RoleName("superadmin"),
+	admin: RoleName("admin"),
 	server: RoleName("server"),
 	client: RoleName("client"),
 	public: RoleName("public"),

@@ -1,12 +1,12 @@
-import type { HumanIdentity } from "@nodecg/internal";
+import type { HumanAccount } from "@nodecg/internal";
 import { Context, type Effect, type Option } from "effect";
 
 export interface SessionStore {
-	readonly create: (identity: HumanIdentity) => Effect.Effect<string>;
+	readonly create: (account: HumanAccount) => Effect.Effect<string>;
 
 	readonly lookup: (
 		sessionId: string,
-	) => Effect.Effect<Option.Option<HumanIdentity>>;
+	) => Effect.Effect<Option.Option<HumanAccount>>;
 
 	readonly refreshTTL: (sessionId: string) => Effect.Effect<void>;
 
