@@ -673,3 +673,35 @@ describe("loadExtendedNamespace", () => {
 		).rejects.toThrow(/Missing seed value for state "round"/);
 	});
 });
+
+describe("permission threading", () => {
+	const manifest = defineNamespace("ns", {
+		roles: { viewer: { permission: ["state-read", "computed-read"] } },
+		state: {
+			score: {
+				schema: Schema.Number,
+				permission: { read: { allow: ["viewer"] } },
+			},
+		},
+		computed: { doubled: { schema: Schema.Number } },
+	});
+
+	test(
+		"exposes each manifest field's baked permission on the loaded internal handle",
+		testEffect(
+			Effect.gen(function* () {
+				const loaded = yield* loadNamespaceEffect(manifest, {
+					seedState: { score: () => 1 },
+					implementComputed: { doubled: (sources) => sources.score * 2 },
+				});
+
+				expect(loaded.state.score[stateFieldInternal].permission).toBe(
+					manifest.state.score.permission,
+				);
+				expect(loaded.computed.doubled[stateFieldInternal].permission).toBe(
+					manifest.computed.doubled.permission,
+				);
+			}).pipe(Effect.provide(InMemoryStateStorage)),
+		),
+	);
+});
