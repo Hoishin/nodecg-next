@@ -1,51 +1,38 @@
 import { FetchHttpClient } from "@effect/platform";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect } from "effect";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { HttpStateTransport } from "./http-state-transport.ts";
 import { StateTransportService } from "./state-transport.ts";
 
-interface Call {
-	url: string;
-	method: string;
-	body: string;
-}
+const mockFetch = (respond: () => Response) =>
+	vi.fn<typeof globalThis.fetch>(async () => respond());
 
-function mockFetch(
-	calls: Call[],
-	respond: (call: Call) => Response,
-): typeof globalThis.fetch {
-	return async (input, init) => {
-		const request = new Request(input, init);
-		const call: Call = {
-			url: request.url,
-			method: request.method,
-			body: await request.text(),
-		};
-		calls.push(call);
-		return respond(call);
-	};
-}
+const requestOf = (fetch: ReturnType<typeof mockFetch>) => {
+	const call = fetch.mock.calls[0];
+	if (typeof call === "undefined") {
+		throw new Error("fetch was not called");
+	}
+	return new Request(...call);
+};
 
 describe("get", () => {
 	test(
 		"issues a GET to the state URL and returns the decoded body",
 		testEffect(
 			Effect.gen(function* () {
-				const calls: Call[] = [];
 				const transport = yield* StateTransportService;
+				const fetch = mockFetch(() => new Response(JSON.stringify(42)));
 
-				const value = yield* transport.readState("root", "count").pipe(
-					Effect.provideService(
-						FetchHttpClient.Fetch,
-						mockFetch(calls, () => new Response(JSON.stringify(42))),
-					),
-				);
+				const value = yield* transport
+					.readState("root", "count")
+					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 				expect(value).toBe(42);
-				expect(calls[0]?.method).toBe("GET");
-				expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
+				const request = requestOf(fetch);
+				expect(request.method).toBe("GET");
+				expect(request.url).toContain("/api/namespaces/root/state/count");
 			}).pipe(Effect.provide(HttpStateTransport)),
 		),
 	);
@@ -54,18 +41,36 @@ describe("get", () => {
 		"fails with StateNotFound when the server responds 404",
 		testEffect(
 			Effect.gen(function* () {
-				const calls: Call[] = [];
 				const transport = yield* StateTransportService;
 
 				const error = yield* transport.readState("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
-						mockFetch(calls, () => new Response(null, { status: 404 })),
+						mockFetch(() => new Response(null, { status: 404 })),
 					),
 					Effect.flip,
 				);
 
 				expect(error._tag).toBe("StateNotFound");
+			}).pipe(Effect.provide(HttpStateTransport)),
+		),
+	);
+
+	test(
+		"fails with StatePermissionDenied when the server responds 403",
+		testEffect(
+			Effect.gen(function* () {
+				const transport = yield* StateTransportService;
+
+				const error = yield* transport.readState("root", "count").pipe(
+					Effect.provideService(
+						FetchHttpClient.Fetch,
+						mockFetch(() => new Response(null, { status: 403 })),
+					),
+					Effect.flip,
+				);
+
+				expect(error._tag).toBe("StatePermissionDenied");
 			}).pipe(Effect.provide(HttpStateTransport)),
 		),
 	);
@@ -76,19 +81,37 @@ describe("update", () => {
 		"issues a PUT with the JSON-encoded body",
 		testEffect(
 			Effect.gen(function* () {
-				const calls: Call[] = [];
+				const transport = yield* StateTransportService;
+				const fetch = mockFetch(() => new Response(null, { status: 204 }));
+
+				yield* transport
+					.updateState("root", "count", 7)
+					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+
+				const request = requestOf(fetch);
+				expect(request.method).toBe("PUT");
+				expect(request.url).toContain("/api/namespaces/root/state/count");
+				const body = yield* Effect.promise(() => request.text());
+				expect(JSON.parse(body)).toBe(7);
+			}).pipe(Effect.provide(HttpStateTransport)),
+		),
+	);
+
+	test(
+		"fails with StatePermissionDenied when the server responds 403",
+		testEffect(
+			Effect.gen(function* () {
 				const transport = yield* StateTransportService;
 
-				yield* transport.updateState("root", "count", 7).pipe(
+				const error = yield* transport.updateState("root", "count", 7).pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
-						mockFetch(calls, () => new Response(null, { status: 204 })),
+						mockFetch(() => new Response(null, { status: 403 })),
 					),
+					Effect.flip,
 				);
 
-				expect(calls[0]?.method).toBe("PUT");
-				expect(calls[0]?.url).toContain("/api/namespaces/root/state/count");
-				expect(JSON.parse(calls[0]?.body ?? "")).toBe(7);
+				expect(error._tag).toBe("StatePermissionDenied");
 			}).pipe(Effect.provide(HttpStateTransport)),
 		),
 	);

@@ -29,6 +29,8 @@ import {
 import { WebSocketMessageChannel } from "./services/message-channel/websocket-message-channel.ts";
 import { HttpStateTransport } from "./services/state-transport/http-state-transport.ts";
 import {
+	StateNotFound,
+	StatePermissionDenied,
 	StateTransportService,
 	type StateTransport,
 } from "./services/state-transport/state-transport.ts";
@@ -40,32 +42,56 @@ const implementSubscription = Effect.fn("implementSubscription")(function* <
 	const latest = yield* SubscriptionRef.make<Option.Option<Decoded>>(
 		Option.none(),
 	);
+	const rejection = yield* SubscriptionRef.make<
+		Option.Option<StateNotFound | StatePermissionDenied>
+	>(Option.none());
 	let refcount = 0;
 
 	const stream = yield* messageChannel.receive();
 
 	yield* Effect.forkScoped(
-		stream.pipe(
-			Stream.filterMap((msg) =>
-				Match.value(msg).pipe(
-					Match.when({ _tag: "publish", field }, (msg) =>
-						Option.some(msg.value),
-					),
-					Match.orElse(() => Option.none()),
-				),
-			),
-			Stream.runForEach((value) =>
-				manifest.decode(value).pipe(
-					Effect.flatMap((decoded) =>
-						SubscriptionRef.set(latest, Option.some(decoded)),
-					),
-					Effect.catchAll((error) =>
-						Effect.logError(
-							`Failed to decode published value for "${field.namespace}/${field.name}":`,
-							error,
+		Stream.runForEach(stream, (msg) =>
+			Match.value(msg).pipe(
+				Match.when({ _tag: "publish", field }, (msg) =>
+					manifest.decode(msg.value).pipe(
+						Effect.flatMap((decoded) =>
+							SubscriptionRef.set(latest, Option.some(decoded)),
+						),
+						Effect.catchAll((error) =>
+							Effect.logError(
+								`Failed to decode published value for "${field.namespace}/${field.name}":`,
+								error,
+							),
 						),
 					),
 				),
+				Match.when({ _tag: "subscribe-rejected", field }, (msg) =>
+					SubscriptionRef.set(
+						rejection,
+						Option.some(
+							Match.value(msg.reason).pipe(
+								Match.when(
+									"not-found",
+									() =>
+										new StateNotFound({
+											namespace: field.namespace,
+											name: field.name,
+										}),
+								),
+								Match.when(
+									"forbidden",
+									() =>
+										new StatePermissionDenied({
+											namespace: field.namespace,
+											name: field.name,
+										}),
+								),
+								Match.exhaustive,
+							),
+						),
+					),
+				),
+				Match.orElse(() => Effect.void),
 			),
 		),
 	);
@@ -98,10 +124,22 @@ const implementSubscription = Effect.fn("implementSubscription")(function* <
 					}),
 			);
 
-			yield* latest.changes.pipe(
-				Stream.filterMap((value) => value),
-				Stream.take(1),
-				Stream.runDrain,
+			yield* Effect.raceFirst(
+				latest.changes.pipe(
+					Stream.filterMap((value) => value),
+					Stream.take(1),
+					Stream.runDrain,
+				),
+				rejection.changes.pipe(
+					Stream.filterMap((value) => value),
+					Stream.runHead,
+					Effect.flatMap(
+						Option.match({
+							onNone: () => Effect.never,
+							onSome: (error) => Effect.fail(error),
+						}),
+					),
+				),
 			);
 
 			return latest.changes.pipe(Stream.filterMap((value) => value));
@@ -321,7 +359,10 @@ export async function loadNamespace<
 			runtime.runPromise(
 				Effect.gen(function* () {
 					const scope = yield* Scope.make();
-					const stream = yield* subscribe().pipe(Scope.extend(scope));
+					const stream = yield* subscribe().pipe(
+						Scope.extend(scope),
+						Effect.onError(() => Scope.close(scope, Exit.void)),
+					);
 					yield* stream.pipe(
 						Stream.runForEach((value) =>
 							Effect.tryPromise(async () => callback(value)).pipe(

@@ -7,6 +7,7 @@ import type { JsonValue } from "type-fest";
 import {
 	StateGetFailed,
 	StateNotFound,
+	StatePermissionDenied,
 	StateSaveFailed,
 	StateTransportService,
 } from "./state-transport.ts";
@@ -24,6 +25,10 @@ export const HttpStateTransport = Layer.effect(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag(
+							"Forbidden",
+							() => new StatePermissionDenied({ namespace, name }),
+						),
 						Match.orElse(
 							(e) => new StateGetFailed({ namespace, name, cause: toError(e) }),
 						),
@@ -40,6 +45,10 @@ export const HttpStateTransport = Layer.effect(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag(
+							"Forbidden",
+							() => new StatePermissionDenied({ namespace, name }),
+						),
 						Match.orElse(
 							(e) => new StateGetFailed({ namespace, name, cause: toError(e) }),
 						),
@@ -60,6 +69,10 @@ export const HttpStateTransport = Layer.effect(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag(
+							"Forbidden",
+							() => new StatePermissionDenied({ namespace, name }),
+						),
 						Match.orElse(
 							(e) =>
 								new StateSaveFailed({ namespace, name, cause: toError(e) }),

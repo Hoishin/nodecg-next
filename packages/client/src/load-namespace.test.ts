@@ -586,6 +586,132 @@ describe("subscribe", () => {
 			}),
 		),
 	);
+
+	const rejectedFrame = (reason: "forbidden" | "not-found"): ServerMessage => ({
+		_tag: "subscribe-rejected",
+		field: { type: "state", namespace: "root", name: "count" },
+		reason,
+	});
+
+	test(
+		"rejects with StatePermissionDenied on a forbidden frame",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const fiber = yield* loaded.state.count
+					.subscribe()
+					.pipe(Effect.flip, Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+				yield* mailbox.offer(rejectedFrame("forbidden"));
+
+				const error = yield* Fiber.join(fiber);
+				expect(error._tag).toBe("StatePermissionDenied");
+			}),
+		),
+	);
+
+	test(
+		"rejects with StateNotFound on a not-found frame",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const fiber = yield* loaded.state.count
+					.subscribe()
+					.pipe(Effect.flip, Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+				yield* mailbox.offer(rejectedFrame("not-found"));
+
+				const error = yield* Fiber.join(fiber);
+				expect(error._tag).toBe("StateNotFound");
+			}),
+		),
+	);
+
+	test(
+		"re-subscribing after a rejection sends a fresh server subscribe",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const manifest = defineNamespace("root", {
+					state: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const scope1 = yield* Scope.make();
+				const fiber1 = yield* loaded.state.count
+					.subscribe()
+					.pipe(Effect.flip, Scope.extend(scope1), Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+				yield* mailbox.offer(rejectedFrame("forbidden"));
+				yield* Fiber.join(fiber1);
+				yield* Scope.close(scope1, Exit.void);
+
+				const scope2 = yield* Scope.make();
+				const fiber2 = yield* loaded.state.count
+					.subscribe()
+					.pipe(Effect.flip, Scope.extend(scope2), Effect.fork);
+				yield* Fiber.join(fiber2);
+
+				const subscribeCount = send.mock.calls.filter(
+					([msg]) => msg._tag === "subscribe",
+				).length;
+				expect(subscribeCount).toBe(2);
+				yield* Scope.close(scope2, Exit.void);
+			}),
+		),
+	);
 });
 
 describe("computed", () => {
