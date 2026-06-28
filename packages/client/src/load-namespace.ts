@@ -1,5 +1,6 @@
+import { FetchHttpClient, HttpApiClient } from "@effect/platform";
 import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
-import { type FieldIdentifier } from "@nodecg/internal";
+import { NodecgApi, type FieldIdentifier } from "@nodecg/internal";
 import {
 	mapEffectValues,
 	mapValues,
@@ -228,18 +229,28 @@ const buildNamespace = <
 		return { fields, computedFields };
 	});
 
-export function loadNamespaceEffect<
+const buildHttpClient = Effect.fn("buildHttpClient")(function* () {
+	const httpClient = yield* HttpApiClient.make(NodecgApi);
+	return {
+		me: httpClient.Authentication.me,
+		logout: httpClient.Authentication.logout,
+	};
+});
+
+export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 >(manifest: NamespaceManifest<State, Computed, Topic>) {
-	return buildNamespace(manifest).pipe(
+	const httpClient = yield* buildHttpClient();
+	return yield* buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields }) => ({
 			state: fields,
 			computed: computedFields,
+			httpClient,
 		})),
 	);
-}
+});
 
 export interface LoadedNamespace<
 	State extends Record<string, unknown> = Record<string, unknown>,
@@ -251,6 +262,9 @@ export interface LoadedNamespace<
 	readonly computed: {
 		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
 	};
+	httpClient: Effect.Effect.Success<
+		ReturnType<typeof loadNamespaceEffect>
+	>["httpClient"];
 	readonly dispose: () => void;
 	readonly [Symbol.dispose]: () => void;
 }
@@ -287,7 +301,12 @@ export async function loadNamespace<
 
 	// TODO: expose a cleanup function that calls runtime.dispose()
 	const runtime = ManagedRuntime.make(
-		Layer.mergeAll(transportLayer, messageChannelLayer, Layer.scope),
+		Layer.mergeAll(
+			transportLayer,
+			messageChannelLayer,
+			FetchHttpClient.layer,
+			Layer.scope,
+		),
 	);
 
 	const { fields: effectFields, computedFields: effectComputedFields } =
@@ -340,6 +359,7 @@ export async function loadNamespace<
 	return {
 		state,
 		computed,
+		httpClient: runtime.runSync(buildHttpClient()),
 		dispose: runtime.dispose,
 		[Symbol.dispose]: () => runtime.dispose(),
 	};
