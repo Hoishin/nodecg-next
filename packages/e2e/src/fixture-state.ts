@@ -1,28 +1,46 @@
 import { defineNamespace, extendNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
+const publicRead = { read: { allow: ["public"] } } as const;
+
 export const fixtureManifest = defineNamespace("e2e", {
+	roles: {
+		producer: { permission: ["state-write"] },
+		viewer: { permission: [] },
+	},
 	state: {
-		count: { schema: Schema.Number },
-		label: { schema: Schema.String },
+		count: { schema: Schema.Number, permission: publicRead },
+		label: { schema: Schema.String, permission: publicRead },
+		secret: { schema: Schema.String },
+		producerOnly: {
+			schema: Schema.String,
+			permission: { read: { allow: ["producer"] } },
+		},
+		membersOnly: {
+			schema: Schema.String,
+			permission: { read: { allow: ["client"] } },
+		},
 	},
 	computed: {
-		doubledCount: { schema: Schema.Number },
-		summary: { schema: Schema.String },
+		doubledCount: { schema: Schema.Number, permission: publicRead },
+		summary: { schema: Schema.String, permission: publicRead },
 	},
 });
 
 export const baseManifest = defineNamespace("e2e-extend", {
+	roles: {
+		producer: { permission: ["state-write"] },
+	},
 	state: {
-		score: { schema: Schema.Number },
+		score: { schema: Schema.Number, permission: publicRead },
 	},
 });
 
 export const extendedManifest = extendNamespace(baseManifest, {
 	state: {
-		bonus: { schema: Schema.Number },
+		bonus: { schema: Schema.Number, permission: publicRead },
 	},
 	computed: {
-		total: { schema: Schema.Number },
+		total: { schema: Schema.Number, permission: publicRead },
 	},
 });

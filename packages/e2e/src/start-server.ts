@@ -18,6 +18,9 @@ const loaded = await loadNamespace(fixtureManifest, {
 	seedState: {
 		count: () => 0,
 		label: () => "hello",
+		secret: () => "classified",
+		producerOnly: () => "producers-only",
+		membersOnly: () => "members-only",
 	},
 	implementComputed: {
 		doubledCount: (sources: { count: number }) => sources.count * 2,

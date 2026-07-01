@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
+interface HumanAccount {
+	readonly issuer: string;
+	readonly subject: string;
+	readonly displayName: string;
+}
+
 type Identity =
 	| { readonly _tag: "public" }
-	| {
-			readonly _tag: "human";
-			readonly issuer: string;
-			readonly subject: string;
-			readonly displayName: string;
-	  }
+	| { readonly _tag: "human"; readonly account: HumanAccount }
 	| {
 			readonly _tag: "machine";
 			readonly id: string;
@@ -29,19 +30,35 @@ const fetchIdentity = async (): Promise<Identity> => {
 	return body.identity;
 };
 
+const grantOperator = (account: HumanAccount) =>
+	fetch("/api/roles/grant", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({
+			issuer: account.issuer,
+			subject: account.subject,
+			role: "operator",
+		}),
+	});
+
 const popupName = "nodecg-login";
 
 export function Login() {
 	const [state, setState] = useState<State>({ status: "loading" });
 
+	const ready = async (identity: Identity) => {
+		if (identity._tag === "human") {
+			await grantOperator(identity.account);
+		}
+		setState({ status: "ready", identity });
+	};
+
 	useEffect(() => {
-		void fetchIdentity().then(
-			(identity) => setState({ status: "ready", identity }),
-			(error: unknown) =>
-				setState({
-					status: "error",
-					message: error instanceof Error ? error.message : String(error),
-				}),
+		void fetchIdentity().then(ready, (error: unknown) =>
+			setState({
+				status: "error",
+				message: error instanceof Error ? error.message : String(error),
+			}),
 		);
 	}, []);
 
@@ -62,7 +79,7 @@ export function Login() {
 					if (identity?._tag === "human") {
 						window.clearInterval(timer);
 						popup?.close();
-						setState({ status: "ready", identity });
+						void ready(identity);
 					} else if (popup?.closed === true || ticks >= 120) {
 						window.clearInterval(timer);
 					}
@@ -87,7 +104,7 @@ export function Login() {
 	if (state.identity._tag === "human") {
 		return (
 			<p>
-				Logged in as <strong>{state.identity.displayName}</strong>{" "}
+				Logged in as <strong>{state.identity.account.displayName}</strong>{" "}
 				<button type="button" onClick={logOut}>
 					Log out
 				</button>

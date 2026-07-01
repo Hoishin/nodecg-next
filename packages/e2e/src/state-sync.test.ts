@@ -1,9 +1,50 @@
 import { loadNamespace } from "@nodecg/client";
-import { describe, expect, test, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
 import { extendedManifest, fixtureManifest } from "./fixture-state.ts";
 
-describe("client ⇄ server state sync", () => {
+const login = (subject: string) =>
+	fetch(`/api/authentication/login/dev?as=${subject}`, { method: "POST" });
+const logout = () => fetch("/api/authentication/logout", { method: "POST" });
+const assignRole = (
+	action: "grant" | "revoke",
+	subject: string,
+	role: string,
+) =>
+	fetch(`/api/roles/${action}`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ issuer: "dev", subject, role }),
+	});
+
+describe("anonymous access", () => {
+	beforeAll(async () => {
+		await logout();
+	});
+
+	test("a read of a restricted field is denied (HTTP 403)", async () => {
+		const ns = await loadNamespace(fixtureManifest);
+		await expect(ns.state.secret.get()).rejects.toThrow(/Permission denied/);
+	});
+
+	test("a subscribe to a restricted field is rejected (WS forbidden)", async () => {
+		const ns = await loadNamespace(fixtureManifest);
+		await expect(ns.state.secret.subscribe(() => {})).rejects.toThrow(
+			/Permission denied/,
+		);
+	});
+});
+
+describe("client ⇄ server state sync (as producer)", () => {
+	beforeAll(async () => {
+		await login("prod");
+		await assignRole("grant", "prod", "producer");
+	});
+	afterAll(async () => {
+		await assignRole("revoke", "prod", "producer");
+		await logout();
+	});
+
 	test("reads the server-seeded value", async () => {
 		const ns = await loadNamespace(fixtureManifest);
 		expect(await ns.state.count.get()).toBe(0);
@@ -88,7 +129,16 @@ describe("namespace frontend serving", () => {
 	});
 });
 
-describe("extended namespace sync", () => {
+describe("extended namespace sync (as producer)", () => {
+	beforeAll(async () => {
+		await login("prod");
+		await assignRole("grant", "prod", "producer");
+	});
+	afterAll(async () => {
+		await assignRole("revoke", "prod", "producer");
+		await logout();
+	});
+
 	test("reads original + added state and a computed over both", async () => {
 		const ns = await loadNamespace(extendedManifest);
 		await ns.state.score.set(4);
@@ -110,5 +160,46 @@ describe("extended namespace sync", () => {
 		await ns.state.score.set(10);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(10));
 		await cancel();
+	});
+});
+
+describe("role-gated field access (HTTP)", () => {
+	test("anonymous is denied the role-gated and the client-gated field", async () => {
+		await logout();
+		const ns = await loadNamespace(fixtureManifest);
+		await expect(ns.state.producerOnly.get()).rejects.toThrow(
+			/Permission denied/,
+		);
+		await expect(ns.state.membersOnly.get()).rejects.toThrow(
+			/Permission denied/,
+		);
+	});
+
+	test("an explicit producer reads the producer-only and client fields", async () => {
+		await login("prod");
+		await assignRole("grant", "prod", "producer");
+		try {
+			const ns = await loadNamespace(fixtureManifest);
+			expect(await ns.state.producerOnly.get()).toBe("producers-only");
+			expect(await ns.state.membersOnly.get()).toBe("members-only");
+		} finally {
+			await assignRole("revoke", "prod", "producer");
+			await logout();
+		}
+	});
+
+	test("a viewer reads the client field via the umbrella but not the producer-only field", async () => {
+		await login("view");
+		await assignRole("grant", "view", "viewer");
+		try {
+			const ns = await loadNamespace(fixtureManifest);
+			expect(await ns.state.membersOnly.get()).toBe("members-only");
+			await expect(ns.state.producerOnly.get()).rejects.toThrow(
+				/Permission denied/,
+			);
+		} finally {
+			await assignRole("revoke", "view", "viewer");
+			await logout();
+		}
 	});
 });
