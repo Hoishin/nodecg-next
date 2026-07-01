@@ -51,6 +51,7 @@ loadNodecg({
 	authProviders: [
 		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
 	],
+	superadmins: [{ issuer: "dev", subject: "root" }],
 	onReady: () => {
 		if (typeof process.send === "undefined") {
 			throw new Error("start-server.ts must be spawned with an IPC channel");

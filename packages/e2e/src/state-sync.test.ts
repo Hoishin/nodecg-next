@@ -17,6 +17,27 @@ const assignRole = (
 		body: JSON.stringify({ issuer: "dev", subject, role }),
 	});
 
+const grantAsAdmin = async (subject: string, role: string) => {
+	await login("root");
+	await assignRole("grant", subject, role);
+};
+const revokeAsAdmin = async (subject: string, role: string) => {
+	await login("root");
+	await assignRole("revoke", subject, role);
+};
+
+// Assign the roles the field-access tests rely on once, so those tests just log
+// in as the subject. Grant/revoke behavior itself is covered in auth.test.ts.
+beforeAll(async () => {
+	await grantAsAdmin("prod", "producer");
+	await grantAsAdmin("view", "viewer");
+});
+afterAll(async () => {
+	await revokeAsAdmin("prod", "producer");
+	await revokeAsAdmin("view", "viewer");
+	await logout();
+});
+
 describe("anonymous access", () => {
 	beforeAll(async () => {
 		await logout();
@@ -38,11 +59,6 @@ describe("anonymous access", () => {
 describe("client ⇄ server state sync (as producer)", () => {
 	beforeAll(async () => {
 		await login("prod");
-		await assignRole("grant", "prod", "producer");
-	});
-	afterAll(async () => {
-		await assignRole("revoke", "prod", "producer");
-		await logout();
 	});
 
 	test("reads the server-seeded value", async () => {
@@ -132,11 +148,6 @@ describe("namespace frontend serving", () => {
 describe("extended namespace sync (as producer)", () => {
 	beforeAll(async () => {
 		await login("prod");
-		await assignRole("grant", "prod", "producer");
-	});
-	afterAll(async () => {
-		await assignRole("revoke", "prod", "producer");
-		await logout();
 	});
 
 	test("reads original + added state and a computed over both", async () => {
@@ -177,48 +188,30 @@ describe("role-gated field access (HTTP)", () => {
 
 	test("an explicit producer reads the producer-only and client fields", async () => {
 		await login("prod");
-		await assignRole("grant", "prod", "producer");
-		try {
-			const ns = await loadNamespace(fixtureManifest);
-			expect(await ns.state.producerOnly.get()).toBe("producers-only");
-			expect(await ns.state.membersOnly.get()).toBe("members-only");
-		} finally {
-			await assignRole("revoke", "prod", "producer");
-			await logout();
-		}
+		const ns = await loadNamespace(fixtureManifest);
+		expect(await ns.state.producerOnly.get()).toBe("producers-only");
+		expect(await ns.state.membersOnly.get()).toBe("members-only");
 	});
 
 	test("a viewer reads the client field via the umbrella but not the producer-only field", async () => {
 		await login("view");
-		await assignRole("grant", "view", "viewer");
-		try {
-			const ns = await loadNamespace(fixtureManifest);
-			expect(await ns.state.membersOnly.get()).toBe("members-only");
-			await expect(ns.state.producerOnly.get()).rejects.toThrow(
-				/Permission denied/,
-			);
-		} finally {
-			await assignRole("revoke", "view", "viewer");
-			await logout();
-		}
+		const ns = await loadNamespace(fixtureManifest);
+		expect(await ns.state.membersOnly.get()).toBe("members-only");
+		await expect(ns.state.producerOnly.get()).rejects.toThrow(
+			/Permission denied/,
+		);
 	});
 });
 
 describe("WS handshake honors the session cookie", () => {
 	test("a logged-in producer subscribes to a producer-only field", async () => {
 		await login("prod");
-		await assignRole("grant", "prod", "producer");
-		try {
-			const ns = await loadNamespace(fixtureManifest);
-			const received: string[] = [];
-			const cancel = await ns.state.producerOnly.subscribe((value) => {
-				received.push(value);
-			});
-			await vi.waitFor(() => expect(received).toEqual(["producers-only"]));
-			await cancel();
-		} finally {
-			await assignRole("revoke", "prod", "producer");
-			await logout();
-		}
+		const ns = await loadNamespace(fixtureManifest);
+		const received: string[] = [];
+		const cancel = await ns.state.producerOnly.subscribe((value) => {
+			received.push(value);
+		});
+		await vi.waitFor(() => expect(received).toEqual(["producers-only"]));
+		await cancel();
 	});
 });

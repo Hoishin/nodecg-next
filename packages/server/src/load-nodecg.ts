@@ -12,15 +12,22 @@ import { frontendRoutes } from "./server/frontend-serving.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
-import { InMemoryRoleStore } from "./services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
+import { seededRoleStore } from "./superadmin-seed.ts";
 
 export type LoadNodecgOptions = {
 	namespaces: ReadonlyArray<LoadedNamespace<{}, {}>>;
 	authProviders?: ReadonlyArray<AuthProvider>;
 	dev?: boolean;
 	onReady?: () => void;
+	/**
+	 * TODO: remove this once we have superadmin seeding
+	 * */
+	superadmins?: ReadonlyArray<{
+		readonly issuer: string;
+		readonly subject: string;
+	}>;
 };
 
 export const loadNodecgEffect = Effect.fn(function* (
@@ -38,7 +45,7 @@ export const loadNodecgEffect = Effect.fn(function* (
 		Layer.provide(AuthenticationMiddlewareLive),
 		Layer.provide(InMemorySessionStore),
 		Layer.provide(InMemoryStashStore),
-		Layer.provide(InMemoryRoleStore),
+		Layer.provide(seededRoleStore(options.superadmins ?? [])),
 		Layer.provide(
 			Layer.succeed(
 				AuthProviderRegistry,

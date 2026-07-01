@@ -47,4 +47,5 @@ loadNodecg({
 	namespaces: [counter, settings],
 	authProviders: [localProvider],
 	dev: process.env["NODE_ENV"] !== "production",
+	superadmins: [{ issuer, subject: "johndoe" }],
 });

@@ -30,26 +30,12 @@ const fetchIdentity = async (): Promise<Identity> => {
 	return body.identity;
 };
 
-const grantOperator = (account: HumanAccount) =>
-	fetch("/api/roles/grant", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({
-			issuer: account.issuer,
-			subject: account.subject,
-			role: "operator",
-		}),
-	});
-
 const popupName = "nodecg-login";
 
 export function Login() {
 	const [state, setState] = useState<State>({ status: "loading" });
 
-	const ready = async (identity: Identity) => {
-		if (identity._tag === "human") {
-			await grantOperator(identity.account);
-		}
+	const ready = (identity: Identity) => {
 		setState({ status: "ready", identity });
 	};
 
@@ -79,7 +65,7 @@ export function Login() {
 					if (identity?._tag === "human") {
 						window.clearInterval(timer);
 						popup?.close();
-						void ready(identity);
+						ready(identity);
 					} else if (popup?.closed === true || ticks >= 120) {
 						window.clearInterval(timer);
 					}
