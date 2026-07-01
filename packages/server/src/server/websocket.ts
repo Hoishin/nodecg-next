@@ -9,7 +9,7 @@ import {
 	CurrentIdentity,
 	type FieldIdentifier,
 	fieldIdentifierEquivalence,
-	PublicIdentitySchema,
+	type Identity,
 	ServerMessage,
 	SubscribeRejectedMessage,
 } from "@nodecg/internal";
@@ -17,6 +17,7 @@ import {
 	Effect,
 	Fiber,
 	Match,
+	Option,
 	type ParseResult,
 	Schema,
 	Stream,
@@ -24,8 +25,15 @@ import {
 } from "effect";
 import type { JsonValue } from "type-fest";
 
+import {
+	publicIdentity,
+	resolveSessionIdentity,
+} from "../auth/resolve-session-identity.ts";
 import { buildFieldRegistry } from "../field-registry.ts";
 import type { LoadedNamespace } from "../load-namespace.ts";
+import { config } from "../server-config.ts";
+import { RoleStoreService } from "../services/role-store/role-store.ts";
+import { SessionStoreService } from "../services/session-store/session-store.ts";
 import type { StateNotFound } from "../services/state-storage/state-storage.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
@@ -36,11 +44,9 @@ export const websocketRoute = (options: {
 }) => {
 	const registry = buildFieldRegistry(options.namespaces);
 
-	const wsHandler = Effect.gen(function* () {
+	const wsHandler = Effect.fn(function* (identity: Identity) {
 		const socket = yield* HttpServerRequest.upgrade;
 		const write = yield* socket.writer;
-		// TODO: resolve identity from the WS handshake session cookie (04 §7); anonymous until then
-		const identity = PublicIdentitySchema.make();
 		const subscriptions = yield* SynchronizedRef.make<
 			ReadonlyArray<{
 				readonly field: FieldIdentifier;
@@ -83,7 +89,10 @@ export const websocketRoute = (options: {
 							Effect.flatMap((value) => publish(field, value)),
 							Effect.catchTag("PermissionDenied", () =>
 								send(
-									SubscribeRejectedMessage.make({ field, reason: "forbidden" }),
+									SubscribeRejectedMessage.make({
+										field,
+										reason: "forbidden",
+									}),
 								),
 							),
 						);
@@ -152,13 +161,28 @@ export const websocketRoute = (options: {
 	});
 
 	return HttpApiBuilder.Router.use((router) =>
-		router.get(
-			"/ws",
-			wsHandler.pipe(
-				Effect.catchAll(() =>
-					Effect.succeed(HttpServerResponse.empty({ status: 500 })),
+		Effect.gen(function* () {
+			const requireAuth = yield* config.requireAuth;
+			const sessions = yield* SessionStoreService;
+			const roleStore = yield* RoleStoreService;
+			const resolve = resolveSessionIdentity({ sessions, roleStore });
+
+			yield* router.get(
+				"/ws",
+				Effect.gen(function* () {
+					const request = yield* HttpServerRequest.HttpServerRequest;
+					const resolved = yield* resolve(request);
+					if (Option.isNone(resolved) && requireAuth) {
+						return HttpServerResponse.empty({ status: 401 });
+					}
+					const identity = Option.getOrElse(resolved, () => publicIdentity);
+					return yield* wsHandler(identity);
+				}).pipe(
+					Effect.catchAll(() =>
+						Effect.succeed(HttpServerResponse.empty({ status: 500 })),
+					),
 				),
-			),
-		),
+			);
+		}),
 	);
 };

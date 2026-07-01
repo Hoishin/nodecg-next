@@ -203,3 +203,22 @@ describe("role-gated field access (HTTP)", () => {
 		}
 	});
 });
+
+describe("WS handshake honors the session cookie", () => {
+	test("a logged-in producer subscribes to a producer-only field", async () => {
+		await login("prod");
+		await assignRole("grant", "prod", "producer");
+		try {
+			const ns = await loadNamespace(fixtureManifest);
+			const received: string[] = [];
+			const cancel = await ns.state.producerOnly.subscribe((value) => {
+				received.push(value);
+			});
+			await vi.waitFor(() => expect(received).toEqual(["producers-only"]));
+			await cancel();
+		} finally {
+			await assignRole("revoke", "prod", "producer");
+			await logout();
+		}
+	});
+});
