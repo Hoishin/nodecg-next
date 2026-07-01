@@ -11,6 +11,7 @@ import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
 import { defineNamespace } from "./define-namespace.ts";
+import { isAdminTier } from "./role.ts";
 
 const human = (...roles: RoleName[]) =>
 	HumanIdentitySchema.make({
@@ -98,5 +99,18 @@ describe("canRead / canWrite", () => {
 			manifest.state.config.permission.canWrite(human(RoleName("judge"))),
 		).toBe(false);
 		expect(manifest.state.score.permission.canWrite(server)).toBe(false);
+	});
+});
+
+describe("isAdminTier", () => {
+	test("holds for superadmin and admin", () => {
+		expect(isAdminTier(human(RESERVED_ROLE.superadmin))).toBe(true);
+		expect(isAdminTier(human(RESERVED_ROLE.admin))).toBe(true);
+	});
+
+	test("fails for a named role, anonymous, and server", () => {
+		expect(isAdminTier(human(RoleName("judge")))).toBe(false);
+		expect(isAdminTier(anonymous)).toBe(false);
+		expect(isAdminTier(server)).toBe(false);
 	});
 });

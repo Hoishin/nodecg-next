@@ -4,6 +4,7 @@ import {
 	HttpServerRequest,
 	HttpServerResponse,
 } from "@effect/platform";
+import { isAdminTier } from "@nodecg/core";
 import { CurrentIdentity, NodecgApi } from "@nodecg/internal";
 import {
 	type Duration,
@@ -16,7 +17,6 @@ import {
 } from "effect";
 
 import { AuthProviderRegistry } from "../auth/auth-provider.ts";
-import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
 import { sessionCookieName } from "../auth/session-cookie-name.ts";
 import { buildFieldRegistry } from "../field-registry.ts";
 import type { LoadedNamespace } from "../load-namespace.ts";
@@ -182,15 +182,24 @@ const RolesGroupLive = HttpApiBuilder.group(NodecgApi, "Roles", (handlers) =>
 	Effect.gen(function* () {
 		const roleStore = yield* RoleStoreService;
 
+		const requireAdminTier = Effect.gen(function* () {
+			const identity = yield* CurrentIdentity;
+			if (!isAdminTier(identity)) {
+				return yield* new HttpApiError.Forbidden();
+			}
+		});
+
 		return handlers
 			.handle("grant", ({ payload: { issuer, subject, role } }) =>
 				Effect.gen(function* () {
+					yield* requireAdminTier;
 					const roles = yield* roleStore.grant({ issuer, subject }, role);
 					return { roles };
 				}),
 			)
 			.handle("revoke", ({ payload: { issuer, subject, role } }) =>
 				Effect.gen(function* () {
+					yield* requireAdminTier;
 					const roles = yield* roleStore.revoke({ issuer, subject }, role);
 					return { roles };
 				}),
@@ -279,6 +288,5 @@ export const buildNodecgApi = (options: {
 		Layer.provide(ComputedGroupLive),
 		Layer.provide(AuthenticationGroupLive),
 		Layer.provide(RolesGroupLive),
-		Layer.provide(AuthenticationMiddlewareLive),
 	);
 };

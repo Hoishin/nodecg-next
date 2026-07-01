@@ -1,6 +1,13 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { type ResolvedPermission, StateDecodeError } from "@nodecg/core";
-import { CurrentIdentity } from "@nodecg/internal";
+import {
+	AuthenticationMiddleware,
+	CurrentIdentity,
+	HumanIdentitySchema,
+	type Identity,
+	RESERVED_ROLE,
+	RoleName,
+} from "@nodecg/internal";
 import { Effect, HashMap, Layer, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
@@ -8,6 +15,7 @@ import {
 	type AuthProvider,
 	AuthProviderRegistry,
 } from "../auth/auth-provider.ts";
+import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
 import {
 	type LoadedNamespace,
 	PermissionDenied,
@@ -87,12 +95,19 @@ function loadedNamespace(
 	};
 }
 
-function webHandler(namespaces: ReadonlyArray<LoadedNamespace>) {
+const asIdentity = (identity: Identity) =>
+	Layer.succeed(AuthenticationMiddleware, Effect.succeed(identity));
+
+function webHandler(
+	namespaces: ReadonlyArray<LoadedNamespace>,
+	middleware: typeof AuthenticationMiddlewareLive = AuthenticationMiddlewareLive,
+) {
 	const { handler } = HttpApiBuilder.toWebHandler(
 		Layer.mergeAll(
 			buildNodecgApi({ namespaces }),
 			HttpServer.layerContext,
 		).pipe(
+			Layer.provide(middleware),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
@@ -144,8 +159,40 @@ describe("roles", () => {
 		});
 	}
 
-	test("grant returns the updated set, revoke removes it", async () => {
+	const admin = asIdentity(
+		HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			roles: new Set([RESERVED_ROLE.admin]),
+		}),
+	);
+
+	test("403 for an anonymous caller", async () => {
 		const handler = webHandler([]);
+		expect((await handler(rolesRequest("grant", "superadmin"))).status).toBe(
+			403,
+		);
+		expect((await handler(rolesRequest("revoke", "superadmin"))).status).toBe(
+			403,
+		);
+	});
+
+	test("403 for a named-role caller without the admin tier", async () => {
+		const handler = webHandler(
+			[],
+			asIdentity(
+				HumanIdentitySchema.make({
+					account: { issuer: "dev", subject: "op", displayName: "Op" },
+					roles: new Set([RoleName("producer")]),
+				}),
+			),
+		);
+		expect((await handler(rolesRequest("grant", "superadmin"))).status).toBe(
+			403,
+		);
+	});
+
+	test("grant returns the updated set, revoke removes it for an admin", async () => {
+		const handler = webHandler([], admin);
 		const grant = await handler(rolesRequest("grant", "superadmin"));
 		expect(grant.status).toBe(200);
 		expect(await grant.json()).toEqual({ roles: ["superadmin"] });
@@ -156,7 +203,7 @@ describe("roles", () => {
 	});
 
 	test("accepts an arbitrary named role", async () => {
-		const handler = webHandler([]);
+		const handler = webHandler([], admin);
 		const grant = await handler(rolesRequest("grant", "producer"));
 		expect(grant.status).toBe(200);
 		expect(await grant.json()).toEqual({ roles: ["producer"] });

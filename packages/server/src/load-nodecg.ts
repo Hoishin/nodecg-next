@@ -6,6 +6,7 @@ import {
 	type AuthProvider,
 	AuthProviderRegistry,
 } from "./auth/auth-provider.ts";
+import { AuthenticationMiddlewareLive } from "./auth/middleware.ts";
 import { type LoadedNamespace } from "./load-namespace.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
 import { buildNodecgApi } from "./server/http-api.ts";
@@ -34,6 +35,7 @@ export const loadNodecgEffect = Effect.fn(function* (
 			}),
 		),
 		Layer.provide(buildNodecgApi({ namespaces: options.namespaces })),
+		Layer.provide(AuthenticationMiddlewareLive),
 		Layer.provide(InMemorySessionStore),
 		Layer.provide(InMemoryStashStore),
 		Layer.provide(InMemoryRoleStore),

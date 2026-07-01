@@ -7,6 +7,7 @@ export {
 	type NamespaceManifest,
 } from "./define-namespace.ts";
 export {
+	isAdminTier,
 	type RoleArg,
 	type RoleCapability,
 	type ResolvedPermission,

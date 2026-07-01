@@ -52,6 +52,11 @@ const getRolesFromIdentity = (caller: Identity) =>
 		Match.exhaustive,
 	);
 
+export const isAdminTier = (caller: Identity): boolean => {
+	const roles = getRolesFromIdentity(caller);
+	return roles.has(RESERVED_ROLE.superadmin) || roles.has(RESERVED_ROLE.admin);
+};
+
 const isAllowed = (
 	resolved: ReadonlySet<RoleName>,
 	caller: ReadonlySet<RoleName>,

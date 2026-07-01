@@ -88,12 +88,14 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
 		HttpApiEndpoint.post("grant", "/roles/grant")
 			.setPayload(RoleAssignmentSchema)
-			.addSuccess(RoleAssignmentResultSchema),
+			.addSuccess(RoleAssignmentResultSchema)
+			.addError(HttpApiError.Forbidden),
 	)
 	.add(
 		HttpApiEndpoint.post("revoke", "/roles/revoke")
 			.setPayload(RoleAssignmentSchema)
-			.addSuccess(RoleAssignmentResultSchema),
+			.addSuccess(RoleAssignmentResultSchema)
+			.addError(HttpApiError.Forbidden),
 	);
 
 export const NodecgApi = HttpApi.make("NodecgApi")
