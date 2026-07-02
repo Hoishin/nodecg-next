@@ -42,6 +42,34 @@ const ComputedGroup = HttpApiGroup.make("Computed").add(
 		.addError(HttpApiError.InternalServerError),
 );
 
+const TopicGroup = HttpApiGroup.make("Topic").add(
+	HttpApiEndpoint.post(
+		"publish",
+	)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/topic/${HttpApiSchema.param("name", Schema.String)}`
+		.setPayload(JsonValueSchema)
+		.addError(HttpApiError.NotFound)
+		.addError(HttpApiError.Forbidden)
+		.addError(HttpApiError.BadRequest),
+);
+
+export class RpcHandlerError extends Schema.TaggedError<RpcHandlerError>()(
+	"RpcHandlerError",
+	{ message: Schema.String },
+	HttpApiSchema.annotations({ status: 500 }),
+) {}
+
+const RpcGroup = HttpApiGroup.make("Rpc").add(
+	HttpApiEndpoint.post(
+		"call",
+	)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/rpc/${HttpApiSchema.param("name", Schema.String)}`
+		.setPayload(JsonValueSchema)
+		.addSuccess(JsonValueSchema)
+		.addError(HttpApiError.NotFound)
+		.addError(HttpApiError.Forbidden)
+		.addError(HttpApiError.BadRequest)
+		.addError(RpcHandlerError),
+);
+
 const HealthGroup = HttpApiGroup.make("Health").add(
 	HttpApiEndpoint.get("ping", "/ping").addSuccess(Schema.String),
 );
@@ -102,6 +130,8 @@ export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(HealthGroup)
 	.add(StateGroup)
 	.add(ComputedGroup)
+	.add(TopicGroup)
+	.add(RpcGroup)
 	.add(AuthenticationGroup)
 	.add(RolesGroup)
 	.middleware(AuthenticationMiddleware)

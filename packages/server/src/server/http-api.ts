@@ -282,10 +282,20 @@ export const buildNodecgApi = (options: {
 			),
 	);
 
+	const TopicGroupLive = HttpApiBuilder.group(NodecgApi, "Topic", (handlers) =>
+		handlers.handle("publish", () => new HttpApiError.NotFound()),
+	);
+
+	const RpcGroupLive = HttpApiBuilder.group(NodecgApi, "Rpc", (handlers) =>
+		handlers.handle("call", () => new HttpApiError.NotFound()),
+	);
+
 	return HttpApiBuilder.api(NodecgApi).pipe(
 		Layer.provide(HealthGroupLive),
 		Layer.provide(StateGroupLive),
 		Layer.provide(ComputedGroupLive),
+		Layer.provide(TopicGroupLive),
+		Layer.provide(RpcGroupLive),
 		Layer.provide(AuthenticationGroupLive),
 		Layer.provide(RolesGroupLive),
 	);

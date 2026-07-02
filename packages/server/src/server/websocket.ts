@@ -75,6 +75,8 @@ export const websocketRoute = (options: {
 						Match.when("computed", () =>
 							registry.computed.get(field.namespace)?.get(field.name),
 						),
+						// topic has no broker/registry yet (lands in 09 layer 3); rejects as not-found
+						Match.when("topic", () => undefined),
 						Match.exhaustive,
 					);
 					if (typeof internal === "undefined") {

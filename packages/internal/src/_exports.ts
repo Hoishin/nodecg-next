@@ -1,4 +1,4 @@
-export { NodecgApi } from "./api.ts";
+export { NodecgApi, RpcHandlerError } from "./api.ts";
 export {
 	AuthenticationMiddleware,
 	CurrentIdentity,
