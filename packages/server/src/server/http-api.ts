@@ -5,7 +5,7 @@ import {
 	HttpServerResponse,
 } from "@effect/platform";
 import { isAdminTier } from "@nodecg/core";
-import { CurrentIdentity, NodecgApi } from "@nodecg/internal";
+import { CurrentIdentity, NodecgApi, RpcHandlerError } from "@nodecg/internal";
 import {
 	type Duration,
 	Effect,
@@ -283,11 +283,41 @@ export const buildNodecgApi = (options: {
 	);
 
 	const TopicGroupLive = HttpApiBuilder.group(NodecgApi, "Topic", (handlers) =>
-		handlers.handle("publish", () => new HttpApiError.NotFound()),
+		handlers.handle("publish", ({ path: { namespace, name }, payload }) =>
+			Effect.gen(function* () {
+				const field = registry.topic.get(namespace)?.get(name);
+				if (typeof field === "undefined") {
+					return yield* new HttpApiError.NotFound();
+				}
+				yield* field.publishEncoded(payload).pipe(
+					Effect.catchTags({
+						PermissionDenied: () => new HttpApiError.Forbidden(),
+						StateDecodeError: () => new HttpApiError.BadRequest(),
+					}),
+				);
+			}),
+		),
 	);
 
 	const RpcGroupLive = HttpApiBuilder.group(NodecgApi, "Rpc", (handlers) =>
-		handlers.handle("call", () => new HttpApiError.NotFound()),
+		handlers.handle("call", ({ path: { namespace, name }, payload }) =>
+			Effect.gen(function* () {
+				const field = registry.rpc.get(namespace)?.get(name);
+				if (typeof field === "undefined") {
+					return yield* new HttpApiError.NotFound();
+				}
+				return yield* field.callEncoded(payload).pipe(
+					Effect.catchTags({
+						PermissionDenied: () => new HttpApiError.Forbidden(),
+						StateDecodeError: () => new HttpApiError.BadRequest(),
+						RpcHandlerFailure: (error) =>
+							new RpcHandlerError({ message: error.message }),
+						StateEncodeError: (error) =>
+							new RpcHandlerError({ message: error.message }),
+					}),
+				);
+			}),
+		),
 	);
 
 	return HttpApiBuilder.api(NodecgApi).pipe(

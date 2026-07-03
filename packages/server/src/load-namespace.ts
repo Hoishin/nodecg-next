@@ -1,4 +1,8 @@
-import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
+import type {
+	NamespaceManifest,
+	FieldManifest,
+	RpcFieldManifest,
+} from "@nodecg/core";
 import { CurrentIdentity } from "@nodecg/internal";
 import {
 	mapValues,
@@ -31,6 +35,8 @@ import {
 	StateStorageService,
 	type StateStorage,
 } from "./services/state-storage/state-storage.ts";
+import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
+import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 export const stateFieldInternal = Symbol("stateFieldInternal");
 
@@ -63,6 +69,14 @@ export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
 	override readonly message = `Permission denied to ${this.operation} "${this.name}" in "${this.namespace}"`;
 }
 
+export class RpcHandlerFailure extends Data.TaggedError("RpcHandlerFailure")<{
+	namespace: string;
+	name: string;
+	cause: Error;
+}> {
+	override readonly message = `RPC handler for "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
+
 export type SeedState<State extends Record<string, unknown>> = {
 	readonly [K in keyof State & string]: () => Promisable<State[K]>;
 };
@@ -80,23 +94,40 @@ export type ImplementComputed<
 	) => Computed[K];
 };
 
+export type RpcShape = Record<
+	string,
+	{ readonly request: unknown; readonly response: unknown }
+>;
+
+export type ImplementRpc<Rpc extends RpcShape> = {
+	readonly [K in keyof Rpc & string]: (
+		request: Rpc[K]["request"],
+	) => Promisable<Rpc[K]["response"]>;
+};
+
 type NamespaceOptions<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
+	Rpc extends RpcShape,
 > = {
 	readonly seedState?: SeedState<State>;
 	readonly implementComputed?: ImplementComputed<State, Computed>;
+	readonly implementRpc?: ImplementRpc<Rpc>;
 };
 
 export type RequiredOptions<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
+	Rpc extends RpcShape,
 > = ([keyof State] extends [never]
 	? {}
 	: { readonly seedState: SeedState<State> }) &
 	([keyof Computed] extends [never]
 		? {}
-		: { readonly implementComputed: ImplementComputed<State, Computed> });
+		: { readonly implementComputed: ImplementComputed<State, Computed> }) &
+	([keyof Rpc] extends [never]
+		? {}
+		: { readonly implementRpc: ImplementRpc<Rpc> });
 
 // TODO: support automatic migrations
 const migrationDie = () =>
@@ -328,6 +359,117 @@ export type ComputedField<Decoded> = ApplyLambdaToObject<
 	}
 >;
 
+const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
+	namespace: string,
+	name: string,
+	manifest: FieldManifest<Decoded>,
+) {
+	const broker = yield* TopicBrokerService;
+
+	const publish = Effect.fn("publish")(function* (value: Decoded) {
+		const encoded = yield* manifest.encode(value);
+		yield* broker.publish(namespace, name, encoded);
+	});
+
+	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
+		const stream = yield* broker.subscribe();
+		return stream.pipe(
+			Stream.filter(
+				(message) => message.namespace === namespace && message.name === name,
+			),
+			Stream.map((message) => message.value),
+		);
+	});
+
+	const subscribe = Effect.fn("subscribe")(function* () {
+		const stream = yield* subscribeEncoded();
+		return stream.pipe(
+			Stream.mapEffect((value) => manifest.decode(value).pipe(Effect.orDie)),
+		);
+	});
+
+	const publishEncoded = Effect.fn("publishEncoded")(function* (
+		value: JsonValue,
+	) {
+		const identity = yield* CurrentIdentity;
+		if (!manifest.permission.canWrite(identity)) {
+			return yield* new PermissionDenied({
+				namespace,
+				name,
+				operation: "write",
+			});
+		}
+		yield* manifest.decode(value); // Only for validation
+		return yield* broker.publish(namespace, name, value);
+	});
+
+	return {
+		publish,
+		subscribe,
+		[stateFieldInternal]: {
+			publish,
+			subscribe,
+			subscribeEncoded,
+			publishEncoded,
+			permission: manifest.permission,
+		},
+	};
+});
+
+type TopicFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementTopic<Decoded>>
+>;
+export type TopicField<Decoded> = ApplyLambdaToObject<
+	TopicFieldEffect<Decoded>,
+	{
+		publish: EffectToPromiseLambda;
+		subscribe: StreamToSubscribeLambda;
+		[stateFieldInternal]: IdentityLambda;
+	}
+>;
+
+const implementRpc = <Request, Response>(
+	namespace: string,
+	name: string,
+	manifest: RpcFieldManifest<Request, Response>,
+	handler: (request: Request) => Promisable<Response>,
+) => {
+	const callEncoded = Effect.fn("callEncoded")(function* (payload: JsonValue) {
+		const identity = yield* CurrentIdentity;
+		if (!manifest.permission.canWrite(identity)) {
+			return yield* new PermissionDenied({
+				namespace,
+				name,
+				operation: "write",
+			});
+		}
+		const request = yield* manifest.request.decode(payload);
+		const response = yield* Effect.tryPromise({
+			try: async () => handler(request),
+			catch: (error) =>
+				new RpcHandlerFailure({ namespace, name, cause: toError(error) }),
+		});
+		return yield* manifest.response.encode(response);
+	});
+
+	return Effect.succeed({
+		[stateFieldInternal]: {
+			callEncoded,
+			permission: manifest.permission,
+		},
+	});
+};
+
+type RpcFieldEffect<Request, Response> = Effect.Effect.Success<
+	ReturnType<typeof implementRpc<Request, Response>>
+>;
+export type RpcField<Request, Response> = ApplyLambdaToObject<
+	RpcFieldEffect<Request, Response>,
+	{
+		[stateFieldInternal]: IdentityLambda;
+	}
+>;
+
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
 }
@@ -356,20 +498,61 @@ interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
 	readonly type: ComputedField<this["Target"]>;
 }
 
+interface TopicFieldEffectLambda extends HKT.TypeLambda {
+	readonly type: TopicFieldEffect<this["Target"]>;
+}
+
+interface TopicFieldPromiseLambda extends HKT.TypeLambda {
+	readonly type: TopicField<this["Target"]>;
+}
+
+interface RpcFieldManifestLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcFieldManifest<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
+interface RpcHandlerLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: (
+		request: this["Target"]["request"],
+	) => Promisable<this["Target"]["response"]>;
+}
+
+interface RpcFieldEffectLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcFieldEffect<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
+interface RpcFieldPromiseLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcField<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
 export const stateMetadataKey = Symbol("stateMetadataKey");
 
 const buildNamespace = <
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
+	Rpc extends RpcShape,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
 	options:
-		| (NamespaceOptions<State, Computed> & { readonly storage?: unknown })
+		| (NamespaceOptions<State, Computed, Rpc> & { readonly storage?: unknown })
 		| undefined,
 ) => {
 	const seedState = options?.seedState;
 	const computeFns = options?.implementComputed;
+	const rpcHandlers = options?.implementRpc;
 	return Effect.gen(function* () {
 		const storage = yield* StateStorageService;
 
@@ -395,7 +578,7 @@ const buildNamespace = <
 			{ concurrency: "unbounded" },
 		);
 
-		const fields = yield* mapEffectValues<
+		const stateFields = yield* mapEffectValues<
 			FieldManifestLambda,
 			StateFieldEffectLambda
 		>()((codec, name) => implementState(manifest.namespace, name, codec))(
@@ -438,7 +621,24 @@ const buildNamespace = <
 			{ concurrency: "unbounded", discard: true },
 		);
 
-		return { fields, computedFields };
+		const topicFields = yield* mapEffectValues<
+			FieldManifestLambda,
+			TopicFieldEffectLambda
+		>()((codec, name) => implementTopic(manifest.namespace, name, codec))(
+			manifest.topic,
+		);
+
+		const rpcFields = yield* zipEffectValues<
+			RpcFieldManifestLambda,
+			RpcHandlerLambda,
+			RpcFieldEffectLambda,
+			unknown,
+			Rpc
+		>()(manifest.rpc, rpcHandlers, (codec, handler, name) =>
+			implementRpc(manifest.namespace, name, codec, handler),
+		);
+
+		return { stateFields, computedFields, topicFields, rpcFields };
 	});
 };
 
@@ -446,17 +646,20 @@ export function loadNamespaceEffect<
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
+	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
-	...rest: [keyof State | keyof Computed] extends [never]
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	...rest: [keyof State | keyof Computed | keyof Rpc] extends [never]
 		? []
-		: [options: RequiredOptions<State, Computed>]
+		: [options: RequiredOptions<State, Computed, Rpc>]
 ) {
 	const [options] = rest;
 	return buildNamespace(manifest, options).pipe(
-		Effect.map(({ fields, computedFields }) => ({
-			state: fields,
+		Effect.map(({ stateFields, computedFields, topicFields, rpcFields }) => ({
+			state: stateFields,
 			computed: computedFields,
+			topic: topicFields,
+			rpc: rpcFields,
 			[stateMetadataKey]: { namespace: manifest.namespace },
 		})),
 	);
@@ -468,26 +671,32 @@ async function loadNamespacePromise<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
+	Rpc extends RpcShape,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
 	options:
-		| (NamespaceOptions<State, Computed> & {
+		| (NamespaceOptions<State, Computed, Rpc> & {
 				readonly storage?: StorageOption;
 				readonly frontend?: FrontendConfig;
 		  })
 		| undefined,
-): Promise<LoadedNamespace<State, Computed>> {
+): Promise<LoadedNamespace<State, Computed, Topic, Rpc>> {
 	const storage = options?.storage;
+	const storageLayer = storage
+		? Effect.isEffect(storage)
+			? Layer.effect(StateStorageService, storage)
+			: Layer.succeed(StateStorageService, storage)
+		: InMemoryStateStorage;
 	const runtime = ManagedRuntime.make(
-		storage
-			? Effect.isEffect(storage)
-				? Layer.effect(StateStorageService, storage)
-				: Layer.succeed(StateStorageService, storage)
-			: InMemoryStateStorage,
+		Layer.merge(storageLayer, InMemoryTopicBroker),
 	);
 
-	const { fields: effectFields, computedFields: effectComputedFields } =
-		await runtime.runPromise(buildNamespace(manifest, options));
+	const {
+		stateFields: effectStateFields,
+		computedFields: effectComputedFields,
+		topicFields: effectTopicFields,
+		rpcFields: effectRpcFields,
+	} = await runtime.runPromise(buildNamespace(manifest, options));
 
 	const subscribeAdapter =
 		<Decoded, E>(
@@ -528,7 +737,7 @@ async function loadNamespacePromise<
 			subscribe: subscribeAdapter(field.subscribe, name),
 			[stateFieldInternal]: field[stateFieldInternal],
 		}),
-	)(effectFields);
+	)(effectStateFields);
 
 	const computed = mapValues<
 		ComputedFieldEffectLambda,
@@ -539,9 +748,25 @@ async function loadNamespacePromise<
 		[stateFieldInternal]: field[stateFieldInternal],
 	}))(effectComputedFields);
 
+	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(
+		(field, name) => ({
+			publish: (value) => runtime.runPromise(field.publish(value)),
+			subscribe: subscribeAdapter(field.subscribe, name),
+			[stateFieldInternal]: field[stateFieldInternal],
+		}),
+	)(effectTopicFields);
+
+	const rpc = mapValues<RpcFieldEffectLambda, RpcFieldPromiseLambda>(
+		(field) => ({
+			[stateFieldInternal]: field[stateFieldInternal],
+		}),
+	)(effectRpcFields);
+
 	return {
 		state,
 		computed,
+		topic,
+		rpc,
 		[stateMetadataKey]: {
 			namespace: manifest.namespace,
 			frontend: options?.frontend,
@@ -553,9 +778,10 @@ export function loadNamespace<
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
+	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
-	...rest: [keyof State | keyof Computed] extends [never]
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	...rest: [keyof State | keyof Computed | keyof Rpc] extends [never]
 		? [
 				options?: {
 					// TODO: inject storage from loadNodeCG
@@ -564,7 +790,7 @@ export function loadNamespace<
 				},
 			]
 		: [
-				options: RequiredOptions<State, Computed> & {
+				options: RequiredOptions<State, Computed, Rpc> & {
 					// TODO: inject storage from loadNodeCG
 					readonly storage?: StorageOption;
 					readonly frontend?: FrontendConfig;
@@ -578,33 +804,35 @@ interface ImplementedNamespace<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
+	Rpc extends RpcShape,
 > {
-	readonly manifest: NamespaceManifest<State, Computed, Topic>;
+	readonly manifest: NamespaceManifest<State, Computed, Topic, Rpc>;
 	readonly impl:
-		| (NamespaceOptions<State, Computed> & {
+		| (NamespaceOptions<State, Computed, Rpc> & {
 				readonly frontend?: FrontendConfig;
 		  })
 		| undefined;
 	// TODO: inject storage from loadNodeCG
 	readonly load: (
 		storage?: StorageOption,
-	) => ReturnType<typeof loadNamespacePromise<State, Computed, Topic>>;
+	) => ReturnType<typeof loadNamespacePromise<State, Computed, Topic, Rpc>>;
 }
 
 export function implementNamespace<
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
+	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
-	...rest: [keyof State | keyof Computed] extends [never]
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	...rest: [keyof State | keyof Computed | keyof Rpc] extends [never]
 		? [options?: { readonly frontend?: FrontendConfig }]
 		: [
-				impl: RequiredOptions<State, Computed> & {
+				impl: RequiredOptions<State, Computed, Rpc> & {
 					readonly frontend?: FrontendConfig;
 				},
 			]
-): ImplementedNamespace<State, Computed, Topic> {
+): ImplementedNamespace<State, Computed, Topic, Rpc> {
 	const [impl] = rest;
 	return {
 		manifest,
@@ -619,8 +847,10 @@ type RelaxCovered<O, Covered extends PropertyKey> = Omit<O, Covered> &
 type ExtensionSupplement<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
+	Rpc extends RpcShape,
 	CoveredState extends PropertyKey,
 	CoveredComputed extends PropertyKey,
+	CoveredRpc extends PropertyKey,
 > = ([keyof Omit<State, CoveredState>] extends [never]
 	? { readonly seedState?: RelaxCovered<SeedState<State>, CoveredState> }
 	: { readonly seedState: RelaxCovered<SeedState<State>, CoveredState> }) &
@@ -636,28 +866,38 @@ type ExtensionSupplement<
 					ImplementComputed<State, Computed>,
 					CoveredComputed
 				>;
+			}) &
+	([keyof Omit<Rpc, CoveredRpc>] extends [never]
+		? {
+				readonly implementRpc?: RelaxCovered<ImplementRpc<Rpc>, CoveredRpc>;
+			}
+		: {
+				readonly implementRpc: RelaxCovered<ImplementRpc<Rpc>, CoveredRpc>;
 			});
 
 export function loadExtendedNamespace<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
-	const Base extends ImplementedNamespace<any, any, any>,
+	Rpc extends RpcShape,
+	const Base extends ImplementedNamespace<any, any, any, any>,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
 	implemented: Base,
 	additional: ExtensionSupplement<
 		State,
 		Computed,
+		Rpc,
 		keyof Base["manifest"]["state"] & string,
-		keyof Base["manifest"]["computed"] & string
+		keyof Base["manifest"]["computed"] & string,
+		keyof Base["manifest"]["rpc"] & string
 	>,
 	options?: {
 		readonly storage?: StorageOption;
 		readonly frontend?: FrontendConfig;
 	},
 ) {
-	const merged: NamespaceOptions<State, Computed> = {
+	const merged: NamespaceOptions<State, Computed, Rpc> = {
 		seedState: mergeRecords<SeedState<State>>(
 			implemented.impl?.seedState,
 			additional.seedState,
@@ -665,6 +905,10 @@ export function loadExtendedNamespace<
 		implementComputed: mergeRecords<ImplementComputed<State, Computed>>(
 			implemented.impl?.implementComputed,
 			additional.implementComputed,
+		),
+		implementRpc: mergeRecords<ImplementRpc<Rpc>>(
+			implemented.impl?.implementRpc,
+			additional.implementRpc,
 		),
 	};
 	return loadNamespacePromise(manifest, {
@@ -677,6 +921,8 @@ export function loadExtendedNamespace<
 export interface LoadedNamespace<
 	State extends Record<string, unknown> = Record<string, unknown>,
 	Computed extends Record<string, unknown> = Record<string, unknown>,
+	Topic extends Record<string, unknown> = Record<string, unknown>,
+	Rpc extends RpcShape = RpcShape,
 > {
 	readonly [stateMetadataKey]: {
 		readonly namespace: string;
@@ -687,5 +933,14 @@ export interface LoadedNamespace<
 	};
 	readonly computed: {
 		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
+	};
+	readonly topic: {
+		readonly [K in keyof Topic & string]: TopicField<Topic[K]>;
+	};
+	readonly rpc: {
+		readonly [K in keyof Rpc & string]: RpcField<
+			Rpc[K]["request"],
+			Rpc[K]["response"]
+		>;
 	};
 }

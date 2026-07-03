@@ -19,6 +19,7 @@ import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
 import {
 	type LoadedNamespace,
 	PermissionDenied,
+	RpcHandlerFailure,
 	type StateField,
 	stateFieldInternal,
 	stateMetadataKey,
@@ -83,14 +84,50 @@ function stubComputed(
 	};
 }
 
+type TopicInternal =
+	LoadedNamespace["topic"][string][typeof stateFieldInternal];
+type RpcInternal = LoadedNamespace["rpc"][string][typeof stateFieldInternal];
+
+function stubTopic(
+	publishEncoded: TopicInternal["publishEncoded"],
+): LoadedNamespace["topic"][string] {
+	const unused = vi.fn();
+	return {
+		publish: unused,
+		subscribe: unused,
+		[stateFieldInternal]: {
+			publish: unused,
+			subscribe: () => Effect.succeed(Stream.empty),
+			subscribeEncoded: () => Effect.succeed(Stream.empty),
+			publishEncoded,
+			permission: openPermission,
+		},
+	};
+}
+
+function stubRpc(
+	callEncoded: RpcInternal["callEncoded"],
+): LoadedNamespace["rpc"][string] {
+	return {
+		[stateFieldInternal]: {
+			callEncoded,
+			permission: openPermission,
+		},
+	};
+}
+
 function loadedNamespace(
 	namespace: string,
 	fields: Record<string, StateField<unknown>>,
 	computed: LoadedNamespace["computed"] = {},
+	topic: LoadedNamespace["topic"] = {},
+	rpc: LoadedNamespace["rpc"] = {},
 ): LoadedNamespace {
 	return {
 		state: fields,
 		computed,
+		topic,
+		rpc,
 		[stateMetadataKey]: { namespace },
 	};
 }
@@ -124,10 +161,19 @@ function webHandler(
 
 const getUrl = "http://x/api/namespaces/root/state/count";
 const computedUrl = "http://x/api/namespaces/root/computed/count";
+const topicUrl = "http://x/api/namespaces/root/topic/chat";
+const rpcUrl = "http://x/api/namespaces/root/rpc/echo";
 
 const putRequest = (value: unknown) =>
 	new Request(getUrl, {
 		method: "PUT",
+		body: JSON.stringify(value),
+		headers: { "content-type": "application/json" },
+	});
+
+const postRequest = (url: string, value: unknown) =>
+	new Request(url, {
+		method: "POST",
 		body: JSON.stringify(value),
 		headers: { "content-type": "application/json" },
 	});
@@ -377,5 +423,157 @@ describe("permission enforcement", () => {
 		]);
 		const res = await handler(new Request(getUrl));
 		expect(await res.json()).toBe("public");
+	});
+});
+
+describe("topic publish", () => {
+	test("forwards an allowed value and returns 204", async () => {
+		const publishEncoded = vi.fn((_value: unknown) => Effect.void);
+		const handler = webHandler([
+			loadedNamespace("root", {}, {}, { chat: stubTopic(publishEncoded) }),
+		]);
+		const res = await handler(postRequest(topicUrl, 5));
+		expect(res.status).toBe(204);
+		expect(publishEncoded).toHaveBeenCalledWith(5);
+	});
+
+	test("404 when the namespace/name is not registered", async () => {
+		const handler = webHandler([]);
+		expect((await handler(postRequest(topicUrl, 5))).status).toBe(404);
+	});
+
+	test("403 when publishEncoded denies the caller", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{},
+				{
+					chat: stubTopic(() =>
+						Effect.fail(
+							new PermissionDenied({
+								namespace: "root",
+								name: "chat",
+								operation: "write",
+							}),
+						),
+					),
+				},
+			),
+		]);
+		expect((await handler(postRequest(topicUrl, 5))).status).toBe(403);
+	});
+
+	test("400 when publishEncoded reports StateDecodeError", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{},
+				{
+					chat: stubTopic(() =>
+						Effect.fail(
+							new StateDecodeError({
+								fieldName: "chat",
+								value: 5,
+								cause: new Error("boom"),
+							}),
+						),
+					),
+				},
+			),
+		]);
+		expect((await handler(postRequest(topicUrl, 5))).status).toBe(400);
+	});
+});
+
+describe("rpc call", () => {
+	test("returns the encoded handler response", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{},
+				{},
+				{ echo: stubRpc(() => Effect.succeed(84)) },
+			),
+		]);
+		const res = await handler(postRequest(rpcUrl, 42));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toBe(84);
+	});
+
+	test("404 when the proc is not registered", async () => {
+		const handler = webHandler([]);
+		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(404);
+	});
+
+	test("403 when callEncoded denies the caller", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{},
+				{},
+				{
+					echo: stubRpc(() =>
+						Effect.fail(
+							new PermissionDenied({
+								namespace: "root",
+								name: "echo",
+								operation: "write",
+							}),
+						),
+					),
+				},
+			),
+		]);
+		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(403);
+	});
+
+	test("400 when callEncoded reports StateDecodeError", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{},
+				{},
+				{
+					echo: stubRpc(() =>
+						Effect.fail(
+							new StateDecodeError({
+								fieldName: "echo",
+								value: 42,
+								cause: new Error("boom"),
+							}),
+						),
+					),
+				},
+			),
+		]);
+		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(400);
+	});
+
+	test("500 when the handler fails", async () => {
+		const handler = webHandler([
+			loadedNamespace(
+				"root",
+				{},
+				{},
+				{},
+				{
+					echo: stubRpc(() =>
+						Effect.fail(
+							new RpcHandlerFailure({
+								namespace: "root",
+								name: "echo",
+								cause: new Error("boom"),
+							}),
+						),
+					),
+				},
+			),
+		]);
+		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(500);
 	});
 });

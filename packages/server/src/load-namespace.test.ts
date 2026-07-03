@@ -12,11 +12,13 @@ import {
 	Chunk,
 	Effect,
 	Fiber,
+	Layer,
 	Option,
 	Queue,
 	Schema,
 	Stream,
 } from "effect";
+import type { Promisable } from "type-fest";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import {
@@ -32,6 +34,12 @@ import {
 	type StateStorage,
 	StateStorageService,
 } from "./services/state-storage/state-storage.ts";
+import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
+import {
+	type TopicBroker,
+	type TopicMessage,
+	TopicBrokerService,
+} from "./services/topic-broker/topic-broker.ts";
 
 const createStorageStub = () =>
 	({
@@ -43,6 +51,16 @@ const createStorageStub = () =>
 		),
 		flush: vi.fn<StateStorage["flush"]>(() => Effect.void),
 	}) satisfies StateStorage;
+
+const createBrokerStub = () =>
+	({
+		publish: vi.fn<TopicBroker["publish"]>(() => Effect.void),
+		subscribe: vi.fn<TopicBroker["subscribe"]>(() =>
+			Effect.succeed(Stream.empty),
+		),
+	}) satisfies TopicBroker;
+
+const anonymous = PublicIdentitySchema.make();
 
 describe("loadNamespaceEffect seeding", () => {
 	test(
@@ -57,7 +75,10 @@ describe("loadNamespaceEffect seeding", () => {
 
 				yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 42 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				expect(storageStub.create).toHaveBeenCalledWith("ns", "count", 42);
 				expect(storageStub.create).toHaveBeenCalledTimes(1);
@@ -82,7 +103,10 @@ describe("loadNamespaceEffect seeding", () => {
 							return 7;
 						},
 					},
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				expect(storageStub.create).toHaveBeenCalledWith("ns", "count", 7);
 			}),
@@ -101,7 +125,10 @@ describe("loadNamespaceEffect seeding", () => {
 
 				yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				expect(storageStub.create).not.toHaveBeenCalled();
 			}),
@@ -144,6 +171,7 @@ describe("loadNamespaceEffect seeding", () => {
 					seedState: { broken: () => 42 },
 				}).pipe(
 					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
 					Effect.flip,
 				);
 				expect(error._tag).toBe("StateEncodeError");
@@ -165,12 +193,18 @@ describe("get", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				expect(
 					yield* loaded.state.count
 						.get()
-						.pipe(Effect.provideService(StateStorageService, storageStub)),
+						.pipe(
+							Effect.provideService(StateStorageService, storageStub),
+							Effect.provide(InMemoryTopicBroker),
+						),
 				).toBe(42);
 			}),
 		),
@@ -188,12 +222,16 @@ describe("get", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				const cause = yield* loaded.state.count
 					.get()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.sandbox,
 						Effect.flip,
 					);
@@ -221,12 +259,18 @@ describe("get", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { when: () => new Date(0) },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				expect(
 					yield* loaded.state.when
 						.get()
-						.pipe(Effect.provideService(StateStorageService, storageStub)),
+						.pipe(
+							Effect.provideService(StateStorageService, storageStub),
+							Effect.provide(InMemoryTopicBroker),
+						),
 				).toEqual(new Date("2026-05-14T00:00:00.000Z"));
 			}),
 		),
@@ -248,12 +292,18 @@ describe("getEncodedNoAuth", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { when: () => new Date(0) },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				expect(
 					yield* loaded.state.when[stateFieldInternal]
 						.getEncodedNoAuth()
-						.pipe(Effect.provideService(StateStorageService, storageStub)),
+						.pipe(
+							Effect.provideService(StateStorageService, storageStub),
+							Effect.provide(InMemoryTopicBroker),
+						),
 				).toBe("2026-05-14T00:00:00.000Z");
 			}),
 		),
@@ -271,12 +321,16 @@ describe("getEncodedNoAuth", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				const cause = yield* loaded.state.count[stateFieldInternal]
 					.getEncodedNoAuth()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.sandbox,
 						Effect.flip,
 					);
@@ -304,11 +358,17 @@ describe("set", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				yield* loaded.state.count
 					.set(7)
-					.pipe(Effect.provideService(StateStorageService, storageStub));
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
+					);
 				expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 7);
 			}),
 		),
@@ -326,12 +386,16 @@ describe("set", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				const error = yield* loaded.state.count
 					.set("not a number" as unknown as number)
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.flip,
 					);
 				expect(error._tag).toBe("StateEncodeError");
@@ -353,11 +417,17 @@ describe("set", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { when: () => new Date(0) },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				yield* loaded.state.when
 					.set(new Date("2026-05-14T00:00:00.000Z"))
-					.pipe(Effect.provideService(StateStorageService, storageStub));
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
+					);
 				expect(storageStub.update).toHaveBeenLastCalledWith(
 					"ns",
 					"when",
@@ -381,11 +451,17 @@ describe("update", () => {
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
 					seedState: { count: () => 0 },
-				}).pipe(Effect.provideService(StateStorageService, storageStub));
+				}).pipe(
+					Effect.provideService(StateStorageService, storageStub),
+					Effect.provide(InMemoryTopicBroker),
+				);
 
 				yield* loaded.state.count
 					.update((v) => v + 3)
-					.pipe(Effect.provideService(StateStorageService, storageStub));
+					.pipe(
+						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
+					);
 				expect(storageStub.update).toHaveBeenLastCalledWith("ns", "count", 13);
 			}),
 		),
@@ -436,7 +512,9 @@ describe("computed", () => {
 
 				yield* loaded.state.games.set([{ id: "a" }, { id: "b" }]);
 				expect(yield* loaded.computed.firstGameId.get()).toBe("a");
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 
@@ -478,7 +556,9 @@ describe("computed", () => {
 				);
 
 				yield* Fiber.interrupt(fiber);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 
@@ -495,7 +575,9 @@ describe("computed", () => {
 					},
 				}).pipe(Effect.flip);
 				expect(error._tag).toBe("StateComputeError");
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 
@@ -508,7 +590,9 @@ describe("computed", () => {
 					implementComputed: { firstGameId: () => 42 as unknown as string },
 				}).pipe(Effect.flip);
 				expect(error._tag).toBe("StateEncodeError");
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 });
@@ -535,7 +619,9 @@ describe("field subscribe", () => {
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual(["0", "42"]);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 
@@ -552,7 +638,9 @@ describe("field subscribe", () => {
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([0, 7]);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 
@@ -570,7 +658,9 @@ describe("field subscribe", () => {
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([0, 3]);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 
@@ -587,7 +677,9 @@ describe("field subscribe", () => {
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([5, 8]);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 });
@@ -702,13 +794,14 @@ describe("permission threading", () => {
 				expect(loaded.computed.doubled[stateFieldInternal].permission).toBe(
 					manifest.computed.doubled.permission,
 				);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(
+				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+			),
 		),
 	);
 });
 
 describe("encoded read/write enforce permission", () => {
-	const anonymous = PublicIdentitySchema.make();
 	const manifest = defineNamespace("ns", {
 		state: {
 			open: {
@@ -736,7 +829,10 @@ describe("encoded read/write enforce permission", () => {
 				openComputed: (sources) => sources.open,
 				lockedComputed: (sources) => sources.locked,
 			},
-		}).pipe(Effect.provideService(StateStorageService, storageStub));
+		}).pipe(
+			Effect.provideService(StateStorageService, storageStub),
+			Effect.provide(InMemoryTopicBroker),
+		);
 
 	test(
 		"getEncoded returns the value for an allowed caller",
@@ -750,6 +846,7 @@ describe("encoded read/write enforce permission", () => {
 						.getEncoded()
 						.pipe(
 							Effect.provideService(StateStorageService, storageStub),
+							Effect.provide(InMemoryTopicBroker),
 							Effect.provideService(CurrentIdentity, anonymous),
 						),
 				).toBe(42);
@@ -768,6 +865,7 @@ describe("encoded read/write enforce permission", () => {
 					.getEncoded()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
 					);
@@ -787,6 +885,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded(7)
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 					);
 				expect(storageStub.update).toHaveBeenCalledWith("ns", "open", 7);
@@ -805,6 +904,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded(7)
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
 					);
@@ -825,10 +925,241 @@ describe("encoded read/write enforce permission", () => {
 					.getEncoded()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
+						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
 					);
 				expect(error._tag).toBe("PermissionDenied");
+			}),
+		),
+	);
+});
+
+describe("topic", () => {
+	const manifest = defineNamespace("ns", {
+		roles: { chatter: { permission: ["topic-subscribe", "topic-publish"] } },
+		topic: {
+			open: {
+				schema: Schema.NumberFromString,
+				permission: {
+					read: { allow: ["public"] },
+					write: { allow: ["public"] },
+				},
+			},
+			locked: { schema: Schema.NumberFromString },
+		},
+	});
+
+	const load = (brokerStub: ReturnType<typeof createBrokerStub>) =>
+		loadNamespaceEffect(manifest).pipe(
+			Effect.provideService(StateStorageService, createStorageStub()),
+			Effect.provideService(TopicBrokerService, brokerStub),
+		);
+
+	test(
+		"publish encodes the value and forwards it to the broker",
+		testEffect(
+			Effect.gen(function* () {
+				const brokerStub = createBrokerStub();
+				const loaded = yield* load(brokerStub);
+				yield* loaded.topic.open.publish(42);
+				expect(brokerStub.publish).toHaveBeenCalledWith("ns", "open", "42");
+			}),
+		),
+	);
+
+	test(
+		"subscribeEncoded streams only the matching field's messages",
+		testEffect(
+			Effect.gen(function* () {
+				const brokerStub = createBrokerStub();
+				brokerStub.subscribe.mockReturnValue(
+					Effect.succeed(
+						Stream.fromIterable<TopicMessage>([
+							{ namespace: "ns", name: "locked", value: "1" },
+							{ namespace: "ns", name: "open", value: "2" },
+							{ namespace: "other", name: "open", value: "3" },
+						]),
+					),
+				);
+				const loaded = yield* load(brokerStub);
+				const stream =
+					yield* loaded.topic.open[stateFieldInternal].subscribeEncoded();
+				const events = yield* stream.pipe(Stream.runCollect);
+				expect(Chunk.toArray(events)).toEqual(["2"]);
+			}),
+		),
+	);
+
+	test(
+		"subscribe decodes the matching messages",
+		testEffect(
+			Effect.gen(function* () {
+				const brokerStub = createBrokerStub();
+				brokerStub.subscribe.mockReturnValue(
+					Effect.succeed(
+						Stream.fromIterable<TopicMessage>([
+							{ namespace: "ns", name: "open", value: "7" },
+						]),
+					),
+				);
+				const loaded = yield* load(brokerStub);
+				const stream = yield* loaded.topic.open.subscribe();
+				const events = yield* stream.pipe(Stream.runCollect);
+				expect(Chunk.toArray(events)).toEqual([7]);
+			}),
+		),
+	);
+
+	test(
+		"publishEncoded forwards the value for an allowed caller",
+		testEffect(
+			Effect.gen(function* () {
+				const brokerStub = createBrokerStub();
+				const loaded = yield* load(brokerStub);
+				yield* loaded.topic.open[stateFieldInternal]
+					.publishEncoded("5")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(brokerStub.publish).toHaveBeenCalledWith("ns", "open", "5");
+			}),
+		),
+	);
+
+	test(
+		"publishEncoded fails PermissionDenied and does not publish for a denied caller",
+		testEffect(
+			Effect.gen(function* () {
+				const brokerStub = createBrokerStub();
+				const loaded = yield* load(brokerStub);
+				const error = yield* loaded.topic.locked[stateFieldInternal]
+					.publishEncoded("5")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
+				expect(error._tag).toBe("PermissionDenied");
+				expect(brokerStub.publish).not.toHaveBeenCalled();
+			}),
+		),
+	);
+
+	test(
+		"publishEncoded fails when the value fails schema validation",
+		testEffect(
+			Effect.gen(function* () {
+				const brokerStub = createBrokerStub();
+				const loaded = yield* load(brokerStub);
+				const error = yield* loaded.topic.open[stateFieldInternal]
+					.publishEncoded(42)
+					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
+				expect(error._tag).toBe("StateDecodeError");
+				expect(brokerStub.publish).not.toHaveBeenCalled();
+			}),
+		),
+	);
+});
+
+describe("rpc", () => {
+	const manifest = defineNamespace("ns", {
+		rpc: {
+			echo: {
+				schema: {
+					request: Schema.NumberFromString,
+					response: Schema.NumberFromString,
+				},
+				permission: { write: { allow: ["public"] } },
+			},
+			locked: {
+				schema: { request: Schema.String, response: Schema.String },
+			},
+		},
+	});
+
+	const load = (handlers: {
+		echo: (request: number) => Promisable<number>;
+		locked: (request: string) => Promisable<string>;
+	}) =>
+		loadNamespaceEffect(manifest, { implementRpc: handlers }).pipe(
+			Effect.provideService(StateStorageService, createStorageStub()),
+			Effect.provideService(TopicBrokerService, createBrokerStub()),
+		);
+
+	test(
+		"call decodes the request, runs the handler, and encodes the response",
+		testEffect(
+			Effect.gen(function* () {
+				const echo = vi.fn((request: number) => request * 2);
+				const loaded = yield* load({ echo, locked: (request) => request });
+				const result = yield* loaded.rpc.echo[stateFieldInternal]
+					.callEncoded("21")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(echo).toHaveBeenCalledWith(21);
+				expect(result).toBe("42");
+			}),
+		),
+	);
+
+	test(
+		"call awaits an async handler",
+		testEffect(
+			Effect.gen(function* () {
+				const loaded = yield* load({
+					echo: async (request) => {
+						await new Promise((resolve) => setTimeout(resolve, 1));
+						return request + 1;
+					},
+					locked: (request) => request,
+				});
+				const result = yield* loaded.rpc.echo[stateFieldInternal]
+					.callEncoded("4")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(result).toBe("5");
+			}),
+		),
+	);
+
+	test(
+		"call fails PermissionDenied for a caller without rpc-call",
+		testEffect(
+			Effect.gen(function* () {
+				const loaded = yield* load({
+					echo: (request) => request,
+					locked: (request) => request,
+				});
+				const error = yield* loaded.rpc.locked[stateFieldInternal]
+					.callEncoded("x")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
+				expect(error._tag).toBe("PermissionDenied");
+			}),
+		),
+	);
+
+	test(
+		"call fails StateDecodeError when the request payload is invalid",
+		testEffect(
+			Effect.gen(function* () {
+				const echo = vi.fn((request: number) => request);
+				const loaded = yield* load({ echo, locked: (request) => request });
+				const error = yield* loaded.rpc.echo[stateFieldInternal]
+					.callEncoded("not a number")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
+				expect(error._tag).toBe("StateDecodeError");
+				expect(echo).not.toHaveBeenCalled();
+			}),
+		),
+	);
+
+	test(
+		"call surfaces a throwing handler as RpcHandlerFailure",
+		testEffect(
+			Effect.gen(function* () {
+				const loaded = yield* load({
+					echo: () => {
+						throw new Error("boom");
+					},
+					locked: (request) => request,
+				});
+				const error = yield* loaded.rpc.echo[stateFieldInternal]
+					.callEncoded("1")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
+				expect(error._tag).toBe("RpcHandlerFailure");
 			}),
 		),
 	);

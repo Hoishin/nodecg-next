@@ -75,8 +75,9 @@ export const websocketRoute = (options: {
 						Match.when("computed", () =>
 							registry.computed.get(field.namespace)?.get(field.name),
 						),
-						// topic has no broker/registry yet (lands in 09 layer 3); rejects as not-found
-						Match.when("topic", () => undefined),
+						Match.when("topic", () =>
+							registry.topic.get(field.namespace)?.get(field.name),
+						),
 						Match.exhaustive,
 					);
 					if (typeof internal === "undefined") {
@@ -86,18 +87,21 @@ export const websocketRoute = (options: {
 						return list;
 					}
 					if (list.some((s) => fieldIdentifierEquivalence(s.field, field))) {
-						yield* internal.getEncoded().pipe(
-							Effect.provideService(CurrentIdentity, identity),
-							Effect.flatMap((value) => publish(field, value)),
-							Effect.catchTag("PermissionDenied", () =>
-								send(
-									SubscribeRejectedMessage.make({
-										field,
-										reason: "forbidden",
-									}),
+						// If there is stored value, send it immediately
+						if ("getEncoded" in internal) {
+							yield* internal.getEncoded().pipe(
+								Effect.provideService(CurrentIdentity, identity),
+								Effect.flatMap((value) => publish(field, value)),
+								Effect.catchTag("PermissionDenied", () =>
+									send(
+										SubscribeRejectedMessage.make({
+											field,
+											reason: "forbidden",
+										}),
+									),
 								),
-							),
-						);
+							);
+						}
 						return list;
 					}
 					if (!internal.permission.canRead(identity)) {
