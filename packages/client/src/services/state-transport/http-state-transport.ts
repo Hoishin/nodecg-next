@@ -5,11 +5,13 @@ import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
+	RpcCallFailed,
 	StateGetFailed,
 	StateNotFound,
 	StatePermissionDenied,
 	StateSaveFailed,
 	StateTransportService,
+	TopicPublishFailed,
 } from "./state-transport.ts";
 
 export const HttpStateTransport = Layer.effect(
@@ -82,6 +84,55 @@ export const HttpStateTransport = Layer.effect(
 			);
 		});
 
-		return { readState, readComputed, updateState };
+		const publishTopic = Effect.fn("StateTransport.publishTopic")(function* (
+			namespace: string,
+			name: string,
+			value: JsonValue,
+		) {
+			yield* client.Topic.publish({
+				path: { namespace, name },
+				payload: value,
+			}).pipe(
+				Effect.mapError((error) =>
+					Match.value(error).pipe(
+						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag(
+							"Forbidden",
+							() => new StatePermissionDenied({ namespace, name }),
+						),
+						Match.orElse(
+							(e) =>
+								new TopicPublishFailed({ namespace, name, cause: toError(e) }),
+						),
+					),
+				),
+			);
+		});
+
+		const callRpc = Effect.fn("StateTransport.callRpc")(function* (
+			namespace: string,
+			name: string,
+			request: JsonValue,
+		) {
+			return yield* client.Rpc.call({
+				path: { namespace, name },
+				payload: request,
+			}).pipe(
+				Effect.mapError((error) =>
+					Match.value(error).pipe(
+						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag(
+							"Forbidden",
+							() => new StatePermissionDenied({ namespace, name }),
+						),
+						Match.orElse(
+							(e) => new RpcCallFailed({ namespace, name, cause: toError(e) }),
+						),
+					),
+				),
+			);
+		});
+
+		return { readState, readComputed, updateState, publishTopic, callRpc };
 	}).pipe(Effect.provide(FetchHttpClient.layer)),
 );

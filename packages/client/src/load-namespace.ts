@@ -1,6 +1,14 @@
 import { FetchHttpClient, HttpApiClient } from "@effect/platform";
-import type { NamespaceManifest, FieldManifest } from "@nodecg/core";
-import { NodecgApi, type FieldIdentifier } from "@nodecg/internal";
+import type {
+	NamespaceManifest,
+	FieldManifest,
+	RpcFieldManifest,
+} from "@nodecg/core";
+import {
+	NodecgApi,
+	type FieldIdentifier,
+	fieldIdentifierEquivalence,
+} from "@nodecg/internal";
 import {
 	mapEffectValues,
 	mapValues,
@@ -34,6 +42,11 @@ import {
 	StateTransportService,
 	type StateTransport,
 } from "./services/state-transport/state-transport.ts";
+
+type RpcShape = Record<
+	string,
+	{ readonly request: unknown; readonly response: unknown }
+>;
 
 const implementSubscription = Effect.fn("implementSubscription")(function* <
 	Decoded,
@@ -224,6 +237,111 @@ export type ComputedField<Decoded> = ApplyLambdaToObject<
 	}
 >;
 
+const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
+	namespace: string,
+	name: string,
+	manifest: FieldManifest<Decoded>,
+) {
+	const transport = yield* StateTransportService;
+	const messageChannel = yield* MessageChannelService;
+	const field: FieldIdentifier = { type: "topic", namespace, name };
+	let refcount = 0;
+
+	const publish = Effect.fn("publish")(function* (value: Decoded) {
+		const encoded = yield* manifest.encode(value);
+		yield* transport.publishTopic(namespace, name, encoded);
+	});
+
+	const subscribe = () =>
+		Effect.gen(function* () {
+			const stream = yield* messageChannel.receive();
+			yield* Effect.acquireRelease(
+				Effect.gen(function* () {
+					refcount += 1;
+					if (refcount === 1) {
+						yield* messageChannel.send({ _tag: "subscribe", field });
+					}
+				}),
+				() =>
+					Effect.gen(function* () {
+						refcount -= 1;
+						if (refcount > 0) {
+							return;
+						}
+						yield* messageChannel
+							.send({ _tag: "unsubscribe", field })
+							.pipe(
+								Effect.catchAll((error) =>
+									Effect.logError(
+										`Failed to send unsubscribe for topic "${namespace}/${name}":`,
+										error,
+									),
+								),
+							);
+					}),
+			);
+
+			return stream.pipe(
+				Stream.filterMap((msg) =>
+					msg._tag === "publish" && fieldIdentifierEquivalence(msg.field, field)
+						? Option.some(msg.value)
+						: Option.none(),
+				),
+				Stream.mapEffect((value) =>
+					manifest.decode(value).pipe(
+						Effect.map(Option.some),
+						Effect.catchAll((error) =>
+							Effect.logError(
+								`Failed to decode published value for topic "${namespace}/${name}":`,
+								error,
+							).pipe(Effect.as(Option.none<Decoded>())),
+						),
+					),
+				),
+				Stream.filterMap((value) => value),
+			);
+		});
+
+	return { publish, subscribe };
+});
+
+type TopicFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementTopic<Decoded>>
+>;
+export type TopicField<Decoded> = ApplyLambdaToObject<
+	TopicFieldEffect<Decoded>,
+	{
+		publish: EffectToPromiseLambda;
+		subscribe: StreamToSubscribeLambda;
+	}
+>;
+
+const implementRpc = Effect.fn("implementRpc")(function* <Request, Response>(
+	namespace: string,
+	name: string,
+	manifest: RpcFieldManifest<Request, Response>,
+) {
+	const transport = yield* StateTransportService;
+
+	const call = Effect.fn("call")(function* (request: Request) {
+		const encoded = yield* manifest.request.encode(request);
+		const response = yield* transport.callRpc(namespace, name, encoded);
+		return yield* manifest.response.decode(response);
+	});
+
+	return { call };
+});
+
+type RpcFieldEffect<Request, Response> = Effect.Effect.Success<
+	ReturnType<typeof implementRpc<Request, Response>>
+>;
+export type RpcField<Request, Response> = ApplyLambdaToObject<
+	RpcFieldEffect<Request, Response>,
+	{
+		call: EffectToPromiseLambda;
+	}
+>;
+
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
 }
@@ -244,12 +362,45 @@ interface ComputedFieldPromiseLambda extends HKT.TypeLambda {
 	readonly type: ComputedField<this["Target"]>;
 }
 
+interface TopicFieldEffectLambda extends HKT.TypeLambda {
+	readonly type: TopicFieldEffect<this["Target"]>;
+}
+
+interface TopicFieldPromiseLambda extends HKT.TypeLambda {
+	readonly type: TopicField<this["Target"]>;
+}
+
+interface RpcFieldManifestLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcFieldManifest<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
+interface RpcFieldEffectLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcFieldEffect<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
+interface RpcFieldPromiseLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcField<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
 const buildNamespace = <
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
+	Rpc extends RpcShape,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
 ) =>
 	Effect.gen(function* () {
 		const fields = yield* mapEffectValues<
@@ -264,7 +415,19 @@ const buildNamespace = <
 		>()((codec, name) => implementComputed(manifest.namespace, name, codec))(
 			manifest.computed,
 		);
-		return { fields, computedFields };
+		const topicFields = yield* mapEffectValues<
+			FieldManifestLambda,
+			TopicFieldEffectLambda
+		>()((codec, name) => implementTopic(manifest.namespace, name, codec))(
+			manifest.topic,
+		);
+		const rpcFields = yield* mapEffectValues<
+			RpcFieldManifestLambda,
+			RpcFieldEffectLambda
+		>()((codec, name) => implementRpc(manifest.namespace, name, codec))(
+			manifest.rpc,
+		);
+		return { fields, computedFields, topicFields, rpcFields };
 	});
 
 const buildHttpClient = Effect.fn("buildHttpClient")(function* () {
@@ -279,12 +442,15 @@ export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
->(manifest: NamespaceManifest<State, Computed, Topic>) {
+	Rpc extends RpcShape = {},
+>(manifest: NamespaceManifest<State, Computed, Topic, Rpc>) {
 	const httpClient = yield* buildHttpClient();
 	return yield* buildNamespace(manifest).pipe(
-		Effect.map(({ fields, computedFields }) => ({
+		Effect.map(({ fields, computedFields, topicFields, rpcFields }) => ({
 			state: fields,
 			computed: computedFields,
+			topic: topicFields,
+			rpc: rpcFields,
 			httpClient,
 		})),
 	);
@@ -293,12 +459,23 @@ export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 export interface LoadedNamespace<
 	State extends Record<string, unknown> = Record<string, unknown>,
 	Computed extends Record<string, unknown> = Record<string, unknown>,
+	Topic extends Record<string, unknown> = Record<string, unknown>,
+	Rpc extends RpcShape = RpcShape,
 > {
 	readonly state: {
 		readonly [K in keyof State & string]: StateField<State[K]>;
 	};
 	readonly computed: {
 		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
+	};
+	readonly topic: {
+		readonly [K in keyof Topic & string]: TopicField<Topic[K]>;
+	};
+	readonly rpc: {
+		readonly [K in keyof Rpc & string]: RpcField<
+			Rpc[K]["request"],
+			Rpc[K]["response"]
+		>;
 	};
 	httpClient: Effect.Effect.Success<
 		ReturnType<typeof loadNamespaceEffect>
@@ -311,8 +488,9 @@ export async function loadNamespace<
 	State extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
+	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic>,
+	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
 	adapter?: {
 		stateTransport?:
 			| (() => StateTransport)
@@ -321,7 +499,7 @@ export async function loadNamespace<
 			| (() => MessageChannel)
 			| Effect.Effect<MessageChannel, never, never>;
 	},
-): Promise<LoadedNamespace<State, Computed>> {
+): Promise<LoadedNamespace<State, Computed, Topic, Rpc>> {
 	const stateTransport = adapter?.stateTransport;
 	const messageChannel = adapter?.messageChannel;
 
@@ -347,8 +525,12 @@ export async function loadNamespace<
 		),
 	);
 
-	const { fields: effectFields, computedFields: effectComputedFields } =
-		await runtime.runPromise(buildNamespace(manifest));
+	const {
+		fields: effectFields,
+		computedFields: effectComputedFields,
+		topicFields: effectTopicFields,
+		rpcFields: effectRpcFields,
+	} = await runtime.runPromise(buildNamespace(manifest));
 
 	const subscribeEffectToPromise =
 		<Decoded, E>(
@@ -397,9 +579,24 @@ export async function loadNamespace<
 		subscribe: subscribeEffectToPromise(field.subscribe, name),
 	}))(effectComputedFields);
 
+	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(
+		(field, name) => ({
+			publish: (value) => runtime.runPromise(field.publish(value)),
+			subscribe: subscribeEffectToPromise(field.subscribe, name),
+		}),
+	)(effectTopicFields);
+
+	const rpc = mapValues<RpcFieldEffectLambda, RpcFieldPromiseLambda>(
+		(field) => ({
+			call: (request) => runtime.runPromise(field.call(request)),
+		}),
+	)(effectRpcFields);
+
 	return {
 		state,
 		computed,
+		topic,
+		rpc,
 		httpClient: runtime.runSync(buildHttpClient()),
 		dispose: runtime.dispose,
 		[Symbol.dispose]: () => runtime.dispose(),

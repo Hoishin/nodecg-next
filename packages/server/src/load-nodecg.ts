@@ -17,7 +17,7 @@ import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store
 import { seededRoleStore } from "./superadmin-seed.ts";
 
 export type LoadNodecgOptions = {
-	namespaces: ReadonlyArray<LoadedNamespace<{}, {}>>;
+	namespaces: ReadonlyArray<LoadedNamespace<{}, {}, {}, {}>>;
 	authProviders?: ReadonlyArray<AuthProvider>;
 	dev?: boolean;
 	onReady?: () => void;

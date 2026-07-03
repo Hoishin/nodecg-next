@@ -2,6 +2,11 @@ import { defineNamespace, extendNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
 const publicRead = { read: { allow: ["public"] } } as const;
+const publicReadWrite = {
+	read: { allow: ["public"] },
+	write: { allow: ["public"] },
+} as const;
+const publicWrite = { write: { allow: ["public"] } } as const;
 
 export const fixtureManifest = defineNamespace("e2e", {
 	roles: {
@@ -24,6 +29,15 @@ export const fixtureManifest = defineNamespace("e2e", {
 	computed: {
 		doubledCount: { schema: Schema.Number, permission: publicRead },
 		summary: { schema: Schema.String, permission: publicRead },
+	},
+	topic: {
+		chat: { schema: Schema.String, permission: publicReadWrite },
+	},
+	rpc: {
+		echo: {
+			schema: { request: Schema.String, response: Schema.String },
+			permission: publicWrite,
+		},
 	},
 });
 

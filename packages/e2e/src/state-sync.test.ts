@@ -215,3 +215,31 @@ describe("WS handshake honors the session cookie", () => {
 		await cancel();
 	});
 });
+
+describe("messaging (topic + rpc)", () => {
+	beforeAll(async () => {
+		await logout();
+	});
+
+	test("a topic publish fans out to a separate subscriber", async () => {
+		const subscriber = await loadNamespace(fixtureManifest);
+		const publisher = await loadNamespace(fixtureManifest);
+		const received: string[] = [];
+		const cancel = await subscriber.topic.chat.subscribe((value) => {
+			received.push(value);
+		});
+		await vi.waitFor(
+			async () => {
+				await publisher.topic.chat.publish("hello");
+				expect(received).toContain("hello");
+			},
+			{ timeout: 5000, interval: 100 },
+		);
+		await cancel();
+	});
+
+	test("an rpc call runs the server handler and returns its response", async () => {
+		const ns = await loadNamespace(fixtureManifest);
+		expect(await ns.rpc.echo.call("ping")).toBe("PING");
+	});
+});

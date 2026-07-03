@@ -22,6 +22,7 @@ import {
 } from "./services/message-channel/message-channel.ts";
 import {
 	StateNotFound,
+	StatePermissionDenied,
 	type StateTransport,
 	StateTransportService,
 } from "./services/state-transport/state-transport.ts";
@@ -31,6 +32,8 @@ const createTransportStub = () =>
 		readState: vi.fn<StateTransport["readState"]>(),
 		readComputed: vi.fn<StateTransport["readComputed"]>(),
 		updateState: vi.fn<StateTransport["updateState"]>(() => Effect.void),
+		publishTopic: vi.fn<StateTransport["publishTopic"]>(() => Effect.void),
+		callRpc: vi.fn<StateTransport["callRpc"]>(),
 	}) satisfies StateTransport;
 
 const createMessageChannelStub = () =>
@@ -810,6 +813,282 @@ describe("computed", () => {
 	);
 });
 
+describe("topic", () => {
+	const topicManifest = defineNamespace("root", {
+		topic: { chat: { schema: Schema.Number } },
+	});
+	const subscribeFrame = {
+		_tag: "subscribe",
+		field: { type: "topic", namespace: "root", name: "chat" },
+	};
+	const unsubscribeFrame = {
+		_tag: "unsubscribe",
+		field: { type: "topic", namespace: "root", name: "chat" },
+	};
+	const publishFrame = (value: number): ServerMessage => ({
+		_tag: "publish",
+		field: { type: "topic", namespace: "root", name: "chat" },
+		value,
+	});
+
+	test(
+		"publish encodes the value and forwards it to the transport",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				yield* loaded.topic.chat
+					.publish(7)
+					.pipe(Effect.provideService(StateTransportService, transportStub));
+				expect(transportStub.publishTopic).toHaveBeenCalledWith(
+					"root",
+					"chat",
+					7,
+				);
+			}),
+		),
+	);
+
+	test(
+		"publish fails when the value fails schema validation",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const error = yield* loaded.topic.chat
+					.publish("nope" as unknown as number)
+					.pipe(
+						Effect.provideService(StateTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("StateEncodeError");
+			}),
+		),
+	);
+
+	test(
+		"subscribe sends server subscribe and emits decoded matching publishes",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const head = yield* loaded.topic.chat
+					.subscribe()
+					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+
+				yield* mailbox.offer({
+					_tag: "publish",
+					field: { type: "topic", namespace: "root", name: "other" },
+					value: 99,
+				});
+				yield* mailbox.offer(publishFrame(42));
+
+				const result = yield* Fiber.join(head);
+				assert(Option.isSome(result));
+				expect(result.value).toBe(42);
+			}),
+		),
+	);
+
+	test(
+		"refcounts: subscribe sent once, unsubscribe only after the last scope closes",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const scope1 = yield* Scope.make();
+				const sub1 = yield* loaded.topic.chat
+					.subscribe()
+					.pipe(Effect.asVoid, Scope.extend(scope1), Effect.fork);
+				yield* Fiber.join(sub1);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+
+				const scope2 = yield* Scope.make();
+				const sub2 = yield* loaded.topic.chat
+					.subscribe()
+					.pipe(Effect.asVoid, Scope.extend(scope2), Effect.fork);
+				yield* Fiber.join(sub2);
+
+				const subscribeCount = send.mock.calls.filter(
+					([msg]) => msg._tag === "subscribe",
+				).length;
+				expect(subscribeCount).toBe(1);
+
+				yield* Scope.close(scope1, Exit.void);
+				const hasUnsubscribe = send.mock.calls.some(
+					([msg]) => msg._tag === "unsubscribe",
+				);
+				expect(hasUnsubscribe).toBe(false);
+
+				yield* Scope.close(scope2, Exit.void);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
+					}),
+				);
+			}),
+		),
+	);
+});
+
+describe("rpc", () => {
+	const rpcManifest = defineNamespace("root", {
+		rpc: {
+			echo: { schema: { request: Schema.Number, response: Schema.Number } },
+			when: {
+				schema: {
+					request: Schema.Number,
+					response: Schema.DateFromString,
+				},
+			},
+		},
+	});
+
+	test(
+		"call encodes the request, forwards it, and decodes the response",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.callRpc.mockReturnValue(Effect.succeed(84));
+				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const result = yield* loaded.rpc.echo
+					.call(42)
+					.pipe(Effect.provideService(StateTransportService, transportStub));
+				expect(result).toBe(84);
+				expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
+			}),
+		),
+	);
+
+	test(
+		"call decodes a string response into a Date",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.callRpc.mockReturnValue(
+					Effect.succeed("2030-01-01T00:00:00.000Z"),
+				);
+				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const result = yield* loaded.rpc.when
+					.call(1)
+					.pipe(Effect.provideService(StateTransportService, transportStub));
+				expect(result).toEqual(new Date("2030-01-01T00:00:00.000Z"));
+			}),
+		),
+	);
+
+	test(
+		"call propagates a typed transport error",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.callRpc.mockReturnValue(
+					Effect.fail(
+						new StatePermissionDenied({ namespace: "root", name: "echo" }),
+					),
+				);
+				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const error = yield* loaded.rpc.echo
+					.call(42)
+					.pipe(
+						Effect.provideService(StateTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("StatePermissionDenied");
+			}),
+		),
+	);
+
+	test(
+		"call fails when the response does not match the schema",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.callRpc.mockReturnValue(Effect.succeed("not a number"));
+				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const error = yield* loaded.rpc.echo
+					.call(42)
+					.pipe(
+						Effect.provideService(StateTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("StateDecodeError");
+			}),
+		),
+	);
+});
+
 describe("loadNamespace (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();
@@ -827,5 +1106,26 @@ describe("loadNamespace (Promise wrapper)", () => {
 		expect(await loaded.state.count.get()).toBe(42);
 		await loaded.state.count.set(9);
 		expect(transportStub.updateState).toHaveBeenCalledWith("root", "count", 9);
+	});
+
+	test("publishes a topic and calls an rpc through the Promise API", async () => {
+		const transportStub = createTransportStub();
+		transportStub.callRpc.mockReturnValue(Effect.succeed(84));
+		const manifest = defineNamespace("root", {
+			topic: { chat: { schema: Schema.Number } },
+			rpc: {
+				echo: { schema: { request: Schema.Number, response: Schema.Number } },
+			},
+		});
+
+		const loaded = await loadNamespace(manifest, {
+			stateTransport: () => transportStub,
+			messageChannel: () => createMessageChannelStub(),
+		});
+
+		await loaded.topic.chat.publish(3);
+		expect(transportStub.publishTopic).toHaveBeenCalledWith("root", "chat", 3);
+		expect(await loaded.rpc.echo.call(42)).toBe(84);
+		expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
 	});
 });

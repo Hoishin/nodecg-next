@@ -37,6 +37,22 @@ export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
 	override readonly message = `Failed to save state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 }
 
+export class TopicPublishFailed extends Data.TaggedError("TopicPublishFailed")<{
+	namespace: string;
+	name: string;
+	cause: Error;
+}> {
+	override readonly message = `Failed to publish topic "${this.name}" in "${this.namespace}": ${this.cause.message}`;
+}
+
+export class RpcCallFailed extends Data.TaggedError("RpcCallFailed")<{
+	namespace: string;
+	name: string;
+	cause: Error;
+}> {
+	override readonly message = `RPC call "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
+
 // TODO: not just "State"
 export interface StateTransport {
 	readState: (
@@ -60,6 +76,22 @@ export interface StateTransport {
 	) => Effect.Effect<
 		void,
 		StateNotFound | StatePermissionDenied | StateSaveFailed
+	>;
+	publishTopic: (
+		namespace: string,
+		name: string,
+		value: JsonValue,
+	) => Effect.Effect<
+		void,
+		StateNotFound | StatePermissionDenied | TopicPublishFailed
+	>;
+	callRpc: (
+		namespace: string,
+		name: string,
+		request: JsonValue,
+	) => Effect.Effect<
+		JsonValue,
+		StateNotFound | StatePermissionDenied | RpcCallFailed
 	>;
 }
 

@@ -27,6 +27,9 @@ const loaded = await loadNamespace(fixtureManifest, {
 		summary: (sources: { count: number; label: string }) =>
 			sources.count > 0 ? `${sources.label} x${sources.count}` : "idle",
 	},
+	implementRpc: {
+		echo: (request: string) => request.toUpperCase(),
+	},
 	frontend: {
 		dir: fileURLToPath(new URL("./fixture-frontend", import.meta.url)),
 	},
