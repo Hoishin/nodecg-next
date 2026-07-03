@@ -699,30 +699,3 @@ export function extendNamespace<
 		rpc,
 	};
 }
-
-// function filterValuesBySchemaExistance<
-// 	In extends Record<
-// 		string,
-// 		{ readonly schema?: Schema.Schema<any, any, never> }
-// 	>,
-// >(
-// 	obj?: In,
-// ): {
-// 	readonly [K in keyof In as [In[K]["schema"]] extends [
-// 		Schema.Schema<any, any, never>,
-// 	]
-// 		? K
-// 		: never]: Omit<In[K], "schema"> & { schema: NonNullable<In[K]["schema"]> };
-// } {
-// 	const result: any = {};
-// 	for (const key in obj) {
-// 		const value = obj[key];
-// 		if (typeof value?.schema !== "undefined") {
-// 			result[key] = {
-// 				...obj[key],
-// 				schema: value.schema,
-// 			};
-// 		}
-// 	}
-// 	return result;
-// }
