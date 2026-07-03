@@ -2,8 +2,14 @@ import {
 	loadNamespace,
 	type ComputedField,
 	type StateField,
+	type TopicField,
 } from "@nodecg/client";
-import { type ReactNode, useState, useSyncExternalStore } from "react";
+import {
+	type ReactNode,
+	useEffect,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import ReactDOM from "react-dom/client";
 
 import { extendedCounterManifest } from "./manifest.ts";
@@ -84,6 +90,28 @@ export function useField<T>(field: StateField<T> | ComputedField<T>): T {
 		throw syncStore.ready();
 	}
 	return snapshot.value;
+}
+
+export function useTopic<T>(field: TopicField<T>): readonly T[] {
+	const [messages, setMessages] = useState<readonly T[]>([]);
+	useEffect(() => {
+		let cancel: (() => Promise<void>) | undefined;
+		let disposed = false;
+		void field
+			.subscribe((value) => setMessages((prev) => [...prev, value]))
+			.then((c) => {
+				if (disposed) {
+					void c();
+				} else {
+					cancel = c;
+				}
+			});
+		return () => {
+			disposed = true;
+			void cancel?.();
+		};
+	}, [field]);
+	return messages;
 }
 
 export const mount = (node: ReactNode) => {

@@ -2,6 +2,11 @@ import { defineNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
 const publicRead = { read: { allow: ["public"] } } as const;
+const publicReadWrite = {
+	read: { allow: ["public"] },
+	write: { allow: ["public"] },
+} as const;
+const publicWrite = { write: { allow: ["public"] } } as const;
 
 export const counterManifest = defineNamespace("counter", {
 	roles: {
@@ -9,6 +14,15 @@ export const counterManifest = defineNamespace("counter", {
 	},
 	state: {
 		count: { schema: Schema.Number, permission: publicRead },
+	},
+	topic: {
+		cheer: { schema: Schema.String, permission: publicReadWrite },
+	},
+	rpc: {
+		roll: {
+			schema: { request: Schema.Number, response: Schema.Number },
+			permission: publicWrite,
+		},
 	},
 });
 

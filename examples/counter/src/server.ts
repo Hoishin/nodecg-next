@@ -5,7 +5,11 @@ import {
 } from "@nodecg/server";
 import { OAuth2Server } from "oauth2-mock-server";
 
-import { counterImplemented, settingsImplemented } from "./library/server.ts";
+import {
+	bindCounterState,
+	counterImplemented,
+	settingsImplemented,
+} from "./library/server.ts";
 import { extendedCounterManifest } from "./manifest.ts";
 
 const counter = await loadExtendedNamespace(
@@ -24,6 +28,8 @@ const counter = await loadExtendedNamespace(
 		},
 	},
 );
+
+bindCounterState((value) => counter.state.count.set(value));
 
 const settings = await settingsImplemented.load();
 
