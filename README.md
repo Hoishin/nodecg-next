@@ -284,22 +284,52 @@ match.state.label.subscribe((label) => {
 
 #### What happens when only client defines state?
 
-### 🚧 Messaging
+### Messaging
 
-- Messages go through a Channel. Channels are defined with name and schema.
+- ✅ Topics fan out message with no reply
+
   ```ts
-  const chatChannel = defineChannel("chat", schema);
-  ```
-- Messages can be sent to a channel.
-  ```ts
-  await chatChannel.send({ text: "Hello, world!" });
-  ```
-- Messages can be listened to with a callback.
-  ```ts
-  const unsubscribe = chatChannel.subscribe((message) => {
-    console.log("Received message:", message);
+  const manifest = defineNamespace("chat", {
+    topic: {
+      message: {
+        schema: Schema.String,
+        permission: {
+          read: { allow: ["public"] },
+          write: { allow: ["public"] },
+        },
+      },
+    },
+  });
+
+  const ns = await loadNamespace(manifest);
+  await ns.topic.message.publish("Hello, world!");
+  const cancel = await ns.topic.message.subscribe((message) => {
+    console.log("Received:", message);
   });
   ```
+
+- ✅ RPC is a 1:1 addressed call with a reply
+
+  ```ts
+  const manifest = defineNamespace("dice", {
+    rpc: {
+      roll: {
+        schema: { request: Schema.Number, response: Schema.Number },
+        permission: { write: { allow: ["public"] } },
+      },
+    },
+  });
+
+  // Server: provide the handler
+  const ns = await loadNamespace(manifest, {
+    implementRpc: { roll: (max) => 1 + Math.floor(Math.random() * max) },
+  });
+
+  // Client: call and await the reply
+  const rolled = await ns.rpc.roll.call(6);
+  ```
+
+- 🚧 Per-RPC typed error schema (`{ request, response, error }`)
 
 ### 🚧 Data
 
