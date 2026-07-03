@@ -5,6 +5,8 @@ export {
 	zipEffectValues,
 	type AddedSchemas,
 	mapSchemaValues,
+	type AddedRpcSchemas,
+	mapRpcValues,
 } from "./map-values.ts";
 export {
 	type EffectToPromiseLambda,

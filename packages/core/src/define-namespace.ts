@@ -5,7 +5,9 @@ import {
 	USABLE_RESERVED_ROLE_SET,
 } from "@nodecg/internal";
 import {
+	type AddedRpcSchemas,
 	type AddedSchemas,
+	mapRpcValues,
 	mapSchemaValues,
 	mapValues,
 	mergeRecords,
@@ -22,6 +24,7 @@ import {
 	type RoleArg,
 	type RoleCapability,
 	type RoleManifest,
+	type WriteOnlyPermissionArg,
 } from "./role.ts";
 
 export class StateEncodeError extends Data.TaggedError("StateEncodeError")<{
@@ -40,10 +43,20 @@ export class StateDecodeError extends Data.TaggedError("StateDecodeError")<{
 	override readonly message = `Failed to decode state "${this.fieldName}": ${this.cause.message}`;
 }
 
-export interface FieldManifest<D> {
-	readonly name: string;
+export interface FieldCodec<D> {
 	readonly encode: (value: D) => Effect.Effect<JsonValue, StateEncodeError>;
 	readonly decode: (value: JsonValue) => Effect.Effect<D, StateDecodeError>;
+}
+
+export interface FieldManifest<D> extends FieldCodec<D> {
+	readonly name: string;
+	readonly permission: ResolvedPermission;
+}
+
+export interface RpcFieldManifest<Request, Response> {
+	readonly name: string;
+	readonly request: FieldCodec<Request>;
+	readonly response: FieldCodec<Response>;
 	readonly permission: ResolvedPermission;
 }
 
@@ -53,6 +66,10 @@ export interface NamespaceManifest<
 	State extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
+	Rpc extends Record<
+		string,
+		{ readonly request: unknown; readonly response: unknown }
+	> = {},
 > {
 	readonly namespace: string;
 	readonly [manifestRolesKey]: Map<RoleName, RoleManifest>;
@@ -65,6 +82,12 @@ export interface NamespaceManifest<
 	};
 	readonly topic: {
 		[K in keyof Topic & string]: FieldManifest<Topic[K]>;
+	};
+	readonly rpc: {
+		[K in keyof Rpc & string]: RpcFieldManifest<
+			Rpc[K]["request"],
+			Rpc[K]["response"]
+		>;
 	};
 }
 
@@ -91,12 +114,36 @@ interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
 }
 
-function implementCodec<D, E extends JsonValue>(
+type RpcSchemaPair = {
+	readonly request: Schema.Schema<any, any, never>;
+	readonly response: Schema.Schema<any, any, never>;
+};
+
+interface RpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
+	readonly schema: RpcSchemaPair;
+	readonly permission?: P;
+}
+
+interface RpcFieldManifestFromSchemaLambda extends HKT.TypeLambda {
+	readonly Target: RpcSchemaPair;
+	readonly type: RpcFieldManifest<
+		Schema.Schema.Type<this["Target"]["request"]>,
+		Schema.Schema.Type<this["Target"]["response"]>
+	>;
+}
+interface RpcFieldManifestLambda extends HKT.TypeLambda {
+	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly type: RpcFieldManifest<
+		this["Target"]["request"],
+		this["Target"]["response"]
+	>;
+}
+
+function makeCodec<D, E extends JsonValue>(
 	name: string,
 	schema: Schema.Schema<D, E>,
 ) {
 	return {
-		name,
 		encode: Effect.fn("encode")(function* (value: D) {
 			return yield* Schema.encode(schema)(value).pipe(
 				Effect.catchTag(
@@ -116,6 +163,13 @@ function implementCodec<D, E extends JsonValue>(
 			);
 		}),
 	};
+}
+
+function implementCodec<D, E extends JsonValue>(
+	name: string,
+	schema: Schema.Schema<D, E>,
+) {
+	return { name, ...makeCodec(name, schema) };
 }
 
 const expandClientRoles = (
@@ -160,7 +214,7 @@ type FieldPermissionOptions = {
 };
 
 const validatePermissionTokens = (
-	group: "state" | "computed" | "topic",
+	group: "state" | "computed" | "topic" | "rpc",
 	fields: Readonly<Record<string, FieldPermissionOptions>> | undefined,
 	namedRoles: ReadonlySet<RoleName>,
 ): void => {
@@ -202,6 +256,10 @@ export function defineNamespace<
 	State extends Record<string, Schema.Schema<any, any, never>> = {},
 	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
 	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	Rpc extends Record<
+		string,
+		RpcFieldOption<WriteOnlyPermissionArg<keyof Roles & string>>
+	> = {},
 >(
 	namespace: string,
 	defineOption: {
@@ -224,11 +282,13 @@ export function defineNamespace<
 				PermissionArg<keyof Roles & string>
 			>;
 		};
+		rpc?: Rpc;
 	},
 ): NamespaceManifest<
 	{ [K in keyof State]: Schema.Schema.Type<State[K]> },
 	{ [K in keyof Computed]: Schema.Schema.Type<Computed[K]> },
-	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> }
+	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> },
+	AddedRpcDecoded<Rpc>
 > {
 	const roles = new Map<RoleName, RoleManifest>();
 
@@ -252,6 +312,7 @@ export function defineNamespace<
 	validatePermissionTokens("state", defineOption.state, namedRoles);
 	validatePermissionTokens("computed", defineOption.computed, namedRoles);
 	validatePermissionTokens("topic", defineOption.topic, namedRoles);
+	validatePermissionTokens("rpc", defineOption.rpc, namedRoles);
 
 	const resolve = (
 		capability: RoleCapability,
@@ -299,11 +360,26 @@ export function defineNamespace<
 		),
 	}))(defineOption.topic);
 
+	const rpc = mapRpcValues<
+		RpcFieldOption<WriteOnlyPermissionArg<keyof Roles & string>>,
+		RpcFieldManifestFromSchemaLambda
+	>()(defineOption.rpc, (option, name) => ({
+		name,
+		request: makeCodec(name, option.schema.request),
+		response: makeCodec(name, option.schema.response),
+		permission: buildPermission(
+			new Set(),
+			resolve("rpc-call", option.permission?.write),
+			true,
+		),
+	}));
+
 	return {
 		namespace,
 		state,
 		computed,
 		topic,
+		rpc,
 		[manifestRolesKey]: roles,
 	};
 }
@@ -317,6 +393,11 @@ interface ExtendFieldOption<
 	readonly permission?: P;
 }
 
+interface ExtendRpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
+	readonly schema?: RpcSchemaPair;
+	readonly permission?: P;
+}
+
 type Override<Precedent, Added> = Omit<Precedent, keyof Added> & Added;
 
 type AddedDecoded<In> = {
@@ -325,10 +406,21 @@ type AddedDecoded<In> = {
 	>;
 };
 
+type AddedRpcDecoded<In> = {
+	readonly [K in keyof AddedRpcSchemas<In>]: {
+		readonly request: Schema.Schema.Type<AddedRpcSchemas<In>[K]["request"]>;
+		readonly response: Schema.Schema.Type<AddedRpcSchemas<In>[K]["response"]>;
+	};
+};
+
 export function extendNamespace<
 	PState extends Record<string, unknown>,
 	PComputed extends Record<string, unknown>,
 	PTopic extends Record<string, unknown>,
+	PRpc extends Record<
+		string,
+		{ readonly request: unknown; readonly response: unknown }
+	>,
 	const EState extends Record<
 		string,
 		ExtendFieldOption<PermissionArg<string>>
@@ -341,25 +433,32 @@ export function extendNamespace<
 		string,
 		ExtendFieldOption<PermissionArg<string>>
 	> = {},
+	const ERpc extends Record<
+		string,
+		ExtendRpcFieldOption<WriteOnlyPermissionArg<string>>
+	> = {},
 >(
-	manifest: NamespaceManifest<PState, PComputed, PTopic>,
+	manifest: NamespaceManifest<PState, PComputed, PTopic, PRpc>,
 	extendOptionOrFn:
 		| {
 				readonly roles?: Record<string, RoleArg>;
 				readonly state?: EState;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
+				readonly rpc?: ERpc;
 		  }
-		| ((precedent: NamespaceManifest<PState, PComputed, PTopic>) => {
+		| ((precedent: NamespaceManifest<PState, PComputed, PTopic, PRpc>) => {
 				readonly roles?: Record<string, RoleArg>;
 				readonly state?: EState;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
+				readonly rpc?: ERpc;
 		  }),
 ): NamespaceManifest<
 	Override<PState, AddedDecoded<EState>>,
 	Override<PComputed, AddedDecoded<EComputed>>,
-	Override<PTopic, AddedDecoded<ETopic>>
+	Override<PTopic, AddedDecoded<ETopic>>,
+	Override<PRpc, AddedRpcDecoded<ERpc>>
 > {
 	const extendOption =
 		typeof extendOptionOrFn === "function"
@@ -399,6 +498,7 @@ export function extendNamespace<
 	validatePermissionTokens("state", extendOption.state, namedRoles);
 	validatePermissionTokens("computed", extendOption.computed, namedRoles);
 	validatePermissionTokens("topic", extendOption.topic, namedRoles);
+	validatePermissionTokens("rpc", extendOption.rpc, namedRoles);
 
 	const resolve = (
 		capability: RoleCapability,
@@ -549,12 +649,54 @@ export function extendNamespace<
 		>["topic"]
 	>(topicRemap, topicAdded);
 
+	const rpcRemap = mapValues<RpcFieldManifestLambda, RpcFieldManifestLambda>(
+		(field, name) => {
+			const override = extendOption.rpc?.[name];
+			return {
+				name: field.name,
+				request: field.request,
+				response: field.response,
+				permission: buildPermission(
+					new Set(),
+					remap(
+						"rpc-call",
+						field.permission.write,
+						override?.permission?.write,
+					),
+					true,
+				),
+			};
+		},
+	)(manifest.rpc);
+	const rpcAdded = mapRpcValues<
+		ExtendRpcFieldOption<WriteOnlyPermissionArg<string>>,
+		RpcFieldManifestFromSchemaLambda
+	>()(extendOption.rpc, (option, name) => ({
+		name,
+		request: makeCodec(name, option.schema.request),
+		response: makeCodec(name, option.schema.response),
+		permission: buildPermission(
+			new Set(),
+			resolve("rpc-call", option.permission?.write),
+			true,
+		),
+	}));
+	const rpc = mergeRecords<
+		NamespaceManifest<
+			PState,
+			PComputed,
+			PTopic,
+			Override<PRpc, AddedRpcDecoded<ERpc>>
+		>["rpc"]
+	>(rpcRemap, rpcAdded);
+
 	return {
 		namespace: manifest.namespace,
 		[manifestRolesKey]: roles,
 		state,
 		computed,
 		topic,
+		rpc,
 	};
 }
 

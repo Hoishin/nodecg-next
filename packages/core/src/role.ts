@@ -11,7 +11,8 @@ export type RoleCapability =
 	| "state-write"
 	| "computed-read"
 	| "topic-subscribe"
-	| "topic-publish";
+	| "topic-publish"
+	| "rpc-call";
 
 export interface RoleArg {
 	readonly description?: string;
@@ -28,6 +29,9 @@ export interface PermissionArg<InputRole extends string> {
 }
 export interface ReadOnlyPermissionArg<InputRole extends string> {
 	readonly read?: PermissionRuleArg<InputRole>;
+}
+export interface WriteOnlyPermissionArg<InputRole extends string> {
+	readonly write?: PermissionRuleArg<InputRole>;
 }
 
 export interface RoleManifest {

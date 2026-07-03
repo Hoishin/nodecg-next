@@ -127,6 +127,51 @@ export const mapSchemaValues =
 		return result as ApplyLambdaToObjectValues<G, AddedSchemas<In>>;
 	};
 
+type RpcSchemaSlot = {
+	readonly request: Schema.Schema<any, any, never>;
+	readonly response: Schema.Schema<any, any, never>;
+};
+
+export type AddedRpcSchemas<In> = {
+	readonly [K in SchemaKeys<In>]: In[K] extends {
+		readonly schema: {
+			readonly request: infer Req extends Schema.Schema<any, any, never>;
+			readonly response: infer Res extends Schema.Schema<any, any, never>;
+		};
+	}
+		? { readonly request: Req; readonly response: Res }
+		: never;
+};
+
+export const mapRpcValues =
+	<
+		Option extends { readonly schema?: RpcSchemaSlot },
+		G extends HKT.TypeLambda,
+	>() =>
+	<In extends Record<string, Option>>(
+		obj: In | undefined,
+		transform: (
+			value: Option & { readonly schema: RpcSchemaSlot },
+			key: string,
+		) => HKT.Kind<G, unknown, never, never, RpcSchemaSlot>,
+	): ApplyLambdaToObjectValues<G, AddedRpcSchemas<In>> => {
+		const result: any = {};
+		if (typeof obj !== "undefined") {
+			for (const key of Object.keys(obj)) {
+				const value = obj[key];
+				if (typeof value === "undefined") {
+					continue;
+				}
+				const schema = value.schema;
+				if (typeof schema === "undefined") {
+					continue;
+				}
+				result[key] = transform({ ...value, schema }, key);
+			}
+		}
+		return result as ApplyLambdaToObjectValues<G, AddedRpcSchemas<In>>;
+	};
+
 // TODO: nowhere near type safe. Result can do anything.
 export function mergeRecords<Result>(
 	base: Readonly<Record<string, unknown>> | undefined,

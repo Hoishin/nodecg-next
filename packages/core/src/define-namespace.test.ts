@@ -64,6 +64,38 @@ describe("defineNamespace", () => {
 				}),
 			).toThrow(/reserved/);
 		});
+
+		test(
+			"rpc request and response encode/decode round-trip independently",
+			testEffect(
+				Effect.gen(function* () {
+					const manifest = defineNamespace("match", {
+						rpc: {
+							setScore: {
+								schema: {
+									request: Schema.Struct({
+										left: Schema.Number,
+										right: Schema.Number,
+									}),
+									response: Schema.Boolean,
+								},
+							},
+						},
+					});
+
+					expect(
+						yield* manifest.rpc.setScore.request.encode({ left: 1, right: 2 }),
+					).toEqual({ left: 1, right: 2 });
+					expect(
+						yield* manifest.rpc.setScore.request.decode({ left: 3, right: 4 }),
+					).toEqual({ left: 3, right: 4 });
+					expect(yield* manifest.rpc.setScore.response.encode(true)).toBe(true);
+					expect(yield* manifest.rpc.setScore.response.decode(false)).toBe(
+						false,
+					);
+				}),
+			),
+		);
 	});
 
 	describe("permission resolution", () => {
@@ -129,6 +161,65 @@ describe("defineNamespace", () => {
 		});
 	});
 
+	describe("rpc permission resolution", () => {
+		test("rpc-call bakes into write, read stays empty", () => {
+			const manifest = defineNamespace("match", {
+				roles: {
+					operator: { permission: ["rpc-call"] },
+					viewer: { permission: ["state-read"] },
+				},
+				rpc: {
+					restart: {
+						schema: { request: Schema.Number, response: Schema.Number },
+					},
+				},
+			});
+
+			expect(manifest.rpc.restart.permission.write).toEqual(
+				new Set(["operator"]),
+			);
+			expect(manifest.rpc.restart.permission.read).toEqual(new Set());
+		});
+
+		test("field deny subtracts from the rpc-call base", () => {
+			const manifest = defineNamespace("match", {
+				roles: {
+					operator: { permission: ["rpc-call"] },
+					producer: { permission: ["rpc-call"] },
+				},
+				rpc: {
+					restart: {
+						schema: { request: Schema.Number, response: Schema.Number },
+						permission: { write: { deny: ["operator"] } },
+					},
+				},
+			});
+
+			expect(manifest.rpc.restart.permission.write).toEqual(
+				new Set(["producer"]),
+			);
+		});
+	});
+
+	describe("topic direction presets", () => {
+		test("server-only publish grants write to server, subscribe to holders", () => {
+			const manifest = defineNamespace("match", {
+				roles: { viewer: { permission: ["topic-subscribe"] } },
+				topic: {
+					start: {
+						schema: Schema.Boolean,
+						permission: { write: { allow: ["server"] } },
+					},
+				},
+			});
+
+			expect(manifest.topic.start.permission.write).toEqual(
+				new Set(["server"]),
+			);
+			expect(manifest.topic.start.permission.read).toEqual(new Set(["viewer"]));
+		});
+	});
+
 	describe("types", () => {
 		test("options not specified are hidden", () => {
 			const manifest = defineNamespace("match", {
@@ -139,6 +230,7 @@ describe("defineNamespace", () => {
 			expectTypeOf(manifest.state).not.toBeNever();
 			expectTypeOf(manifest.computed).toEqualTypeOf({});
 			expectTypeOf(manifest.topic).toEqualTypeOf({});
+			expectTypeOf(manifest.rpc).toEqualTypeOf({});
 
 			const manifest2 = defineNamespace("match", {
 				state: {
@@ -151,6 +243,7 @@ describe("defineNamespace", () => {
 			expectTypeOf(manifest2.state).not.toBeNever();
 			expectTypeOf(manifest2.computed).not.toBeNever();
 			expectTypeOf(manifest2.topic).toEqualTypeOf({});
+			expectTypeOf(manifest2.rpc).toEqualTypeOf({});
 
 			const manifest3 = defineNamespace("match", {
 				topic: {
@@ -160,6 +253,19 @@ describe("defineNamespace", () => {
 			expectTypeOf(manifest3.state).toEqualTypeOf({});
 			expectTypeOf(manifest3.computed).toEqualTypeOf({});
 			expectTypeOf(manifest3.topic).not.toBeNever();
+			expectTypeOf(manifest3.rpc).toEqualTypeOf({});
+
+			const manifest4 = defineNamespace("match", {
+				rpc: {
+					ping: {
+						schema: { request: Schema.String, response: Schema.String },
+					},
+				},
+			});
+			expectTypeOf(manifest4.state).toEqualTypeOf({});
+			expectTypeOf(manifest4.computed).toEqualTypeOf({});
+			expectTypeOf(manifest4.topic).toEqualTypeOf({});
+			expectTypeOf(manifest4.rpc).not.toBeNever();
 		});
 
 		test("decoded type flows into the field codec per group", () => {
@@ -169,6 +275,14 @@ describe("defineNamespace", () => {
 					winning: { schema: Schema.NullOr(Schema.Literal("left", "right")) },
 				},
 				topic: { start: { schema: Schema.Boolean } },
+				rpc: {
+					setScore: {
+						schema: {
+							request: Schema.Struct({ home: Schema.Number }),
+							response: Schema.Boolean,
+						},
+					},
+				},
 			});
 
 			expectTypeOf(manifest.state.label.encode)
@@ -180,6 +294,12 @@ describe("defineNamespace", () => {
 			expectTypeOf(manifest.topic.start.encode)
 				.parameter(0)
 				.toEqualTypeOf<boolean>();
+			expectTypeOf(manifest.rpc.setScore.request.encode)
+				.parameter(0)
+				.toEqualTypeOf<{ readonly home: number }>();
+			expectTypeOf(manifest.rpc.setScore.response.decode).returns.toEqualTypeOf<
+				Effect.Effect<boolean, StateDecodeError>
+			>();
 		});
 
 		test("codec signatures and namespace type", () => {
@@ -388,6 +508,56 @@ describe("extendNamespace", () => {
 			),
 		);
 
+		test(
+			"adds an rpc field with request/response and permission",
+			testEffect(
+				Effect.gen(function* () {
+					const extended = extendNamespace(base, {
+						roles: { operator: { permission: ["rpc-call"] } },
+						rpc: {
+							restart: {
+								schema: {
+									request: Schema.String,
+									response: Schema.Boolean,
+								},
+								permission: { write: { allow: ["operator"] } },
+							},
+						},
+					});
+
+					expect(yield* extended.rpc.restart.request.encode("go")).toBe("go");
+					expect(yield* extended.rpc.restart.response.decode(true)).toBe(true);
+					expect(extended.rpc.restart.permission.write).toEqual(
+						new Set(["operator"]),
+					);
+					expect(extended.rpc.restart.permission.read).toEqual(new Set());
+				}),
+			),
+		);
+
+		test("re-lists a role to re-bake rpc write, and grants retroactively", () => {
+			const rpcBase = defineNamespace("match", {
+				roles: { operator: { permission: ["rpc-call"] } },
+				rpc: {
+					restart: {
+						schema: { request: Schema.Number, response: Schema.Number },
+					},
+				},
+			});
+
+			const vetoed = extendNamespace(rpcBase, {
+				roles: { operator: { permission: [] } },
+			});
+			expect(vetoed.rpc.restart.permission.write).toEqual(new Set());
+
+			const granted = extendNamespace(rpcBase, {
+				roles: { producer: { permission: ["rpc-call"] } },
+			});
+			expect(granted.rpc.restart.permission.write).toEqual(
+				new Set(["operator", "producer"]),
+			);
+		});
+
 		test("declaring a reserved role throws", () => {
 			expect(() =>
 				extendNamespace(base, {
@@ -442,6 +612,26 @@ describe("extendNamespace", () => {
 			expectTypeOf(extended.computed.ratio.encode)
 				.parameter(0)
 				.toEqualTypeOf<number>();
+		});
+
+		test("merges added rpc field types into the manifest", () => {
+			const extended = extendNamespace(base, {
+				rpc: {
+					setScore: {
+						schema: {
+							request: Schema.Struct({ home: Schema.Number }),
+							response: Schema.Boolean,
+						},
+					},
+				},
+			});
+
+			expectTypeOf(extended.rpc.setScore.request.encode)
+				.parameter(0)
+				.toEqualTypeOf<{ readonly home: number }>();
+			expectTypeOf(extended.rpc.setScore.response.decode).returns.toEqualTypeOf<
+				Effect.Effect<boolean, StateDecodeError>
+			>();
 		});
 	});
 });
