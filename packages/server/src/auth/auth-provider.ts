@@ -34,11 +34,20 @@ export class IdentityClaimsError extends Data.TaggedError(
 	override readonly message = `Authentication provider "${this.provider}" returned no usable identity claims`;
 }
 
+// TODO: don't leak OIDC details in service definition
+export class UserinfoError extends Data.TaggedError("UserinfoError")<{
+	readonly provider: string;
+	readonly cause: unknown;
+}> {
+	override readonly message = `Userinfo request failed for authentication provider "${this.provider}"`;
+}
+
 export type AuthorizeError = ProviderDiscoveryError;
 export type CallbackError =
 	| StateMismatchError
 	| ProviderDiscoveryError
 	| TokenExchangeError
+	| UserinfoError
 	| IdentityClaimsError;
 
 export interface AuthProvider {

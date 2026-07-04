@@ -148,6 +148,12 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 										status: 400,
 									}).pipe(clearStash),
 								),
+								Match.tag("UserinfoError", () =>
+									HttpServerResponse.text(
+										"Authentication provider unavailable",
+										{ status: 502 },
+									).pipe(clearStash),
+								),
 								Match.tag("IdentityClaimsError", () =>
 									HttpServerResponse.text("Authentication failed", {
 										status: 400,
