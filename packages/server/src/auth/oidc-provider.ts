@@ -1,16 +1,20 @@
 import { createHash } from "node:crypto";
 
+import { JsonValueSchema } from "@nodecg/internal";
 import { HumanAccountSchema } from "@nodecg/internal";
-import { Effect } from "effect";
+import { Effect, Either, Schema } from "effect";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
 	buildAuthorizationUrl,
+	type CustomFetch,
+	customFetch,
 	discovery,
 	randomNonce,
 	randomPKCECodeVerifier,
 	randomState,
 } from "openid-client";
+import type { JsonValue } from "type-fest";
 
 import {
 	type AuthProvider,
@@ -27,10 +31,43 @@ export interface OidcProviderConfig {
 	readonly scopes?: ReadonlyArray<string>;
 	/** Permit plain-http issuer/endpoints — for local development only. */
 	readonly allowInsecure?: boolean;
+	/**
+	 * an escape hatch for non-conformant providers
+	 */
+	readonly transformTokenResponse?: (body: JsonValue) => JsonValue;
 }
 
 const pickString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
+
+const validateJsonValue = Schema.decodeUnknownEither(JsonValueSchema);
+
+const tokenResponseFetch =
+	(transform: (body: JsonValue) => JsonValue): CustomFetch =>
+	async (url, options) => {
+		const response = await fetch(url, options);
+		const isTokenRequest =
+			options.body instanceof URLSearchParams &&
+			options.body.get("grant_type") === "authorization_code";
+		if (!isTokenRequest) {
+			return response;
+		}
+		const body = await response
+			.clone()
+			.json()
+			.catch(() => undefined);
+		const validatedBody = validateJsonValue(body);
+		if (Either.isLeft(validatedBody)) {
+			return response;
+		}
+		const headers = new Headers(response.headers);
+		headers.delete("content-length");
+		return new Response(JSON.stringify(transform(validatedBody.right)), {
+			status: response.status,
+			statusText: response.statusText,
+			headers,
+		});
+	};
 
 const identityFromClaims = (claims: Record<string, unknown>) => {
 	const issuer = pickString(claims["iss"]);
@@ -66,6 +103,11 @@ export const makeOidcProvider = async (
 			execute: config.allowInsecure ? [allowInsecureRequests] : undefined,
 		},
 	);
+	if (typeof config.transformTokenResponse !== "undefined") {
+		configuration[customFetch] = tokenResponseFetch(
+			config.transformTokenResponse,
+		);
+	}
 
 	return {
 		name: config.name,

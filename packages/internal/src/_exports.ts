@@ -29,3 +29,4 @@ export {
 	type UsableReservedRoleName,
 	type ReservedRoleName,
 } from "./role.ts";
+export { JsonValueSchema } from "./utils/json-value-schema.ts";

@@ -129,7 +129,12 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 									.searchParams,
 								stash: stash.value,
 							})
-							.pipe(Effect.either);
+							.pipe(
+								Effect.tapError((error) =>
+									Effect.logError(`Authentication callback failed: ${error.message}`),
+								),
+								Effect.either,
+							);
 						if (Either.isLeft(account)) {
 							return yield* Match.value(account.left).pipe(
 								Match.tag("StateMismatchError", () =>
