@@ -12,7 +12,7 @@ import {
 } from "react";
 import ReactDOM from "react-dom/client";
 
-import { extendedCounterManifest } from "./manifest.ts";
+import { extendedCounterManifest } from "../shared/manifest.ts";
 
 export const counter = await loadNamespace(extendedCounterManifest);
 

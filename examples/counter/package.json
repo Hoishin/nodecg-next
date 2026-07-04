@@ -5,8 +5,8 @@
 	"type": "module",
 	"scripts": {
 		"build": "vite build",
-		"start": "node src/server.ts",
-		"type-check": "tsc --noEmit"
+		"start": "node src/server/server.ts",
+		"type-check": "tsc -b src/client src/server"
 	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:",

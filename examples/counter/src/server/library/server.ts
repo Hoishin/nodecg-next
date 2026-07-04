@@ -1,6 +1,9 @@
 import { implementNamespace } from "@nodecg/server";
 
-import { counterManifest, settingsManifest } from "./manifest.ts";
+import {
+	counterManifest,
+	settingsManifest,
+} from "../../shared/library/manifest.ts";
 
 // TODO: use callback args for state updates
 let setCount: ((value: number) => void) | undefined;

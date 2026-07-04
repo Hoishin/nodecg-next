@@ -5,12 +5,12 @@ import {
 } from "@nodecg/server";
 import { OAuth2Server } from "oauth2-mock-server";
 
+import { extendedCounterManifest } from "../shared/manifest.ts";
 import {
 	bindCounterState,
 	counterImplemented,
 	settingsImplemented,
 } from "./library/server.ts";
-import { extendedCounterManifest } from "./manifest.ts";
 
 const counter = await loadExtendedNamespace(
 	extendedCounterManifest,
@@ -23,8 +23,8 @@ const counter = await loadExtendedNamespace(
 	},
 	{
 		frontend: {
-			dir: import.meta.resolve("../dist"),
-			vite: { root: import.meta.resolve("..") },
+			dir: import.meta.resolve("../../dist"),
+			vite: { root: import.meta.resolve("../..") },
 		},
 	},
 );
