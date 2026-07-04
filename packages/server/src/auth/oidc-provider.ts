@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { JsonValueSchema } from "@nodecg/internal";
 import { HumanAccountSchema } from "@nodecg/internal";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
@@ -14,7 +13,6 @@ import {
 	randomPKCECodeVerifier,
 	randomState,
 } from "openid-client";
-import type { JsonValue } from "type-fest";
 
 import {
 	type AuthProvider,
@@ -34,16 +32,20 @@ export interface OidcProviderConfig {
 	/**
 	 * an escape hatch for non-conformant providers
 	 */
-	readonly transformTokenResponse?: (body: JsonValue) => JsonValue;
+	readonly transformTokenResponse?: (body: UnknownRecord) => UnknownRecord;
 }
 
 const pickString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
 
-const validateJsonValue = Schema.decodeUnknownEither(JsonValueSchema);
+const recordSchema = Schema.Record({
+	key: Schema.String,
+	value: Schema.Unknown,
+});
+type UnknownRecord = typeof recordSchema.Type;
 
 const tokenResponseFetch =
-	(transform: (body: JsonValue) => JsonValue): CustomFetch =>
+	(transform: (body: UnknownRecord) => UnknownRecord): CustomFetch =>
 	async (url, options) => {
 		const response = await fetch(url, options);
 		const isTokenRequest =
@@ -56,13 +58,13 @@ const tokenResponseFetch =
 			.clone()
 			.json()
 			.catch(() => undefined);
-		const validatedBody = validateJsonValue(body);
-		if (Either.isLeft(validatedBody)) {
+		const validatedBody = Schema.decodeUnknownOption(recordSchema)(body);
+		if (Option.isNone(validatedBody)) {
 			return response;
 		}
 		const headers = new Headers(response.headers);
 		headers.delete("content-length");
-		return new Response(JSON.stringify(transform(validatedBody.right)), {
+		return new Response(JSON.stringify(transform(validatedBody.value)), {
 			status: response.status,
 			statusText: response.statusText,
 			headers,

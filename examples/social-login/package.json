@@ -1,5 +1,5 @@
 {
-	"name": "@nodecg/example-counter",
+	"name": "@nodecg/example-social-login",
 	"private": true,
 	"license": "MIT",
 	"type": "module",
@@ -9,11 +9,9 @@
 		"type-check": "tsc -b src/client src/server"
 	},
 	"dependencies": {
-		"@effect/platform-node": "catalog:",
-		"@nodecg/client": "workspace:*",
+		"effect": "catalog:",
 		"@nodecg/core": "workspace:*",
 		"@nodecg/server": "workspace:*",
-		"effect": "catalog:",
 		"react": "catalog:",
 		"react-dom": "catalog:"
 	},
@@ -22,7 +20,6 @@
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",
 		"@vitejs/plugin-react": "catalog:",
-		"oauth2-mock-server": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:"
 	}
