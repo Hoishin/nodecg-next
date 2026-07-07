@@ -17,24 +17,24 @@ import { assert, describe, expect, test, vi } from "vitest";
 
 import { loadNamespace, loadNamespaceEffect } from "./load-namespace.ts";
 import {
+	FieldNotFound,
+	FieldPermissionDenied,
+	type FieldTransport,
+	FieldTransportService,
+} from "./services/field-transport/field-transport.ts";
+import {
 	type MessageChannel,
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
-import {
-	StateNotFound,
-	StatePermissionDenied,
-	type StateTransport,
-	StateTransportService,
-} from "./services/state-transport/state-transport.ts";
 
 const createTransportStub = () =>
 	({
-		readState: vi.fn<StateTransport["readState"]>(),
-		readComputed: vi.fn<StateTransport["readComputed"]>(),
-		updateState: vi.fn<StateTransport["updateState"]>(() => Effect.void),
-		publishTopic: vi.fn<StateTransport["publishTopic"]>(() => Effect.void),
-		callRpc: vi.fn<StateTransport["callRpc"]>(),
-	}) satisfies StateTransport;
+		readState: vi.fn<FieldTransport["readState"]>(),
+		readComputed: vi.fn<FieldTransport["readComputed"]>(),
+		updateState: vi.fn<FieldTransport["updateState"]>(() => Effect.void),
+		publishTopic: vi.fn<FieldTransport["publishTopic"]>(() => Effect.void),
+		callRpc: vi.fn<FieldTransport["callRpc"]>(),
+	}) satisfies FieldTransport;
 
 const createMessageChannelStub = () =>
 	({
@@ -56,7 +56,7 @@ describe("get", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -66,7 +66,7 @@ describe("get", () => {
 				expect(
 					yield* loaded.state.count
 						.get()
-						.pipe(Effect.provideService(StateTransportService, transportStub)),
+						.pipe(Effect.provideService(FieldTransportService, transportStub)),
 				).toBe(42);
 			}),
 		),
@@ -83,7 +83,7 @@ describe("get", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -93,7 +93,7 @@ describe("get", () => {
 				const error = yield* loaded.state.count
 					.get()
 					.pipe(
-						Effect.provideService(StateTransportService, transportStub),
+						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
 				expect(error._tag).toBe("StateDecodeError");
@@ -102,19 +102,19 @@ describe("get", () => {
 	);
 
 	test(
-		"propagates StateNotFound from the transport",
+		"propagates FieldNotFound from the transport",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				transportStub.readState.mockReturnValue(
-					Effect.fail(new StateNotFound({ namespace: "root", name: "count" })),
+					Effect.fail(new FieldNotFound({ namespace: "root", name: "count" })),
 				);
 				const manifest = defineNamespace("root", {
 					state: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -124,10 +124,10 @@ describe("get", () => {
 				const error = yield* loaded.state.count
 					.get()
 					.pipe(
-						Effect.provideService(StateTransportService, transportStub),
+						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateNotFound");
+				expect(error._tag).toBe("FieldNotFound");
 			}),
 		),
 	);
@@ -145,7 +145,7 @@ describe("get", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -155,7 +155,7 @@ describe("get", () => {
 				expect(
 					yield* loaded.state.when
 						.get()
-						.pipe(Effect.provideService(StateTransportService, transportStub)),
+						.pipe(Effect.provideService(FieldTransportService, transportStub)),
 				).toEqual(new Date("2030-01-01T00:00:00.000Z"));
 			}),
 		),
@@ -173,7 +173,7 @@ describe("set", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -182,7 +182,7 @@ describe("set", () => {
 
 				yield* loaded.state.count
 					.set(7)
-					.pipe(Effect.provideService(StateTransportService, transportStub));
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
 				expect(transportStub.updateState).toHaveBeenCalledWith(
 					"root",
 					"count",
@@ -202,7 +202,7 @@ describe("set", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -212,7 +212,7 @@ describe("set", () => {
 				const error = yield* loaded.state.count
 					.set("not a number" as unknown as number)
 					.pipe(
-						Effect.provideService(StateTransportService, transportStub),
+						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
 				expect(error._tag).toBe("StateEncodeError");
@@ -230,7 +230,7 @@ describe("set", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -239,7 +239,7 @@ describe("set", () => {
 
 				yield* loaded.state.when
 					.set(new Date("2030-01-01T00:00:00.000Z"))
-					.pipe(Effect.provideService(StateTransportService, transportStub));
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
 				expect(transportStub.updateState).toHaveBeenLastCalledWith(
 					"root",
 					"when",
@@ -262,7 +262,7 @@ describe("update", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -271,7 +271,7 @@ describe("update", () => {
 
 				yield* loaded.state.count
 					.update((v) => v + 5)
-					.pipe(Effect.provideService(StateTransportService, transportStub));
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
 				expect(transportStub.updateState).toHaveBeenLastCalledWith(
 					"root",
 					"count",
@@ -313,7 +313,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -354,7 +354,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -397,7 +397,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -433,7 +433,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -475,7 +475,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -538,7 +538,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -597,7 +597,7 @@ describe("subscribe", () => {
 	});
 
 	test(
-		"rejects with StatePermissionDenied on a forbidden frame",
+		"rejects with FieldPermissionDenied on a forbidden frame",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
@@ -612,7 +612,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -627,13 +627,13 @@ describe("subscribe", () => {
 				yield* mailbox.offer(rejectedFrame("forbidden"));
 
 				const error = yield* Fiber.join(fiber);
-				expect(error._tag).toBe("StatePermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 			}),
 		),
 	);
 
 	test(
-		"rejects with StateNotFound on a not-found frame",
+		"rejects with FieldNotFound on a not-found frame",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
@@ -648,7 +648,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -663,7 +663,7 @@ describe("subscribe", () => {
 				yield* mailbox.offer(rejectedFrame("not-found"));
 
 				const error = yield* Fiber.join(fiber);
-				expect(error._tag).toBe("StateNotFound");
+				expect(error._tag).toBe("FieldNotFound");
 			}),
 		),
 	);
@@ -684,7 +684,7 @@ describe("subscribe", () => {
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -733,7 +733,7 @@ describe("computed", () => {
 				transportStub.readComputed.mockReturnValue(Effect.succeed("a"));
 
 				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -743,7 +743,7 @@ describe("computed", () => {
 				expect(
 					yield* loaded.computed.firstGameId
 						.get()
-						.pipe(Effect.provideService(StateTransportService, transportStub)),
+						.pipe(Effect.provideService(FieldTransportService, transportStub)),
 				).toBe("a");
 			}),
 		),
@@ -754,7 +754,7 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
-					Effect.provideService(StateTransportService, createTransportStub()),
+					Effect.provideService(FieldTransportService, createTransportStub()),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -779,7 +779,7 @@ describe("computed", () => {
 				};
 
 				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -837,7 +837,7 @@ describe("topic", () => {
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -846,7 +846,7 @@ describe("topic", () => {
 
 				yield* loaded.topic.chat
 					.publish(7)
-					.pipe(Effect.provideService(StateTransportService, transportStub));
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
 				expect(transportStub.publishTopic).toHaveBeenCalledWith(
 					"root",
 					"chat",
@@ -862,7 +862,7 @@ describe("topic", () => {
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -872,7 +872,7 @@ describe("topic", () => {
 				const error = yield* loaded.topic.chat
 					.publish("nope" as unknown as number)
 					.pipe(
-						Effect.provideService(StateTransportService, transportStub),
+						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
 				expect(error._tag).toBe("StateEncodeError");
@@ -892,7 +892,7 @@ describe("topic", () => {
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -931,7 +931,7 @@ describe("topic", () => {
 					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, messageChannelStub),
 				);
 
@@ -994,7 +994,7 @@ describe("rpc", () => {
 				const transportStub = createTransportStub();
 				transportStub.callRpc.mockReturnValue(Effect.succeed(84));
 				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -1003,7 +1003,7 @@ describe("rpc", () => {
 
 				const result = yield* loaded.rpc.echo
 					.call(42)
-					.pipe(Effect.provideService(StateTransportService, transportStub));
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
 				expect(result).toBe(84);
 				expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
 			}),
@@ -1019,7 +1019,7 @@ describe("rpc", () => {
 					Effect.succeed("2030-01-01T00:00:00.000Z"),
 				);
 				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -1028,7 +1028,7 @@ describe("rpc", () => {
 
 				const result = yield* loaded.rpc.when
 					.call(1)
-					.pipe(Effect.provideService(StateTransportService, transportStub));
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
 				expect(result).toEqual(new Date("2030-01-01T00:00:00.000Z"));
 			}),
 		),
@@ -1041,11 +1041,11 @@ describe("rpc", () => {
 				const transportStub = createTransportStub();
 				transportStub.callRpc.mockReturnValue(
 					Effect.fail(
-						new StatePermissionDenied({ namespace: "root", name: "echo" }),
+						new FieldPermissionDenied({ namespace: "root", name: "echo" }),
 					),
 				);
 				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -1055,10 +1055,10 @@ describe("rpc", () => {
 				const error = yield* loaded.rpc.echo
 					.call(42)
 					.pipe(
-						Effect.provideService(StateTransportService, transportStub),
+						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StatePermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 			}),
 		),
 	);
@@ -1070,7 +1070,7 @@ describe("rpc", () => {
 				const transportStub = createTransportStub();
 				transportStub.callRpc.mockReturnValue(Effect.succeed("not a number"));
 				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(StateTransportService, transportStub),
+					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(
 						MessageChannelService,
 						createMessageChannelStub(),
@@ -1080,7 +1080,7 @@ describe("rpc", () => {
 				const error = yield* loaded.rpc.echo
 					.call(42)
 					.pipe(
-						Effect.provideService(StateTransportService, transportStub),
+						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
 				expect(error._tag).toBe("StateDecodeError");
@@ -1099,7 +1099,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 		const messageChannelStub = createMessageChannelStub();
 		const loaded = await loadNamespace(manifest, {
-			stateTransport: () => transportStub,
+			fieldTransport: () => transportStub,
 			messageChannel: () => messageChannelStub,
 		});
 
@@ -1119,7 +1119,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 		});
 
 		const loaded = await loadNamespace(manifest, {
-			stateTransport: () => transportStub,
+			fieldTransport: () => transportStub,
 			messageChannel: () => createMessageChannelStub(),
 		});
 

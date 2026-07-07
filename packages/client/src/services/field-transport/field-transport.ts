@@ -1,17 +1,15 @@
 import { Context, Data, type Effect } from "effect";
 import type { JsonValue } from "type-fest";
 
-// TODO: it is not just "State"
-export class StateNotFound extends Data.TaggedError("StateNotFound")<{
+export class FieldNotFound extends Data.TaggedError("FieldNotFound")<{
 	namespace: string;
 	name: string;
 }> {
-	override readonly message = `State "${this.name}" in "${this.namespace}" does not exist`;
+	override readonly message = `Field "${this.name}" in "${this.namespace}" does not exist`;
 }
 
-// TODO: not just "State"
-export class StatePermissionDenied extends Data.TaggedError(
-	"StatePermissionDenied",
+export class FieldPermissionDenied extends Data.TaggedError(
+	"FieldPermissionDenied",
 )<{
 	namespace: string;
 	name: string;
@@ -19,22 +17,20 @@ export class StatePermissionDenied extends Data.TaggedError(
 	override readonly message = `Permission denied for "${this.name}" in "${this.namespace}"`;
 }
 
-// TODO: not just "State"
-export class StateGetFailed extends Data.TaggedError("StateGetFailed")<{
+export class FieldGetFailed extends Data.TaggedError("FieldGetFailed")<{
 	namespace: string;
 	name: string;
 	cause: Error;
 }> {
-	override readonly message = `Failed to get state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
+	override readonly message = `Failed to get field "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 }
 
-// TODO: not just "State"
-export class StateSaveFailed extends Data.TaggedError("StateSaveFailed")<{
+export class FieldSaveFailed extends Data.TaggedError("FieldSaveFailed")<{
 	namespace: string;
 	name: string;
 	cause: Error;
 }> {
-	override readonly message = `Failed to save state "${this.name}" in "${this.namespace}": ${this.cause.message}`;
+	override readonly message = `Failed to save field "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 }
 
 export class TopicPublishFailed extends Data.TaggedError("TopicPublishFailed")<{
@@ -53,21 +49,20 @@ export class RpcCallFailed extends Data.TaggedError("RpcCallFailed")<{
 	override readonly message = `RPC call "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
-// TODO: not just "State"
-export interface StateTransport {
+export interface FieldTransport {
 	readState: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<
 		JsonValue,
-		StateNotFound | StatePermissionDenied | StateGetFailed
+		FieldNotFound | FieldPermissionDenied | FieldGetFailed
 	>;
 	readComputed: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<
 		JsonValue,
-		StateNotFound | StatePermissionDenied | StateGetFailed
+		FieldNotFound | FieldPermissionDenied | FieldGetFailed
 	>;
 	updateState: (
 		namespace: string,
@@ -75,7 +70,7 @@ export interface StateTransport {
 		value: JsonValue,
 	) => Effect.Effect<
 		void,
-		StateNotFound | StatePermissionDenied | StateSaveFailed
+		FieldNotFound | FieldPermissionDenied | FieldSaveFailed
 	>;
 	publishTopic: (
 		namespace: string,
@@ -83,7 +78,7 @@ export interface StateTransport {
 		value: JsonValue,
 	) => Effect.Effect<
 		void,
-		StateNotFound | StatePermissionDenied | TopicPublishFailed
+		FieldNotFound | FieldPermissionDenied | TopicPublishFailed
 	>;
 	callRpc: (
 		namespace: string,
@@ -91,11 +86,11 @@ export interface StateTransport {
 		request: JsonValue,
 	) => Effect.Effect<
 		JsonValue,
-		StateNotFound | StatePermissionDenied | RpcCallFailed
+		FieldNotFound | FieldPermissionDenied | RpcCallFailed
 	>;
 }
 
-export class StateTransportService extends Context.Tag("StateTransport")<
-	StateTransportService,
-	StateTransport
+export class FieldTransportService extends Context.Tag("FieldTransport")<
+	FieldTransportService,
+	FieldTransport
 >() {}

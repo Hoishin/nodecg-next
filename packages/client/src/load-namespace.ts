@@ -31,17 +31,17 @@ import {
 import type { Promisable } from "type-fest";
 
 import {
+	FieldNotFound,
+	FieldPermissionDenied,
+	FieldTransportService,
+	type FieldTransport,
+} from "./services/field-transport/field-transport.ts";
+import { HttpFieldTransport } from "./services/field-transport/http-field-transport.ts";
+import {
 	type MessageChannel,
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
 import { WebSocketMessageChannel } from "./services/message-channel/websocket-message-channel.ts";
-import { HttpStateTransport } from "./services/state-transport/http-state-transport.ts";
-import {
-	StateNotFound,
-	StatePermissionDenied,
-	StateTransportService,
-	type StateTransport,
-} from "./services/state-transport/state-transport.ts";
 
 type RpcShape = Record<
 	string,
@@ -56,7 +56,7 @@ const implementSubscription = Effect.fn("implementSubscription")(function* <
 		Option.none(),
 	);
 	const rejection = yield* SubscriptionRef.make<
-		Option.Option<StateNotFound | StatePermissionDenied>
+		Option.Option<FieldNotFound | FieldPermissionDenied>
 	>(Option.none());
 	let refcount = 0;
 
@@ -86,7 +86,7 @@ const implementSubscription = Effect.fn("implementSubscription")(function* <
 								Match.when(
 									"not-found",
 									() =>
-										new StateNotFound({
+										new FieldNotFound({
 											namespace: field.namespace,
 											name: field.name,
 										}),
@@ -94,7 +94,7 @@ const implementSubscription = Effect.fn("implementSubscription")(function* <
 								Match.when(
 									"forbidden",
 									() =>
-										new StatePermissionDenied({
+										new FieldPermissionDenied({
 											namespace: field.namespace,
 											name: field.name,
 										}),
@@ -166,7 +166,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	name: string,
 	manifest: FieldManifest<Decoded>,
 ) {
-	const transport = yield* StateTransportService;
+	const transport = yield* FieldTransportService;
 	const subscribe = yield* implementSubscription(
 		{ type: "state", namespace, name },
 		manifest,
@@ -212,7 +212,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 	name: string,
 	manifest: FieldManifest<Decoded>,
 ) {
-	const transport = yield* StateTransportService;
+	const transport = yield* FieldTransportService;
 	const subscribe = yield* implementSubscription(
 		{ type: "computed", namespace, name },
 		manifest,
@@ -242,7 +242,7 @@ const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	name: string,
 	manifest: FieldManifest<Decoded>,
 ) {
-	const transport = yield* StateTransportService;
+	const transport = yield* FieldTransportService;
 	const messageChannel = yield* MessageChannelService;
 	const field: FieldIdentifier = { type: "topic", namespace, name };
 	let refcount = 0;
@@ -321,7 +321,7 @@ const implementRpc = Effect.fn("implementRpc")(function* <Request, Response>(
 	name: string,
 	manifest: RpcFieldManifest<Request, Response>,
 ) {
-	const transport = yield* StateTransportService;
+	const transport = yield* FieldTransportService;
 
 	const call = Effect.fn("call")(function* (request: Request) {
 		const encoded = yield* manifest.request.encode(request);
@@ -492,22 +492,22 @@ export async function loadNamespace<
 >(
 	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
 	adapter?: {
-		stateTransport?:
-			| (() => StateTransport)
-			| Effect.Effect<StateTransport, never, never>;
+		fieldTransport?:
+			| (() => FieldTransport)
+			| Effect.Effect<FieldTransport, never, never>;
 		messageChannel?:
 			| (() => MessageChannel)
 			| Effect.Effect<MessageChannel, never, never>;
 	},
 ): Promise<LoadedNamespace<State, Computed, Topic, Rpc>> {
-	const stateTransport = adapter?.stateTransport;
+	const fieldTransport = adapter?.fieldTransport;
 	const messageChannel = adapter?.messageChannel;
 
-	const transportLayer = stateTransport
-		? Effect.isEffect(stateTransport)
-			? Layer.effect(StateTransportService, stateTransport)
-			: Layer.sync(StateTransportService, stateTransport)
-		: HttpStateTransport;
+	const transportLayer = fieldTransport
+		? Effect.isEffect(fieldTransport)
+			? Layer.effect(FieldTransportService, fieldTransport)
+			: Layer.sync(FieldTransportService, fieldTransport)
+		: HttpFieldTransport;
 
 	const messageChannelLayer = messageChannel
 		? Effect.isEffect(messageChannel)

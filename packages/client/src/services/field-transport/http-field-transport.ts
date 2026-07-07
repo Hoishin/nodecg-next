@@ -6,60 +6,60 @@ import type { JsonValue } from "type-fest";
 
 import {
 	RpcCallFailed,
-	StateGetFailed,
-	StateNotFound,
-	StatePermissionDenied,
-	StateSaveFailed,
-	StateTransportService,
+	FieldGetFailed,
+	FieldNotFound,
+	FieldPermissionDenied,
+	FieldSaveFailed,
+	FieldTransportService,
 	TopicPublishFailed,
-} from "./state-transport.ts";
+} from "../field-transport/field-transport.ts";
 
-export const HttpStateTransport = Layer.effect(
-	StateTransportService,
+export const HttpFieldTransport = Layer.effect(
+	FieldTransportService,
 	Effect.gen(function* () {
 		const client = yield* HttpApiClient.make(NodecgApi);
 
-		const readState = Effect.fn("StateTransport.readState")(function* (
+		const readState = Effect.fn("FieldTransport.readState")(function* (
 			namespace: string,
 			name: string,
 		) {
 			return yield* client.State.get({ path: { namespace, name } }).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
-						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
 						Match.tag(
 							"Forbidden",
-							() => new StatePermissionDenied({ namespace, name }),
+							() => new FieldPermissionDenied({ namespace, name }),
 						),
 						Match.orElse(
-							(e) => new StateGetFailed({ namespace, name, cause: toError(e) }),
+							(e) => new FieldGetFailed({ namespace, name, cause: toError(e) }),
 						),
 					),
 				),
 			);
 		});
 
-		const readComputed = Effect.fn("StateTransport.readComputed")(function* (
+		const readComputed = Effect.fn("FieldTransport.readComputed")(function* (
 			namespace: string,
 			name: string,
 		) {
 			return yield* client.Computed.get({ path: { namespace, name } }).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
-						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
 						Match.tag(
 							"Forbidden",
-							() => new StatePermissionDenied({ namespace, name }),
+							() => new FieldPermissionDenied({ namespace, name }),
 						),
 						Match.orElse(
-							(e) => new StateGetFailed({ namespace, name, cause: toError(e) }),
+							(e) => new FieldGetFailed({ namespace, name, cause: toError(e) }),
 						),
 					),
 				),
 			);
 		});
 
-		const updateState = Effect.fn("StateTransport.updateState")(function* (
+		const updateState = Effect.fn("FieldTransport.updateState")(function* (
 			namespace: string,
 			name: string,
 			value: JsonValue,
@@ -70,21 +70,21 @@ export const HttpStateTransport = Layer.effect(
 			}).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
-						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
 						Match.tag(
 							"Forbidden",
-							() => new StatePermissionDenied({ namespace, name }),
+							() => new FieldPermissionDenied({ namespace, name }),
 						),
 						Match.orElse(
 							(e) =>
-								new StateSaveFailed({ namespace, name, cause: toError(e) }),
+								new FieldSaveFailed({ namespace, name, cause: toError(e) }),
 						),
 					),
 				),
 			);
 		});
 
-		const publishTopic = Effect.fn("StateTransport.publishTopic")(function* (
+		const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
 			namespace: string,
 			name: string,
 			value: JsonValue,
@@ -95,10 +95,10 @@ export const HttpStateTransport = Layer.effect(
 			}).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
-						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
 						Match.tag(
 							"Forbidden",
-							() => new StatePermissionDenied({ namespace, name }),
+							() => new FieldPermissionDenied({ namespace, name }),
 						),
 						Match.orElse(
 							(e) =>
@@ -109,7 +109,7 @@ export const HttpStateTransport = Layer.effect(
 			);
 		});
 
-		const callRpc = Effect.fn("StateTransport.callRpc")(function* (
+		const callRpc = Effect.fn("FieldTransport.callRpc")(function* (
 			namespace: string,
 			name: string,
 			request: JsonValue,
@@ -120,10 +120,10 @@ export const HttpStateTransport = Layer.effect(
 			}).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
-						Match.tag("NotFound", () => new StateNotFound({ namespace, name })),
+						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
 						Match.tag(
 							"Forbidden",
-							() => new StatePermissionDenied({ namespace, name }),
+							() => new FieldPermissionDenied({ namespace, name }),
 						),
 						Match.orElse(
 							(e) => new RpcCallFailed({ namespace, name, cause: toError(e) }),
