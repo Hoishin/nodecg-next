@@ -3,7 +3,7 @@ import {
 	extendNamespace,
 	type NamespaceManifest,
 	type FieldManifest,
-	StateEncodeError,
+	FieldEncodeError,
 } from "@nodecg/core";
 import { CurrentIdentity, AnonymousIdentitySchema } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
@@ -27,7 +27,7 @@ import {
 	loadNamespace,
 	loadNamespaceEffect,
 } from "./load-namespace.ts";
-import { stateFieldInternal } from "./load-namespace.ts";
+import { fieldInternal } from "./load-namespace.ts";
 import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
 import {
 	type StateChange,
@@ -145,7 +145,7 @@ describe("loadNamespaceEffect seeding", () => {
 					name: "broken",
 					encode: () =>
 						Effect.fail(
-							new StateEncodeError({
+							new FieldEncodeError({
 								fieldName: "broken",
 								value: 42,
 								cause: new Error("rejected on seed"),
@@ -174,7 +174,7 @@ describe("loadNamespaceEffect seeding", () => {
 					Effect.provide(InMemoryTopicBroker),
 					Effect.flip,
 				);
-				expect(error._tag).toBe("StateEncodeError");
+				expect(error._tag).toBe("FieldEncodeError");
 			}),
 		),
 	);
@@ -298,7 +298,7 @@ describe("getEncodedNoAuth", () => {
 				);
 
 				expect(
-					yield* loaded.state.when[stateFieldInternal]
+					yield* loaded.state.when[fieldInternal]
 						.getEncodedNoAuth()
 						.pipe(
 							Effect.provideService(StateStorageService, storageStub),
@@ -326,7 +326,7 @@ describe("getEncodedNoAuth", () => {
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				const cause = yield* loaded.state.count[stateFieldInternal]
+				const cause = yield* loaded.state.count[fieldInternal]
 					.getEncodedNoAuth()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
@@ -398,7 +398,7 @@ describe("set", () => {
 						Effect.provide(InMemoryTopicBroker),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateEncodeError");
+				expect(error._tag).toBe("FieldEncodeError");
 			}),
 		),
 	);
@@ -574,7 +574,7 @@ describe("computed", () => {
 						},
 					},
 				}).pipe(Effect.flip);
-				expect(error._tag).toBe("StateComputeError");
+				expect(error._tag).toBe("ComputedComputeError");
 			}).pipe(
 				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
 			),
@@ -589,7 +589,7 @@ describe("computed", () => {
 					seedState: { games: () => [] },
 					implementComputed: { firstGameId: () => 42 as unknown as string },
 				}).pipe(Effect.flip);
-				expect(error._tag).toBe("StateEncodeError");
+				expect(error._tag).toBe("FieldEncodeError");
 			}).pipe(
 				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
 			),
@@ -606,7 +606,7 @@ describe("field subscribe", () => {
 	});
 
 	test(
-		"[stateFieldInternal].subscribeEncoded emits raw JsonValue on set",
+		"[fieldInternal].subscribeEncoded emits raw JsonValue on set",
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
@@ -614,7 +614,7 @@ describe("field subscribe", () => {
 				});
 
 				const stream =
-					yield* loaded.state.count[stateFieldInternal].subscribeEncoded();
+					yield* loaded.state.count[fieldInternal].subscribeEncoded();
 				yield* loaded.state.count.set(42);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
@@ -788,10 +788,10 @@ describe("permission threading", () => {
 					implementComputed: { doubled: (sources) => sources.score * 2 },
 				});
 
-				expect(loaded.state.score[stateFieldInternal].permission).toBe(
+				expect(loaded.state.score[fieldInternal].permission).toBe(
 					manifest.state.score.permission,
 				);
-				expect(loaded.computed.doubled[stateFieldInternal].permission).toBe(
+				expect(loaded.computed.doubled[fieldInternal].permission).toBe(
 					manifest.computed.doubled.permission,
 				);
 			}).pipe(
@@ -842,7 +842,7 @@ describe("encoded read/write enforce permission", () => {
 				storageStub.read.mockReturnValue(Option.some(42));
 				const loaded = yield* load(storageStub);
 				expect(
-					yield* loaded.state.open[stateFieldInternal]
+					yield* loaded.state.open[fieldInternal]
 						.getEncoded()
 						.pipe(
 							Effect.provideService(StateStorageService, storageStub),
@@ -861,7 +861,7 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(42));
 				const loaded = yield* load(storageStub);
-				const error = yield* loaded.state.locked[stateFieldInternal]
+				const error = yield* loaded.state.locked[fieldInternal]
 					.getEncoded()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
@@ -881,7 +881,7 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const loaded = yield* load(storageStub);
-				yield* loaded.state.open[stateFieldInternal]
+				yield* loaded.state.open[fieldInternal]
 					.setEncoded(7)
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
@@ -900,7 +900,7 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const loaded = yield* load(storageStub);
-				const error = yield* loaded.state.locked[stateFieldInternal]
+				const error = yield* loaded.state.locked[fieldInternal]
 					.setEncoded(7)
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
@@ -921,7 +921,7 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const loaded = yield* load(storageStub);
-				const error = yield* loaded.computed.lockedComputed[stateFieldInternal]
+				const error = yield* loaded.computed.lockedComputed[fieldInternal]
 					.getEncoded()
 					.pipe(
 						Effect.provideService(StateStorageService, storageStub),
@@ -984,7 +984,7 @@ describe("topic", () => {
 				);
 				const loaded = yield* load(brokerStub);
 				const stream =
-					yield* loaded.topic.open[stateFieldInternal].subscribeEncoded();
+					yield* loaded.topic.open[fieldInternal].subscribeEncoded();
 				const events = yield* stream.pipe(Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual(["2"]);
 			}),
@@ -1017,7 +1017,7 @@ describe("topic", () => {
 			Effect.gen(function* () {
 				const brokerStub = createBrokerStub();
 				const loaded = yield* load(brokerStub);
-				yield* loaded.topic.open[stateFieldInternal]
+				yield* loaded.topic.open[fieldInternal]
 					.publishEncoded("5")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous));
 				expect(brokerStub.publish).toHaveBeenCalledWith("ns", "open", "5");
@@ -1031,7 +1031,7 @@ describe("topic", () => {
 			Effect.gen(function* () {
 				const brokerStub = createBrokerStub();
 				const loaded = yield* load(brokerStub);
-				const error = yield* loaded.topic.locked[stateFieldInternal]
+				const error = yield* loaded.topic.locked[fieldInternal]
 					.publishEncoded("5")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
 				expect(error._tag).toBe("PermissionDenied");
@@ -1046,10 +1046,10 @@ describe("topic", () => {
 			Effect.gen(function* () {
 				const brokerStub = createBrokerStub();
 				const loaded = yield* load(brokerStub);
-				const error = yield* loaded.topic.open[stateFieldInternal]
+				const error = yield* loaded.topic.open[fieldInternal]
 					.publishEncoded(42)
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
-				expect(error._tag).toBe("StateDecodeError");
+				expect(error._tag).toBe("FieldDecodeError");
 				expect(brokerStub.publish).not.toHaveBeenCalled();
 			}),
 		),
@@ -1087,7 +1087,7 @@ describe("rpc", () => {
 			Effect.gen(function* () {
 				const echo = vi.fn((request: number) => request * 2);
 				const loaded = yield* load({ echo, locked: (request) => request });
-				const result = yield* loaded.rpc.echo[stateFieldInternal]
+				const result = yield* loaded.rpc.echo[fieldInternal]
 					.callEncoded("21")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous));
 				expect(echo).toHaveBeenCalledWith(21);
@@ -1107,7 +1107,7 @@ describe("rpc", () => {
 					},
 					locked: (request) => request,
 				});
-				const result = yield* loaded.rpc.echo[stateFieldInternal]
+				const result = yield* loaded.rpc.echo[fieldInternal]
 					.callEncoded("4")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous));
 				expect(result).toBe("5");
@@ -1123,7 +1123,7 @@ describe("rpc", () => {
 					echo: (request) => request,
 					locked: (request) => request,
 				});
-				const error = yield* loaded.rpc.locked[stateFieldInternal]
+				const error = yield* loaded.rpc.locked[fieldInternal]
 					.callEncoded("x")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
 				expect(error._tag).toBe("PermissionDenied");
@@ -1132,15 +1132,15 @@ describe("rpc", () => {
 	);
 
 	test(
-		"call fails StateDecodeError when the request payload is invalid",
+		"call fails FieldDecodeError when the request payload is invalid",
 		testEffect(
 			Effect.gen(function* () {
 				const echo = vi.fn((request: number) => request);
 				const loaded = yield* load({ echo, locked: (request) => request });
-				const error = yield* loaded.rpc.echo[stateFieldInternal]
+				const error = yield* loaded.rpc.echo[fieldInternal]
 					.callEncoded("not a number")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
-				expect(error._tag).toBe("StateDecodeError");
+				expect(error._tag).toBe("FieldDecodeError");
 				expect(echo).not.toHaveBeenCalled();
 			}),
 		),
@@ -1156,7 +1156,7 @@ describe("rpc", () => {
 					},
 					locked: (request) => request,
 				});
-				const error = yield* loaded.rpc.echo[stateFieldInternal]
+				const error = yield* loaded.rpc.echo[fieldInternal]
 					.callEncoded("1")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
 				expect(error._tag).toBe("RpcHandlerFailure");

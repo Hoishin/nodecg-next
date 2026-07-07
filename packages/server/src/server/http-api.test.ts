@@ -1,5 +1,5 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
-import { type ResolvedPermission, StateDecodeError } from "@nodecg/core";
+import { type ResolvedPermission, FieldDecodeError } from "@nodecg/core";
 import {
 	AuthenticationMiddleware,
 	CurrentIdentity,
@@ -21,8 +21,8 @@ import {
 	PermissionDenied,
 	RpcHandlerFailure,
 	type StateField,
-	stateFieldInternal,
-	stateMetadataKey,
+	fieldInternal,
+	namespaceMetadataKey,
 } from "../load-namespace.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
@@ -30,7 +30,7 @@ import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-stor
 import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
-type Internal = StateField<unknown>[typeof stateFieldInternal];
+type Internal = StateField<unknown>[typeof fieldInternal];
 
 const openPermission: ResolvedPermission = {
 	read: new Set(),
@@ -51,7 +51,7 @@ function stubField(
 		update: unused,
 		validate: unused,
 		subscribe: unused,
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			get: unused,
 			set: unused,
 			update: unused,
@@ -73,7 +73,7 @@ function stubComputed(
 	return {
 		get: unused,
 		subscribe: unused,
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			get: unused,
 			subscribe: () => Effect.succeed(Stream.empty),
 			getEncodedNoAuth: unused,
@@ -84,9 +84,8 @@ function stubComputed(
 	};
 }
 
-type TopicInternal =
-	LoadedNamespace["topic"][string][typeof stateFieldInternal];
-type RpcInternal = LoadedNamespace["rpc"][string][typeof stateFieldInternal];
+type TopicInternal = LoadedNamespace["topic"][string][typeof fieldInternal];
+type RpcInternal = LoadedNamespace["rpc"][string][typeof fieldInternal];
 
 function stubTopic(
 	publishEncoded: TopicInternal["publishEncoded"],
@@ -95,7 +94,7 @@ function stubTopic(
 	return {
 		publish: unused,
 		subscribe: unused,
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			publish: unused,
 			subscribe: () => Effect.succeed(Stream.empty),
 			subscribeEncoded: () => Effect.succeed(Stream.empty),
@@ -109,7 +108,7 @@ function stubRpc(
 	callEncoded: RpcInternal["callEncoded"],
 ): LoadedNamespace["rpc"][string] {
 	return {
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			callEncoded,
 			permission: openPermission,
 		},
@@ -128,7 +127,7 @@ function loadedNamespace(
 		computed,
 		topic,
 		rpc,
-		[stateMetadataKey]: { namespace },
+		[namespaceMetadataKey]: { namespace },
 	};
 }
 
@@ -326,14 +325,14 @@ describe("update", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("400 when the field reports StateDecodeError", async () => {
+	test("400 when the field reports FieldDecodeError", async () => {
 		const handler = webHandler([
 			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
-							new StateDecodeError({
+							new FieldDecodeError({
 								fieldName: "count",
 								value: 7,
 								cause: new Error("boom"),
@@ -464,7 +463,7 @@ describe("topic publish", () => {
 		expect((await handler(postRequest(topicUrl, 5))).status).toBe(403);
 	});
 
-	test("400 when publishEncoded reports StateDecodeError", async () => {
+	test("400 when publishEncoded reports FieldDecodeError", async () => {
 		const handler = webHandler([
 			loadedNamespace(
 				"root",
@@ -473,7 +472,7 @@ describe("topic publish", () => {
 				{
 					chat: stubTopic(() =>
 						Effect.fail(
-							new StateDecodeError({
+							new FieldDecodeError({
 								fieldName: "chat",
 								value: 5,
 								cause: new Error("boom"),
@@ -531,7 +530,7 @@ describe("rpc call", () => {
 		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(403);
 	});
 
-	test("400 when callEncoded reports StateDecodeError", async () => {
+	test("400 when callEncoded reports FieldDecodeError", async () => {
 		const handler = webHandler([
 			loadedNamespace(
 				"root",
@@ -541,7 +540,7 @@ describe("rpc call", () => {
 				{
 					echo: stubRpc(() =>
 						Effect.fail(
-							new StateDecodeError({
+							new FieldDecodeError({
 								fieldName: "echo",
 								value: 42,
 								cause: new Error("boom"),

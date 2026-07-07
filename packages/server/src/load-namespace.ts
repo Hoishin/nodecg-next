@@ -38,7 +38,7 @@ import {
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
-export const stateFieldInternal = Symbol("stateFieldInternal");
+export const fieldInternal = Symbol("fieldInternal");
 
 export type FrontendConfig = {
 	readonly dir: string | URL;
@@ -53,12 +53,14 @@ export class StateUpdateFnError extends Data.TaggedError("StateUpdateFnError")<{
 	override readonly message = `Update function for state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
-export class StateComputeError extends Data.TaggedError("StateComputeError")<{
+export class ComputedComputeError extends Data.TaggedError(
+	"ComputedComputeError",
+)<{
 	namespace: string;
 	name: string;
 	cause: Error;
 }> {
-	override readonly message = `Computing state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+	override readonly message = `Computing computed field "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
 export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
@@ -229,7 +231,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		update,
 		validate: manifest.encode,
 		subscribe,
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			get,
 			set,
 			update,
@@ -255,7 +257,7 @@ export type StateField<Decoded> = ApplyLambdaToObject<
 		update: EffectToPromiseLambda;
 		validate: EffectToPromiseLambda;
 		subscribe: StreamToSubscribeLambda;
-		[stateFieldInternal]: IdentityLambda;
+		[fieldInternal]: IdentityLambda;
 	}
 >;
 
@@ -276,7 +278,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 		return yield* Effect.try({
 			try: () => compute(sources),
 			catch: (error) =>
-				new StateComputeError({ namespace, name, cause: toError(error) }),
+				new ComputedComputeError({ namespace, name, cause: toError(error) }),
 		});
 	});
 
@@ -336,7 +338,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 	return {
 		get,
 		subscribe,
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			get,
 			subscribe,
 			getEncodedNoAuth,
@@ -355,7 +357,7 @@ export type ComputedField<Decoded> = ApplyLambdaToObject<
 	{
 		get: EffectToSyncLambda;
 		subscribe: StreamToSubscribeLambda;
-		[stateFieldInternal]: IdentityLambda;
+		[fieldInternal]: IdentityLambda;
 	}
 >;
 
@@ -406,7 +408,7 @@ const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	return {
 		publish,
 		subscribe,
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			publish,
 			subscribe,
 			subscribeEncoded,
@@ -424,7 +426,7 @@ export type TopicField<Decoded> = ApplyLambdaToObject<
 	{
 		publish: EffectToPromiseLambda;
 		subscribe: StreamToSubscribeLambda;
-		[stateFieldInternal]: IdentityLambda;
+		[fieldInternal]: IdentityLambda;
 	}
 >;
 
@@ -453,7 +455,7 @@ const implementRpc = <Request, Response>(
 	});
 
 	return Effect.succeed({
-		[stateFieldInternal]: {
+		[fieldInternal]: {
 			callEncoded,
 			permission: manifest.permission,
 		},
@@ -466,7 +468,7 @@ type RpcFieldEffect<Request, Response> = Effect.Effect.Success<
 export type RpcField<Request, Response> = ApplyLambdaToObject<
 	RpcFieldEffect<Request, Response>,
 	{
-		[stateFieldInternal]: IdentityLambda;
+		[fieldInternal]: IdentityLambda;
 	}
 >;
 
@@ -537,7 +539,7 @@ interface RpcFieldPromiseLambda extends HKT.TypeLambda {
 	>;
 }
 
-export const stateMetadataKey = Symbol("stateMetadataKey");
+export const namespaceMetadataKey = Symbol("namespaceMetadataKey");
 
 const buildNamespace = <
 	State extends Record<string, unknown>,
@@ -617,7 +619,7 @@ const buildNamespace = <
 		// Eager compute at load and fail-fast validation
 		yield* Effect.forEach(
 			Object.values(computedFields),
-			(field) => field[stateFieldInternal].getEncodedNoAuth(),
+			(field) => field[fieldInternal].getEncodedNoAuth(),
 			{ concurrency: "unbounded", discard: true },
 		);
 
@@ -660,7 +662,7 @@ export function loadNamespaceEffect<
 			computed: computedFields,
 			topic: topicFields,
 			rpc: rpcFields,
-			[stateMetadataKey]: { namespace: manifest.namespace },
+			[namespaceMetadataKey]: { namespace: manifest.namespace },
 		})),
 	);
 }
@@ -735,7 +737,7 @@ async function loadNamespacePromise<
 			update: (fn) => runtime.runPromise(field.update(fn)),
 			validate: (value) => runtime.runPromise(field.validate(value)),
 			subscribe: subscribeAdapter(field.subscribe, name),
-			[stateFieldInternal]: field[stateFieldInternal],
+			[fieldInternal]: field[fieldInternal],
 		}),
 	)(effectStateFields);
 
@@ -745,20 +747,20 @@ async function loadNamespacePromise<
 	>((field, name) => ({
 		get: () => runtime.runSync(field.get()),
 		subscribe: subscribeAdapter(field.subscribe, name),
-		[stateFieldInternal]: field[stateFieldInternal],
+		[fieldInternal]: field[fieldInternal],
 	}))(effectComputedFields);
 
 	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(
 		(field, name) => ({
 			publish: (value) => runtime.runPromise(field.publish(value)),
 			subscribe: subscribeAdapter(field.subscribe, name),
-			[stateFieldInternal]: field[stateFieldInternal],
+			[fieldInternal]: field[fieldInternal],
 		}),
 	)(effectTopicFields);
 
 	const rpc = mapValues<RpcFieldEffectLambda, RpcFieldPromiseLambda>(
 		(field) => ({
-			[stateFieldInternal]: field[stateFieldInternal],
+			[fieldInternal]: field[fieldInternal],
 		}),
 	)(effectRpcFields);
 
@@ -767,7 +769,7 @@ async function loadNamespacePromise<
 		computed,
 		topic,
 		rpc,
-		[stateMetadataKey]: {
+		[namespaceMetadataKey]: {
 			namespace: manifest.namespace,
 			frontend: options?.frontend,
 		},
@@ -924,7 +926,7 @@ export interface LoadedNamespace<
 	Topic extends Record<string, unknown> = Record<string, unknown>,
 	Rpc extends RpcShape = RpcShape,
 > {
-	readonly [stateMetadataKey]: {
+	readonly [namespaceMetadataKey]: {
 		readonly namespace: string;
 		readonly frontend?: FrontendConfig;
 	};

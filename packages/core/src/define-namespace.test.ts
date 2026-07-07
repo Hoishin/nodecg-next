@@ -6,8 +6,8 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 import {
 	defineNamespace,
 	extendNamespace,
-	StateDecodeError,
-	StateEncodeError,
+	FieldDecodeError,
+	FieldEncodeError,
 } from "./define-namespace.ts";
 
 describe("defineNamespace", () => {
@@ -45,7 +45,7 @@ describe("defineNamespace", () => {
 			),
 		);
 
-		test("decode surfaces StateDecodeError on bad wire input", () => {
+		test("decode surfaces FieldDecodeError on bad wire input", () => {
 			const manifest = defineNamespace("match", {
 				state: { count: { schema: Schema.Number } },
 			});
@@ -53,7 +53,7 @@ describe("defineNamespace", () => {
 			const error = Effect.runSync(
 				Effect.flip(manifest.state.count.decode("nope")),
 			);
-			expect(error).toBeInstanceOf(StateDecodeError);
+			expect(error).toBeInstanceOf(FieldDecodeError);
 		});
 
 		test("declaring a reserved role throws", () => {
@@ -289,7 +289,7 @@ describe("defineNamespace", () => {
 				.parameter(0)
 				.toEqualTypeOf<string>();
 			expectTypeOf(manifest.computed.winning.decode).returns.toEqualTypeOf<
-				Effect.Effect<"left" | "right" | null, StateDecodeError>
+				Effect.Effect<"left" | "right" | null, FieldDecodeError>
 			>();
 			expectTypeOf(manifest.topic.start.encode)
 				.parameter(0)
@@ -298,7 +298,7 @@ describe("defineNamespace", () => {
 				.parameter(0)
 				.toEqualTypeOf<{ readonly home: number }>();
 			expectTypeOf(manifest.rpc.setScore.response.decode).returns.toEqualTypeOf<
-				Effect.Effect<boolean, StateDecodeError>
+				Effect.Effect<boolean, FieldDecodeError>
 			>();
 		});
 
@@ -309,7 +309,7 @@ describe("defineNamespace", () => {
 
 			expectTypeOf(manifest.namespace).toEqualTypeOf<string>();
 			expectTypeOf(manifest.state.count.encode).returns.toEqualTypeOf<
-				Effect.Effect<JsonValue, StateEncodeError>
+				Effect.Effect<JsonValue, FieldEncodeError>
 			>();
 			expectTypeOf(manifest.state.count.decode)
 				.parameter(0)
@@ -630,7 +630,7 @@ describe("extendNamespace", () => {
 				.parameter(0)
 				.toEqualTypeOf<{ readonly home: number }>();
 			expectTypeOf(extended.rpc.setScore.response.decode).returns.toEqualTypeOf<
-				Effect.Effect<boolean, StateDecodeError>
+				Effect.Effect<boolean, FieldDecodeError>
 			>();
 		});
 	});

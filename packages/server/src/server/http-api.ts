@@ -261,7 +261,7 @@ export const buildNodecgApi = (options: {
 									() => new HttpApiError.Forbidden(),
 								),
 								Match.tag(
-									"StateDecodeError",
+									"FieldDecodeError",
 									() => new HttpApiError.BadRequest(),
 								),
 								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
@@ -287,8 +287,9 @@ export const buildNodecgApi = (options: {
 						Effect.catchTags({
 							PermissionDenied: () => new HttpApiError.Forbidden(),
 							StateNotFound: () => new HttpApiError.NotFound(),
-							StateComputeError: () => new HttpApiError.InternalServerError(),
-							StateEncodeError: () => new HttpApiError.InternalServerError(),
+							ComputedComputeError: () =>
+								new HttpApiError.InternalServerError(),
+							FieldEncodeError: () => new HttpApiError.InternalServerError(),
 						}),
 					);
 				}),
@@ -305,7 +306,7 @@ export const buildNodecgApi = (options: {
 				yield* field.publishEncoded(payload).pipe(
 					Effect.catchTags({
 						PermissionDenied: () => new HttpApiError.Forbidden(),
-						StateDecodeError: () => new HttpApiError.BadRequest(),
+						FieldDecodeError: () => new HttpApiError.BadRequest(),
 					}),
 				);
 			}),
@@ -322,10 +323,10 @@ export const buildNodecgApi = (options: {
 				return yield* field.callEncoded(payload).pipe(
 					Effect.catchTags({
 						PermissionDenied: () => new HttpApiError.Forbidden(),
-						StateDecodeError: () => new HttpApiError.BadRequest(),
+						FieldDecodeError: () => new HttpApiError.BadRequest(),
 						RpcHandlerFailure: (error) =>
 							new RpcHandlerError({ message: error.message }),
-						StateEncodeError: (error) =>
+						FieldEncodeError: (error) =>
 							new RpcHandlerError({ message: error.message }),
 					}),
 				);

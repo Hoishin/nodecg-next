@@ -1,17 +1,16 @@
 import {
 	type LoadedNamespace,
-	stateFieldInternal,
-	stateMetadataKey,
+	fieldInternal,
+	namespaceMetadataKey,
 } from "./load-namespace.ts";
 
 type StateFieldInternal =
-	LoadedNamespace["state"][string][typeof stateFieldInternal];
+	LoadedNamespace["state"][string][typeof fieldInternal];
 type ComputedFieldInternal =
-	LoadedNamespace["computed"][string][typeof stateFieldInternal];
+	LoadedNamespace["computed"][string][typeof fieldInternal];
 type TopicFieldInternal =
-	LoadedNamespace["topic"][string][typeof stateFieldInternal];
-type RpcFieldInternal =
-	LoadedNamespace["rpc"][string][typeof stateFieldInternal];
+	LoadedNamespace["topic"][string][typeof fieldInternal];
+type RpcFieldInternal = LoadedNamespace["rpc"][string][typeof fieldInternal];
 
 export interface FieldRegistry {
 	readonly state: ReadonlyMap<string, ReadonlyMap<string, StateFieldInternal>>;
@@ -31,25 +30,25 @@ export const buildFieldRegistry = (
 	const topic = new Map<string, Map<string, TopicFieldInternal>>();
 	const rpc = new Map<string, Map<string, RpcFieldInternal>>();
 	for (const loaded of namespaces) {
-		const { namespace } = loaded[stateMetadataKey];
+		const { namespace } = loaded[namespaceMetadataKey];
 		const stateFields = new Map<string, StateFieldInternal>();
 		for (const [name, field] of Object.entries(loaded.state)) {
-			stateFields.set(name, field[stateFieldInternal]);
+			stateFields.set(name, field[fieldInternal]);
 		}
 		state.set(namespace, stateFields);
 		const computedFields = new Map<string, ComputedFieldInternal>();
 		for (const [name, field] of Object.entries(loaded.computed)) {
-			computedFields.set(name, field[stateFieldInternal]);
+			computedFields.set(name, field[fieldInternal]);
 		}
 		computed.set(namespace, computedFields);
 		const topicFields = new Map<string, TopicFieldInternal>();
 		for (const [name, field] of Object.entries(loaded.topic)) {
-			topicFields.set(name, field[stateFieldInternal]);
+			topicFields.set(name, field[fieldInternal]);
 		}
 		topic.set(namespace, topicFields);
 		const rpcFields = new Map<string, RpcFieldInternal>();
 		for (const [name, field] of Object.entries(loaded.rpc)) {
-			rpcFields.set(name, field[stateFieldInternal]);
+			rpcFields.set(name, field[fieldInternal]);
 		}
 		rpc.set(namespace, rpcFields);
 	}

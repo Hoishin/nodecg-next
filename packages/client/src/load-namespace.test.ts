@@ -96,7 +96,7 @@ describe("get", () => {
 						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateDecodeError");
+				expect(error._tag).toBe("FieldDecodeError");
 			}),
 		),
 	);
@@ -215,7 +215,7 @@ describe("set", () => {
 						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateEncodeError");
+				expect(error._tag).toBe("FieldEncodeError");
 			}),
 		),
 	);
@@ -875,7 +875,7 @@ describe("topic", () => {
 						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateEncodeError");
+				expect(error._tag).toBe("FieldEncodeError");
 			}),
 		),
 	);
@@ -1083,7 +1083,7 @@ describe("rpc", () => {
 						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("StateDecodeError");
+				expect(error._tag).toBe("FieldDecodeError");
 			}),
 		),
 	);

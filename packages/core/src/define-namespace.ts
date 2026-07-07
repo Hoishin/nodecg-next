@@ -27,7 +27,7 @@ import {
 	type WriteOnlyPermissionArg,
 } from "./role.ts";
 
-export class StateEncodeError extends Data.TaggedError("StateEncodeError")<{
+export class FieldEncodeError extends Data.TaggedError("FieldEncodeError")<{
 	readonly fieldName: string;
 	readonly value: unknown;
 	readonly cause: Error;
@@ -35,7 +35,7 @@ export class StateEncodeError extends Data.TaggedError("StateEncodeError")<{
 	override readonly message = `Failed to encode state "${this.fieldName}": ${this.cause.message}`;
 }
 
-export class StateDecodeError extends Data.TaggedError("StateDecodeError")<{
+export class FieldDecodeError extends Data.TaggedError("FieldDecodeError")<{
 	readonly fieldName: string;
 	readonly value: JsonValue;
 	readonly cause: Error;
@@ -44,8 +44,8 @@ export class StateDecodeError extends Data.TaggedError("StateDecodeError")<{
 }
 
 export interface FieldCodec<D> {
-	readonly encode: (value: D) => Effect.Effect<JsonValue, StateEncodeError>;
-	readonly decode: (value: JsonValue) => Effect.Effect<D, StateDecodeError>;
+	readonly encode: (value: D) => Effect.Effect<JsonValue, FieldEncodeError>;
+	readonly decode: (value: JsonValue) => Effect.Effect<D, FieldDecodeError>;
 }
 
 export interface FieldManifest<D> extends FieldCodec<D> {
@@ -149,7 +149,7 @@ function makeCodec<D, E extends JsonValue>(
 				Effect.catchTag(
 					"ParseError",
 					(error) =>
-						new StateEncodeError({ fieldName: name, value, cause: error }),
+						new FieldEncodeError({ fieldName: name, value, cause: error }),
 				),
 			);
 		}),
@@ -158,7 +158,7 @@ function makeCodec<D, E extends JsonValue>(
 				Effect.catchTag(
 					"ParseError",
 					(error) =>
-						new StateDecodeError({ fieldName: name, value, cause: error }),
+						new FieldDecodeError({ fieldName: name, value, cause: error }),
 				),
 			);
 		}),

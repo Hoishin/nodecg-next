@@ -1,8 +1,8 @@
 export {
 	defineNamespace,
 	extendNamespace,
-	StateDecodeError,
-	StateEncodeError,
+	FieldDecodeError,
+	FieldEncodeError,
 	type FieldCodec,
 	type FieldManifest,
 	type RpcFieldManifest,
