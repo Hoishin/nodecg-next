@@ -2,7 +2,7 @@ import type { HttpServerRequest } from "@effect/platform";
 import {
 	HumanIdentitySchema,
 	type Identity,
-	PublicIdentitySchema,
+	AnonymousIdentitySchema,
 } from "@nodecg/internal";
 import { Effect, Option } from "effect";
 
@@ -10,7 +10,7 @@ import type { RoleStore } from "../services/role-store/role-store.ts";
 import type { SessionStore } from "../services/session-store/session-store.ts";
 import { sessionCookieName } from "./session-cookie-name.ts";
 
-export const publicIdentity = PublicIdentitySchema.make();
+export const anonymousIdentity = AnonymousIdentitySchema.make();
 
 export const resolveSessionIdentity =
 	(deps: { readonly sessions: SessionStore; readonly roleStore: RoleStore }) =>

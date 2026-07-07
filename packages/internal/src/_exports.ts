@@ -10,7 +10,7 @@ export {
 	HumanAccountSchema,
 	type MachineIdentity,
 	MachineIdentitySchema,
-	PublicIdentitySchema,
+	AnonymousIdentitySchema,
 	type ServerIdentity,
 	ServerIdentitySchema,
 } from "./auth.ts";

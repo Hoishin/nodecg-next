@@ -3,7 +3,7 @@ import { Context, Schema } from "effect";
 
 import { RoleNameSchema } from "./role.ts";
 
-export const PublicIdentitySchema = Schema.TaggedStruct("public", {});
+export const AnonymousIdentitySchema = Schema.TaggedStruct("anonymous", {});
 
 export const HumanAccountSchema = Schema.Struct({
 	issuer: Schema.String,
@@ -28,7 +28,7 @@ export const ServerIdentitySchema = Schema.TaggedStruct("server", {});
 export type ServerIdentity = typeof ServerIdentitySchema.Type;
 
 export const IdentitySchema = Schema.Union(
-	PublicIdentitySchema,
+	AnonymousIdentitySchema,
 	HumanIdentitySchema,
 	MachineIdentitySchema,
 	ServerIdentitySchema,

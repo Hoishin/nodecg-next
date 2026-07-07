@@ -6,7 +6,7 @@ import { config } from "../server-config.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import {
-	publicIdentity,
+	anonymousIdentity,
 	resolveSessionIdentity,
 } from "./resolve-session-identity.ts";
 
@@ -27,7 +27,7 @@ export const AuthenticationMiddlewareLive = Layer.effect(
 			if (requireAuth) {
 				return yield* new HttpApiError.Unauthorized();
 			}
-			return publicIdentity;
+			return anonymousIdentity;
 		});
 	}),
 );

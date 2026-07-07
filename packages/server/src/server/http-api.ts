@@ -131,7 +131,9 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							})
 							.pipe(
 								Effect.tapError((error) =>
-									Effect.logError(`Authentication callback failed: ${error.message}`),
+									Effect.logError(
+										`Authentication callback failed: ${error.message}`,
+									),
 								),
 								Effect.either,
 							);

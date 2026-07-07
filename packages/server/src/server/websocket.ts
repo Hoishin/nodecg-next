@@ -26,7 +26,7 @@ import {
 import type { JsonValue } from "type-fest";
 
 import {
-	publicIdentity,
+	anonymousIdentity,
 	resolveSessionIdentity,
 } from "../auth/resolve-session-identity.ts";
 import { buildFieldRegistry } from "../field-registry.ts";
@@ -181,7 +181,7 @@ export const websocketRoute = (options: {
 					if (Option.isNone(resolved) && requireAuth) {
 						return HttpServerResponse.empty({ status: 401 });
 					}
-					const identity = Option.getOrElse(resolved, () => publicIdentity);
+					const identity = Option.getOrElse(resolved, () => anonymousIdentity);
 					return yield* wsHandler(identity);
 				}).pipe(
 					Effect.catchAll(() =>

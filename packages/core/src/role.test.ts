@@ -2,7 +2,7 @@ import {
 	HumanAccountSchema,
 	HumanIdentitySchema,
 	MachineIdentitySchema,
-	PublicIdentitySchema,
+	AnonymousIdentitySchema,
 	RESERVED_ROLE,
 	RoleName,
 	ServerIdentitySchema,
@@ -22,7 +22,7 @@ const human = (...roles: RoleName[]) =>
 		}),
 		roles: new Set(roles),
 	});
-const anonymous = PublicIdentitySchema.make();
+const anonymous = AnonymousIdentitySchema.make();
 const server = ServerIdentitySchema.make();
 
 const manifest = defineNamespace("match", {
@@ -37,7 +37,7 @@ const manifest = defineNamespace("match", {
 		},
 		open: {
 			schema: Schema.Number,
-			permission: { read: { allow: ["public"] } },
+			permission: { read: { allow: ["anonymous"] } },
 		},
 		config: {
 			schema: Schema.String,
@@ -69,7 +69,7 @@ describe("canRead / canWrite", () => {
 		).toBe(true);
 	});
 
-	test("an anonymous caller passes only where public is allowed", () => {
+	test("an anonymous caller passes only where anonymous is allowed", () => {
 		expect(manifest.state.score.permission.canRead(anonymous)).toBe(false);
 		expect(manifest.state.open.permission.canRead(anonymous)).toBe(true);
 	});

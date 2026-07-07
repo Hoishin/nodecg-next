@@ -1,12 +1,12 @@
 import { defineNamespace, extendNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
-const publicRead = { read: { allow: ["public"] } } as const;
-const publicReadWrite = {
-	read: { allow: ["public"] },
-	write: { allow: ["public"] },
+const anonymousRead = { read: { allow: ["anonymous"] } } as const;
+const anonymousReadWrite = {
+	read: { allow: ["anonymous"] },
+	write: { allow: ["anonymous"] },
 } as const;
-const publicWrite = { write: { allow: ["public"] } } as const;
+const anonymousWrite = { write: { allow: ["anonymous"] } } as const;
 
 export const fixtureManifest = defineNamespace("e2e", {
 	roles: {
@@ -14,8 +14,8 @@ export const fixtureManifest = defineNamespace("e2e", {
 		viewer: { permission: [] },
 	},
 	state: {
-		count: { schema: Schema.Number, permission: publicRead },
-		label: { schema: Schema.String, permission: publicRead },
+		count: { schema: Schema.Number, permission: anonymousRead },
+		label: { schema: Schema.String, permission: anonymousRead },
 		secret: { schema: Schema.String },
 		producerOnly: {
 			schema: Schema.String,
@@ -27,16 +27,16 @@ export const fixtureManifest = defineNamespace("e2e", {
 		},
 	},
 	computed: {
-		doubledCount: { schema: Schema.Number, permission: publicRead },
-		summary: { schema: Schema.String, permission: publicRead },
+		doubledCount: { schema: Schema.Number, permission: anonymousRead },
+		summary: { schema: Schema.String, permission: anonymousRead },
 	},
 	topic: {
-		chat: { schema: Schema.String, permission: publicReadWrite },
+		chat: { schema: Schema.String, permission: anonymousReadWrite },
 	},
 	rpc: {
 		echo: {
 			schema: { request: Schema.String, response: Schema.String },
-			permission: publicWrite,
+			permission: anonymousWrite,
 		},
 	},
 });
@@ -46,15 +46,15 @@ export const baseManifest = defineNamespace("e2e-extend", {
 		producer: { permission: ["state-write"] },
 	},
 	state: {
-		score: { schema: Schema.Number, permission: publicRead },
+		score: { schema: Schema.Number, permission: anonymousRead },
 	},
 });
 
 export const extendedManifest = extendNamespace(baseManifest, {
 	state: {
-		bonus: { schema: Schema.Number, permission: publicRead },
+		bonus: { schema: Schema.Number, permission: anonymousRead },
 	},
 	computed: {
-		total: { schema: Schema.Number, permission: publicRead },
+		total: { schema: Schema.Number, permission: anonymousRead },
 	},
 });

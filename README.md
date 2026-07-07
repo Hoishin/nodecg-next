@@ -294,8 +294,8 @@ match.state.label.subscribe((label) => {
       message: {
         schema: Schema.String,
         permission: {
-          read: { allow: ["public"] },
-          write: { allow: ["public"] },
+          read: { allow: ["anonymous"] },
+          write: { allow: ["anonymous"] },
         },
       },
     },
@@ -315,7 +315,7 @@ match.state.label.subscribe((label) => {
     rpc: {
       roll: {
         schema: { request: Schema.Number, response: Schema.Number },
-        permission: { write: { allow: ["public"] } },
+        permission: { write: { allow: ["anonymous"] } },
       },
     },
   });

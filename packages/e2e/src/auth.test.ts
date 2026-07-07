@@ -32,8 +32,8 @@ const revokeAsAdmin = async (subject: string, role: string) => {
 };
 
 describe("anonymous identity", () => {
-	test("a request without a session resolves to the public identity", async () => {
-		expect((await fetchMe()).identity).toEqual({ _tag: "public" });
+	test("a request without a session resolves to the anonymous identity", async () => {
+		expect((await fetchMe()).identity).toEqual({ _tag: "anonymous" });
 	});
 });
 
@@ -48,7 +48,7 @@ describe("browser login", () => {
 		});
 
 		await logout();
-		expect((await fetchMe()).identity).toEqual({ _tag: "public" });
+		expect((await fetchMe()).identity).toEqual({ _tag: "anonymous" });
 	});
 });
 

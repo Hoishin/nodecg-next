@@ -7,7 +7,7 @@ interface HumanAccount {
 }
 
 type Identity =
-	| { readonly _tag: "public" }
+	| { readonly _tag: "anonymous" }
 	| { readonly _tag: "human"; readonly account: HumanAccount }
 	| {
 			readonly _tag: "machine";
@@ -81,7 +81,7 @@ export function Login() {
 
 	const logOut = () => {
 		void fetch("/api/authentication/logout", { method: "POST" }).then(() => {
-			setState({ status: "ready", identity: { _tag: "public" } });
+			setState({ status: "ready", identity: { _tag: "anonymous" } });
 		});
 	};
 

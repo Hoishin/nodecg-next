@@ -59,7 +59,7 @@ describe("defineNamespace", () => {
 		test("declaring a reserved role throws", () => {
 			expect(() =>
 				defineNamespace("match", {
-					roles: { public: { permission: ["state-read"] } },
+					roles: { anonymous: { permission: ["state-read"] } },
 					state: { count: { schema: Schema.Number } },
 				}),
 			).toThrow(/reserved/);
@@ -341,7 +341,7 @@ describe("defineNamespace", () => {
 							schema: Schema.Number,
 							permission: {
 								read: { allow: ["judge", "client"] },
-								write: { deny: ["public", "server"] },
+								write: { deny: ["anonymous", "server"] },
 							},
 						},
 					},
@@ -561,7 +561,7 @@ describe("extendNamespace", () => {
 		test("declaring a reserved role throws", () => {
 			expect(() =>
 				extendNamespace(base, {
-					roles: { public: { permission: ["state-read"] } },
+					roles: { anonymous: { permission: ["state-read"] } },
 				}),
 			).toThrow(/reserved/);
 		});

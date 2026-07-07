@@ -188,11 +188,11 @@ describe("ping", () => {
 });
 
 describe("me", () => {
-	test("resolves an anonymous request to the public identity", async () => {
+	test("resolves an anonymous request to the anonymous identity", async () => {
 		const handler = webHandler([]);
 		const res = await handler(new Request("http://x/api/me"));
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ identity: { _tag: "public" } });
+		expect(await res.json()).toEqual({ identity: { _tag: "anonymous" } });
 	});
 });
 
@@ -422,7 +422,7 @@ describe("permission enforcement", () => {
 			}),
 		]);
 		const res = await handler(new Request(getUrl));
-		expect(await res.json()).toBe("public");
+		expect(await res.json()).toBe("anonymous");
 	});
 });
 

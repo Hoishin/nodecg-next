@@ -51,7 +51,7 @@ const getRolesFromIdentity = (caller: Identity) =>
 		Match.withReturnType<ReadonlySet<RoleName>>(),
 		Match.tag("human", (human) => human.roles),
 		Match.tag("machine", () => new Set()), // TODO: resolve once machine account has roles
-		Match.tag("public", () => new Set()),
+		Match.tag("anonymous", () => new Set()),
 		Match.tag("server", () => new Set([RESERVED_ROLE.server])),
 		Match.exhaustive,
 	);
@@ -67,7 +67,7 @@ const isAllowed = (
 ): boolean =>
 	caller.has(RESERVED_ROLE.superadmin) ||
 	caller.has(RESERVED_ROLE.admin) ||
-	resolved.has(RESERVED_ROLE.public) ||
+	resolved.has(RESERVED_ROLE.anonymous) ||
 	[...caller].some((role) => resolved.has(role));
 
 export const buildPermission = (

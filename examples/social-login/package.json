@@ -9,9 +9,9 @@
 		"type-check": "tsc -b src/client src/server"
 	},
 	"dependencies": {
-		"effect": "catalog:",
 		"@nodecg/core": "workspace:*",
 		"@nodecg/server": "workspace:*",
+		"effect": "catalog:",
 		"react": "catalog:",
 		"react-dom": "catalog:"
 	},

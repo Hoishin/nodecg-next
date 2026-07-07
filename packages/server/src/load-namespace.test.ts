@@ -5,7 +5,7 @@ import {
 	type FieldManifest,
 	StateEncodeError,
 } from "@nodecg/core";
-import { CurrentIdentity, PublicIdentitySchema } from "@nodecg/internal";
+import { CurrentIdentity, AnonymousIdentitySchema } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import {
 	Cause,
@@ -60,7 +60,7 @@ const createBrokerStub = () =>
 		),
 	}) satisfies TopicBroker;
 
-const anonymous = PublicIdentitySchema.make();
+const anonymous = AnonymousIdentitySchema.make();
 
 describe("loadNamespaceEffect seeding", () => {
 	test(
@@ -626,7 +626,7 @@ describe("field subscribe", () => {
 	);
 
 	test(
-		"public subscribe emits decoded values on set",
+		"anonymous subscribe emits decoded values on set",
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
@@ -807,8 +807,8 @@ describe("encoded read/write enforce permission", () => {
 			open: {
 				schema: Schema.Number,
 				permission: {
-					read: { allow: ["public"] },
-					write: { allow: ["public"] },
+					read: { allow: ["anonymous"] },
+					write: { allow: ["anonymous"] },
 				},
 			},
 			locked: { schema: Schema.Number },
@@ -816,7 +816,7 @@ describe("encoded read/write enforce permission", () => {
 		computed: {
 			openComputed: {
 				schema: Schema.Number,
-				permission: { read: { allow: ["public"] } },
+				permission: { read: { allow: ["anonymous"] } },
 			},
 			lockedComputed: { schema: Schema.Number },
 		},
@@ -942,8 +942,8 @@ describe("topic", () => {
 			open: {
 				schema: Schema.NumberFromString,
 				permission: {
-					read: { allow: ["public"] },
-					write: { allow: ["public"] },
+					read: { allow: ["anonymous"] },
+					write: { allow: ["anonymous"] },
 				},
 			},
 			locked: { schema: Schema.NumberFromString },
@@ -1064,7 +1064,7 @@ describe("rpc", () => {
 					request: Schema.NumberFromString,
 					response: Schema.NumberFromString,
 				},
-				permission: { write: { allow: ["public"] } },
+				permission: { write: { allow: ["anonymous"] } },
 			},
 			locked: {
 				schema: { request: Schema.String, response: Schema.String },

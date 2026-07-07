@@ -9,7 +9,7 @@ export const RESERVED_ROLE = {
 	admin: RoleName("admin"),
 	server: RoleName("server"),
 	client: RoleName("client"),
-	public: RoleName("public"),
+	anonymous: RoleName("anonymous"),
 } as const;
 
 export type ReservedRoleName = keyof typeof RESERVED_ROLE;
@@ -19,7 +19,7 @@ export const RESERVED_ROLE_SET = new Set(Object.values(RESERVED_ROLE));
 export const USABLE_RESERVED_ROLE = {
 	server: RESERVED_ROLE.server,
 	client: RESERVED_ROLE.client,
-	public: RESERVED_ROLE.public,
+	anonymous: RESERVED_ROLE.anonymous,
 } as const;
 
 export type UsableReservedRoleName = keyof typeof USABLE_RESERVED_ROLE;

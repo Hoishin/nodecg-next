@@ -1,27 +1,27 @@
 import { defineNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
-const publicRead = { read: { allow: ["public"] } } as const;
-const publicReadWrite = {
-	read: { allow: ["public"] },
-	write: { allow: ["public"] },
+const anonymousRead = { read: { allow: ["anonymous"] } } as const;
+const anonymousReadWrite = {
+	read: { allow: ["anonymous"] },
+	write: { allow: ["anonymous"] },
 } as const;
-const publicWrite = { write: { allow: ["public"] } } as const;
+const anonymousWrite = { write: { allow: ["anonymous"] } } as const;
 
 export const counterManifest = defineNamespace("counter", {
 	roles: {
 		operator: { permission: ["state-write"] },
 	},
 	state: {
-		count: { schema: Schema.Number, permission: publicRead },
+		count: { schema: Schema.Number, permission: anonymousRead },
 	},
 	topic: {
-		cheer: { schema: Schema.String, permission: publicReadWrite },
+		cheer: { schema: Schema.String, permission: anonymousReadWrite },
 	},
 	rpc: {
 		roll: {
 			schema: { request: Schema.Number, response: Schema.Number },
-			permission: publicWrite,
+			permission: anonymousWrite,
 		},
 	},
 });
@@ -31,6 +31,6 @@ export const settingsManifest = defineNamespace("settings", {
 		operator: { permission: ["state-write"] },
 	},
 	state: {
-		title: { schema: Schema.String, permission: publicRead },
+		title: { schema: Schema.String, permission: anonymousRead },
 	},
 });
