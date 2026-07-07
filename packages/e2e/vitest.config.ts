@@ -1,7 +1,7 @@
 import { playwright } from "@vitest/browser-playwright";
-import { defineConfig } from "vitest/config";
+import { defineProject } from "vitest/config";
 
-export default defineConfig({
+export default defineProject({
 	server: {
 		proxy: {
 			"/api": { target: "http://localhost:3000" },
@@ -16,8 +16,6 @@ export default defineConfig({
 			instances: [
 				{ browser: "chromium", globalSetup: ["./src/global-setup.ts"] },
 			],
-			headless: true,
-			screenshotFailures: false,
 		},
 	},
 });

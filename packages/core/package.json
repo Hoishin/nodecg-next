@@ -7,7 +7,6 @@
 		".": "./src/_exports.ts"
 	},
 	"scripts": {
-		"test": "vitest run",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {

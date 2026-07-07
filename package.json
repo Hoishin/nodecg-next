@@ -4,10 +4,9 @@
 	"author": "Keiichiro Amemiya",
 	"type": "module",
 	"scripts": {
-		"dev": "pnpm -r --parallel run dev",
 		"fmt": "oxfmt",
 		"lint": "oxlint",
-		"test": "pnpm -r run test",
+		"test": "vitest",
 		"type-check": "pnpm -r run type-check"
 	},
 	"devDependencies": {
