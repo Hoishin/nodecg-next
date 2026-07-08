@@ -17,7 +17,7 @@ import {
 import {
 	type AuthProvider,
 	IdentityClaimsError,
-	StateMismatchError,
+	OAuthStateMismatchError,
 	TokenExchangeError,
 } from "./auth-provider.ts";
 
@@ -141,7 +141,7 @@ export const makeOidcProvider = async (
 		),
 		callback: Effect.fn("OidcProvider.callback")(function* (input) {
 			if (input.searchParams.get("state") !== input.stash.state) {
-				return yield* new StateMismatchError();
+				return yield* new OAuthStateMismatchError();
 			}
 			const tokens = yield* Effect.tryPromise({
 				try: () =>

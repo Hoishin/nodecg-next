@@ -139,8 +139,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							);
 						if (Either.isLeft(account)) {
 							return yield* Match.value(account.left).pipe(
-								Match.tag("StateMismatchError", () =>
-									HttpServerResponse.text("State mismatch", {
+								Match.tag("OAuthStateMismatchError", () =>
+									HttpServerResponse.text("OAuth state mismatch", {
 										status: 400,
 									}).pipe(clearStash),
 								),

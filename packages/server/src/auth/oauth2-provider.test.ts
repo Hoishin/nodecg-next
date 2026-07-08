@@ -128,7 +128,7 @@ test("falls back to preferred_username when the name claim is absent", async () 
 	});
 });
 
-test("rejects a state mismatch with StateMismatchError", async () => {
+test("rejects a state mismatch with OAuthStateMismatchError", async () => {
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 
@@ -145,7 +145,7 @@ test("rejects a state mismatch with StateMismatchError", async () => {
 			.pipe(Effect.flip),
 	);
 
-	expect(error._tag).toBe("StateMismatchError");
+	expect(error._tag).toBe("OAuthStateMismatchError");
 });
 
 test("rejects a failed token exchange with TokenExchangeError", async () => {

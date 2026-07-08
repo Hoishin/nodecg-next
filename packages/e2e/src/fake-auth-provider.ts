@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { HumanAccountSchema } from "@nodecg/internal";
-import { type AuthProvider, StateMismatchError } from "@nodecg/server";
+import { type AuthProvider, OAuthStateMismatchError } from "@nodecg/server";
 import { Effect } from "effect";
 
 interface SeededIdentity {
@@ -30,7 +30,7 @@ export const makeFakeAuthProvider = (
 			}),
 		callback: Effect.fn("FakeAuthProvider.callback")(function* (input) {
 			if (input.searchParams.get("state") !== input.stash.state) {
-				return yield* new StateMismatchError();
+				return yield* new OAuthStateMismatchError();
 			}
 			const id = input.searchParams.get("identity") ?? "";
 			const found = identities.get(id);

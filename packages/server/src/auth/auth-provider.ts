@@ -3,8 +3,8 @@ import { Context, Data, type Effect, HashMap } from "effect";
 
 import type { AuthStash } from "../services/stash-store/stash-store.ts";
 
-export class StateMismatchError extends Data.TaggedError("StateMismatchError") {
-	override readonly message = `State mismatch`;
+export class OAuthStateMismatchError extends Data.TaggedError("OAuthStateMismatchError") {
+	override readonly message = `OAuth state mismatch`;
 }
 
 // TODO: don't leak OIDC details in service definition
@@ -44,7 +44,7 @@ export class UserinfoError extends Data.TaggedError("UserinfoError")<{
 
 export type AuthorizeError = ProviderDiscoveryError;
 export type CallbackError =
-	| StateMismatchError
+	| OAuthStateMismatchError
 	| ProviderDiscoveryError
 	| TokenExchangeError
 	| UserinfoError
