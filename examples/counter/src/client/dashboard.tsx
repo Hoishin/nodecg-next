@@ -4,8 +4,8 @@ import { Login } from "./login.tsx";
 import { counter, mount, useField, useTopic } from "./store.tsx";
 
 function Dashboard() {
-	const count = useField(counter.state.count);
-	const step = useField(counter.state.step);
+	const count = useField(counter.replicant.count);
+	const step = useField(counter.replicant.step);
 	const parity = useField(counter.computed.parity);
 	const cheers = useTopic(counter.topic.cheer);
 	const [message, setMessage] = useState("");
@@ -20,13 +20,13 @@ function Dashboard() {
 			<p>last roll (rpc reply) = {lastRoll ?? "—"}</p>
 			<button
 				type="button"
-				onClick={() => counter.state.count.update((value) => value + step)}
+				onClick={() => counter.replicant.count.update((value) => value + step)}
 			>
 				+{step}
 			</button>
 			<button
 				type="button"
-				onClick={() => counter.state.step.update((value) => value + 1)}
+				onClick={() => counter.replicant.step.update((value) => value + 1)}
 			>
 				step +1
 			</button>

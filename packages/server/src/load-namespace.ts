@@ -29,12 +29,12 @@ import {
 } from "effect";
 import type { JsonValue, Promisable } from "type-fest";
 
-import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
+import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import {
-	StateNotFound,
-	StateStorageService,
-	type StateStorage,
-} from "./services/state-storage/state-storage.ts";
+	ReplicantNotFound,
+	ReplicantStorageService,
+	type ReplicantStorage,
+} from "./services/replicant-storage/replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
@@ -45,12 +45,14 @@ export type FrontendConfig = {
 	readonly vite?: { readonly root: string | URL; readonly spa?: boolean };
 };
 
-export class StateUpdateFnError extends Data.TaggedError("StateUpdateFnError")<{
+export class ReplicantUpdateFnError extends Data.TaggedError(
+	"ReplicantUpdateFnError",
+)<{
 	namespace: string;
 	name: string;
 	cause: Error;
 }> {
-	override readonly message = `Update function for state "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+	override readonly message = `Update function for replicant "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
 export class ComputedComputeError extends Data.TaggedError(
@@ -81,20 +83,20 @@ export class RpcCallFailed extends Data.TaggedError("RpcCallFailed")<{
 	override readonly message = `RPC handler for "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
-export type SeedState<State extends Record<string, unknown>> = {
-	readonly [K in keyof State & string]: () => Promisable<State[K]>;
+export type SeedReplicant<Replicant extends Record<string, unknown>> = {
+	readonly [K in keyof Replicant & string]: () => Promisable<Replicant[K]>;
 };
 
-type SourceSnapshot<State extends Record<string, unknown>> = {
-	readonly [K in keyof State & string]: State[K];
+type SourceSnapshot<Replicant extends Record<string, unknown>> = {
+	readonly [K in keyof Replicant & string]: Replicant[K];
 };
 
 export type ImplementComputed<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 > = {
 	readonly [K in keyof Computed & string]: (
-		sources: SourceSnapshot<State>,
+		sources: SourceSnapshot<Replicant>,
 	) => Computed[K];
 };
 
@@ -110,25 +112,25 @@ export type ImplementRpc<Rpc extends RpcShape> = {
 };
 
 type NamespaceOptions<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Rpc extends RpcShape,
 > = {
-	readonly seedState?: SeedState<State>;
-	readonly implementComputed?: ImplementComputed<State, Computed>;
+	readonly seedReplicant?: SeedReplicant<Replicant>;
+	readonly implementComputed?: ImplementComputed<Replicant, Computed>;
 	readonly implementRpc?: ImplementRpc<Rpc>;
 };
 
 export type RequiredOptions<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Rpc extends RpcShape,
-> = ([keyof State] extends [never]
+> = ([keyof Replicant] extends [never]
 	? {}
-	: { readonly seedState: SeedState<State> }) &
+	: { readonly seedReplicant: SeedReplicant<Replicant> }) &
 	([keyof Computed] extends [never]
 		? {}
-		: { readonly implementComputed: ImplementComputed<State, Computed> }) &
+		: { readonly implementComputed: ImplementComputed<Replicant, Computed> }) &
 	([keyof Rpc] extends [never]
 		? {}
 		: { readonly implementRpc: ImplementRpc<Rpc> });
@@ -136,19 +138,19 @@ export type RequiredOptions<
 // TODO: support automatic migrations
 const migrationDie = () =>
 	new Error(
-		"Currently stored state value failed schema validation. Migration is not supported yet.",
+		"Currently stored replicant value failed schema validation. Migration is not supported yet.",
 	);
 
-const implementState = Effect.fn("implementState")(function* <Decoded>(
+const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	namespace: string,
 	name: string,
 	manifest: FieldManifest<Decoded>,
 ) {
-	const storage = yield* StateStorageService;
+	const storage = yield* ReplicantStorageService;
 
 	const get = Effect.fn("get")(function* () {
 		const current = yield* Option.match(storage.read(namespace, name), {
-			onNone: () => new StateNotFound({ namespace, name }),
+			onNone: () => new ReplicantNotFound({ namespace, name }),
 			onSome: Effect.succeed,
 		});
 		return yield* manifest.decode(current).pipe(Effect.orDieWith(migrationDie));
@@ -156,7 +158,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 	const getEncodedNoAuth = Effect.fn("getEncodedNoAuth")(function* () {
 		const encoded = yield* Option.match(storage.read(namespace, name), {
-			onNone: () => new StateNotFound({ namespace, name }),
+			onNone: () => new ReplicantNotFound({ namespace, name }),
 			onSome: Effect.succeed,
 		});
 		yield* manifest.decode(encoded).pipe(Effect.orDieWith(migrationDie));
@@ -200,7 +202,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		const next = yield* Effect.tryPromise({
 			try: async (abortSignal) => fn(current, abortSignal),
 			catch: (error) =>
-				new StateUpdateFnError({ namespace, name, cause: toError(error) }),
+				new ReplicantUpdateFnError({ namespace, name, cause: toError(error) }),
 		});
 		const encoded = yield* manifest.encode(next);
 		yield* storage.update(namespace, name, encoded);
@@ -208,14 +210,14 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
 		const changesStream = yield* storage.subscribe();
-		const stateValueStream = changesStream.pipe(
+		const replicantValueStream = changesStream.pipe(
 			Stream.filter(
 				(change) => change.namespace === namespace && change.name === name,
 			),
 			Stream.map((change) => change.value),
 		);
 		const initialValue = yield* getEncodedNoAuth();
-		return Stream.concat(Stream.succeed(initialValue), stateValueStream);
+		return Stream.concat(Stream.succeed(initialValue), replicantValueStream);
 	});
 
 	const subscribe = Effect.fn("subscribe")(function* () {
@@ -248,11 +250,11 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	};
 });
 
-type StateFieldEffect<Decoded> = Effect.Effect.Success<
-	ReturnType<typeof implementState<Decoded>>
+type ReplicantFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementReplicant<Decoded>>
 >;
-export type StateField<Decoded> = ApplyLambdaToObject<
-	StateFieldEffect<Decoded>,
+export type ReplicantField<Decoded> = ApplyLambdaToObject<
+	ReplicantFieldEffect<Decoded>,
 	{
 		get: EffectToSyncLambda;
 		set: EffectToSyncLambda;
@@ -271,9 +273,9 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 	name: string,
 	manifest: FieldManifest<Decoded>,
 	compute: (sources: Sources) => Decoded,
-	readSnapshot: Effect.Effect<Sources, StateNotFound>,
+	readSnapshot: Effect.Effect<Sources, ReplicantNotFound>,
 ) {
-	const storage = yield* StateStorageService;
+	const storage = yield* ReplicantStorageService;
 
 	const get = Effect.fn("compute")(function* () {
 		const sources = yield* readSnapshot;
@@ -309,7 +311,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 			),
 			Effect.catchAll((error) =>
 				Effect.logError(
-					`Failed to compute state "${namespace}/${name}"`,
+					`Failed to compute replicant "${namespace}/${name}"`,
 					error,
 				).pipe(Effect.as(Option.none<{ encoded: JsonValue; key: string }>())),
 			),
@@ -486,12 +488,12 @@ interface ComputeFnLambda extends HKT.TypeLambda {
 	readonly type: (sources: this["In"]) => this["Target"];
 }
 
-interface StateFieldEffectLambda extends HKT.TypeLambda {
-	readonly type: StateFieldEffect<this["Target"]>;
+interface ReplicantFieldEffectLambda extends HKT.TypeLambda {
+	readonly type: ReplicantFieldEffect<this["Target"]>;
 }
 
-interface StateFieldPromiseLambda extends HKT.TypeLambda {
-	readonly type: StateField<this["Target"]>;
+interface ReplicantFieldPromiseLambda extends HKT.TypeLambda {
+	readonly type: ReplicantField<this["Target"]>;
 }
 
 interface ComputedFieldEffectLambda extends HKT.TypeLambda {
@@ -544,30 +546,32 @@ interface RpcFieldPromiseLambda extends HKT.TypeLambda {
 export const namespaceMetadataKey = Symbol("namespaceMetadataKey");
 
 const buildNamespace = <
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	options:
-		| (NamespaceOptions<State, Computed, Rpc> & { readonly storage?: unknown })
+		| (NamespaceOptions<Replicant, Computed, Rpc> & {
+				readonly storage?: unknown;
+		  })
 		| undefined,
 ) => {
-	const seedState = options?.seedState;
+	const seedReplicant = options?.seedReplicant;
 	const computeFns = options?.implementComputed;
 	const rpcHandlers = options?.implementRpc;
 	return Effect.gen(function* () {
-		const storage = yield* StateStorageService;
+		const storage = yield* ReplicantStorageService;
 
 		yield* Effect.all(
-			Object.entries(manifest.state).map(
+			Object.entries(manifest.replicant).map(
 				([name, codec]: [string, FieldManifest<unknown>]) => {
 					const seed = Effect.gen(function* () {
-						const thunk = seedState?.[name];
+						const thunk = seedReplicant?.[name];
 						if (typeof thunk === "undefined") {
 							return yield* Effect.die(
-								new Error(`Missing seed value for state "${name}"`),
+								new Error(`Missing seed value for replicant "${name}"`),
 							);
 						}
 						const value = yield* Effect.tryPromise(async () => thunk());
@@ -582,23 +586,23 @@ const buildNamespace = <
 			{ concurrency: "unbounded" },
 		);
 
-		const stateFields = yield* mapEffectValues<
+		const replicantFields = yield* mapEffectValues<
 			FieldManifestLambda,
-			StateFieldEffectLambda
-		>()((codec, name) => implementState(manifest.namespace, name, codec))(
-			manifest.state,
+			ReplicantFieldEffectLambda
+		>()((codec, name) => implementReplicant(manifest.namespace, name, codec))(
+			manifest.replicant,
 		);
 
 		const readSnapshot: Effect.Effect<
-			SourceSnapshot<State>,
-			StateNotFound
+			SourceSnapshot<Replicant>,
+			ReplicantNotFound
 		> = mapEffectValues<FieldManifestLambda, DecodedLambda>()((codec, name) =>
 			Effect.gen(function* () {
 				const encoded = yield* Option.match(
 					storage.read(manifest.namespace, name),
 					{
 						onNone: () =>
-							new StateNotFound({ namespace: manifest.namespace, name }),
+							new ReplicantNotFound({ namespace: manifest.namespace, name }),
 						onSome: Effect.succeed,
 					},
 				);
@@ -606,13 +610,13 @@ const buildNamespace = <
 					.decode(encoded)
 					.pipe(Effect.orDieWith(migrationDie));
 			}),
-		)(manifest.state);
+		)(manifest.replicant);
 
 		const computedFields = yield* zipEffectValues<
 			FieldManifestLambda,
 			ComputeFnLambda,
 			ComputedFieldEffectLambda,
-			SourceSnapshot<State>,
+			SourceSnapshot<Replicant>,
 			Computed
 		>()(manifest.computed, computeFns, (codec, compute, name) =>
 			implementComputed(manifest.namespace, name, codec, compute, readSnapshot),
@@ -642,61 +646,65 @@ const buildNamespace = <
 			implementRpc(manifest.namespace, name, codec, handler),
 		);
 
-		return { stateFields, computedFields, topicFields, rpcFields };
+		return { replicantFields, computedFields, topicFields, rpcFields };
 	});
 };
 
 export function loadNamespaceEffect<
-	State extends Record<string, unknown> = {},
+	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
-	...rest: [keyof State | keyof Computed | keyof Rpc] extends [never]
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
+	...rest: [keyof Replicant | keyof Computed | keyof Rpc] extends [never]
 		? []
-		: [options: RequiredOptions<State, Computed, Rpc>]
+		: [options: RequiredOptions<Replicant, Computed, Rpc>]
 ) {
 	const [options] = rest;
 	return buildNamespace(manifest, options).pipe(
-		Effect.map(({ stateFields, computedFields, topicFields, rpcFields }) => ({
-			state: stateFields,
-			computed: computedFields,
-			topic: topicFields,
-			rpc: rpcFields,
-			[namespaceMetadataKey]: { namespace: manifest.namespace },
-		})),
+		Effect.map(
+			({ replicantFields, computedFields, topicFields, rpcFields }) => ({
+				replicant: replicantFields,
+				computed: computedFields,
+				topic: topicFields,
+				rpc: rpcFields,
+				[namespaceMetadataKey]: { namespace: manifest.namespace },
+			}),
+		),
 	);
 }
 
-type StorageOption = StateStorage | Effect.Effect<StateStorage, never, never>;
+type StorageOption =
+	| ReplicantStorage
+	| Effect.Effect<ReplicantStorage, never, never>;
 
 async function loadNamespacePromise<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	options:
-		| (NamespaceOptions<State, Computed, Rpc> & {
+		| (NamespaceOptions<Replicant, Computed, Rpc> & {
 				readonly storage?: StorageOption;
 				readonly frontend?: FrontendConfig;
 		  })
 		| undefined,
-): Promise<LoadedNamespace<State, Computed, Topic, Rpc>> {
+): Promise<LoadedNamespace<Replicant, Computed, Topic, Rpc>> {
 	const storage = options?.storage;
 	const storageLayer = storage
 		? Effect.isEffect(storage)
-			? Layer.effect(StateStorageService, storage)
-			: Layer.succeed(StateStorageService, storage)
-		: InMemoryStateStorage;
+			? Layer.effect(ReplicantStorageService, storage)
+			: Layer.succeed(ReplicantStorageService, storage)
+		: InMemoryReplicantStorage;
 	const runtime = ManagedRuntime.make(
 		Layer.merge(storageLayer, InMemoryTopicBroker),
 	);
 
 	const {
-		stateFields: effectStateFields,
+		replicantFields: effectReplicantFields,
 		computedFields: effectComputedFields,
 		topicFields: effectTopicFields,
 		rpcFields: effectRpcFields,
@@ -717,7 +725,7 @@ async function loadNamespacePromise<
 							Effect.tryPromise(async () => handler(value)).pipe(
 								Effect.catchAll((error) =>
 									Effect.logError(
-										`State subscription handler for "${manifest.namespace}/${name}" threw`,
+										`Replicant subscription handler for "${manifest.namespace}/${name}" threw`,
 										error,
 									),
 								),
@@ -732,16 +740,17 @@ async function loadNamespacePromise<
 			);
 		};
 
-	const state = mapValues<StateFieldEffectLambda, StateFieldPromiseLambda>(
-		(field, name) => ({
-			get: () => runtime.runSync(field.get()),
-			set: (value) => runtime.runSync(field.set(value)),
-			update: (fn) => runtime.runPromise(field.update(fn)),
-			validate: (value) => runtime.runPromise(field.validate(value)),
-			subscribe: subscribeAdapter(field.subscribe, name),
-			[fieldInternal]: field[fieldInternal],
-		}),
-	)(effectStateFields);
+	const replicant = mapValues<
+		ReplicantFieldEffectLambda,
+		ReplicantFieldPromiseLambda
+	>((field, name) => ({
+		get: () => runtime.runSync(field.get()),
+		set: (value) => runtime.runSync(field.set(value)),
+		update: (fn) => runtime.runPromise(field.update(fn)),
+		validate: (value) => runtime.runPromise(field.validate(value)),
+		subscribe: subscribeAdapter(field.subscribe, name),
+		[fieldInternal]: field[fieldInternal],
+	}))(effectReplicantFields);
 
 	const computed = mapValues<
 		ComputedFieldEffectLambda,
@@ -767,7 +776,7 @@ async function loadNamespacePromise<
 	)(effectRpcFields);
 
 	return {
-		state,
+		replicant: replicant,
 		computed,
 		topic,
 		rpc,
@@ -779,13 +788,13 @@ async function loadNamespacePromise<
 }
 
 export function loadNamespace<
-	State extends Record<string, unknown> = {},
+	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
-	...rest: [keyof State | keyof Computed | keyof Rpc] extends [never]
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
+	...rest: [keyof Replicant | keyof Computed | keyof Rpc] extends [never]
 		? [
 				options?: {
 					// TODO: inject storage from loadNodeCG
@@ -794,7 +803,7 @@ export function loadNamespace<
 				},
 			]
 		: [
-				options: RequiredOptions<State, Computed, Rpc> & {
+				options: RequiredOptions<Replicant, Computed, Rpc> & {
 					// TODO: inject storage from loadNodeCG
 					readonly storage?: StorageOption;
 					readonly frontend?: FrontendConfig;
@@ -805,38 +814,38 @@ export function loadNamespace<
 }
 
 interface ImplementedNamespace<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 > {
-	readonly manifest: NamespaceManifest<State, Computed, Topic, Rpc>;
+	readonly manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>;
 	readonly impl:
-		| (NamespaceOptions<State, Computed, Rpc> & {
+		| (NamespaceOptions<Replicant, Computed, Rpc> & {
 				readonly frontend?: FrontendConfig;
 		  })
 		| undefined;
 	// TODO: inject storage from loadNodeCG
 	readonly load: (
 		storage?: StorageOption,
-	) => ReturnType<typeof loadNamespacePromise<State, Computed, Topic, Rpc>>;
+	) => ReturnType<typeof loadNamespacePromise<Replicant, Computed, Topic, Rpc>>;
 }
 
 export function implementNamespace<
-	State extends Record<string, unknown> = {},
+	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
-	...rest: [keyof State | keyof Computed | keyof Rpc] extends [never]
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
+	...rest: [keyof Replicant | keyof Computed | keyof Rpc] extends [never]
 		? [options?: { readonly frontend?: FrontendConfig }]
 		: [
-				impl: RequiredOptions<State, Computed, Rpc> & {
+				impl: RequiredOptions<Replicant, Computed, Rpc> & {
 					readonly frontend?: FrontendConfig;
 				},
 			]
-): ImplementedNamespace<State, Computed, Topic, Rpc> {
+): ImplementedNamespace<Replicant, Computed, Topic, Rpc> {
 	const [impl] = rest;
 	return {
 		manifest,
@@ -849,25 +858,35 @@ type RelaxCovered<O, Covered extends PropertyKey> = Omit<O, Covered> &
 	Partial<Pick<O, Extract<keyof O, Covered>>>;
 
 type ExtensionSupplement<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Rpc extends RpcShape,
-	CoveredState extends PropertyKey,
+	CoveredReplicant extends PropertyKey,
 	CoveredComputed extends PropertyKey,
 	CoveredRpc extends PropertyKey,
-> = ([keyof Omit<State, CoveredState>] extends [never]
-	? { readonly seedState?: RelaxCovered<SeedState<State>, CoveredState> }
-	: { readonly seedState: RelaxCovered<SeedState<State>, CoveredState> }) &
+> = ([keyof Omit<Replicant, CoveredReplicant>] extends [never]
+	? {
+			readonly seedReplicant?: RelaxCovered<
+				SeedReplicant<Replicant>,
+				CoveredReplicant
+			>;
+		}
+	: {
+			readonly seedReplicant: RelaxCovered<
+				SeedReplicant<Replicant>,
+				CoveredReplicant
+			>;
+		}) &
 	([keyof Omit<Computed, CoveredComputed>] extends [never]
 		? {
 				readonly implementComputed?: RelaxCovered<
-					ImplementComputed<State, Computed>,
+					ImplementComputed<Replicant, Computed>,
 					CoveredComputed
 				>;
 			}
 		: {
 				readonly implementComputed: RelaxCovered<
-					ImplementComputed<State, Computed>,
+					ImplementComputed<Replicant, Computed>,
 					CoveredComputed
 				>;
 			}) &
@@ -880,19 +899,19 @@ type ExtensionSupplement<
 			});
 
 export function loadExtendedNamespace<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 	const Base extends ImplementedNamespace<any, any, any, any>,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	implemented: Base,
 	additional: ExtensionSupplement<
-		State,
+		Replicant,
 		Computed,
 		Rpc,
-		keyof Base["manifest"]["state"] & string,
+		keyof Base["manifest"]["replicant"] & string,
 		keyof Base["manifest"]["computed"] & string,
 		keyof Base["manifest"]["rpc"] & string
 	>,
@@ -901,12 +920,12 @@ export function loadExtendedNamespace<
 		readonly frontend?: FrontendConfig;
 	},
 ) {
-	const merged: NamespaceOptions<State, Computed, Rpc> = {
-		seedState: mergeRecords<SeedState<State>>(
-			implemented.impl?.seedState,
-			additional.seedState,
+	const merged: NamespaceOptions<Replicant, Computed, Rpc> = {
+		seedReplicant: mergeRecords<SeedReplicant<Replicant>>(
+			implemented.impl?.seedReplicant,
+			additional.seedReplicant,
 		),
-		implementComputed: mergeRecords<ImplementComputed<State, Computed>>(
+		implementComputed: mergeRecords<ImplementComputed<Replicant, Computed>>(
 			implemented.impl?.implementComputed,
 			additional.implementComputed,
 		),
@@ -923,7 +942,7 @@ export function loadExtendedNamespace<
 }
 
 export interface LoadedNamespace<
-	State extends Record<string, unknown> = Record<string, unknown>,
+	Replicant extends Record<string, unknown> = Record<string, unknown>,
 	Computed extends Record<string, unknown> = Record<string, unknown>,
 	Topic extends Record<string, unknown> = Record<string, unknown>,
 	Rpc extends RpcShape = RpcShape,
@@ -932,8 +951,8 @@ export interface LoadedNamespace<
 		readonly namespace: string;
 		readonly frontend?: FrontendConfig;
 	};
-	readonly state: {
-		readonly [K in keyof State & string]: StateField<State[K]>;
+	readonly replicant: {
+		readonly [K in keyof Replicant & string]: ReplicantField<Replicant[K]>;
 	};
 	readonly computed: {
 		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;

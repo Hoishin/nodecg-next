@@ -1,7 +1,7 @@
 import {
 	loadNamespace,
 	type ComputedField,
-	type StateField,
+	type ReplicantField,
 	type TopicField,
 } from "@nodecg/client";
 import {
@@ -25,7 +25,7 @@ interface FieldSyncStore<T> {
 }
 
 const toSyncStore = <T,>(
-	field: StateField<T> | ComputedField<T>,
+	field: ReplicantField<T> | ComputedField<T>,
 ): FieldSyncStore<T> => {
 	let snapshot: Snapshot<T> | undefined;
 	let started: Promise<void> | undefined;
@@ -65,12 +65,12 @@ const toSyncStore = <T,>(
 };
 
 const StoresStore = new WeakMap<
-	StateField<unknown> | ComputedField<unknown>,
+	ReplicantField<unknown> | ComputedField<unknown>,
 	FieldSyncStore<unknown>
 >();
 
 function getStore<T>(
-	field: StateField<T> | ComputedField<T>,
+	field: ReplicantField<T> | ComputedField<T>,
 ): FieldSyncStore<T> {
 	if (StoresStore.has(field)) {
 		return StoresStore.get(field) as FieldSyncStore<T>;
@@ -80,7 +80,7 @@ function getStore<T>(
 	return store;
 }
 
-export function useField<T>(field: StateField<T> | ComputedField<T>): T {
+export function useField<T>(field: ReplicantField<T> | ComputedField<T>): T {
 	const [syncStore] = useState(() => getStore(field));
 	const snapshot = useSyncExternalStore(
 		syncStore.subscribe,

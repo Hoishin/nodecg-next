@@ -50,7 +50,7 @@ export class RpcCallFailed extends Data.TaggedError("RpcCallFailed")<{
 }
 
 export interface FieldTransport {
-	readState: (
+	readReplicant: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<
@@ -64,7 +64,7 @@ export interface FieldTransport {
 		JsonValue,
 		FieldNotFound | FieldPermissionDenied | FieldGetFailed
 	>;
-	updateState: (
+	updateReplicant: (
 		namespace: string,
 		name: string,
 		value: JsonValue,

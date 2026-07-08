@@ -32,7 +32,7 @@ export class FieldEncodeError extends Data.TaggedError("FieldEncodeError")<{
 	readonly value: unknown;
 	readonly cause: Error;
 }> {
-	override readonly message = `Failed to encode state "${this.fieldName}": ${this.cause.message}`;
+	override readonly message = `Failed to encode replicant "${this.fieldName}": ${this.cause.message}`;
 }
 
 export class FieldDecodeError extends Data.TaggedError("FieldDecodeError")<{
@@ -40,7 +40,7 @@ export class FieldDecodeError extends Data.TaggedError("FieldDecodeError")<{
 	readonly value: JsonValue;
 	readonly cause: Error;
 }> {
-	override readonly message = `Failed to decode state "${this.fieldName}": ${this.cause.message}`;
+	override readonly message = `Failed to decode replicant "${this.fieldName}": ${this.cause.message}`;
 }
 
 export interface FieldCodec<D> {
@@ -63,7 +63,7 @@ export interface RpcFieldManifest<Request, Response> {
 const manifestRolesKey = Symbol("manifestRolesKey");
 
 export interface NamespaceManifest<
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 	Rpc extends Record<
@@ -74,8 +74,8 @@ export interface NamespaceManifest<
 	readonly namespace: string;
 	readonly [manifestRolesKey]: Map<RoleName, RoleManifest>;
 
-	readonly state: {
-		[K in keyof State & string]: FieldManifest<State[K]>;
+	readonly replicant: {
+		[K in keyof Replicant & string]: FieldManifest<Replicant[K]>;
 	};
 	readonly computed: {
 		[K in keyof Computed & string]: FieldManifest<Computed[K]>;
@@ -214,7 +214,7 @@ type FieldPermissionOptions = {
 };
 
 const validatePermissionTokens = (
-	group: "state" | "computed" | "topic" | "rpc",
+	group: "replicant" | "computed" | "topic" | "rpc",
 	fields: Readonly<Record<string, FieldPermissionOptions>> | undefined,
 	namedRoles: ReadonlySet<RoleName>,
 ): void => {
@@ -253,7 +253,7 @@ const findRolesWithCapability = (
 
 export function defineNamespace<
 	const Roles extends Record<string, RoleArg> = {},
-	State extends Record<string, Schema.Schema<any, any, never>> = {},
+	Replicant extends Record<string, Schema.Schema<any, any, never>> = {},
 	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
 	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
 	Rpc extends Record<
@@ -264,9 +264,9 @@ export function defineNamespace<
 	namespace: string,
 	defineOption: {
 		roles?: Roles;
-		state?: {
-			[K in keyof State & string]: FieldOption<
-				State[K],
+		replicant?: {
+			[K in keyof Replicant & string]: FieldOption<
+				Replicant[K],
 				PermissionArg<keyof Roles & string>
 			>;
 		};
@@ -285,7 +285,7 @@ export function defineNamespace<
 		rpc?: Rpc;
 	},
 ): NamespaceManifest<
-	{ [K in keyof State]: Schema.Schema.Type<State[K]> },
+	{ [K in keyof Replicant]: Schema.Schema.Type<Replicant[K]> },
 	{ [K in keyof Computed]: Schema.Schema.Type<Computed[K]> },
 	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> },
 	AddedRpcDecoded<Rpc>
@@ -309,7 +309,7 @@ export function defineNamespace<
 	}
 	const namedRoles = new Set(roles.keys());
 
-	validatePermissionTokens("state", defineOption.state, namedRoles);
+	validatePermissionTokens("replicant", defineOption.replicant, namedRoles);
 	validatePermissionTokens("computed", defineOption.computed, namedRoles);
 	validatePermissionTokens("topic", defineOption.topic, namedRoles);
 	validatePermissionTokens("rpc", defineOption.rpc, namedRoles);
@@ -324,17 +324,17 @@ export function defineNamespace<
 			namedRoles,
 		);
 
-	const state = mapValues<
+	const replicant = mapValues<
 		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: buildPermission(
-			resolve("state-read", option.permission?.read),
-			resolve("state-write", option.permission?.write),
+			resolve("replicant-read", option.permission?.read),
+			resolve("replicant-write", option.permission?.write),
 			true,
 		),
-	}))(defineOption.state);
+	}))(defineOption.replicant);
 
 	const computed = mapValues<
 		FieldOptionLambda<ReadOnlyPermissionArg<keyof Roles & string>>,
@@ -376,7 +376,7 @@ export function defineNamespace<
 
 	return {
 		namespace,
-		state,
+		replicant: replicant,
 		computed,
 		topic,
 		rpc,
@@ -414,14 +414,14 @@ type AddedRpcDecoded<In> = {
 };
 
 export function extendNamespace<
-	PState extends Record<string, unknown>,
+	PReplicant extends Record<string, unknown>,
 	PComputed extends Record<string, unknown>,
 	PTopic extends Record<string, unknown>,
 	PRpc extends Record<
 		string,
 		{ readonly request: unknown; readonly response: unknown }
 	>,
-	const EState extends Record<
+	const EReplicant extends Record<
 		string,
 		ExtendFieldOption<PermissionArg<string>>
 	> = {},
@@ -438,24 +438,24 @@ export function extendNamespace<
 		ExtendRpcFieldOption<WriteOnlyPermissionArg<string>>
 	> = {},
 >(
-	manifest: NamespaceManifest<PState, PComputed, PTopic, PRpc>,
+	manifest: NamespaceManifest<PReplicant, PComputed, PTopic, PRpc>,
 	extendOptionOrFn:
 		| {
 				readonly roles?: Record<string, RoleArg>;
-				readonly state?: EState;
+				readonly replicant?: EReplicant;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
 		  }
-		| ((precedent: NamespaceManifest<PState, PComputed, PTopic, PRpc>) => {
+		| ((precedent: NamespaceManifest<PReplicant, PComputed, PTopic, PRpc>) => {
 				readonly roles?: Record<string, RoleArg>;
-				readonly state?: EState;
+				readonly replicant?: EReplicant;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
 		  }),
 ): NamespaceManifest<
-	Override<PState, AddedDecoded<EState>>,
+	Override<PReplicant, AddedDecoded<EReplicant>>,
 	Override<PComputed, AddedDecoded<EComputed>>,
 	Override<PTopic, AddedDecoded<ETopic>>,
 	Override<PRpc, AddedRpcDecoded<ERpc>>
@@ -495,7 +495,7 @@ export function extendNamespace<
 		}
 	}
 
-	validatePermissionTokens("state", extendOption.state, namedRoles);
+	validatePermissionTokens("replicant", extendOption.replicant, namedRoles);
 	validatePermissionTokens("computed", extendOption.computed, namedRoles);
 	validatePermissionTokens("topic", extendOption.topic, namedRoles);
 	validatePermissionTokens("rpc", extendOption.rpc, namedRoles);
@@ -526,21 +526,21 @@ export function extendNamespace<
 		return resolveFieldAllowedRoles(base, rule, namedRoles);
 	};
 
-	const stateRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
+	const replicantRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
-			const override = extendOption.state?.[name];
+			const override = extendOption.replicant?.[name];
 			return {
 				name: field.name,
 				decode: field.decode,
 				encode: field.encode,
 				permission: buildPermission(
 					remap(
-						"state-read",
+						"replicant-read",
 						field.permission.read,
 						override?.permission?.read,
 					),
 					remap(
-						"state-write",
+						"replicant-write",
 						field.permission.write,
 						override?.permission?.write,
 					),
@@ -548,26 +548,26 @@ export function extendNamespace<
 				),
 			};
 		},
-	)(manifest.state);
+	)(manifest.replicant);
 
-	const stateAdded = mapSchemaValues<
+	const replicantAdded = mapSchemaValues<
 		ExtendFieldOption<PermissionArg<string>>,
 		FieldManifestLambda
-	>()(extendOption.state, (option, name) => ({
+	>()(extendOption.replicant, (option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: buildPermission(
-			resolve("state-read", option.permission?.read),
-			resolve("state-write", option.permission?.write),
+			resolve("replicant-read", option.permission?.read),
+			resolve("replicant-write", option.permission?.write),
 			true,
 		),
 	}));
-	const state = mergeRecords<
+	const replicant = mergeRecords<
 		NamespaceManifest<
-			Override<PState, AddedDecoded<EState>>,
+			Override<PReplicant, AddedDecoded<EReplicant>>,
 			PComputed,
 			PTopic
-		>["state"]
-	>(stateRemap, stateAdded);
+		>["replicant"]
+	>(replicantRemap, replicantAdded);
 
 	const computedRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
@@ -601,7 +601,7 @@ export function extendNamespace<
 	}));
 	const computed = mergeRecords<
 		NamespaceManifest<
-			PState,
+			PReplicant,
 			Override<PComputed, AddedDecoded<EComputed>>,
 			PTopic
 		>["computed"]
@@ -643,7 +643,7 @@ export function extendNamespace<
 	}));
 	const topic = mergeRecords<
 		NamespaceManifest<
-			PState,
+			PReplicant,
 			PComputed,
 			Override<PTopic, AddedDecoded<ETopic>>
 		>["topic"]
@@ -683,7 +683,7 @@ export function extendNamespace<
 	}));
 	const rpc = mergeRecords<
 		NamespaceManifest<
-			PState,
+			PReplicant,
 			PComputed,
 			PTopic,
 			Override<PRpc, AddedRpcDecoded<ERpc>>
@@ -693,7 +693,7 @@ export function extendNamespace<
 	return {
 		namespace: manifest.namespace,
 		[manifestRolesKey]: roles,
-		state,
+		replicant: replicant,
 		computed,
 		topic,
 		rpc,

@@ -4,7 +4,7 @@ import { Schema } from "effect";
 import { counterManifest } from "./library/manifest.ts";
 
 export const extendedCounterManifest = extendNamespace(counterManifest, {
-	state: {
+	replicant: {
 		step: {
 			schema: Schema.Number,
 			permission: { read: { allow: ["anonymous"] } },

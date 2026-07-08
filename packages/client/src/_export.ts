@@ -2,7 +2,7 @@ export {
 	loadNamespace,
 	loadNamespaceEffect,
 	type LoadedNamespace,
-	type StateField,
+	type ReplicantField,
 	type ComputedField,
 	type TopicField,
 	type RpcField,

@@ -20,17 +20,17 @@ import {
 	type LoadedNamespace,
 	FieldPermissionDenied,
 	RpcCallFailed,
-	type StateField,
+	type ReplicantField,
 	fieldInternal,
 	namespaceMetadataKey,
 } from "../load-namespace.ts";
+import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
-import { StateNotFound } from "../services/state-storage/state-storage.ts";
 import { buildNodecgApi } from "./http-api.ts";
 
-type Internal = StateField<unknown>[typeof fieldInternal];
+type Internal = ReplicantField<unknown>[typeof fieldInternal];
 
 const openPermission: ResolvedPermission = {
 	read: new Set(),
@@ -41,7 +41,7 @@ const openPermission: ResolvedPermission = {
 
 function stubField(
 	internal: Pick<Internal, "getEncoded" | "setEncoded">,
-): StateField<unknown> {
+): ReplicantField<unknown> {
 	const unused = vi.fn();
 	const subscribeEncoded = () => Effect.succeed(Stream.empty);
 	const subscribe = () => Effect.succeed(Stream.empty);
@@ -117,13 +117,13 @@ function stubRpc(
 
 function loadedNamespace(
 	namespace: string,
-	fields: Record<string, StateField<unknown>>,
+	fields: Record<string, ReplicantField<unknown>>,
 	computed: LoadedNamespace["computed"] = {},
 	topic: LoadedNamespace["topic"] = {},
 	rpc: LoadedNamespace["rpc"] = {},
 ): LoadedNamespace {
 	return {
-		state: fields,
+		replicant: fields,
 		computed,
 		topic,
 		rpc,
@@ -158,7 +158,7 @@ function webHandler(
 	return handler;
 }
 
-const getUrl = "http://x/api/namespaces/root/state/count";
+const getUrl = "http://x/api/namespaces/root/replicant/count";
 const computedUrl = "http://x/api/namespaces/root/computed/count";
 const topicUrl = "http://x/api/namespaces/root/topic/chat";
 const rpcUrl = "http://x/api/namespaces/root/rpc/echo";
@@ -276,13 +276,13 @@ describe("get", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("404 when the field reports StateNotFound", async () => {
+	test("404 when the field reports ReplicantNotFound", async () => {
 		const handler = webHandler([
 			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () =>
 						Effect.fail(
-							new StateNotFound({ namespace: "root", name: "count" }),
+							new ReplicantNotFound({ namespace: "root", name: "count" }),
 						),
 					setEncoded: () => Effect.void,
 				}),
@@ -345,14 +345,14 @@ describe("update", () => {
 		expect(res.status).toBe(400);
 	});
 
-	test("404 when the field reports StateNotFound", async () => {
+	test("404 when the field reports ReplicantNotFound", async () => {
 		const handler = webHandler([
 			loadedNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
-							new StateNotFound({ namespace: "root", name: "count" }),
+							new ReplicantNotFound({ namespace: "root", name: "count" }),
 						),
 				}),
 			}),
@@ -380,7 +380,7 @@ describe("permission enforcement", () => {
 			}),
 		);
 
-	test("403 when state getEncoded denies the caller", async () => {
+	test("403 when replicant getEncoded denies the caller", async () => {
 		const handler = webHandler([
 			loadedNamespace("root", {
 				count: stubField({
@@ -393,7 +393,7 @@ describe("permission enforcement", () => {
 		expect(res.status).toBe(403);
 	});
 
-	test("403 when state setEncoded denies the caller", async () => {
+	test("403 when replicant setEncoded denies the caller", async () => {
 		const setEncoded = vi.fn(writeDenied);
 		const handler = webHandler([
 			loadedNamespace("root", {

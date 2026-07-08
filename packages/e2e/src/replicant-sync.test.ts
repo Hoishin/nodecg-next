@@ -1,7 +1,7 @@
 import { loadNamespace } from "@nodecg/client";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
-import { extendedManifest, fixtureManifest } from "./fixture-state.ts";
+import { extendedManifest, fixtureManifest } from "./fixture-replicant.ts";
 
 const login = (subject: string) =>
 	fetch(`/api/authentication/login/dev?as=${subject}`, { method: "POST" });
@@ -45,77 +45,79 @@ describe("anonymous access", () => {
 
 	test("a read of a restricted field is denied (HTTP 403)", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await expect(ns.state.secret.get()).rejects.toThrow(/Permission denied/);
+		await expect(ns.replicant.secret.get()).rejects.toThrow(
+			/Permission denied/,
+		);
 	});
 
 	test("a subscribe to a restricted field is rejected (WS forbidden)", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await expect(ns.state.secret.subscribe(() => {})).rejects.toThrow(
+		await expect(ns.replicant.secret.subscribe(() => {})).rejects.toThrow(
 			/Permission denied/,
 		);
 	});
 });
 
-describe("client ⇄ server state sync (as producer)", () => {
+describe("client ⇄ server replicant sync (as producer)", () => {
 	beforeAll(async () => {
 		await login("prod");
 	});
 
 	test("reads the server-seeded value", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		expect(await ns.state.count.get()).toBe(0);
-		expect(await ns.state.label.get()).toBe("hello");
+		expect(await ns.replicant.count.get()).toBe(0);
+		expect(await ns.replicant.label.get()).toBe("hello");
 	});
 
 	test("set round-trips through the server", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await ns.state.count.set(42);
-		expect(await ns.state.count.get()).toBe(42);
+		await ns.replicant.count.set(42);
+		expect(await ns.replicant.count.get()).toBe(42);
 	});
 
 	test("subscribe receives the current value, then published updates", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await ns.state.count.set(5);
+		await ns.replicant.count.set(5);
 		const received: number[] = [];
-		const cancel = await ns.state.count.subscribe((value) => {
+		const cancel = await ns.replicant.count.subscribe((value) => {
 			received.push(value);
 		});
 		await vi.waitFor(() => expect(received).toEqual([5]));
-		await ns.state.count.set(7);
+		await ns.replicant.count.set(7);
 		await vi.waitFor(() => expect(received).toEqual([5, 7]));
 		await cancel();
 	});
 
 	test("reads a server-computed value over HTTP", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await ns.state.count.set(10);
+		await ns.replicant.count.set(10);
 		expect(await ns.computed.doubledCount.get()).toBe(20);
 	});
 
 	test("subscribe to a computed value receives recomputed updates", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await ns.state.count.set(3);
+		await ns.replicant.count.set(3);
 		const received: number[] = [];
 		const cancel = await ns.computed.doubledCount.subscribe((value) => {
 			received.push(value);
 		});
 		await vi.waitFor(() => expect(received.at(-1)).toBe(6));
-		await ns.state.count.set(4);
+		await ns.replicant.count.set(4);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(8));
 		await cancel();
 	});
 
 	test("a branching computed dedupes source changes it doesn't depend on", async () => {
 		const ns = await loadNamespace(fixtureManifest);
-		await ns.state.count.set(0);
-		await ns.state.label.set("first");
+		await ns.replicant.count.set(0);
+		await ns.replicant.label.set("first");
 		const received: string[] = [];
 		const cancel = await ns.computed.summary.subscribe((value) => {
 			received.push(value);
 		});
 		await vi.waitFor(() => expect(received).toEqual(["idle"]));
-		await ns.state.label.set("second");
-		await ns.state.count.set(3);
+		await ns.replicant.label.set("second");
+		await ns.replicant.count.set(3);
 		await vi.waitFor(() => expect(received).toEqual(["idle", "second x3"]));
 		await cancel();
 	});
@@ -150,25 +152,25 @@ describe("extended namespace sync (as producer)", () => {
 		await login("prod");
 	});
 
-	test("reads original + added state and a computed over both", async () => {
+	test("reads original + added replicant and a computed over both", async () => {
 		const ns = await loadNamespace(extendedManifest);
-		await ns.state.score.set(4);
-		await ns.state.bonus.set(3);
-		expect(await ns.state.score.get()).toBe(4);
-		expect(await ns.state.bonus.get()).toBe(3);
+		await ns.replicant.score.set(4);
+		await ns.replicant.bonus.set(3);
+		expect(await ns.replicant.score.get()).toBe(4);
+		expect(await ns.replicant.bonus.get()).toBe(3);
 		expect(await ns.computed.total.get()).toBe(7);
 	});
 
-	test("the extend-added computed recomputes when the original state changes", async () => {
+	test("the extend-added computed recomputes when the original replicant changes", async () => {
 		const ns = await loadNamespace(extendedManifest);
-		await ns.state.score.set(1);
-		await ns.state.bonus.set(0);
+		await ns.replicant.score.set(1);
+		await ns.replicant.bonus.set(0);
 		const received: number[] = [];
 		const cancel = await ns.computed.total.subscribe((value) => {
 			received.push(value);
 		});
 		await vi.waitFor(() => expect(received.at(-1)).toBe(1));
-		await ns.state.score.set(10);
+		await ns.replicant.score.set(10);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(10));
 		await cancel();
 	});
@@ -178,10 +180,10 @@ describe("role-gated field access (HTTP)", () => {
 	test("anonymous is denied the role-gated and the client-gated field", async () => {
 		await logout();
 		const ns = await loadNamespace(fixtureManifest);
-		await expect(ns.state.producerOnly.get()).rejects.toThrow(
+		await expect(ns.replicant.producerOnly.get()).rejects.toThrow(
 			/Permission denied/,
 		);
-		await expect(ns.state.membersOnly.get()).rejects.toThrow(
+		await expect(ns.replicant.membersOnly.get()).rejects.toThrow(
 			/Permission denied/,
 		);
 	});
@@ -189,15 +191,15 @@ describe("role-gated field access (HTTP)", () => {
 	test("an explicit producer reads the producer-only and client fields", async () => {
 		await login("prod");
 		const ns = await loadNamespace(fixtureManifest);
-		expect(await ns.state.producerOnly.get()).toBe("producers-only");
-		expect(await ns.state.membersOnly.get()).toBe("members-only");
+		expect(await ns.replicant.producerOnly.get()).toBe("producers-only");
+		expect(await ns.replicant.membersOnly.get()).toBe("members-only");
 	});
 
 	test("a viewer reads the client field via the umbrella but not the producer-only field", async () => {
 		await login("view");
 		const ns = await loadNamespace(fixtureManifest);
-		expect(await ns.state.membersOnly.get()).toBe("members-only");
-		await expect(ns.state.producerOnly.get()).rejects.toThrow(
+		expect(await ns.replicant.membersOnly.get()).toBe("members-only");
+		await expect(ns.replicant.producerOnly.get()).rejects.toThrow(
 			/Permission denied/,
 		);
 	});
@@ -208,7 +210,7 @@ describe("WS handshake honors the session cookie", () => {
 		await login("prod");
 		const ns = await loadNamespace(fixtureManifest);
 		const received: string[] = [];
-		const cancel = await ns.state.producerOnly.subscribe((value) => {
+		const cancel = await ns.replicant.producerOnly.subscribe((value) => {
 			received.push(value);
 		});
 		await vi.waitFor(() => expect(received).toEqual(["producers-only"]));

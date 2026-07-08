@@ -18,23 +18,23 @@ Experimental new version of NodeCG in active development from scratch
 const roles = defineRoles({
   judge: {
     description: "Judge standing next to the players",
-    permission: ["all"], // Or "state-read" | "state-write" | "computed-read" | "topic-subscribe" | "topic-publish"
+    permission: ["all"], // Or "replicant-read" | "replicant-write" | "computed-read" | "topic-subscribe" | "topic-publish"
   },
   monitor: {
-    permission: ["state-read", "computed-read", "topic-subscribe"],
+    permission: ["replicant-read", "computed-read", "topic-subscribe"],
   },
   viewer: {
-    permission: ["state-read", "computed-read"],
+    permission: ["replicant-read", "computed-read"],
   },
 
   // Reserved role for all users by default
   everyone: {
-    permission: ["state-read", "computed-read"],
+    permission: ["replicant-read", "computed-read"],
   },
 }); // Automatically adds "everyone" which means all users, no permissions
 
 const match = defineNamespace("match", {
-  state: {
+  replicant: {
     score: {
       schema: Schema.Struct({ left: Schema.Number, right: Schema.Number }),
       permission: {
@@ -84,73 +84,73 @@ const match = defineNamespace("match", {
 
 // Server-side
 const match = loadNamespace(match, {
-  seedState: {
+  seedReplicant: {
     score: () => ({ left: 0, right: 0 }),
     label: () => "Match 1",
   },
   implementComputed: {
-    winning: (state) => {
-      const leftAdvantage = state.score.left - state.score.right;
+    winning: (sources) => {
+      const leftAdvantage = sources.score.left - sources.score.right;
       return leftAdvantage > 0 ? "left" : leftAdvantage < 0 ? "right" : null;
     },
   },
 });
 
-match.state.label.get() === "Match 123";
+match.replicant.label.get() === "Match 123";
 
 // Client-side
 const match = loadNamespace(match);
 
-match.state.label.subscribe((label) => {
+match.replicant.label.subscribe((label) => {
   dom.innerText = label;
 });
 ```
 
-### Shared State
+### Shared Replicant
 
-- ✅ State is declarative: defined in one place with name and schema
+- ✅ Replicant is declarative: defined in one place with name and schema
 
   ```ts
   const manifest = defineNamespace("match", {
-    state: { counter: { schema }, games: { schema } },
+    replicant: { counter: { schema }, games: { schema } },
   });
   ```
 
-- ✅ State is platform agnostic: loaded with a dedicated server or client API
+- ✅ Replicant is platform agnostic: loaded with a dedicated server or client API
 
   ```ts
   // Server-side
   import { loadNamespace } from "@nodecg/server";
 
   const ns = await loadNamespace(manifest, {
-    seedState: { counter: () => 0, games: () => [] },
+    seedReplicant: { counter: () => 0, games: () => [] },
   });
-  console.log(ns.state.counter.get()); // synchronous on the server
+  console.log(ns.replicant.counter.get()); // synchronous on the server
 
   // Client-side
   import { loadNamespace } from "@nodecg/client";
 
   const ns = await loadNamespace(manifest);
-  console.log(await ns.state.counter.get()); // asynchronous over the network
+  console.log(await ns.replicant.counter.get()); // asynchronous over the network
   ```
 
-- ✅ State is immutable: read-only value, set or updated by returning a new value from the updater (which may be async)
+- ✅ Replicant is immutable: read-only value, set or updated by returning a new value from the updater (which may be async)
 
   ```ts
-  console.log(await ns.state.counter.get()); // Returns read-only value
+  console.log(await ns.replicant.counter.get()); // Returns read-only value
 
-  await ns.state.counter.set({ count: n, timestamp: Date.now() });
+  await ns.replicant.counter.set({ count: n, timestamp: Date.now() });
 
-  await ns.state.counter.update((value) => ({
+  await ns.replicant.counter.update((value) => ({
     ...value,
     timestamp: Date.now(),
   }));
   ```
 
-- ✅ State is reactive: subscribe to listen to changes
+- ✅ Replicant is reactive: subscribe to listen to changes
 
   ```ts
-  const unsubscribe = await ns.state.counter.subscribe((newValue) => {
+  const unsubscribe = await ns.replicant.counter.subscribe((newValue) => {
     console.log("Counter updated:", newValue);
   });
 
@@ -158,20 +158,23 @@ match.state.label.subscribe((label) => {
   unsubscribe();
   ```
 
-- 🚧 State supports transactions: batch multiple updates for consistency
+- 🚧 Replicant supports transactions: batch multiple updates for consistency
 
   ```ts
   await ns.transaction(() => {
-    ns.state.counter.update((value) => ({ ...value, timestamp: Date.now() }));
-    ns.state.games.update((value) => [...value, "New Game"]);
+    ns.replicant.counter.update((value) => ({
+      ...value,
+      timestamp: Date.now(),
+    }));
+    ns.replicant.games.update((value) => [...value, "New Game"]);
   });
   ```
 
-- 🚧 State supports migrations: when a schema changes, migrate without data loss
+- 🚧 Replicant supports migrations: when a schema changes, migrate without data loss
 
   ```ts
   const newManifest = defineNamespace("match", {
-    state: {
+    replicant: {
       counter: { schema },
       games: {
         schema,
@@ -186,33 +189,33 @@ match.state.label.subscribe((label) => {
   });
   ```
 
-- 🚧 State supports access control: roles declare default capabilities; per-field `allow`/`deny` refine them
+- 🚧 Replicant supports access control: roles declare default capabilities; per-field `allow`/`deny` refine them
 
   ```ts
   const manifest = defineNamespace("match", {
     roles: {
-      judge: { permission: ["state-read", "state-write"] },
-      viewer: { permission: ["state-read"] },
+      judge: { permission: ["replicant-read", "replicant-write"] },
+      viewer: { permission: ["replicant-read"] },
     },
-    state: {
+    replicant: {
       counter: { schema, permission: { read: { deny: ["viewer"] } } },
       games: { schema, permission: { write: { allow: ["server"] } } }, // server-owned
     },
   });
   ```
 
-- ✅ State supports computed values derived from other state: the manifest declares the schema, the compute function is provided on the server at load
+- ✅ Replicant supports computed values derived from other replicants: the manifest declares the schema, the compute function is provided on the server at load
 
   ```ts
   // Manifest: declare schema only
   const manifest = defineNamespace("match", {
-    state: { counter: { schema }, games: { schema } },
+    replicant: { counter: { schema }, games: { schema } },
     computed: { firstGameId: { schema } },
   });
 
   // Server: provide the compute function
   const ns = await loadNamespace(manifest, {
-    seedState: { counter: () => 0, games: () => [] },
+    seedReplicant: { counter: () => 0, games: () => [] },
     implementComputed: {
       firstGameId: (sources) => sources.games[0]?.id ?? null,
     },
@@ -225,12 +228,12 @@ match.state.label.subscribe((label) => {
   });
   ```
 
-- ✅ State is grouped into namespaces to avoid name conflicts and scope permissions
+- ✅ Replicant is grouped into namespaces to avoid name conflicts and scope permissions
 
   ```ts
   const commercialManifest = defineNamespace("commercial", {
-    roles: { producer: { permission: ["state-read", "state-write"] } },
-    state: {
+    roles: { producer: { permission: ["replicant-read", "replicant-write"] } },
+    replicant: {
       isRunning: { schema, permission: { write: { allow: ["producer"] } } },
       remainingTime: { schema },
     },
@@ -242,17 +245,17 @@ match.state.label.subscribe((label) => {
   ```ts
   // Library
   const base = implementNamespace(baseManifest, {
-    seedState: { score: () => 0 },
+    seedReplicant: { score: () => 0 },
   });
 
   // Application
   const extendedManifest = extendNamespace(baseManifest, {
-    state: { round: { schema } },
-    computed: { total: { schema } }, // may read original + newly-added state
+    replicant: { round: { schema } },
+    computed: { total: { schema } }, // may read original + newly-added replicants
   });
 
   const loaded = await loadExtendedNamespace(extendedManifest, base, {
-    seedState: { round: () => 0 },
+    seedReplicant: { round: () => 0 },
     implementComputed: { total: (sources) => sources.score + sources.round },
   });
   ```
@@ -260,20 +263,20 @@ match.state.label.subscribe((label) => {
 - 🚧 Admin dashboard (view, clear, export, import, freeze)
 - 🚧 boolean option for persistence
 - 🚧 Hooks: `beforeUpdate`, `afterUpdate`
-- 🚧 State in client-side is synchronized on reconnect
+- 🚧 Replicant in client-side is synchronized on reconnect
 - 🚧 Revision number
 - 🚧 Conflict resolution with custom logic
 - 🚧 Encryption at rest
 - 🚧 Subscription update frequency control
-- 🚧 State update audit log (user, timestamp, label)
+- 🚧 Replicant update audit log (user, timestamp, label)
 - 🚧 List of subscribers with user, session, connection
 - 🚧 Built-in stopwatch/timer logic, scheduled updates
-- 🚧 Soft-delete removed state definitions
-- 🚧 External webhook registration for state updates
+- 🚧 Soft-delete removed replicant definitions
+- 🚧 External webhook registration for replicant updates
 
-- 🚧 Cross instance state sharing
+- 🚧 Cross instance replicant sharing
 
-#### State Schema
+#### Replicant Schema
 
 - ✅ Effect Schema
 - 🚧 JSON Schema
@@ -282,7 +285,7 @@ match.state.label.subscribe((label) => {
 
 #### What happens when multiple updates happen at the same time?
 
-#### What happens when only client defines state?
+#### What happens when only client defines a replicant?
 
 ### Messaging
 
@@ -333,12 +336,12 @@ match.state.label.subscribe((label) => {
 
 ### 🚧 Data
 
-For datasets too large to keep in memory. Unlike State, which is mirrored in memory and read synchronously, Data is read and written asynchronously, straight from the store, and never kept in-memory permanently.
+For datasets too large to keep in memory. Unlike Replicant, which is mirrored in memory and read synchronously, Data is read and written asynchronously, straight from the store, and never kept in-memory permanently.
 
 ### Data Persistence
 
 - ✅ Data persistence is abstracted and can be implemented for any storage backend
-- 🚧 Default data persistence is SQLite for system data, and JSON files for State
+- 🚧 Default data persistence is SQLite for system data, and JSON files for Replicant
 
 ### 🚧 Authentication
 

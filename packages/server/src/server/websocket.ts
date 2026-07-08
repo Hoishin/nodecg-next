@@ -32,9 +32,9 @@ import {
 import { buildFieldRegistry } from "../field-registry.ts";
 import type { LoadedNamespace } from "../load-namespace.ts";
 import { config } from "../server-config.ts";
+import type { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
-import type { StateNotFound } from "../services/state-storage/state-storage.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
@@ -52,7 +52,7 @@ export const websocketRoute = (options: {
 				readonly field: FieldIdentifier;
 				readonly fiber: Fiber.RuntimeFiber<
 					void,
-					ParseResult.ParseError | Socket.SocketError | StateNotFound
+					ParseResult.ParseError | Socket.SocketError | ReplicantNotFound
 				>;
 			}>
 		>([]);
@@ -69,8 +69,8 @@ export const websocketRoute = (options: {
 			SynchronizedRef.updateEffect(subscriptions, (list) =>
 				Effect.gen(function* () {
 					const internal = Match.value(field.type).pipe(
-						Match.when("state", () =>
-							registry.state.get(field.namespace)?.get(field.name),
+						Match.when("replicant", () =>
+							registry.replicant.get(field.namespace)?.get(field.name),
 						),
 						Match.when("computed", () =>
 							registry.computed.get(field.namespace)?.get(field.name),

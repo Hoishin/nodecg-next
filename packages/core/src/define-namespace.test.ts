@@ -13,11 +13,11 @@ import {
 describe("defineNamespace", () => {
 	describe("runtime", () => {
 		test(
-			"state fields encode/decode round-trip",
+			"replicant fields encode/decode round-trip",
 			testEffect(
 				Effect.gen(function* () {
 					const manifest = defineNamespace("match", {
-						state: {
+						replicant: {
 							score: {
 								schema: Schema.Struct({
 									left: Schema.Number,
@@ -30,13 +30,13 @@ describe("defineNamespace", () => {
 						},
 					});
 
-					const encoded = yield* manifest.state.score.encode({
+					const encoded = yield* manifest.replicant.score.encode({
 						left: 1,
 						right: 2,
 					});
 					expect(encoded).toEqual({ left: 1, right: 2 });
 
-					const decoded = yield* manifest.state.score.decode({
+					const decoded = yield* manifest.replicant.score.decode({
 						left: 3,
 						right: 4,
 					});
@@ -47,11 +47,11 @@ describe("defineNamespace", () => {
 
 		test("decode surfaces FieldDecodeError on bad wire input", () => {
 			const manifest = defineNamespace("match", {
-				state: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Number } },
 			});
 
 			const error = Effect.runSync(
-				Effect.flip(manifest.state.count.decode("nope")),
+				Effect.flip(manifest.replicant.count.decode("nope")),
 			);
 			expect(error).toBeInstanceOf(FieldDecodeError);
 		});
@@ -59,8 +59,8 @@ describe("defineNamespace", () => {
 		test("declaring a reserved role throws", () => {
 			expect(() =>
 				defineNamespace("match", {
-					roles: { anonymous: { permission: ["state-read"] } },
-					state: { count: { schema: Schema.Number } },
+					roles: { anonymous: { permission: ["replicant-read"] } },
+					replicant: { count: { schema: Schema.Number } },
 				}),
 			).toThrow(/reserved/);
 		});
@@ -101,11 +101,13 @@ describe("defineNamespace", () => {
 	describe("permission resolution", () => {
 		const manifest = defineNamespace("match", {
 			roles: {
-				judge: { permission: ["state-read", "state-write", "computed-read"] },
+				judge: {
+					permission: ["replicant-read", "replicant-write", "computed-read"],
+				},
 				monitor: { permission: ["computed-read"] },
-				viewer: { permission: ["state-read", "computed-read"] },
+				viewer: { permission: ["replicant-read", "computed-read"] },
 			},
-			state: {
+			replicant: {
 				score: {
 					schema: Schema.Number,
 					permission: {
@@ -128,28 +130,34 @@ describe("defineNamespace", () => {
 		});
 
 		test("no rule → inherits the role-level base", () => {
-			expect(manifest.state.label.permission.read).toEqual(
+			expect(manifest.replicant.label.permission.read).toEqual(
 				new Set(["judge", "viewer"]),
 			);
-			expect(manifest.state.label.permission.write).toEqual(new Set(["judge"]));
+			expect(manifest.replicant.label.permission.write).toEqual(
+				new Set(["judge"]),
+			);
 		});
 
 		test("deny subtracts from the base", () => {
-			expect(manifest.state.score.permission.read).toEqual(new Set(["judge"]));
+			expect(manifest.replicant.score.permission.read).toEqual(
+				new Set(["judge"]),
+			);
 		});
 
 		test("allow overrides the base", () => {
-			expect(manifest.state.score.permission.write).toEqual(new Set(["judge"]));
+			expect(manifest.replicant.score.permission.write).toEqual(
+				new Set(["judge"]),
+			);
 		});
 
 		test("client expands to all named roles", () => {
-			expect(manifest.state.banner.permission.read).toEqual(
+			expect(manifest.replicant.banner.permission.read).toEqual(
 				new Set(["judge", "monitor", "viewer"]),
 			);
 		});
 
 		test("server-owned write", () => {
-			expect(manifest.state.banner.permission.write).toEqual(
+			expect(manifest.replicant.banner.permission.write).toEqual(
 				new Set(["server"]),
 			);
 		});
@@ -166,7 +174,7 @@ describe("defineNamespace", () => {
 			const manifest = defineNamespace("match", {
 				roles: {
 					operator: { permission: ["rpc-call"] },
-					viewer: { permission: ["state-read"] },
+					viewer: { permission: ["replicant-read"] },
 				},
 				rpc: {
 					restart: {
@@ -223,24 +231,24 @@ describe("defineNamespace", () => {
 	describe("types", () => {
 		test("options not specified are hidden", () => {
 			const manifest = defineNamespace("match", {
-				state: {
+				replicant: {
 					count: { schema: Schema.Number },
 				},
 			});
-			expectTypeOf(manifest.state).not.toBeNever();
+			expectTypeOf(manifest.replicant).not.toBeNever();
 			expectTypeOf(manifest.computed).toEqualTypeOf({});
 			expectTypeOf(manifest.topic).toEqualTypeOf({});
 			expectTypeOf(manifest.rpc).toEqualTypeOf({});
 
 			const manifest2 = defineNamespace("match", {
-				state: {
+				replicant: {
 					count: { schema: Schema.Number },
 				},
 				computed: {
 					double: { schema: Schema.Number },
 				},
 			});
-			expectTypeOf(manifest2.state).not.toBeNever();
+			expectTypeOf(manifest2.replicant).not.toBeNever();
 			expectTypeOf(manifest2.computed).not.toBeNever();
 			expectTypeOf(manifest2.topic).toEqualTypeOf({});
 			expectTypeOf(manifest2.rpc).toEqualTypeOf({});
@@ -250,7 +258,7 @@ describe("defineNamespace", () => {
 					count: { schema: Schema.Number },
 				},
 			});
-			expectTypeOf(manifest3.state).toEqualTypeOf({});
+			expectTypeOf(manifest3.replicant).toEqualTypeOf({});
 			expectTypeOf(manifest3.computed).toEqualTypeOf({});
 			expectTypeOf(manifest3.topic).not.toBeNever();
 			expectTypeOf(manifest3.rpc).toEqualTypeOf({});
@@ -262,7 +270,7 @@ describe("defineNamespace", () => {
 					},
 				},
 			});
-			expectTypeOf(manifest4.state).toEqualTypeOf({});
+			expectTypeOf(manifest4.replicant).toEqualTypeOf({});
 			expectTypeOf(manifest4.computed).toEqualTypeOf({});
 			expectTypeOf(manifest4.topic).toEqualTypeOf({});
 			expectTypeOf(manifest4.rpc).not.toBeNever();
@@ -270,7 +278,7 @@ describe("defineNamespace", () => {
 
 		test("decoded type flows into the field codec per group", () => {
 			const manifest = defineNamespace("match", {
-				state: { label: { schema: Schema.NonEmptyTrimmedString } },
+				replicant: { label: { schema: Schema.NonEmptyTrimmedString } },
 				computed: {
 					winning: { schema: Schema.NullOr(Schema.Literal("left", "right")) },
 				},
@@ -285,7 +293,7 @@ describe("defineNamespace", () => {
 				},
 			});
 
-			expectTypeOf(manifest.state.label.encode)
+			expectTypeOf(manifest.replicant.label.encode)
 				.parameter(0)
 				.toEqualTypeOf<string>();
 			expectTypeOf(manifest.computed.winning.decode).returns.toEqualTypeOf<
@@ -304,14 +312,14 @@ describe("defineNamespace", () => {
 
 		test("codec signatures and namespace type", () => {
 			const manifest = defineNamespace("match", {
-				state: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Number } },
 			});
 
 			expectTypeOf(manifest.namespace).toEqualTypeOf<string>();
-			expectTypeOf(manifest.state.count.encode).returns.toEqualTypeOf<
+			expectTypeOf(manifest.replicant.count.encode).returns.toEqualTypeOf<
 				Effect.Effect<JsonValue, FieldEncodeError>
 			>();
-			expectTypeOf(manifest.state.count.decode)
+			expectTypeOf(manifest.replicant.count.decode)
 				.parameter(0)
 				.toEqualTypeOf<JsonValue>();
 		});
@@ -320,14 +328,14 @@ describe("defineNamespace", () => {
 			test("DateFromSelf (Encoded = Date)", () => {
 				defineNamespace("match", {
 					// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not JsonValue
-					state: { when: { schema: Schema.DateFromSelf } },
+					replicant: { when: { schema: Schema.DateFromSelf } },
 				});
 			});
 
 			test("BigIntFromSelf (Encoded = bigint)", () => {
 				defineNamespace("match", {
 					// @ts-expect-error bigint is not assignable to JsonValue
-					state: { count: { schema: Schema.BigIntFromSelf } },
+					replicant: { count: { schema: Schema.BigIntFromSelf } },
 				});
 			});
 		});
@@ -335,8 +343,8 @@ describe("defineNamespace", () => {
 		describe("permission tokens restricted to declared + reserved roles", () => {
 			test("accepts a declared role and a reserved role", () => {
 				defineNamespace("match", {
-					roles: { judge: { permission: ["state-read"] } },
-					state: {
+					roles: { judge: { permission: ["replicant-read"] } },
+					replicant: {
 						score: {
 							schema: Schema.Number,
 							permission: {
@@ -351,8 +359,8 @@ describe("defineNamespace", () => {
 			test("rejects an unknown token in allow or deny", () => {
 				expect(() =>
 					defineNamespace("match", {
-						roles: { judge: { permission: ["state-read"] } },
-						state: {
+						roles: { judge: { permission: ["replicant-read"] } },
+						replicant: {
 							score: {
 								schema: Schema.Number,
 								// @ts-expect-error "viewer" is neither a declared nor a reserved role
@@ -360,12 +368,12 @@ describe("defineNamespace", () => {
 							},
 						},
 					}),
-				).toThrow(/Unknown role "viewer" in state "score" read\.allow/);
+				).toThrow(/Unknown role "viewer" in replicant "score" read\.allow/);
 
 				expect(() =>
 					defineNamespace("match", {
-						roles: { judge: { permission: ["state-read"] } },
-						state: {
+						roles: { judge: { permission: ["replicant-read"] } },
+						replicant: {
 							score: {
 								schema: Schema.Number,
 								// @ts-expect-error "vewer" is a typo, not a known role
@@ -373,14 +381,14 @@ describe("defineNamespace", () => {
 							},
 						},
 					}),
-				).toThrow(/Unknown role "vewer" in state "score" read\.deny/);
+				).toThrow(/Unknown role "vewer" in replicant "score" read\.deny/);
 			});
 
 			test("rejects a tier role (admin/superadmin) as a field token", () => {
 				expect(() =>
 					defineNamespace("match", {
-						roles: { judge: { permission: ["state-read"] } },
-						state: {
+						roles: { judge: { permission: ["replicant-read"] } },
+						replicant: {
 							score: {
 								schema: Schema.Number,
 								// @ts-expect-error admin is a tier role, not a usable field token
@@ -388,7 +396,7 @@ describe("defineNamespace", () => {
 							},
 						},
 					}),
-				).toThrow(/Unknown role "admin" in state "score" read\.allow/);
+				).toThrow(/Unknown role "admin" in replicant "score" read\.allow/);
 			});
 		});
 	});
@@ -397,10 +405,12 @@ describe("defineNamespace", () => {
 describe("extendNamespace", () => {
 	const base = defineNamespace("match", {
 		roles: {
-			judge: { permission: ["state-read", "state-write", "computed-read"] },
-			viewer: { permission: ["state-read", "computed-read"] },
+			judge: {
+				permission: ["replicant-read", "replicant-write", "computed-read"],
+			},
+			viewer: { permission: ["replicant-read", "computed-read"] },
 		},
-		state: {
+		replicant: {
 			score: { schema: Schema.Number },
 			secret: {
 				schema: Schema.String,
@@ -413,11 +423,15 @@ describe("extendNamespace", () => {
 	describe("runtime", () => {
 		test("overrides an existing field's permission without a schema", () => {
 			const extended = extendNamespace(base, {
-				state: { score: { permission: { read: { deny: ["viewer"] } } } },
+				replicant: { score: { permission: { read: { deny: ["viewer"] } } } },
 			});
 
-			expect(extended.state.score.permission.read).toEqual(new Set(["judge"]));
-			expect(extended.state.score.permission.write).toEqual(new Set(["judge"]));
+			expect(extended.replicant.score.permission.read).toEqual(
+				new Set(["judge"]),
+			);
+			expect(extended.replicant.score.permission.write).toEqual(
+				new Set(["judge"]),
+			);
 		});
 
 		test(
@@ -425,7 +439,7 @@ describe("extendNamespace", () => {
 			testEffect(
 				Effect.gen(function* () {
 					const extended = extendNamespace(base, {
-						state: {
+						replicant: {
 							pinned: {
 								schema: Schema.String,
 								permission: { write: { allow: ["judge"] } },
@@ -433,11 +447,11 @@ describe("extendNamespace", () => {
 						},
 					});
 
-					expect(yield* extended.state.pinned.encode("hi")).toBe("hi");
-					expect(extended.state.pinned.permission.write).toEqual(
+					expect(yield* extended.replicant.pinned.encode("hi")).toBe("hi");
+					expect(extended.replicant.pinned.permission.write).toEqual(
 						new Set(["judge"]),
 					);
-					expect(extended.state.score.permission.read).toEqual(
+					expect(extended.replicant.score.permission.read).toEqual(
 						new Set(["judge", "viewer"]),
 					);
 				}),
@@ -446,45 +460,47 @@ describe("extendNamespace", () => {
 
 		test("role-level grant retroactively adds to existing lists, including pinned", () => {
 			const extended = extendNamespace(base, {
-				roles: { auditor: { permission: ["state-read"] } },
+				roles: { auditor: { permission: ["replicant-read"] } },
 			});
 
-			expect(extended.state.score.permission.read).toEqual(
+			expect(extended.replicant.score.permission.read).toEqual(
 				new Set(["auditor", "judge", "viewer"]),
 			);
-			expect(extended.state.secret.permission.read).toEqual(
+			expect(extended.replicant.secret.permission.read).toEqual(
 				new Set(["auditor", "judge"]),
 			);
 		});
 
 		test("re-listing a role's permissions overrides the previous set, vetoing dropped capabilities", () => {
 			const extended = extendNamespace(base, {
-				roles: { judge: { permission: ["state-read"] } },
+				roles: { judge: { permission: ["replicant-read"] } },
 			});
 
-			expect(extended.state.score.permission.write).toEqual(new Set());
+			expect(extended.replicant.score.permission.write).toEqual(new Set());
 			expect(extended.computed.total.permission.read).toEqual(
 				new Set(["viewer"]),
 			);
-			expect(extended.state.secret.permission.read).toEqual(new Set(["judge"]));
-			expect(extended.state.score.permission.read).toEqual(
+			expect(extended.replicant.secret.permission.read).toEqual(
+				new Set(["judge"]),
+			);
+			expect(extended.replicant.score.permission.read).toEqual(
 				new Set(["judge", "viewer"]),
 			);
 		});
 
 		test("callback form receives the resolved precedent", () => {
 			const extended = extendNamespace(base, (precedent) => ({
-				state: {
+				replicant: {
 					mirror: {
 						schema: Schema.Number,
 						permission: {
-							read: { allow: [...precedent.state.score.permission.read] },
+							read: { allow: [...precedent.replicant.score.permission.read] },
 						},
 					},
 				},
 			}));
 
-			expect(extended.state.mirror.permission.read).toEqual(
+			expect(extended.replicant.mirror.permission.read).toEqual(
 				new Set(["judge", "viewer"]),
 			);
 		});
@@ -561,7 +577,7 @@ describe("extendNamespace", () => {
 		test("declaring a reserved role throws", () => {
 			expect(() =>
 				extendNamespace(base, {
-					roles: { anonymous: { permission: ["state-read"] } },
+					roles: { anonymous: { permission: ["replicant-read"] } },
 				}),
 			).toThrow(/reserved/);
 		});
@@ -569,20 +585,20 @@ describe("extendNamespace", () => {
 		test("throws on an unknown token in an added field", () => {
 			expect(() =>
 				extendNamespace(base, {
-					state: {
+					replicant: {
 						pinned: {
 							schema: Schema.String,
 							permission: { write: { allow: ["jdge"] } },
 						},
 					},
 				}),
-			).toThrow(/Unknown role "jdge" in state "pinned" write\.allow/);
+			).toThrow(/Unknown role "jdge" in replicant "pinned" write\.allow/);
 		});
 
 		test("accepts a role added in the same extend as a field token", () => {
 			const extended = extendNamespace(base, {
-				roles: { auditor: { permission: ["state-read"] } },
-				state: {
+				roles: { auditor: { permission: ["replicant-read"] } },
+				replicant: {
 					pinned: {
 						schema: Schema.String,
 						permission: { read: { allow: ["auditor"] } },
@@ -590,7 +606,7 @@ describe("extendNamespace", () => {
 				},
 			});
 
-			expect(extended.state.pinned.permission.read).toEqual(
+			expect(extended.replicant.pinned.permission.read).toEqual(
 				new Set(["auditor"]),
 			);
 		});
@@ -599,14 +615,14 @@ describe("extendNamespace", () => {
 	describe("types", () => {
 		test("merges added field types into the manifest", () => {
 			const extended = extendNamespace(base, {
-				state: { pinned: { schema: Schema.NonEmptyTrimmedString } },
+				replicant: { pinned: { schema: Schema.NonEmptyTrimmedString } },
 				computed: { ratio: { schema: Schema.Number } },
 			});
 
-			expectTypeOf(extended.state.score.encode)
+			expectTypeOf(extended.replicant.score.encode)
 				.parameter(0)
 				.toEqualTypeOf<number>();
-			expectTypeOf(extended.state.pinned.encode)
+			expectTypeOf(extended.replicant.pinned.encode)
 				.parameter(0)
 				.toEqualTypeOf<string>();
 			expectTypeOf(extended.computed.ratio.encode)

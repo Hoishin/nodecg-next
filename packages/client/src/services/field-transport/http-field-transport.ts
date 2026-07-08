@@ -19,11 +19,11 @@ export const HttpFieldTransport = Layer.effect(
 	Effect.gen(function* () {
 		const client = yield* HttpApiClient.make(NodecgApi);
 
-		const readState = Effect.fn("FieldTransport.readState")(function* (
+		const readReplicant = Effect.fn("FieldTransport.readReplicant")(function* (
 			namespace: string,
 			name: string,
 		) {
-			return yield* client.State.get({ path: { namespace, name } }).pipe(
+			return yield* client.Replicant.get({ path: { namespace, name } }).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
@@ -59,30 +59,31 @@ export const HttpFieldTransport = Layer.effect(
 			);
 		});
 
-		const updateState = Effect.fn("FieldTransport.updateState")(function* (
-			namespace: string,
-			name: string,
-			value: JsonValue,
-		) {
-			yield* client.State.update({
-				path: { namespace, name },
-				payload: value,
-			}).pipe(
-				Effect.mapError((error) =>
-					Match.value(error).pipe(
-						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
-						Match.tag(
-							"Forbidden",
-							() => new FieldPermissionDenied({ namespace, name }),
-						),
-						Match.orElse(
-							(e) =>
-								new FieldSaveFailed({ namespace, name, cause: toError(e) }),
+		const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
+			function* (namespace: string, name: string, value: JsonValue) {
+				yield* client.Replicant.update({
+					path: { namespace, name },
+					payload: value,
+				}).pipe(
+					Effect.mapError((error) =>
+						Match.value(error).pipe(
+							Match.tag(
+								"NotFound",
+								() => new FieldNotFound({ namespace, name }),
+							),
+							Match.tag(
+								"Forbidden",
+								() => new FieldPermissionDenied({ namespace, name }),
+							),
+							Match.orElse(
+								(e) =>
+									new FieldSaveFailed({ namespace, name, cause: toError(e) }),
+							),
 						),
 					),
-				),
-			);
-		});
+				);
+			},
+		);
 
 		const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
 			namespace: string,
@@ -133,6 +134,12 @@ export const HttpFieldTransport = Layer.effect(
 			);
 		});
 
-		return { readState, readComputed, updateState, publishTopic, callRpc };
+		return {
+			readReplicant,
+			readComputed,
+			updateReplicant,
+			publishTopic,
+			callRpc,
+		};
 	}).pipe(Effect.provide(FetchHttpClient.layer)),
 );

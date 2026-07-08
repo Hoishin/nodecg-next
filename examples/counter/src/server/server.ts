@@ -7,7 +7,7 @@ import { OAuth2Server } from "oauth2-mock-server";
 
 import { extendedCounterManifest } from "../shared/manifest.ts";
 import {
-	bindCounterState,
+	bindCounterReplicant,
 	counterImplemented,
 	settingsImplemented,
 } from "./library/server.ts";
@@ -16,7 +16,7 @@ const counter = await loadExtendedNamespace(
 	extendedCounterManifest,
 	counterImplemented,
 	{
-		seedState: { step: () => 1 },
+		seedReplicant: { step: () => 1 },
 		implementComputed: {
 			parity: (sources) => (sources.count % 2 === 0 ? "even" : "odd"),
 		},
@@ -29,7 +29,7 @@ const counter = await loadExtendedNamespace(
 	},
 );
 
-bindCounterState((value) => counter.state.count.set(value));
+bindCounterReplicant((value) => counter.replicant.count.set(value));
 
 const settings = await settingsImplemented.load();
 

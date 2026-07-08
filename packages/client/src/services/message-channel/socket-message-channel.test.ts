@@ -56,14 +56,14 @@ describe("send", () => {
 					const channel = yield* MessageChannelService;
 					yield* channel.send({
 						_tag: "subscribe",
-						field: { type: "state", namespace: "root", name: "count" },
+						field: { type: "replicant", namespace: "root", name: "count" },
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
 
 				expect(write).toHaveBeenCalledTimes(1);
 				expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual({
 					_tag: "subscribe",
-					field: { type: "state", namespace: "root", name: "count" },
+					field: { type: "replicant", namespace: "root", name: "count" },
 				});
 			}),
 		),
@@ -83,7 +83,7 @@ describe("receive", () => {
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
-							field: { type: "state", namespace: "root", name: "count" },
+							field: { type: "replicant", namespace: "root", name: "count" },
 							value: 42,
 						}),
 					);
@@ -92,7 +92,7 @@ describe("receive", () => {
 					assert(Option.isSome(first));
 					expect(first.value).toEqual({
 						_tag: "publish",
-						field: { type: "state", namespace: "root", name: "count" },
+						field: { type: "replicant", namespace: "root", name: "count" },
 						value: 42,
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
@@ -162,7 +162,7 @@ describe("receive", () => {
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
-							field: { type: "state", namespace: "root", name: "count" },
+							field: { type: "replicant", namespace: "root", name: "count" },
 							value: 7,
 						}),
 					);
@@ -191,7 +191,7 @@ describe("receive", () => {
 					yield* deliver(
 						JSON.stringify({
 							_tag: "publish",
-							field: { type: "state", namespace: "root", name: "ok" },
+							field: { type: "replicant", namespace: "root", name: "ok" },
 							value: 1,
 						}),
 					);

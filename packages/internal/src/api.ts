@@ -11,11 +11,11 @@ import { AuthenticationMiddleware, IdentitySchema } from "./auth.ts";
 import { RoleNameSchema } from "./role.ts";
 import { JsonValueSchema } from "./utils/json-value-schema.ts";
 
-const StateGroup = HttpApiGroup.make("State")
+const ReplicantGroup = HttpApiGroup.make("Replicant")
 	.add(
 		HttpApiEndpoint.get(
 			"get",
-		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
+		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/replicant/${HttpApiSchema.param("name", Schema.String)}`
 			.addSuccess(JsonValueSchema)
 			.addError(HttpApiError.NotFound)
 			.addError(HttpApiError.Forbidden)
@@ -24,7 +24,7 @@ const StateGroup = HttpApiGroup.make("State")
 	.add(
 		HttpApiEndpoint.put(
 			"update",
-		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/state/${HttpApiSchema.param("name", Schema.String)}`
+		)`/namespaces/${HttpApiSchema.param("namespace", Schema.String)}/replicant/${HttpApiSchema.param("name", Schema.String)}`
 			.setPayload(JsonValueSchema)
 			.addError(HttpApiError.NotFound)
 			.addError(HttpApiError.Forbidden)
@@ -128,7 +128,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 
 export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(HealthGroup)
-	.add(StateGroup)
+	.add(ReplicantGroup)
 	.add(ComputedGroup)
 	.add(TopicGroup)
 	.add(RpcGroup)

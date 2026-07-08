@@ -3,7 +3,9 @@ import { Context, Data, type Effect, HashMap } from "effect";
 
 import type { AuthStash } from "../services/stash-store/stash-store.ts";
 
-export class OAuthStateMismatchError extends Data.TaggedError("OAuthStateMismatchError") {
+export class OAuthStateMismatchError extends Data.TaggedError(
+	"OAuthStateMismatchError",
+) {
 	override readonly message = `OAuth state mismatch`;
 }
 

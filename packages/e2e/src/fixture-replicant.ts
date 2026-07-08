@@ -10,10 +10,10 @@ const anonymousWrite = { write: { allow: ["anonymous"] } } as const;
 
 export const fixtureManifest = defineNamespace("e2e", {
 	roles: {
-		producer: { permission: ["state-write"] },
+		producer: { permission: ["replicant-write"] },
 		viewer: { permission: [] },
 	},
-	state: {
+	replicant: {
 		count: { schema: Schema.Number, permission: anonymousRead },
 		label: { schema: Schema.String, permission: anonymousRead },
 		secret: { schema: Schema.String },
@@ -43,15 +43,15 @@ export const fixtureManifest = defineNamespace("e2e", {
 
 export const baseManifest = defineNamespace("e2e-extend", {
 	roles: {
-		producer: { permission: ["state-write"] },
+		producer: { permission: ["replicant-write"] },
 	},
-	state: {
+	replicant: {
 		score: { schema: Schema.Number, permission: anonymousRead },
 	},
 });
 
 export const extendedManifest = extendNamespace(baseManifest, {
-	state: {
+	replicant: {
 		bonus: { schema: Schema.Number, permission: anonymousRead },
 	},
 	computed: {

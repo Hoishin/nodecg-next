@@ -161,25 +161,25 @@ const implementSubscription = Effect.fn("implementSubscription")(function* <
 	return subscribe;
 });
 
-const implementState = Effect.fn("implementState")(function* <Decoded>(
+const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	namespace: string,
 	name: string,
 	manifest: FieldManifest<Decoded>,
 ) {
 	const transport = yield* FieldTransportService;
 	const subscribe = yield* implementSubscription(
-		{ type: "state", namespace, name },
+		{ type: "replicant", namespace, name },
 		manifest,
 	);
 
 	const get = Effect.fn("get")(function* () {
-		const current = yield* transport.readState(namespace, name);
+		const current = yield* transport.readReplicant(namespace, name);
 		return yield* manifest.decode(current);
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
-		yield* transport.updateState(namespace, name, encoded);
+		yield* transport.updateReplicant(namespace, name, encoded);
 	});
 
 	const update = Effect.fn("update")(function* (
@@ -188,17 +188,17 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 		const current = yield* get();
 		const next = yield* Effect.tryPromise(async () => fn(current));
 		const encoded = yield* manifest.encode(next);
-		yield* transport.updateState(namespace, name, encoded);
+		yield* transport.updateReplicant(namespace, name, encoded);
 	});
 
 	return { get, set, update, subscribe };
 });
 
-type StateFieldEffect<Decoded> = Effect.Effect.Success<
-	ReturnType<typeof implementState<Decoded>>
+type ReplicantFieldEffect<Decoded> = Effect.Effect.Success<
+	ReturnType<typeof implementReplicant<Decoded>>
 >;
-export type StateField<Decoded> = ApplyLambdaToObject<
-	StateFieldEffect<Decoded>,
+export type ReplicantField<Decoded> = ApplyLambdaToObject<
+	ReplicantFieldEffect<Decoded>,
 	{
 		get: EffectToPromiseLambda;
 		set: EffectToPromiseLambda;
@@ -346,12 +346,12 @@ interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
 }
 
-interface StateFieldEffectLambda extends HKT.TypeLambda {
-	readonly type: StateFieldEffect<this["Target"]>;
+interface ReplicantFieldEffectLambda extends HKT.TypeLambda {
+	readonly type: ReplicantFieldEffect<this["Target"]>;
 }
 
-interface StateFieldPromiseLambda extends HKT.TypeLambda {
-	readonly type: StateField<this["Target"]>;
+interface ReplicantFieldPromiseLambda extends HKT.TypeLambda {
+	readonly type: ReplicantField<this["Target"]>;
 }
 
 interface ComputedFieldEffectLambda extends HKT.TypeLambda {
@@ -395,19 +395,19 @@ interface RpcFieldPromiseLambda extends HKT.TypeLambda {
 }
 
 const buildNamespace = <
-	State extends Record<string, unknown>,
+	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
 	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 ) =>
 	Effect.gen(function* () {
 		const fields = yield* mapEffectValues<
 			FieldManifestLambda,
-			StateFieldEffectLambda
-		>()((codec, name) => implementState(manifest.namespace, name, codec))(
-			manifest.state,
+			ReplicantFieldEffectLambda
+		>()((codec, name) => implementReplicant(manifest.namespace, name, codec))(
+			manifest.replicant,
 		);
 		const computedFields = yield* mapEffectValues<
 			FieldManifestLambda,
@@ -439,15 +439,15 @@ const buildHttpClient = Effect.fn("buildHttpClient")(function* () {
 });
 
 export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
-	State extends Record<string, unknown> = {},
+	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 	Rpc extends RpcShape = {},
->(manifest: NamespaceManifest<State, Computed, Topic, Rpc>) {
+>(manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>) {
 	const httpClient = yield* buildHttpClient();
 	return yield* buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields, topicFields, rpcFields }) => ({
-			state: fields,
+			replicant: fields,
 			computed: computedFields,
 			topic: topicFields,
 			rpc: rpcFields,
@@ -457,13 +457,13 @@ export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 });
 
 export interface LoadedNamespace<
-	State extends Record<string, unknown> = Record<string, unknown>,
+	Replicant extends Record<string, unknown> = Record<string, unknown>,
 	Computed extends Record<string, unknown> = Record<string, unknown>,
 	Topic extends Record<string, unknown> = Record<string, unknown>,
 	Rpc extends RpcShape = RpcShape,
 > {
-	readonly state: {
-		readonly [K in keyof State & string]: StateField<State[K]>;
+	readonly replicant: {
+		readonly [K in keyof Replicant & string]: ReplicantField<Replicant[K]>;
 	};
 	readonly computed: {
 		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
@@ -485,12 +485,12 @@ export interface LoadedNamespace<
 }
 
 export async function loadNamespace<
-	State extends Record<string, unknown> = {},
+	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 	Rpc extends RpcShape = {},
 >(
-	manifest: NamespaceManifest<State, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	adapter?: {
 		fieldTransport?:
 			| (() => FieldTransport)
@@ -499,7 +499,7 @@ export async function loadNamespace<
 			| (() => MessageChannel)
 			| Effect.Effect<MessageChannel, never, never>;
 	},
-): Promise<LoadedNamespace<State, Computed, Topic, Rpc>> {
+): Promise<LoadedNamespace<Replicant, Computed, Topic, Rpc>> {
 	const fieldTransport = adapter?.fieldTransport;
 	const messageChannel = adapter?.messageChannel;
 
@@ -550,7 +550,7 @@ export async function loadNamespace<
 							Effect.tryPromise(async () => callback(value)).pipe(
 								Effect.catchAll((error) =>
 									Effect.logError(
-										`State subscription handler for "${manifest.namespace}/${name}" threw`,
+										`Replicant subscription handler for "${manifest.namespace}/${name}" threw`,
 										error,
 									),
 								),
@@ -562,14 +562,15 @@ export async function loadNamespace<
 				}),
 			);
 
-	const state = mapValues<StateFieldEffectLambda, StateFieldPromiseLambda>(
-		(field, name) => ({
-			get: () => runtime.runPromise(field.get()),
-			set: (value) => runtime.runPromise(field.set(value)),
-			update: (fn) => runtime.runPromise(field.update(fn)),
-			subscribe: subscribeEffectToPromise(field.subscribe, name),
-		}),
-	)(effectFields);
+	const replicant = mapValues<
+		ReplicantFieldEffectLambda,
+		ReplicantFieldPromiseLambda
+	>((field, name) => ({
+		get: () => runtime.runPromise(field.get()),
+		set: (value) => runtime.runPromise(field.set(value)),
+		update: (fn) => runtime.runPromise(field.update(fn)),
+		subscribe: subscribeEffectToPromise(field.subscribe, name),
+	}))(effectFields);
 
 	const computed = mapValues<
 		ComputedFieldEffectLambda,
@@ -593,7 +594,7 @@ export async function loadNamespace<
 	)(effectRpcFields);
 
 	return {
-		state,
+		replicant: replicant,
 		computed,
 		topic,
 		rpc,

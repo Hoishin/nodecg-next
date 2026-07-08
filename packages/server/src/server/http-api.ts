@@ -231,46 +231,52 @@ export const buildNodecgApi = (options: {
 		(handlers) => handlers.handle("ping", () => Effect.succeed("pong")),
 	);
 
-	const StateGroupLive = HttpApiBuilder.group(NodecgApi, "State", (handlers) =>
-		handlers
-			.handle("get", ({ path: { namespace, name } }) =>
-				Effect.gen(function* () {
-					const field = registry.state.get(namespace)?.get(name);
-					if (typeof field === "undefined") {
-						return yield* new HttpApiError.NotFound();
-					}
-					return yield* field.getEncoded().pipe(
-						Effect.catchTags({
-							FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-							StateNotFound: () => new HttpApiError.NotFound(),
-						}),
-					);
-				}),
-			)
-			.handle("update", ({ path: { namespace, name }, payload }) =>
-				Effect.gen(function* () {
-					const field = registry.state.get(namespace)?.get(name);
-					if (typeof field === "undefined") {
-						return yield* new HttpApiError.NotFound();
-					}
-					yield* field.setEncoded(payload).pipe(
-						Effect.mapError((error) =>
-							Match.value(error).pipe(
-								Match.tag(
-									"FieldPermissionDenied",
-									() => new HttpApiError.Forbidden(),
+	const ReplicantGroupLive = HttpApiBuilder.group(
+		NodecgApi,
+		"Replicant",
+		(handlers) =>
+			handlers
+				.handle("get", ({ path: { namespace, name } }) =>
+					Effect.gen(function* () {
+						const field = registry.replicant.get(namespace)?.get(name);
+						if (typeof field === "undefined") {
+							return yield* new HttpApiError.NotFound();
+						}
+						return yield* field.getEncoded().pipe(
+							Effect.catchTags({
+								FieldPermissionDenied: () => new HttpApiError.Forbidden(),
+								ReplicantNotFound: () => new HttpApiError.NotFound(),
+							}),
+						);
+					}),
+				)
+				.handle("update", ({ path: { namespace, name }, payload }) =>
+					Effect.gen(function* () {
+						const field = registry.replicant.get(namespace)?.get(name);
+						if (typeof field === "undefined") {
+							return yield* new HttpApiError.NotFound();
+						}
+						yield* field.setEncoded(payload).pipe(
+							Effect.mapError((error) =>
+								Match.value(error).pipe(
+									Match.tag(
+										"FieldPermissionDenied",
+										() => new HttpApiError.Forbidden(),
+									),
+									Match.tag(
+										"FieldDecodeError",
+										() => new HttpApiError.BadRequest(),
+									),
+									Match.tag(
+										"ReplicantNotFound",
+										() => new HttpApiError.NotFound(),
+									),
+									Match.exhaustive,
 								),
-								Match.tag(
-									"FieldDecodeError",
-									() => new HttpApiError.BadRequest(),
-								),
-								Match.tag("StateNotFound", () => new HttpApiError.NotFound()),
-								Match.exhaustive,
 							),
-						),
-					);
-				}),
-			),
+						);
+					}),
+				),
 	);
 
 	const ComputedGroupLive = HttpApiBuilder.group(
@@ -286,7 +292,7 @@ export const buildNodecgApi = (options: {
 					return yield* field.getEncoded().pipe(
 						Effect.catchTags({
 							FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-							StateNotFound: () => new HttpApiError.NotFound(),
+							ReplicantNotFound: () => new HttpApiError.NotFound(),
 							ComputedComputeError: () =>
 								new HttpApiError.InternalServerError(),
 							FieldEncodeError: () => new HttpApiError.InternalServerError(),
@@ -336,7 +342,7 @@ export const buildNodecgApi = (options: {
 
 	return HttpApiBuilder.api(NodecgApi).pipe(
 		Layer.provide(HealthGroupLive),
-		Layer.provide(StateGroupLive),
+		Layer.provide(ReplicantGroupLive),
 		Layer.provide(ComputedGroupLive),
 		Layer.provide(TopicGroupLive),
 		Layer.provide(RpcGroupLive),

@@ -10,9 +10,9 @@ const anonymousWrite = { write: { allow: ["anonymous"] } } as const;
 
 export const counterManifest = defineNamespace("counter", {
 	roles: {
-		operator: { permission: ["state-write"] },
+		operator: { permission: ["replicant-write"] },
 	},
-	state: {
+	replicant: {
 		count: { schema: Schema.Number, permission: anonymousRead },
 	},
 	topic: {
@@ -28,9 +28,9 @@ export const counterManifest = defineNamespace("counter", {
 
 export const settingsManifest = defineNamespace("settings", {
 	roles: {
-		operator: { permission: ["state-write"] },
+		operator: { permission: ["replicant-write"] },
 	},
-	state: {
+	replicant: {
 		title: { schema: Schema.String, permission: anonymousRead },
 	},
 });

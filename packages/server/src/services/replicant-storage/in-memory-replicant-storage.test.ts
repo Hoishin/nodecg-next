@@ -2,17 +2,17 @@ import { testEffect } from "@nodecg/internal/test-utils";
 import { Chunk, Effect, Exit, Option, Scope, Stream } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { InMemoryStateStorage } from "./in-memory-state-storage.ts";
-import { StateStorageService } from "./state-storage.ts";
+import { InMemoryReplicantStorage } from "./in-memory-replicant-storage.ts";
+import { ReplicantStorageService } from "./replicant-storage.ts";
 
 describe("read", () => {
 	test(
 		"returns None on a missing key",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				expect(storage.read("ns", "missing")).toStrictEqual(Option.none());
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 });
@@ -22,25 +22,25 @@ describe("create", () => {
 		"stores new values that read returns (creating the namespace)",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 1);
 				yield* storage.create("ns", "b", "two");
 				expect(storage.read("ns", "a")).toStrictEqual(Option.some(1));
 				expect(storage.read("ns", "b")).toStrictEqual(Option.some("two"));
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 
 	test(
-		"fails with StateAlreadyExists when the key already exists",
+		"fails with ReplicantAlreadyExists when the key already exists",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 1);
 				const error = yield* storage.create("ns", "a", 2).pipe(Effect.flip);
-				expect(error._tag).toBe("StateAlreadyExists");
+				expect(error._tag).toBe("ReplicantAlreadyExists");
 				expect(storage.read("ns", "a")).toStrictEqual(Option.some(1));
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 });
@@ -50,32 +50,32 @@ describe("update", () => {
 		"overwrites an existing value",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 1);
 				yield* storage.update("ns", "a", 2);
 				expect(storage.read("ns", "a")).toStrictEqual(Option.some(2));
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 
 	test(
-		"fails with StateNotFound on a missing key",
+		"fails with ReplicantNotFound on a missing key",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				const error = yield* storage.update("ns", "x", 1).pipe(Effect.flip);
-				expect(error._tag).toBe("StateNotFound");
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+				expect(error._tag).toBe("ReplicantNotFound");
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 });
 
 describe("subscribe", () => {
 	test(
-		"emits a StateChange when update succeeds",
+		"emits a ReplicantChange when update succeeds",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 1);
 				const stream = yield* storage.subscribe();
 
@@ -87,7 +87,7 @@ describe("subscribe", () => {
 					name: "a",
 					value: 2,
 				});
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 
@@ -95,7 +95,7 @@ describe("subscribe", () => {
 		"emits on create but not on a failed update",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				const stream = yield* storage.subscribe();
 
 				yield* storage.create("ns", "a", 1);
@@ -107,7 +107,7 @@ describe("subscribe", () => {
 					{ namespace: "ns", name: "a", value: 1 },
 					{ namespace: "ns", name: "a", value: 2 },
 				]);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 
@@ -115,7 +115,7 @@ describe("subscribe", () => {
 		"delivers events to multiple concurrent subscribers",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 0);
 				const a = yield* storage.subscribe();
 				const b = yield* storage.subscribe();
@@ -127,7 +127,7 @@ describe("subscribe", () => {
 				const headB = yield* Stream.runHead(b).pipe(Effect.flatten);
 				expect(headA).toEqual(expected);
 				expect(headB).toEqual(expected);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 
@@ -135,7 +135,7 @@ describe("subscribe", () => {
 		"releases a subscription when its scope closes, leaving others intact",
 		testEffect(
 			Effect.gen(function* () {
-				const storage = yield* StateStorageService;
+				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 0);
 				const scope = yield* Scope.make();
 				const scopedPull = yield* storage
@@ -159,7 +159,7 @@ describe("subscribe", () => {
 
 				const scopedEnd = yield* scopedPull.pipe(Effect.flip);
 				expect(Option.isNone(scopedEnd)).toBe(true);
-			}).pipe(Effect.provide(InMemoryStateStorage)),
+			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
 });

@@ -27,10 +27,12 @@ const server = ServerIdentitySchema.make();
 
 const manifest = defineNamespace("match", {
 	roles: {
-		judge: { permission: ["state-read", "state-write", "computed-read"] },
-		viewer: { permission: ["state-read", "computed-read"] },
+		judge: {
+			permission: ["replicant-read", "replicant-write", "computed-read"],
+		},
+		viewer: { permission: ["replicant-read", "computed-read"] },
 	},
-	state: {
+	replicant: {
 		score: {
 			schema: Schema.Number,
 			permission: { write: { allow: ["judge"] } },
@@ -50,28 +52,30 @@ const manifest = defineNamespace("match", {
 describe("canRead / canWrite", () => {
 	test("check the caller's roles against the field's read/write set", () => {
 		expect(
-			manifest.state.score.permission.canRead(human(RoleName("viewer"))),
+			manifest.replicant.score.permission.canRead(human(RoleName("viewer"))),
 		).toBe(true);
 		expect(
-			manifest.state.score.permission.canWrite(human(RoleName("viewer"))),
+			manifest.replicant.score.permission.canWrite(human(RoleName("viewer"))),
 		).toBe(false);
 		expect(
-			manifest.state.score.permission.canWrite(human(RoleName("judge"))),
+			manifest.replicant.score.permission.canWrite(human(RoleName("judge"))),
 		).toBe(true);
 	});
 
 	test("superadmin and admin bypass every field set", () => {
 		expect(
-			manifest.state.score.permission.canWrite(human(RESERVED_ROLE.superadmin)),
+			manifest.replicant.score.permission.canWrite(
+				human(RESERVED_ROLE.superadmin),
+			),
 		).toBe(true);
 		expect(
-			manifest.state.score.permission.canWrite(human(RESERVED_ROLE.admin)),
+			manifest.replicant.score.permission.canWrite(human(RESERVED_ROLE.admin)),
 		).toBe(true);
 	});
 
 	test("an anonymous caller passes only where anonymous is allowed", () => {
-		expect(manifest.state.score.permission.canRead(anonymous)).toBe(false);
-		expect(manifest.state.open.permission.canRead(anonymous)).toBe(true);
+		expect(manifest.replicant.score.permission.canRead(anonymous)).toBe(false);
+		expect(manifest.replicant.open.permission.canRead(anonymous)).toBe(true);
 	});
 
 	test("a machine identity carries no roles", () => {
@@ -79,7 +83,7 @@ describe("canRead / canWrite", () => {
 			id: "robot",
 			displayName: "Bot",
 		});
-		expect(manifest.state.score.permission.canRead(machine)).toBe(false);
+		expect(manifest.replicant.score.permission.canRead(machine)).toBe(false);
 	});
 
 	test("computed fields are never writable, even for superadmin", () => {
@@ -94,11 +98,11 @@ describe("canRead / canWrite", () => {
 	});
 
 	test("a server identity matches only server-owned fields", () => {
-		expect(manifest.state.config.permission.canWrite(server)).toBe(true);
+		expect(manifest.replicant.config.permission.canWrite(server)).toBe(true);
 		expect(
-			manifest.state.config.permission.canWrite(human(RoleName("judge"))),
+			manifest.replicant.config.permission.canWrite(human(RoleName("judge"))),
 		).toBe(false);
-		expect(manifest.state.score.permission.canWrite(server)).toBe(false);
+		expect(manifest.replicant.score.permission.canWrite(server)).toBe(false);
 	});
 });
 

@@ -7,8 +7,8 @@ import {
 import { Match } from "effect";
 
 export type RoleCapability =
-	| "state-read"
-	| "state-write"
+	| "replicant-read"
+	| "replicant-write"
 	| "computed-read"
 	| "topic-subscribe"
 	| "topic-publish"

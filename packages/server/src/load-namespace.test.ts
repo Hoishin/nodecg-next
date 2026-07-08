@@ -28,12 +28,12 @@ import {
 	loadNamespaceEffect,
 } from "./load-namespace.ts";
 import { fieldInternal } from "./load-namespace.ts";
-import { InMemoryStateStorage } from "./services/state-storage/in-memory-state-storage.ts";
+import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import {
-	type StateChange,
-	type StateStorage,
-	StateStorageService,
-} from "./services/state-storage/state-storage.ts";
+	type ReplicantChange,
+	type ReplicantStorage,
+	ReplicantStorageService,
+} from "./services/replicant-storage/replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import {
 	type TopicBroker,
@@ -43,14 +43,14 @@ import {
 
 const createStorageStub = () =>
 	({
-		read: vi.fn<StateStorage["read"]>(() => Option.none()),
-		create: vi.fn<StateStorage["create"]>(() => Effect.void),
-		update: vi.fn<StateStorage["update"]>(() => Effect.void),
-		subscribe: vi.fn<StateStorage["subscribe"]>(() =>
-			Queue.unbounded<StateChange>(),
+		read: vi.fn<ReplicantStorage["read"]>(() => Option.none()),
+		create: vi.fn<ReplicantStorage["create"]>(() => Effect.void),
+		update: vi.fn<ReplicantStorage["update"]>(() => Effect.void),
+		subscribe: vi.fn<ReplicantStorage["subscribe"]>(() =>
+			Queue.unbounded<ReplicantChange>(),
 		),
-		flush: vi.fn<StateStorage["flush"]>(() => Effect.void),
-	}) satisfies StateStorage;
+		flush: vi.fn<ReplicantStorage["flush"]>(() => Effect.void),
+	}) satisfies ReplicantStorage;
 
 const createBrokerStub = () =>
 	({
@@ -70,13 +70,13 @@ describe("loadNamespaceEffect seeding", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.none());
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 42 },
+					seedReplicant: { count: () => 42 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
@@ -93,18 +93,18 @@ describe("loadNamespaceEffect seeding", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.none());
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				yield* loadNamespaceEffect(manifest, {
-					seedState: {
+					seedReplicant: {
 						count: async () => {
 							await new Promise((resolve) => setTimeout(resolve, 1));
 							return 7;
 						},
 					},
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
@@ -120,13 +120,13 @@ describe("loadNamespaceEffect seeding", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(5));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
@@ -160,17 +160,17 @@ describe("loadNamespaceEffect seeding", () => {
 					},
 				};
 				const base = defineNamespace("ns", {
-					state: { broken: { schema: Schema.Number } },
+					replicant: { broken: { schema: Schema.Number } },
 				});
 				const manifest: NamespaceManifest<{ broken: number }, {}, {}> = {
 					...base,
-					state: { broken: field },
+					replicant: { broken: field },
 				};
 
 				const error = yield* loadNamespaceEffect(manifest, {
-					seedState: { broken: () => 42 },
+					seedReplicant: { broken: () => 42 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 					Effect.flip,
 				);
@@ -188,21 +188,21 @@ describe("get", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(42));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
 				expect(
-					yield* loaded.state.count
+					yield* loaded.replicant.count
 						.get()
 						.pipe(
-							Effect.provideService(StateStorageService, storageStub),
+							Effect.provideService(ReplicantStorageService, storageStub),
 							Effect.provide(InMemoryTopicBroker),
 						),
 				).toBe(42);
@@ -217,20 +217,20 @@ describe("get", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some("not a number"));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				const cause = yield* loaded.state.count
+				const cause = yield* loaded.replicant.count
 					.get()
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.sandbox,
 						Effect.flip,
@@ -254,21 +254,21 @@ describe("get", () => {
 					Option.some("2026-05-14T00:00:00.000Z"),
 				);
 				const manifest = defineNamespace("ns", {
-					state: { when: { schema: Schema.DateFromString } },
+					replicant: { when: { schema: Schema.DateFromString } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { when: () => new Date(0) },
+					seedReplicant: { when: () => new Date(0) },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
 				expect(
-					yield* loaded.state.when
+					yield* loaded.replicant.when
 						.get()
 						.pipe(
-							Effect.provideService(StateStorageService, storageStub),
+							Effect.provideService(ReplicantStorageService, storageStub),
 							Effect.provide(InMemoryTopicBroker),
 						),
 				).toEqual(new Date("2026-05-14T00:00:00.000Z"));
@@ -287,21 +287,21 @@ describe("getEncodedNoAuth", () => {
 					Option.some("2026-05-14T00:00:00.000Z"),
 				);
 				const manifest = defineNamespace("ns", {
-					state: { when: { schema: Schema.DateFromString } },
+					replicant: { when: { schema: Schema.DateFromString } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { when: () => new Date(0) },
+					seedReplicant: { when: () => new Date(0) },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
 				expect(
-					yield* loaded.state.when[fieldInternal]
+					yield* loaded.replicant.when[fieldInternal]
 						.getEncodedNoAuth()
 						.pipe(
-							Effect.provideService(StateStorageService, storageStub),
+							Effect.provideService(ReplicantStorageService, storageStub),
 							Effect.provide(InMemoryTopicBroker),
 						),
 				).toBe("2026-05-14T00:00:00.000Z");
@@ -316,20 +316,20 @@ describe("getEncodedNoAuth", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some("not a number"));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				const cause = yield* loaded.state.count[fieldInternal]
+				const cause = yield* loaded.replicant.count[fieldInternal]
 					.getEncodedNoAuth()
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.sandbox,
 						Effect.flip,
@@ -353,20 +353,20 @@ describe("set", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				yield* loaded.state.count
+				yield* loaded.replicant.count
 					.set(7)
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 					);
 				expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 7);
@@ -381,20 +381,20 @@ describe("set", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				const error = yield* loaded.state.count
+				const error = yield* loaded.replicant.count
 					.set("not a number" as unknown as number)
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.flip,
 					);
@@ -412,20 +412,20 @@ describe("set", () => {
 					Option.some("1970-01-01T00:00:00.000Z"),
 				);
 				const manifest = defineNamespace("ns", {
-					state: { when: { schema: Schema.DateFromString } },
+					replicant: { when: { schema: Schema.DateFromString } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { when: () => new Date(0) },
+					seedReplicant: { when: () => new Date(0) },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				yield* loaded.state.when
+				yield* loaded.replicant.when
 					.set(new Date("2026-05-14T00:00:00.000Z"))
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 					);
 				expect(storageStub.update).toHaveBeenLastCalledWith(
@@ -446,20 +446,20 @@ describe("update", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(10));
 				const manifest = defineNamespace("ns", {
-					state: { count: { schema: Schema.Number } },
+					replicant: { count: { schema: Schema.Number } },
 				});
 
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0 },
+					seedReplicant: { count: () => 0 },
 				}).pipe(
-					Effect.provideService(StateStorageService, storageStub),
+					Effect.provideService(ReplicantStorageService, storageStub),
 					Effect.provide(InMemoryTopicBroker),
 				);
 
-				yield* loaded.state.count
+				yield* loaded.replicant.count
 					.update((v) => v + 3)
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 					);
 				expect(storageStub.update).toHaveBeenLastCalledWith("ns", "count", 13);
@@ -473,23 +473,23 @@ describe("loadNamespace (Promise wrapper)", () => {
 		const storageStub = createStorageStub();
 		storageStub.read.mockReturnValue(Option.some(42));
 		const manifest = defineNamespace("ns", {
-			state: { count: { schema: Schema.Number } },
+			replicant: { count: { schema: Schema.Number } },
 		});
 
 		const loaded = await loadNamespace(manifest, {
-			seedState: { count: () => 0 },
+			seedReplicant: { count: () => 0 },
 			storage: storageStub,
 		});
 
-		expect(loaded.state.count.get()).toBe(42);
-		loaded.state.count.set(9);
+		expect(loaded.replicant.count.get()).toBe(42);
+		loaded.replicant.count.set(9);
 		expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 9);
 	});
 });
 
 describe("computed", () => {
 	const computedManifest = defineNamespace("ns", {
-		state: {
+		replicant: {
 			games: { schema: Schema.Array(Schema.Struct({ id: Schema.String })) },
 		},
 		computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } },
@@ -504,16 +504,18 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(computedManifest, {
-					seedState: { games: () => [] },
+					seedReplicant: { games: () => [] },
 					implementComputed: { firstGameId },
 				});
 
 				expect(yield* loaded.computed.firstGameId.get()).toBe(null);
 
-				yield* loaded.state.games.set([{ id: "a" }, { id: "b" }]);
+				yield* loaded.replicant.games.set([{ id: "a" }, { id: "b" }]);
 				expect(yield* loaded.computed.firstGameId.get()).toBe("a");
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -527,7 +529,7 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(computedManifest, {
-					seedState: { games: () => [] },
+					seedReplicant: { games: () => [] },
 					implementComputed: { firstGameId },
 				});
 
@@ -544,20 +546,22 @@ describe("computed", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([null])),
 				);
-				yield* loaded.state.games.set([{ id: "a" }]);
+				yield* loaded.replicant.games.set([{ id: "a" }]);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([null, "a"])),
 				);
 				// Dedupes changes
-				yield* loaded.state.games.set([{ id: "a" }, { id: "c" }]);
-				yield* loaded.state.games.set([{ id: "b" }]);
+				yield* loaded.replicant.games.set([{ id: "a" }, { id: "c" }]);
+				yield* loaded.replicant.games.set([{ id: "b" }]);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([null, "a", "b"])),
 				);
 
 				yield* Fiber.interrupt(fiber);
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -567,7 +571,7 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const error = yield* loadNamespaceEffect(computedManifest, {
-					seedState: { games: () => [] },
+					seedReplicant: { games: () => [] },
 					implementComputed: {
 						firstGameId: () => {
 							throw new Error("boom");
@@ -576,7 +580,9 @@ describe("computed", () => {
 				}).pipe(Effect.flip);
 				expect(error._tag).toBe("ComputedComputeError");
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -586,12 +592,14 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const error = yield* loadNamespaceEffect(computedManifest, {
-					seedState: { games: () => [] },
+					seedReplicant: { games: () => [] },
 					implementComputed: { firstGameId: () => 42 as unknown as string },
 				}).pipe(Effect.flip);
 				expect(error._tag).toBe("FieldEncodeError");
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -599,7 +607,7 @@ describe("computed", () => {
 
 describe("field subscribe", () => {
 	const manifest = defineNamespace("ns", {
-		state: {
+		replicant: {
 			count: { schema: Schema.NumberFromString },
 			other: { schema: Schema.NumberFromString },
 		},
@@ -610,17 +618,19 @@ describe("field subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0, other: () => 0 },
+					seedReplicant: { count: () => 0, other: () => 0 },
 				});
 
 				const stream =
-					yield* loaded.state.count[fieldInternal].subscribeEncoded();
-				yield* loaded.state.count.set(42);
+					yield* loaded.replicant.count[fieldInternal].subscribeEncoded();
+				yield* loaded.replicant.count.set(42);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual(["0", "42"]);
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -630,16 +640,18 @@ describe("field subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0, other: () => 0 },
+					seedReplicant: { count: () => 0, other: () => 0 },
 				});
 
-				const stream = yield* loaded.state.count.subscribe();
-				yield* loaded.state.count.set(7);
+				const stream = yield* loaded.replicant.count.subscribe();
+				yield* loaded.replicant.count.set(7);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([0, 7]);
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -649,17 +661,19 @@ describe("field subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 0, other: () => 0 },
+					seedReplicant: { count: () => 0, other: () => 0 },
 				});
 
-				const stream = yield* loaded.state.count.subscribe();
-				yield* loaded.state.other.set(99);
-				yield* loaded.state.count.set(3);
+				const stream = yield* loaded.replicant.count.subscribe();
+				yield* loaded.replicant.other.set(99);
+				yield* loaded.replicant.count.set(3);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([0, 3]);
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -669,16 +683,18 @@ describe("field subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { count: () => 5, other: () => 0 },
+					seedReplicant: { count: () => 5, other: () => 0 },
 				});
 
-				const stream = yield* loaded.state.count.subscribe();
-				yield* loaded.state.count.update((v) => v + 3);
+				const stream = yield* loaded.replicant.count.subscribe();
+				yield* loaded.replicant.count.update((v) => v + 3);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([5, 8]);
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -687,53 +703,53 @@ describe("field subscribe", () => {
 describe("implementNamespace", () => {
 	test("declares without storage, then load activates it", async () => {
 		const ns = defineNamespace("ns", {
-			state: { count: { schema: Schema.Number } },
+			replicant: { count: { schema: Schema.Number } },
 		});
 
 		const implemented = implementNamespace(ns, {
-			seedState: { count: () => 7 },
+			seedReplicant: { count: () => 7 },
 		});
 
 		const loaded = await implemented.load();
-		expect(loaded.state.count.get()).toBe(7);
+		expect(loaded.replicant.count.get()).toBe(7);
 	});
 });
 
 describe("loadExtendedNamespace", () => {
 	test("composes a base impl with the supplement and loads once", async () => {
 		const base = defineNamespace("match", {
-			state: {
+			replicant: {
 				score: { schema: Schema.Number },
 				label: { schema: Schema.String },
 			},
 		});
 		const baseImplemented = implementNamespace(base, {
-			seedState: { score: () => 10, label: () => "m1" },
+			seedReplicant: { score: () => 10, label: () => "m1" },
 		});
 
 		const extended = extendNamespace(base, {
-			state: { round: { schema: Schema.Number } },
+			replicant: { round: { schema: Schema.Number } },
 			computed: { total: { schema: Schema.Number } },
 		});
 
 		const loaded = await loadExtendedNamespace(extended, baseImplemented, {
-			seedState: { round: () => 3 },
+			seedReplicant: { round: () => 3 },
 			implementComputed: {
 				total: (sources) => sources.score + sources.round,
 			},
 		});
 
-		expect(loaded.state.score.get()).toBe(10);
-		expect(loaded.state.round.get()).toBe(3);
+		expect(loaded.replicant.score.get()).toBe(10);
+		expect(loaded.replicant.round.get()).toBe(3);
 		expect(loaded.computed.total.get()).toBe(13);
 	});
 
-	test("a new computed reads the original state", async () => {
+	test("a new computed reads the original replicant", async () => {
 		const base = defineNamespace("match", {
-			state: { score: { schema: Schema.Number } },
+			replicant: { score: { schema: Schema.Number } },
 		});
 		const baseImplemented = implementNamespace(base, {
-			seedState: { score: () => 5 },
+			seedReplicant: { score: () => 5 },
 		});
 
 		const extended = extendNamespace(base, {
@@ -749,28 +765,28 @@ describe("loadExtendedNamespace", () => {
 
 	test("omitting impl for a newly-added field is a type error", async () => {
 		const base = defineNamespace("match", {
-			state: { score: { schema: Schema.Number } },
+			replicant: { score: { schema: Schema.Number } },
 		});
 		const baseImplemented = implementNamespace(base, {
-			seedState: { score: () => 1 },
+			seedReplicant: { score: () => 1 },
 		});
 		const extended = extendNamespace(base, {
-			state: { round: { schema: Schema.Number } },
+			replicant: { round: { schema: Schema.Number } },
 		});
 
 		await expect(
 			loadExtendedNamespace(extended, baseImplemented, {
-				// @ts-expect-error missing seedState for the newly-added "round"
-				seedState: {},
+				// @ts-expect-error missing seedReplicant for the newly-added "round"
+				seedReplicant: {},
 			}),
-		).rejects.toThrow(/Missing seed value for state "round"/);
+		).rejects.toThrow(/Missing seed value for replicant "round"/);
 	});
 });
 
 describe("permission threading", () => {
 	const manifest = defineNamespace("ns", {
-		roles: { viewer: { permission: ["state-read", "computed-read"] } },
-		state: {
+		roles: { viewer: { permission: ["replicant-read", "computed-read"] } },
+		replicant: {
 			score: {
 				schema: Schema.Number,
 				permission: { read: { allow: ["viewer"] } },
@@ -784,18 +800,20 @@ describe("permission threading", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* loadNamespaceEffect(manifest, {
-					seedState: { score: () => 1 },
+					seedReplicant: { score: () => 1 },
 					implementComputed: { doubled: (sources) => sources.score * 2 },
 				});
 
-				expect(loaded.state.score[fieldInternal].permission).toBe(
-					manifest.state.score.permission,
+				expect(loaded.replicant.score[fieldInternal].permission).toBe(
+					manifest.replicant.score.permission,
 				);
 				expect(loaded.computed.doubled[fieldInternal].permission).toBe(
 					manifest.computed.doubled.permission,
 				);
 			}).pipe(
-				Effect.provide(Layer.merge(InMemoryStateStorage, InMemoryTopicBroker)),
+				Effect.provide(
+					Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+				),
 			),
 		),
 	);
@@ -803,7 +821,7 @@ describe("permission threading", () => {
 
 describe("encoded read/write enforce permission", () => {
 	const manifest = defineNamespace("ns", {
-		state: {
+		replicant: {
 			open: {
 				schema: Schema.Number,
 				permission: {
@@ -824,13 +842,13 @@ describe("encoded read/write enforce permission", () => {
 
 	const load = (storageStub: ReturnType<typeof createStorageStub>) =>
 		loadNamespaceEffect(manifest, {
-			seedState: { open: () => 0, locked: () => 0 },
+			seedReplicant: { open: () => 0, locked: () => 0 },
 			implementComputed: {
 				openComputed: (sources) => sources.open,
 				lockedComputed: (sources) => sources.locked,
 			},
 		}).pipe(
-			Effect.provideService(StateStorageService, storageStub),
+			Effect.provideService(ReplicantStorageService, storageStub),
 			Effect.provide(InMemoryTopicBroker),
 		);
 
@@ -842,10 +860,10 @@ describe("encoded read/write enforce permission", () => {
 				storageStub.read.mockReturnValue(Option.some(42));
 				const loaded = yield* load(storageStub);
 				expect(
-					yield* loaded.state.open[fieldInternal]
+					yield* loaded.replicant.open[fieldInternal]
 						.getEncoded()
 						.pipe(
-							Effect.provideService(StateStorageService, storageStub),
+							Effect.provideService(ReplicantStorageService, storageStub),
 							Effect.provide(InMemoryTopicBroker),
 							Effect.provideService(CurrentIdentity, anonymous),
 						),
@@ -861,10 +879,10 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(42));
 				const loaded = yield* load(storageStub);
-				const error = yield* loaded.state.locked[fieldInternal]
+				const error = yield* loaded.replicant.locked[fieldInternal]
 					.getEncoded()
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
@@ -881,10 +899,10 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const loaded = yield* load(storageStub);
-				yield* loaded.state.open[fieldInternal]
+				yield* loaded.replicant.open[fieldInternal]
 					.setEncoded(7)
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 					);
@@ -900,10 +918,10 @@ describe("encoded read/write enforce permission", () => {
 				const storageStub = createStorageStub();
 				storageStub.read.mockReturnValue(Option.some(0));
 				const loaded = yield* load(storageStub);
-				const error = yield* loaded.state.locked[fieldInternal]
+				const error = yield* loaded.replicant.locked[fieldInternal]
 					.setEncoded(7)
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
@@ -924,7 +942,7 @@ describe("encoded read/write enforce permission", () => {
 				const error = yield* loaded.computed.lockedComputed[fieldInternal]
 					.getEncoded()
 					.pipe(
-						Effect.provideService(StateStorageService, storageStub),
+						Effect.provideService(ReplicantStorageService, storageStub),
 						Effect.provide(InMemoryTopicBroker),
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
@@ -952,7 +970,7 @@ describe("topic", () => {
 
 	const load = (brokerStub: ReturnType<typeof createBrokerStub>) =>
 		loadNamespaceEffect(manifest).pipe(
-			Effect.provideService(StateStorageService, createStorageStub()),
+			Effect.provideService(ReplicantStorageService, createStorageStub()),
 			Effect.provideService(TopicBrokerService, brokerStub),
 		);
 
@@ -1077,7 +1095,7 @@ describe("rpc", () => {
 		locked: (request: string) => Promisable<string>;
 	}) =>
 		loadNamespaceEffect(manifest, { implementRpc: handlers }).pipe(
-			Effect.provideService(StateStorageService, createStorageStub()),
+			Effect.provideService(ReplicantStorageService, createStorageStub()),
 			Effect.provideService(TopicBrokerService, createBrokerStub()),
 		);
 

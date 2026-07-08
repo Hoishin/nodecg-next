@@ -19,20 +19,20 @@ const requestOf = (fetch: ReturnType<typeof mockFetch>) => {
 
 describe("get", () => {
 	test(
-		"issues a GET to the state URL and returns the decoded body",
+		"issues a GET to the replicant URL and returns the decoded body",
 		testEffect(
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 				const fetch = mockFetch(() => new Response(JSON.stringify(42)));
 
 				const value = yield* transport
-					.readState("root", "count")
+					.readReplicant("root", "count")
 					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 				expect(value).toBe(42);
 				const request = requestOf(fetch);
 				expect(request.method).toBe("GET");
-				expect(request.url).toContain("/api/namespaces/root/state/count");
+				expect(request.url).toContain("/api/namespaces/root/replicant/count");
 			}).pipe(Effect.provide(HttpFieldTransport)),
 		),
 	);
@@ -43,7 +43,7 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.readState("root", "count").pipe(
+				const error = yield* transport.readReplicant("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(() => new Response(null, { status: 404 })),
@@ -62,7 +62,7 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.readState("root", "count").pipe(
+				const error = yield* transport.readReplicant("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(() => new Response(null, { status: 403 })),
@@ -85,12 +85,12 @@ describe("update", () => {
 				const fetch = mockFetch(() => new Response(null, { status: 204 }));
 
 				yield* transport
-					.updateState("root", "count", 7)
+					.updateReplicant("root", "count", 7)
 					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 				const request = requestOf(fetch);
 				expect(request.method).toBe("PUT");
-				expect(request.url).toContain("/api/namespaces/root/state/count");
+				expect(request.url).toContain("/api/namespaces/root/replicant/count");
 				const body = yield* Effect.promise(() => request.text());
 				expect(JSON.parse(body)).toBe(7);
 			}).pipe(Effect.provide(HttpFieldTransport)),
@@ -103,7 +103,7 @@ describe("update", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.updateState("root", "count", 7).pipe(
+				const error = yield* transport.updateReplicant("root", "count", 7).pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(() => new Response(null, { status: 403 })),
