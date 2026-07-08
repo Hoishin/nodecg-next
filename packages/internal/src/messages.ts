@@ -17,7 +17,7 @@ export const fieldIdentifierEquivalence = Schema.equivalence(
 );
 
 const PingMessage = Schema.TaggedStruct("ping", {
-	topic: Schema.Union(Schema.Literal("ping"), Schema.Literal("pong")),
+	kind: Schema.Union(Schema.Literal("ping"), Schema.Literal("pong")),
 });
 
 export const ClientMessage = Schema.Union(

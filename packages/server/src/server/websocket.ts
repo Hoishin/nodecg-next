@@ -140,13 +140,13 @@ export const websocketRoute = (options: {
 
 		const handleMessage = (msg: ClientMessage) =>
 			Match.value(msg).pipe(
-				Match.when({ _tag: "ping", topic: "ping" }, () =>
+				Match.when({ _tag: "ping", kind: "ping" }, () =>
 					Effect.gen(function* () {
 						yield* Effect.logDebug("Received ping");
-						yield* send({ _tag: "ping", topic: "pong" });
+						yield* send({ _tag: "ping", kind: "pong" });
 					}),
 				),
-				Match.when({ _tag: "ping", topic: "pong" }, () =>
+				Match.when({ _tag: "ping", kind: "pong" }, () =>
 					Effect.logDebug("Received pong"),
 				),
 				Match.when({ _tag: "subscribe" }, (msg) =>
