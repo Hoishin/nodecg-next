@@ -195,12 +195,10 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		return yield* storage.update(namespace, name, value);
 	});
 
-	const update = Effect.fn("update")(function* (
-		fn: (value: Decoded, abortSignal: AbortSignal) => Promisable<Decoded>,
-	) {
+	const update = Effect.fn("update")(function* (fn: (value: Decoded) => Decoded) {
 		const current = yield* get();
-		const next = yield* Effect.tryPromise({
-			try: async (abortSignal) => fn(current, abortSignal),
+		const next = yield* Effect.try({
+			try: () => fn(current),
 			catch: (error) =>
 				new ReplicantUpdateFnError({ namespace, name, cause: toError(error) }),
 		});
@@ -258,7 +256,7 @@ export type ReplicantField<Decoded> = ApplyLambdaToObject<
 	{
 		get: EffectToSyncLambda;
 		set: EffectToSyncLambda;
-		update: EffectToPromiseLambda;
+		update: EffectToSyncLambda;
 		validate: EffectToPromiseLambda;
 		subscribe: StreamToSubscribeLambda;
 		[fieldInternal]: IdentityLambda;
@@ -746,7 +744,7 @@ async function loadNamespacePromise<
 	>((field, name) => ({
 		get: () => runtime.runSync(field.get()),
 		set: (value) => runtime.runSync(field.set(value)),
-		update: (fn) => runtime.runPromise(field.update(fn)),
+		update: (fn) => runtime.runSync(field.update(fn)),
 		validate: (value) => runtime.runPromise(field.validate(value)),
 		subscribe: subscribeAdapter(field.subscribe, name),
 		[fieldInternal]: field[fieldInternal],
