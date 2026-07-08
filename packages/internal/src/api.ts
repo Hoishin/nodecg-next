@@ -52,8 +52,8 @@ const TopicGroup = HttpApiGroup.make("Topic").add(
 		.addError(HttpApiError.BadRequest),
 );
 
-export class RpcHandlerError extends Schema.TaggedError<RpcHandlerError>()(
-	"RpcHandlerError",
+export class RpcCallError extends Schema.TaggedError<RpcCallError>()(
+	"RpcCallError",
 	{ message: Schema.String },
 	HttpApiSchema.annotations({ status: 500 }),
 ) {}
@@ -67,7 +67,7 @@ const RpcGroup = HttpApiGroup.make("Rpc").add(
 		.addError(HttpApiError.NotFound)
 		.addError(HttpApiError.Forbidden)
 		.addError(HttpApiError.BadRequest)
-		.addError(RpcHandlerError),
+		.addError(RpcCallError),
 );
 
 const HealthGroup = HttpApiGroup.make("Health").add(

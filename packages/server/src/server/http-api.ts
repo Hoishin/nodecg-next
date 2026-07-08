@@ -5,7 +5,7 @@ import {
 	HttpServerResponse,
 } from "@effect/platform";
 import { isAdminTier } from "@nodecg/core";
-import { CurrentIdentity, NodecgApi, RpcHandlerError } from "@nodecg/internal";
+import { CurrentIdentity, NodecgApi, RpcCallError } from "@nodecg/internal";
 import {
 	type Duration,
 	Effect,
@@ -241,7 +241,7 @@ export const buildNodecgApi = (options: {
 					}
 					return yield* field.getEncoded().pipe(
 						Effect.catchTags({
-							PermissionDenied: () => new HttpApiError.Forbidden(),
+							FieldPermissionDenied: () => new HttpApiError.Forbidden(),
 							StateNotFound: () => new HttpApiError.NotFound(),
 						}),
 					);
@@ -257,7 +257,7 @@ export const buildNodecgApi = (options: {
 						Effect.mapError((error) =>
 							Match.value(error).pipe(
 								Match.tag(
-									"PermissionDenied",
+									"FieldPermissionDenied",
 									() => new HttpApiError.Forbidden(),
 								),
 								Match.tag(
@@ -285,7 +285,7 @@ export const buildNodecgApi = (options: {
 					}
 					return yield* field.getEncoded().pipe(
 						Effect.catchTags({
-							PermissionDenied: () => new HttpApiError.Forbidden(),
+							FieldPermissionDenied: () => new HttpApiError.Forbidden(),
 							StateNotFound: () => new HttpApiError.NotFound(),
 							ComputedComputeError: () =>
 								new HttpApiError.InternalServerError(),
@@ -305,7 +305,7 @@ export const buildNodecgApi = (options: {
 				}
 				yield* field.publishEncoded(payload).pipe(
 					Effect.catchTags({
-						PermissionDenied: () => new HttpApiError.Forbidden(),
+						FieldPermissionDenied: () => new HttpApiError.Forbidden(),
 						FieldDecodeError: () => new HttpApiError.BadRequest(),
 					}),
 				);
@@ -322,12 +322,12 @@ export const buildNodecgApi = (options: {
 				}
 				return yield* field.callEncoded(payload).pipe(
 					Effect.catchTags({
-						PermissionDenied: () => new HttpApiError.Forbidden(),
+						FieldPermissionDenied: () => new HttpApiError.Forbidden(),
 						FieldDecodeError: () => new HttpApiError.BadRequest(),
-						RpcHandlerFailure: (error) =>
-							new RpcHandlerError({ message: error.message }),
+						RpcCallFailed: (error) =>
+							new RpcCallError({ message: error.message }),
 						FieldEncodeError: (error) =>
-							new RpcHandlerError({ message: error.message }),
+							new RpcCallError({ message: error.message }),
 					}),
 				);
 			}),

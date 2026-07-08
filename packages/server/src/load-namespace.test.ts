@@ -855,7 +855,7 @@ describe("encoded read/write enforce permission", () => {
 	);
 
 	test(
-		"getEncoded fails PermissionDenied for a denied caller",
+		"getEncoded fails FieldPermissionDenied for a denied caller",
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
@@ -869,7 +869,7 @@ describe("encoded read/write enforce permission", () => {
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("PermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 			}),
 		),
 	);
@@ -894,7 +894,7 @@ describe("encoded read/write enforce permission", () => {
 	);
 
 	test(
-		"setEncoded fails PermissionDenied and does not write for a denied caller",
+		"setEncoded fails FieldPermissionDenied and does not write for a denied caller",
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
@@ -908,14 +908,14 @@ describe("encoded read/write enforce permission", () => {
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("PermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 				expect(storageStub.update).not.toHaveBeenCalledWith("ns", "locked", 7);
 			}),
 		),
 	);
 
 	test(
-		"computed getEncoded fails PermissionDenied for a denied caller",
+		"computed getEncoded fails FieldPermissionDenied for a denied caller",
 		testEffect(
 			Effect.gen(function* () {
 				const storageStub = createStorageStub();
@@ -929,7 +929,7 @@ describe("encoded read/write enforce permission", () => {
 						Effect.provideService(CurrentIdentity, anonymous),
 						Effect.flip,
 					);
-				expect(error._tag).toBe("PermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 			}),
 		),
 	);
@@ -1026,7 +1026,7 @@ describe("topic", () => {
 	);
 
 	test(
-		"publishEncoded fails PermissionDenied and does not publish for a denied caller",
+		"publishEncoded fails FieldPermissionDenied and does not publish for a denied caller",
 		testEffect(
 			Effect.gen(function* () {
 				const brokerStub = createBrokerStub();
@@ -1034,7 +1034,7 @@ describe("topic", () => {
 				const error = yield* loaded.topic.locked[fieldInternal]
 					.publishEncoded("5")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
-				expect(error._tag).toBe("PermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 				expect(brokerStub.publish).not.toHaveBeenCalled();
 			}),
 		),
@@ -1116,7 +1116,7 @@ describe("rpc", () => {
 	);
 
 	test(
-		"call fails PermissionDenied for a caller without rpc-call",
+		"call fails FieldPermissionDenied for a caller without rpc-call",
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* load({
@@ -1126,7 +1126,7 @@ describe("rpc", () => {
 				const error = yield* loaded.rpc.locked[fieldInternal]
 					.callEncoded("x")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
-				expect(error._tag).toBe("PermissionDenied");
+				expect(error._tag).toBe("FieldPermissionDenied");
 			}),
 		),
 	);
@@ -1147,7 +1147,7 @@ describe("rpc", () => {
 	);
 
 	test(
-		"call surfaces a throwing handler as RpcHandlerFailure",
+		"call surfaces a throwing handler as RpcCallFailed",
 		testEffect(
 			Effect.gen(function* () {
 				const loaded = yield* load({
@@ -1159,7 +1159,7 @@ describe("rpc", () => {
 				const error = yield* loaded.rpc.echo[fieldInternal]
 					.callEncoded("1")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
-				expect(error._tag).toBe("RpcHandlerFailure");
+				expect(error._tag).toBe("RpcCallFailed");
 			}),
 		),
 	);

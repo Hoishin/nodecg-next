@@ -18,8 +18,8 @@ import {
 import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
 import {
 	type LoadedNamespace,
-	PermissionDenied,
-	RpcHandlerFailure,
+	FieldPermissionDenied,
+	RpcCallFailed,
 	type StateField,
 	fieldInternal,
 	namespaceMetadataKey,
@@ -365,7 +365,7 @@ describe("update", () => {
 describe("permission enforcement", () => {
 	const readDenied = () =>
 		Effect.fail(
-			new PermissionDenied({
+			new FieldPermissionDenied({
 				namespace: "root",
 				name: "count",
 				operation: "read",
@@ -373,7 +373,7 @@ describe("permission enforcement", () => {
 		);
 	const writeDenied = () =>
 		Effect.fail(
-			new PermissionDenied({
+			new FieldPermissionDenied({
 				namespace: "root",
 				name: "count",
 				operation: "write",
@@ -450,7 +450,7 @@ describe("topic publish", () => {
 				{
 					chat: stubTopic(() =>
 						Effect.fail(
-							new PermissionDenied({
+							new FieldPermissionDenied({
 								namespace: "root",
 								name: "chat",
 								operation: "write",
@@ -517,7 +517,7 @@ describe("rpc call", () => {
 				{
 					echo: stubRpc(() =>
 						Effect.fail(
-							new PermissionDenied({
+							new FieldPermissionDenied({
 								namespace: "root",
 								name: "echo",
 								operation: "write",
@@ -563,7 +563,7 @@ describe("rpc call", () => {
 				{
 					echo: stubRpc(() =>
 						Effect.fail(
-							new RpcHandlerFailure({
+							new RpcCallFailed({
 								namespace: "root",
 								name: "echo",
 								cause: new Error("boom"),

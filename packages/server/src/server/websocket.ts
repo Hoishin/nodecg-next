@@ -92,7 +92,7 @@ export const websocketRoute = (options: {
 							yield* internal.getEncoded().pipe(
 								Effect.provideService(CurrentIdentity, identity),
 								Effect.flatMap((value) => publish(field, value)),
-								Effect.catchTag("PermissionDenied", () =>
+								Effect.catchTag("FieldPermissionDenied", () =>
 									send(
 										SubscribeRejectedMessage.make({
 											field,

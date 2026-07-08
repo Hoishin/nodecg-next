@@ -192,7 +192,7 @@ describe("callRpc", () => {
 						mockFetch(
 							() =>
 								new Response(
-									JSON.stringify({ _tag: "RpcHandlerError", message: "boom" }),
+									JSON.stringify({ _tag: "RpcCallError", message: "boom" }),
 									{
 										status: 500,
 										headers: { "content-type": "application/json" },

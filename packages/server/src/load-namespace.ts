@@ -63,7 +63,9 @@ export class ComputedComputeError extends Data.TaggedError(
 	override readonly message = `Computing computed field "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
-export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
+export class FieldPermissionDenied extends Data.TaggedError(
+	"FieldPermissionDenied",
+)<{
 	namespace: string;
 	name: string;
 	operation: "read" | "write";
@@ -71,7 +73,7 @@ export class PermissionDenied extends Data.TaggedError("PermissionDenied")<{
 	override readonly message = `Permission denied to ${this.operation} "${this.name}" in "${this.namespace}"`;
 }
 
-export class RpcHandlerFailure extends Data.TaggedError("RpcHandlerFailure")<{
+export class RpcCallFailed extends Data.TaggedError("RpcCallFailed")<{
 	namespace: string;
 	name: string;
 	cause: Error;
@@ -164,7 +166,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	const getEncoded = Effect.fn("getEncoded")(function* () {
 		const identity = yield* CurrentIdentity;
 		if (!manifest.permission.canRead(identity)) {
-			return yield* new PermissionDenied({
+			return yield* new FieldPermissionDenied({
 				namespace,
 				name,
 				operation: "read",
@@ -181,7 +183,7 @@ const implementState = Effect.fn("implementState")(function* <Decoded>(
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
 		const identity = yield* CurrentIdentity;
 		if (!manifest.permission.canWrite(identity)) {
-			return yield* new PermissionDenied({
+			return yield* new FieldPermissionDenied({
 				namespace,
 				name,
 				operation: "write",
@@ -290,7 +292,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <
 	const getEncoded = Effect.fn("getEncoded")(function* () {
 		const identity = yield* CurrentIdentity;
 		if (!manifest.permission.canRead(identity)) {
-			return yield* new PermissionDenied({
+			return yield* new FieldPermissionDenied({
 				namespace,
 				name,
 				operation: "read",
@@ -395,7 +397,7 @@ const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	) {
 		const identity = yield* CurrentIdentity;
 		if (!manifest.permission.canWrite(identity)) {
-			return yield* new PermissionDenied({
+			return yield* new FieldPermissionDenied({
 				namespace,
 				name,
 				operation: "write",
@@ -439,7 +441,7 @@ const implementRpc = <Request, Response>(
 	const callEncoded = Effect.fn("callEncoded")(function* (payload: JsonValue) {
 		const identity = yield* CurrentIdentity;
 		if (!manifest.permission.canWrite(identity)) {
-			return yield* new PermissionDenied({
+			return yield* new FieldPermissionDenied({
 				namespace,
 				name,
 				operation: "write",
@@ -449,7 +451,7 @@ const implementRpc = <Request, Response>(
 		const response = yield* Effect.tryPromise({
 			try: async () => handler(request),
 			catch: (error) =>
-				new RpcHandlerFailure({ namespace, name, cause: toError(error) }),
+				new RpcCallFailed({ namespace, name, cause: toError(error) }),
 		});
 		return yield* manifest.response.encode(response);
 	});
