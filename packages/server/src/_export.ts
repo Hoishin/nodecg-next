@@ -19,4 +19,8 @@ export {
 	loadNamespaceEffect,
 	type FrontendConfig,
 	type LoadedNamespace,
+	type RpcContext,
+	type RpcReplicantAccessor,
+	type RpcComputedAccessor,
+	type RpcTopicAccessor,
 } from "./load-namespace.ts";

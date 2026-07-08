@@ -29,6 +29,10 @@ const loaded = await loadNamespace(fixtureManifest, {
 	},
 	implementRpc: {
 		echo: (request: string) => request.toUpperCase(),
+		bump: (request: number, ctx) => {
+			ctx.replicant.count.update((count) => count + request);
+			return ctx.replicant.count.get();
+		},
 	},
 	frontend: {
 		dir: fileURLToPath(new URL("./fixture-frontend", import.meta.url)),

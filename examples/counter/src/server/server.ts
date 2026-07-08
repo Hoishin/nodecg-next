@@ -6,11 +6,7 @@ import {
 import { OAuth2Server } from "oauth2-mock-server";
 
 import { extendedCounterManifest } from "../shared/manifest.ts";
-import {
-	bindCounterReplicant,
-	counterImplemented,
-	settingsImplemented,
-} from "./library/server.ts";
+import { counterImplemented, settingsImplemented } from "./library/server.ts";
 
 const counter = await loadExtendedNamespace(
 	extendedCounterManifest,
@@ -28,8 +24,6 @@ const counter = await loadExtendedNamespace(
 		},
 	},
 );
-
-bindCounterReplicant((value) => counter.replicant.count.set(value));
 
 const settings = await settingsImplemented.load();
 

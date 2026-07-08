@@ -38,6 +38,10 @@ export const fixtureManifest = defineNamespace("e2e", {
 			schema: { request: Schema.String, response: Schema.String },
 			permission: anonymousWrite,
 		},
+		bump: {
+			schema: { request: Schema.Number, response: Schema.Number },
+			permission: anonymousWrite,
+		},
 	},
 });
 

@@ -244,4 +244,16 @@ describe("messaging (topic + rpc)", () => {
 		const ns = await loadNamespace(fixtureManifest);
 		expect(await ns.rpc.echo.call("ping")).toBe("PING");
 	});
+
+	test("an rpc handler mutates a replicant that a subscriber observes", async () => {
+		const ns = await loadNamespace(fixtureManifest);
+		const received: number[] = [];
+		const cancel = await ns.replicant.count.subscribe((value) => {
+			received.push(value);
+		});
+		await vi.waitFor(() => expect(received.length).toBeGreaterThan(0));
+		const returned = await ns.rpc.bump.call(5);
+		await vi.waitFor(() => expect(received).toContain(returned));
+		await cancel();
+	});
 });

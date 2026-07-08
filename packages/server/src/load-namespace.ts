@@ -24,6 +24,7 @@ import {
 	Layer,
 	ManagedRuntime,
 	Option,
+	Runtime,
 	Scope,
 	Stream,
 } from "effect";
@@ -105,25 +106,70 @@ export type RpcShape = Record<
 	{ readonly request: unknown; readonly response: unknown }
 >;
 
-export type ImplementRpc<Rpc extends RpcShape> = {
+export type RpcReplicantAccessor<Decoded> = {
+	readonly get: () => Decoded;
+	readonly set: (value: Decoded) => void;
+	readonly update: (fn: (value: Decoded) => Decoded) => void;
+};
+
+export type RpcComputedAccessor<Decoded> = {
+	readonly get: () => Decoded;
+};
+
+export type RpcTopicAccessor<Decoded> = {
+	readonly publish: (value: Decoded) => Promise<void>;
+};
+
+/**
+ * The second argument handed to every rpc handler: a live view of the
+ * namespace's own non-rpc field groups, built once at load. Mirrors the public
+ * server surface minus topic `subscribe` (streaming) and `rpc` (self-referential).
+ */
+export type RpcContext<
+	Replicant extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
+> = {
+	readonly replicant: {
+		readonly [K in keyof Replicant & string]: RpcReplicantAccessor<
+			Replicant[K]
+		>;
+	};
+	readonly computed: {
+		readonly [K in keyof Computed & string]: RpcComputedAccessor<Computed[K]>;
+	};
+	readonly topic: {
+		readonly [K in keyof Topic & string]: RpcTopicAccessor<Topic[K]>;
+	};
+};
+
+export type ImplementRpc<
+	Replicant extends Record<string, unknown>,
+	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
+	Rpc extends RpcShape,
+> = {
 	readonly [K in keyof Rpc & string]: (
 		request: Rpc[K]["request"],
+		ctx: RpcContext<Replicant, Computed, Topic>,
 	) => Promisable<Rpc[K]["response"]>;
 };
 
 type NamespaceOptions<
 	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 > = {
 	readonly seedReplicant?: SeedReplicant<Replicant>;
 	readonly implementComputed?: ImplementComputed<Replicant, Computed>;
-	readonly implementRpc?: ImplementRpc<Rpc>;
+	readonly implementRpc?: ImplementRpc<Replicant, Computed, Topic, Rpc>;
 };
 
 export type RequiredOptions<
 	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 > = ([keyof Replicant] extends [never]
 	? {}
@@ -133,7 +179,9 @@ export type RequiredOptions<
 		: { readonly implementComputed: ImplementComputed<Replicant, Computed> }) &
 	([keyof Rpc] extends [never]
 		? {}
-		: { readonly implementRpc: ImplementRpc<Rpc> });
+		: {
+				readonly implementRpc: ImplementRpc<Replicant, Computed, Topic, Rpc>;
+			});
 
 // TODO: support automatic migrations
 const migrationDie = () =>
@@ -434,11 +482,12 @@ export type TopicField<Decoded> = ApplyLambdaToObject<
 	}
 >;
 
-const implementRpc = <Request, Response>(
+const implementRpc = <Request, Response, Ctx = unknown>(
 	namespace: string,
 	name: string,
 	manifest: RpcFieldManifest<Request, Response>,
-	handler: (request: Request) => Promisable<Response>,
+	handler: (request: Request, ctx: Ctx) => Promisable<Response>,
+	ctx: Ctx,
 ) => {
 	const callEncoded = Effect.fn("callEncoded")(function* (payload: JsonValue) {
 		const identity = yield* CurrentIdentity;
@@ -451,7 +500,7 @@ const implementRpc = <Request, Response>(
 		}
 		const request = yield* manifest.request.decode(payload);
 		const response = yield* Effect.tryPromise({
-			try: async () => handler(request),
+			try: async () => handler(request, ctx),
 			catch: (error) =>
 				new RpcCallFailed({ namespace, name, cause: toError(error) }),
 		});
@@ -524,7 +573,20 @@ interface RpcHandlerLambda extends HKT.TypeLambda {
 	readonly Target: { readonly request: unknown; readonly response: unknown };
 	readonly type: (
 		request: this["Target"]["request"],
+		ctx: this["In"],
 	) => Promisable<this["Target"]["response"]>;
+}
+
+interface RpcReplicantAccessorLambda extends HKT.TypeLambda {
+	readonly type: RpcReplicantAccessor<this["Target"]>;
+}
+
+interface RpcComputedAccessorLambda extends HKT.TypeLambda {
+	readonly type: RpcComputedAccessor<this["Target"]>;
+}
+
+interface RpcTopicAccessorLambda extends HKT.TypeLambda {
+	readonly type: RpcTopicAccessor<this["Target"]>;
 }
 
 interface RpcFieldEffectLambda extends HKT.TypeLambda {
@@ -553,7 +615,7 @@ const buildNamespace = <
 >(
 	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	options:
-		| (NamespaceOptions<Replicant, Computed, Rpc> & {
+		| (NamespaceOptions<Replicant, Computed, Topic, Rpc> & {
 				readonly storage?: unknown;
 		  })
 		| undefined,
@@ -636,14 +698,34 @@ const buildNamespace = <
 			manifest.topic,
 		);
 
+		const runtime = yield* Effect.runtime();
+		const rpcContext: RpcContext<Replicant, Computed, Topic> = {
+			replicant: mapValues<
+				ReplicantFieldEffectLambda,
+				RpcReplicantAccessorLambda
+			>((field) => ({
+				get: () => Runtime.runSync(runtime, field.get()),
+				set: (value) => Runtime.runSync(runtime, field.set(value)),
+				update: (fn) => Runtime.runSync(runtime, field.update(fn)),
+			}))(replicantFields),
+			computed: mapValues<ComputedFieldEffectLambda, RpcComputedAccessorLambda>(
+				(field) => ({ get: () => Runtime.runSync(runtime, field.get()) }),
+			)(computedFields),
+			topic: mapValues<TopicFieldEffectLambda, RpcTopicAccessorLambda>(
+				(field) => ({
+					publish: (value) => Runtime.runPromise(runtime, field.publish(value)),
+				}),
+			)(topicFields),
+		};
+
 		const rpcFields = yield* zipEffectValues<
 			RpcFieldManifestLambda,
 			RpcHandlerLambda,
 			RpcFieldEffectLambda,
-			unknown,
+			RpcContext<Replicant, Computed, Topic>,
 			Rpc
 		>()(manifest.rpc, rpcHandlers, (codec, handler, name) =>
-			implementRpc(manifest.namespace, name, codec, handler),
+			implementRpc(manifest.namespace, name, codec, handler, rpcContext),
 		);
 
 		return { replicantFields, computedFields, topicFields, rpcFields };
@@ -659,7 +741,7 @@ export function loadNamespaceEffect<
 	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	...rest: [keyof Replicant | keyof Computed | keyof Rpc] extends [never]
 		? []
-		: [options: RequiredOptions<Replicant, Computed, Rpc>]
+		: [options: RequiredOptions<Replicant, Computed, Topic, Rpc>]
 ) {
 	const [options] = rest;
 	return buildNamespace(manifest, options).pipe(
@@ -687,7 +769,7 @@ async function loadNamespacePromise<
 >(
 	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 	options:
-		| (NamespaceOptions<Replicant, Computed, Rpc> & {
+		| (NamespaceOptions<Replicant, Computed, Topic, Rpc> & {
 				readonly storage?: StorageOption;
 				readonly frontend?: FrontendConfig;
 		  })
@@ -803,7 +885,7 @@ export function loadNamespace<
 				},
 			]
 		: [
-				options: RequiredOptions<Replicant, Computed, Rpc> & {
+				options: RequiredOptions<Replicant, Computed, Topic, Rpc> & {
 					// TODO: inject storage from loadNodeCG
 					readonly storage?: StorageOption;
 					readonly frontend?: FrontendConfig;
@@ -821,7 +903,7 @@ interface ImplementedNamespace<
 > {
 	readonly manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>;
 	readonly impl:
-		| (NamespaceOptions<Replicant, Computed, Rpc> & {
+		| (NamespaceOptions<Replicant, Computed, Topic, Rpc> & {
 				readonly frontend?: FrontendConfig;
 		  })
 		| undefined;
@@ -841,7 +923,7 @@ export function implementNamespace<
 	...rest: [keyof Replicant | keyof Computed | keyof Rpc] extends [never]
 		? [options?: { readonly frontend?: FrontendConfig }]
 		: [
-				impl: RequiredOptions<Replicant, Computed, Rpc> & {
+				impl: RequiredOptions<Replicant, Computed, Topic, Rpc> & {
 					readonly frontend?: FrontendConfig;
 				},
 			]
@@ -860,6 +942,7 @@ type RelaxCovered<O, Covered extends PropertyKey> = Omit<O, Covered> &
 type ExtensionSupplement<
 	Replicant extends Record<string, unknown>,
 	Computed extends Record<string, unknown>,
+	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 	CoveredReplicant extends PropertyKey,
 	CoveredComputed extends PropertyKey,
@@ -892,10 +975,16 @@ type ExtensionSupplement<
 			}) &
 	([keyof Omit<Rpc, CoveredRpc>] extends [never]
 		? {
-				readonly implementRpc?: RelaxCovered<ImplementRpc<Rpc>, CoveredRpc>;
+				readonly implementRpc?: RelaxCovered<
+					ImplementRpc<Replicant, Computed, Topic, Rpc>,
+					CoveredRpc
+				>;
 			}
 		: {
-				readonly implementRpc: RelaxCovered<ImplementRpc<Rpc>, CoveredRpc>;
+				readonly implementRpc: RelaxCovered<
+					ImplementRpc<Replicant, Computed, Topic, Rpc>,
+					CoveredRpc
+				>;
 			});
 
 export function loadExtendedNamespace<
@@ -910,6 +999,7 @@ export function loadExtendedNamespace<
 	additional: ExtensionSupplement<
 		Replicant,
 		Computed,
+		Topic,
 		Rpc,
 		keyof Base["manifest"]["replicant"] & string,
 		keyof Base["manifest"]["computed"] & string,
@@ -920,7 +1010,7 @@ export function loadExtendedNamespace<
 		readonly frontend?: FrontendConfig;
 	},
 ) {
-	const merged: NamespaceOptions<Replicant, Computed, Rpc> = {
+	const merged: NamespaceOptions<Replicant, Computed, Topic, Rpc> = {
 		seedReplicant: mergeRecords<SeedReplicant<Replicant>>(
 			implemented.impl?.seedReplicant,
 			additional.seedReplicant,
@@ -929,7 +1019,7 @@ export function loadExtendedNamespace<
 			implemented.impl?.implementComputed,
 			additional.implementComputed,
 		),
-		implementRpc: mergeRecords<ImplementRpc<Rpc>>(
+		implementRpc: mergeRecords<ImplementRpc<Replicant, Computed, Topic, Rpc>>(
 			implemented.impl?.implementRpc,
 			additional.implementRpc,
 		),

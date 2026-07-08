@@ -26,6 +26,7 @@ import {
 	loadExtendedNamespace,
 	loadNamespace,
 	loadNamespaceEffect,
+	type RpcContext,
 } from "./load-namespace.ts";
 import { fieldInternal } from "./load-namespace.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
@@ -1108,7 +1109,11 @@ describe("rpc", () => {
 				const result = yield* loaded.rpc.echo[fieldInternal]
 					.callEncoded("21")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous));
-				expect(echo).toHaveBeenCalledWith(21);
+				expect(echo).toHaveBeenCalledWith(21, {
+					replicant: {},
+					computed: {},
+					topic: {},
+				});
 				expect(result).toBe("42");
 			}),
 		),
@@ -1178,6 +1183,196 @@ describe("rpc", () => {
 					.callEncoded("1")
 					.pipe(Effect.provideService(CurrentIdentity, anonymous), Effect.flip);
 				expect(error._tag).toBe("RpcCallFailed");
+			}),
+		),
+	);
+});
+
+describe("rpc handler context (2nd arg)", () => {
+	const anonWrite = { write: { allow: ["anonymous"] } } as const;
+	const ctxManifest = defineNamespace("ns", {
+		replicant: { count: { schema: Schema.Number } },
+		computed: { doubled: { schema: Schema.Number } },
+		topic: { cheer: { schema: Schema.String } },
+		rpc: {
+			readCount: {
+				schema: { request: Schema.String, response: Schema.Number },
+				permission: anonWrite,
+			},
+			setCount: {
+				schema: { request: Schema.Number, response: Schema.Number },
+				permission: anonWrite,
+			},
+			bump: {
+				schema: { request: Schema.Number, response: Schema.Number },
+				permission: anonWrite,
+			},
+			readDoubled: {
+				schema: { request: Schema.String, response: Schema.Number },
+				permission: anonWrite,
+			},
+			announce: {
+				schema: { request: Schema.String, response: Schema.String },
+				permission: anonWrite,
+			},
+			pure: {
+				schema: { request: Schema.String, response: Schema.String },
+				permission: anonWrite,
+			},
+		},
+	});
+
+	type Ctx = RpcContext<
+		{ count: number },
+		{ doubled: number },
+		{ cheer: string }
+	>;
+
+	const load = (
+		storageStub: ReturnType<typeof createStorageStub>,
+		brokerStub: ReturnType<typeof createBrokerStub>,
+		handlers: {
+			readCount: (request: string, ctx: Ctx) => Promisable<number>;
+			setCount: (request: number, ctx: Ctx) => Promisable<number>;
+			bump: (request: number, ctx: Ctx) => Promisable<number>;
+			readDoubled: (request: string, ctx: Ctx) => Promisable<number>;
+			announce: (request: string, ctx: Ctx) => Promisable<string>;
+			pure: (request: string) => Promisable<string>;
+		},
+	) =>
+		loadNamespaceEffect(ctxManifest, {
+			seedReplicant: { count: () => 0 },
+			implementComputed: { doubled: (sources) => sources.count * 2 },
+			implementRpc: handlers,
+		}).pipe(
+			Effect.provideService(ReplicantStorageService, storageStub),
+			Effect.provideService(TopicBrokerService, brokerStub),
+		);
+
+	const noopHandlers = {
+		readCount: () => 0,
+		setCount: () => 0,
+		bump: () => 0,
+		readDoubled: () => 0,
+		announce: (request: string) => request,
+		pure: (request: string) => request,
+	};
+
+	test(
+		"a handler reads the current replicant value via ctx.replicant.get",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(10));
+				const loaded = yield* load(storageStub, createBrokerStub(), {
+					...noopHandlers,
+					readCount: (_request, ctx) => ctx.replicant.count.get(),
+				});
+				const result = yield* loaded.rpc.readCount[fieldInternal]
+					.callEncoded("")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(result).toBe(10);
+			}),
+		),
+	);
+
+	test(
+		"a handler sets a replicant value via ctx.replicant.set",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(0));
+				const loaded = yield* load(storageStub, createBrokerStub(), {
+					...noopHandlers,
+					setCount: (request, ctx) => {
+						ctx.replicant.count.set(request);
+						return request;
+					},
+				});
+				yield* loaded.rpc.setCount[fieldInternal]
+					.callEncoded(9)
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 9);
+			}),
+		),
+	);
+
+	test(
+		"a handler updates a replicant value via ctx.replicant.update",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(10));
+				const loaded = yield* load(storageStub, createBrokerStub(), {
+					...noopHandlers,
+					bump: (request, ctx) => {
+						ctx.replicant.count.update((c) => c + request);
+						return ctx.replicant.count.get();
+					},
+				});
+				const result = yield* loaded.rpc.bump[fieldInternal]
+					.callEncoded(5)
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(storageStub.update).toHaveBeenCalledWith("ns", "count", 15);
+				expect(result).toBe(10);
+			}),
+		),
+	);
+
+	test(
+		"a handler reads a computed value via ctx.computed.get",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(10));
+				const loaded = yield* load(storageStub, createBrokerStub(), {
+					...noopHandlers,
+					readDoubled: (_request, ctx) => ctx.computed.doubled.get(),
+				});
+				const result = yield* loaded.rpc.readDoubled[fieldInternal]
+					.callEncoded("")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(result).toBe(20);
+			}),
+		),
+	);
+
+	test(
+		"a handler publishes a topic via ctx.topic.publish",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(0));
+				const brokerStub = createBrokerStub();
+				const loaded = yield* load(storageStub, brokerStub, {
+					...noopHandlers,
+					announce: async (request, ctx) => {
+						await ctx.topic.cheer.publish(request);
+						return request;
+					},
+				});
+				yield* loaded.rpc.announce[fieldInternal]
+					.callEncoded("hi")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(brokerStub.publish).toHaveBeenCalledWith("ns", "cheer", "hi");
+			}),
+		),
+	);
+
+	test(
+		"a handler that ignores the ctx still runs",
+		testEffect(
+			Effect.gen(function* () {
+				const storageStub = createStorageStub();
+				storageStub.read.mockReturnValue(Option.some(0));
+				const loaded = yield* load(storageStub, createBrokerStub(), {
+					...noopHandlers,
+					pure: (request) => request.toUpperCase(),
+				});
+				const result = yield* loaded.rpc.pure[fieldInternal]
+					.callEncoded("ping")
+					.pipe(Effect.provideService(CurrentIdentity, anonymous));
+				expect(result).toBe("PING");
 			}),
 		),
 	);
