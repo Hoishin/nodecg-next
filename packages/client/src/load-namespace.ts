@@ -182,7 +182,9 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		yield* transport.updateReplicant(namespace, name, encoded);
 	});
 
-	const update = Effect.fn("update")(function* (fn: (value: Decoded) => Decoded) {
+	const update = Effect.fn("update")(function* (
+		fn: (value: Decoded) => Decoded,
+	) {
 		const current = yield* get();
 		const next = yield* Effect.try(() => fn(current));
 		const encoded = yield* manifest.encode(next);

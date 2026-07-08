@@ -195,7 +195,9 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		return yield* storage.update(namespace, name, value);
 	});
 
-	const update = Effect.fn("update")(function* (fn: (value: Decoded) => Decoded) {
+	const update = Effect.fn("update")(function* (
+		fn: (value: Decoded) => Decoded,
+	) {
 		const current = yield* get();
 		const next = yield* Effect.try({
 			try: () => fn(current),

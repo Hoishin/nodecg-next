@@ -134,7 +134,7 @@ match.replicant.label.subscribe((label) => {
   console.log(await ns.replicant.counter.get()); // asynchronous over the network
   ```
 
-- ✅ Replicant is immutable: read-only value, set or updated by returning a new value from the updater (which may be async)
+- ✅ Replicant is immutable: read-only value, set or updated by returning a new value from the updater
 
   ```ts
   console.log(await ns.replicant.counter.get()); // Returns read-only value
