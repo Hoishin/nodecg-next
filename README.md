@@ -283,10 +283,6 @@ match.replicant.label.subscribe((label) => {
 - 🚧 Zod
 - 🚧 Valibot
 
-#### What happens when multiple updates happen at the same time?
-
-#### What happens when only client defines a replicant?
-
 ### Messaging
 
 - ✅ Topics fan out message with no reply
