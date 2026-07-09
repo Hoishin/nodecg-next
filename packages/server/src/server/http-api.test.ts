@@ -28,7 +28,7 @@ import { ReplicantNotFound } from "../services/replicant-storage/replicant-stora
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
-import { buildNodecgApi } from "./http-api.ts";
+import { buildInternalApi } from "./http-api.ts";
 
 type Internal = ReplicantField<unknown>[typeof fieldInternal];
 
@@ -142,7 +142,7 @@ function webHandler(
 ) {
 	const { handler } = HttpApiBuilder.toWebHandler(
 		Layer.mergeAll(
-			buildNodecgApi({ namespaces }),
+			buildInternalApi({ namespaces }),
 			HttpServer.layerContext,
 		).pipe(
 			Layer.provide(middleware),

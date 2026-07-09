@@ -233,7 +233,7 @@ const RolesGroupLive = HttpApiBuilder.group(InternalApi, "Roles", (handlers) =>
 	}),
 );
 
-export const buildNodecgApi = (options: {
+export const buildInternalApi = (options: {
 	namespaces: ReadonlyArray<LoadedNamespace>;
 }) => {
 	const registry = buildFieldRegistry(options.namespaces);

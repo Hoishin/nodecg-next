@@ -9,7 +9,7 @@ import {
 import { AuthenticationMiddlewareLive } from "./auth/middleware.ts";
 import { type LoadedNamespace } from "./load-namespace.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
-import { buildNodecgApi } from "./server/http-api.ts";
+import { buildInternalApi } from "./server/http-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
@@ -41,7 +41,7 @@ export const loadNodecgEffect = Effect.fn(function* (
 				dev: options.dev ?? false,
 			}),
 		),
-		Layer.provide(buildNodecgApi({ namespaces: options.namespaces })),
+		Layer.provide(buildInternalApi({ namespaces: options.namespaces })),
 		Layer.provide(AuthenticationMiddlewareLive),
 		Layer.provide(InMemorySessionStore),
 		Layer.provide(InMemoryStashStore),
