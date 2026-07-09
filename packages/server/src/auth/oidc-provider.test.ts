@@ -4,7 +4,8 @@ import { afterEach, expect, test } from "vitest";
 
 import { makeOidcProvider } from "./oidc-provider.ts";
 
-const redirectUri = "http://localhost:3000/api/authentication/callback/local";
+const redirectUri =
+	"http://localhost:3000/api/internal/authentication/callback/local";
 
 let server: OAuth2Server | undefined;
 

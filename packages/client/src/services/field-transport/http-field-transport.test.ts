@@ -32,7 +32,7 @@ describe("get", () => {
 				expect(value).toBe(42);
 				const request = requestOf(fetch);
 				expect(request.method).toBe("GET");
-				expect(request.url).toContain("/api/namespaces/root/replicant/count");
+				expect(request.url).toContain("/api/internal/namespaces/root/replicant/count");
 			}).pipe(Effect.provide(HttpFieldTransport)),
 		),
 	);
@@ -90,7 +90,7 @@ describe("update", () => {
 
 				const request = requestOf(fetch);
 				expect(request.method).toBe("PUT");
-				expect(request.url).toContain("/api/namespaces/root/replicant/count");
+				expect(request.url).toContain("/api/internal/namespaces/root/replicant/count");
 				const body = yield* Effect.promise(() => request.text());
 				expect(JSON.parse(body)).toBe(7);
 			}).pipe(Effect.provide(HttpFieldTransport)),
@@ -131,7 +131,7 @@ describe("publishTopic", () => {
 
 				const request = requestOf(fetch);
 				expect(request.method).toBe("POST");
-				expect(request.url).toContain("/api/namespaces/root/topic/chat");
+				expect(request.url).toContain("/api/internal/namespaces/root/topic/chat");
 				const body = yield* Effect.promise(() => request.text());
 				expect(JSON.parse(body)).toBe(7);
 			}).pipe(Effect.provide(HttpFieldTransport)),
@@ -173,7 +173,7 @@ describe("callRpc", () => {
 				expect(response).toBe(84);
 				const request = requestOf(fetch);
 				expect(request.method).toBe("POST");
-				expect(request.url).toContain("/api/namespaces/root/rpc/echo");
+				expect(request.url).toContain("/api/internal/namespaces/root/rpc/echo");
 				const body = yield* Effect.promise(() => request.text());
 				expect(JSON.parse(body)).toBe(42);
 			}).pipe(Effect.provide(HttpFieldTransport)),

@@ -8,7 +8,7 @@ import {
 import { isAdminTier } from "@nodecg/core";
 import {
 	CurrentIdentity,
-	NodecgApi,
+	InternalApi,
 	RpcCallError,
 	sessionCookieName,
 	sessionCookieSecurity,
@@ -64,10 +64,10 @@ const setSessionCookie = (value: string, maxAge: Duration.DurationInput) =>
 	});
 
 const callbackUri = (origin: string, provider: string) =>
-	`${origin}/api/authentication/callback/${provider}`;
+	`${origin}/api/internal/authentication/callback/${provider}`;
 
 const AuthenticationGroupLive = HttpApiBuilder.group(
-	NodecgApi,
+	InternalApi,
 	"Authentication",
 	(handlers) =>
 		Effect.gen(function* () {
@@ -204,7 +204,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 		}),
 );
 
-const RolesGroupLive = HttpApiBuilder.group(NodecgApi, "Roles", (handlers) =>
+const RolesGroupLive = HttpApiBuilder.group(InternalApi, "Roles", (handlers) =>
 	Effect.gen(function* () {
 		const roleStore = yield* RoleStoreService;
 
@@ -239,13 +239,13 @@ export const buildNodecgApi = (options: {
 	const registry = buildFieldRegistry(options.namespaces);
 
 	const HealthGroupLive = HttpApiBuilder.group(
-		NodecgApi,
+		InternalApi,
 		"Health",
 		(handlers) => handlers.handle("ping", () => Effect.succeed("pong")),
 	);
 
 	const ReplicantGroupLive = HttpApiBuilder.group(
-		NodecgApi,
+		InternalApi,
 		"Replicant",
 		(handlers) =>
 			handlers
@@ -293,7 +293,7 @@ export const buildNodecgApi = (options: {
 	);
 
 	const ComputedGroupLive = HttpApiBuilder.group(
-		NodecgApi,
+		InternalApi,
 		"Computed",
 		(handlers) =>
 			handlers.handle("get", ({ path: { namespace, name } }) =>
@@ -315,7 +315,7 @@ export const buildNodecgApi = (options: {
 			),
 	);
 
-	const TopicGroupLive = HttpApiBuilder.group(NodecgApi, "Topic", (handlers) =>
+	const TopicGroupLive = HttpApiBuilder.group(InternalApi, "Topic", (handlers) =>
 		handlers.handle("publish", ({ path: { namespace, name }, payload }) =>
 			Effect.gen(function* () {
 				const field = registry.topic.get(namespace)?.get(name);
@@ -332,7 +332,7 @@ export const buildNodecgApi = (options: {
 		),
 	);
 
-	const RpcGroupLive = HttpApiBuilder.group(NodecgApi, "Rpc", (handlers) =>
+	const RpcGroupLive = HttpApiBuilder.group(InternalApi, "Rpc", (handlers) =>
 		handlers.handle("call", ({ path: { namespace, name }, payload }) =>
 			Effect.gen(function* () {
 				const field = registry.rpc.get(namespace)?.get(name);
@@ -353,7 +353,7 @@ export const buildNodecgApi = (options: {
 		),
 	);
 
-	return HttpApiBuilder.api(NodecgApi).pipe(
+	return HttpApiBuilder.api(InternalApi).pipe(
 		Layer.provide(HealthGroupLive),
 		Layer.provide(ReplicantGroupLive),
 		Layer.provide(ComputedGroupLive),

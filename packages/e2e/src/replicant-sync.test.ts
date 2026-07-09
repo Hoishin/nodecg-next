@@ -4,14 +4,14 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { extendedManifest, fixtureManifest } from "./fixture-replicant.ts";
 
 const login = (subject: string) =>
-	fetch(`/api/authentication/login/dev?as=${subject}`, { method: "POST" });
-const logout = () => fetch("/api/authentication/logout", { method: "POST" });
+	fetch(`/api/internal/authentication/login/dev?as=${subject}`, { method: "POST" });
+const logout = () => fetch("/api/internal/authentication/logout", { method: "POST" });
 const assignRole = (
 	action: "grant" | "revoke",
 	subject: string,
 	role: string,
 ) =>
-	fetch(`/api/roles/${action}`, {
+	fetch(`/api/internal/roles/${action}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ issuer: "dev", subject, role }),

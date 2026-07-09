@@ -1,5 +1,5 @@
 import { FetchHttpClient, HttpApiClient } from "@effect/platform";
-import { NodecgApi } from "@nodecg/internal";
+import { InternalApi } from "@nodecg/internal";
 import { toError } from "@nodecg/internal/utils";
 import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
@@ -17,7 +17,7 @@ import {
 export const HttpFieldTransport = Layer.effect(
 	FieldTransportService,
 	Effect.gen(function* () {
-		const client = yield* HttpApiClient.make(NodecgApi);
+		const client = yield* HttpApiClient.make(InternalApi);
 
 		const readReplicant = Effect.fn("FieldTransport.readReplicant")(function* (
 			namespace: string,

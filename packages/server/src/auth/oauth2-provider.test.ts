@@ -7,7 +7,8 @@ import {
 	type OAuth2ProviderConfig,
 } from "./oauth2-provider.ts";
 
-const redirectUri = "http://localhost:3000/api/authentication/callback/local";
+const redirectUri =
+	"http://localhost:3000/api/internal/authentication/callback/local";
 const pinnedIssuer = "https://oauth2.example";
 
 let server: OAuth2Server | undefined;

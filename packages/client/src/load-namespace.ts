@@ -5,7 +5,7 @@ import type {
 	RpcFieldManifest,
 } from "@nodecg/core";
 import {
-	NodecgApi,
+	InternalApi,
 	type FieldIdentifier,
 	fieldIdentifierEquivalence,
 } from "@nodecg/internal";
@@ -431,7 +431,7 @@ const buildNamespace = <
 	});
 
 const buildHttpClient = Effect.fn("buildHttpClient")(function* () {
-	const httpClient = yield* HttpApiClient.make(NodecgApi);
+	const httpClient = yield* HttpApiClient.make(InternalApi);
 	return {
 		me: httpClient.Authentication.me,
 		logout: httpClient.Authentication.logout,

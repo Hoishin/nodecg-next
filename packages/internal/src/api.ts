@@ -126,7 +126,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 			.addError(HttpApiError.Forbidden),
 	);
 
-export const NodecgApi = HttpApi.make("NodecgApi")
+export const InternalApi = HttpApi.make("InternalApi")
 	.add(HealthGroup)
 	.add(ReplicantGroup)
 	.add(ComputedGroup)
@@ -135,4 +135,4 @@ export const NodecgApi = HttpApi.make("NodecgApi")
 	.add(AuthenticationGroup)
 	.add(RolesGroup)
 	.middleware(AuthenticationMiddleware)
-	.prefix("/api");
+	.prefix("/api/internal");

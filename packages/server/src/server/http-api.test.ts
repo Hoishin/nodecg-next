@@ -160,10 +160,10 @@ function webHandler(
 	return handler;
 }
 
-const getUrl = "http://x/api/namespaces/root/replicant/count";
-const computedUrl = "http://x/api/namespaces/root/computed/count";
-const topicUrl = "http://x/api/namespaces/root/topic/chat";
-const rpcUrl = "http://x/api/namespaces/root/rpc/echo";
+const getUrl = "http://x/api/internal/namespaces/root/replicant/count";
+const computedUrl = "http://x/api/internal/namespaces/root/computed/count";
+const topicUrl = "http://x/api/internal/namespaces/root/topic/chat";
+const rpcUrl = "http://x/api/internal/namespaces/root/rpc/echo";
 
 const putRequest = (value: unknown) =>
 	new Request(getUrl, {
@@ -182,7 +182,7 @@ const postRequest = (url: string, value: unknown) =>
 describe("ping", () => {
 	test("returns pong", async () => {
 		const handler = webHandler([]);
-		const res = await handler(new Request("http://x/api/ping"));
+		const res = await handler(new Request("http://x/api/internal/ping"));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toBe("pong");
 	});
@@ -191,7 +191,7 @@ describe("ping", () => {
 describe("me", () => {
 	test("resolves an anonymous request to the anonymous identity", async () => {
 		const handler = webHandler([]);
-		const res = await handler(new Request("http://x/api/me"));
+		const res = await handler(new Request("http://x/api/internal/me"));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ identity: { _tag: "anonymous" } });
 	});
@@ -199,7 +199,7 @@ describe("me", () => {
 
 describe("roles", () => {
 	function rolesRequest(action: "grant" | "revoke", role: string) {
-		return new Request(`http://x/api/roles/${action}`, {
+		return new Request(`http://x/api/internal/roles/${action}`, {
 			method: "POST",
 			body: JSON.stringify({ issuer: "dev", subject: "operator", role }),
 			headers: { "content-type": "application/json" },

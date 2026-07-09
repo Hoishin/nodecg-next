@@ -22,9 +22,9 @@ type State =
 
 // TODO: use effect platform http client
 const fetchIdentity = async (): Promise<Identity> => {
-	const response = await fetch("/api/me");
+	const response = await fetch("/api/internal/me");
 	if (!response.ok) {
-		throw new Error(`GET /api/me responded ${response.status}`);
+		throw new Error(`GET /api/internal/me responded ${response.status}`);
 	}
 	const body: { identity: Identity } = await response.json();
 	return body.identity;
@@ -74,7 +74,7 @@ export function Login() {
 	};
 
 	const logOut = () => {
-		void fetch("/api/authentication/logout", { method: "POST" }).then(() => {
+		void fetch("/api/internal/authentication/logout", { method: "POST" }).then(() => {
 			setState({ status: "ready", identity: { _tag: "anonymous" } });
 		});
 	};
@@ -101,7 +101,7 @@ export function Login() {
 	return (
 		<form
 			method="post"
-			action="/api/authentication/login/local"
+			action="/api/internal/authentication/login/local"
 			target={popupName}
 			onSubmit={logIn}
 		>
