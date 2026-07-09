@@ -1,4 +1,8 @@
-import { HttpApiError, HttpApiMiddleware } from "@effect/platform";
+import {
+	HttpApiError,
+	HttpApiMiddleware,
+	HttpApiSecurity,
+} from "@effect/platform";
 import { Context, Schema } from "effect";
 
 import { RoleNameSchema } from "./role.ts";
@@ -40,10 +44,18 @@ export class CurrentIdentity extends Context.Tag("CurrentIdentity")<
 	Identity
 >() {}
 
+export const sessionCookieName = "nodecg.sid";
+
+export const sessionCookieSecurity = HttpApiSecurity.apiKey({
+	key: sessionCookieName,
+	in: "cookie",
+});
+
 export class AuthenticationMiddleware extends HttpApiMiddleware.Tag<AuthenticationMiddleware>()(
 	"Authentication",
 	{
 		provides: CurrentIdentity,
 		failure: HttpApiError.Unauthorized,
+		security: { cookie: sessionCookieSecurity },
 	},
 ) {}

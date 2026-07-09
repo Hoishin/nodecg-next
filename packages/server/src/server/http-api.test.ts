@@ -132,7 +132,9 @@ function loadedNamespace(
 }
 
 const asIdentity = (identity: Identity) =>
-	Layer.succeed(AuthenticationMiddleware, Effect.succeed(identity));
+	Layer.succeed(AuthenticationMiddleware, {
+		cookie: () => Effect.succeed(identity),
+	});
 
 function webHandler(
 	namespaces: ReadonlyArray<LoadedNamespace>,

@@ -13,6 +13,8 @@ export {
 	AnonymousIdentitySchema,
 	type ServerIdentity,
 	ServerIdentitySchema,
+	sessionCookieName,
+	sessionCookieSecurity,
 } from "./auth.ts";
 export {
 	ClientMessage,

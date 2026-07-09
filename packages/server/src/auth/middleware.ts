@@ -1,6 +1,6 @@
-import { HttpApiError, HttpServerRequest } from "@effect/platform";
+import { HttpApiError } from "@effect/platform";
 import { AuthenticationMiddleware } from "@nodecg/internal";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
 
 import { config } from "../server-config.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
@@ -18,16 +18,21 @@ export const AuthenticationMiddlewareLive = Layer.effect(
 		const roleStore = yield* RoleStoreService;
 		const resolve = resolveSessionIdentity({ sessions, roleStore });
 
-		return Effect.gen(function* () {
-			const request = yield* HttpServerRequest.HttpServerRequest;
-			const resolved = yield* resolve(request);
-			if (Option.isSome(resolved)) {
-				return resolved.value;
-			}
-			if (requireAuth) {
-				return yield* new HttpApiError.Unauthorized();
-			}
-			return anonymousIdentity;
-		});
+		return {
+			cookie: (cookie: Redacted.Redacted<string>) =>
+				Effect.gen(function* () {
+					const value = Redacted.value(cookie);
+					const resolved = yield* resolve(
+						value.length === 0 ? Option.none() : Option.some(value),
+					);
+					if (Option.isSome(resolved)) {
+						return resolved.value;
+					}
+					if (requireAuth) {
+						return yield* new HttpApiError.Unauthorized();
+					}
+					return anonymousIdentity;
+				}),
+		};
 	}),
 );

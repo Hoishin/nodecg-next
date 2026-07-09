@@ -11,6 +11,7 @@ import {
 	fieldIdentifierEquivalence,
 	type Identity,
 	ServerMessage,
+	sessionCookieName,
 	SubscribeRejectedMessage,
 } from "@nodecg/internal";
 import {
@@ -177,7 +178,9 @@ export const websocketRoute = (options: {
 				"/ws",
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest;
-					const resolved = yield* resolve(request);
+					const resolved = yield* resolve(
+						Option.fromNullable(request.cookies[sessionCookieName]),
+					);
 					if (Option.isNone(resolved) && requireAuth) {
 						return HttpServerResponse.empty({ status: 401 });
 					}

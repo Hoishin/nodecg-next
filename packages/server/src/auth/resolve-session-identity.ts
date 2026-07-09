@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform";
 import {
 	HumanIdentitySchema,
 	type Identity,
@@ -8,17 +7,13 @@ import { Effect, Option } from "effect";
 
 import type { RoleStore } from "../services/role-store/role-store.ts";
 import type { SessionStore } from "../services/session-store/session-store.ts";
-import { sessionCookieName } from "./session-cookie-name.ts";
 
 export const anonymousIdentity = AnonymousIdentitySchema.make();
 
 export const resolveSessionIdentity =
 	(deps: { readonly sessions: SessionStore; readonly roleStore: RoleStore }) =>
-	(
-		request: HttpServerRequest.HttpServerRequest,
-	): Effect.Effect<Option.Option<Identity>> =>
+	(sessionId: Option.Option<string>): Effect.Effect<Option.Option<Identity>> =>
 		Effect.gen(function* () {
-			const sessionId = Option.fromNullable(request.cookies[sessionCookieName]);
 			if (Option.isNone(sessionId)) {
 				return Option.none();
 			}

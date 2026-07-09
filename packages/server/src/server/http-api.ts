@@ -1,11 +1,18 @@
 import {
+	Cookies,
 	HttpApiBuilder,
 	HttpApiError,
 	HttpServerRequest,
 	HttpServerResponse,
 } from "@effect/platform";
 import { isAdminTier } from "@nodecg/core";
-import { CurrentIdentity, NodecgApi, RpcCallError } from "@nodecg/internal";
+import {
+	CurrentIdentity,
+	NodecgApi,
+	RpcCallError,
+	sessionCookieName,
+	sessionCookieSecurity,
+} from "@nodecg/internal";
 import {
 	type Duration,
 	Effect,
@@ -17,7 +24,6 @@ import {
 } from "effect";
 
 import { AuthProviderRegistry } from "../auth/auth-provider.ts";
-import { sessionCookieName } from "../auth/session-cookie-name.ts";
 import { buildFieldRegistry } from "../field-registry.ts";
 import type { LoadedNamespace } from "../load-namespace.ts";
 import { config } from "../server-config.ts";
@@ -27,15 +33,19 @@ import { StashStoreService } from "../services/stash-store/stash-store.ts";
 
 const stashCookieName = "nodecg.login";
 
-const addCookie =
-	(name: string, value: string, maxAge: Duration.DurationInput) =>
+const cookieOptions: NonNullable<Cookies.Cookie["options"]> = {
+	httpOnly: true,
+	sameSite: "lax",
+	secure: false,
+	path: "/",
+};
+
+const setStash =
+	(value: string, maxAge: Duration.DurationInput) =>
 	(response: HttpServerResponse.HttpServerResponse) =>
 		response.pipe(
-			HttpServerResponse.setCookie(name, value, {
-				httpOnly: true,
-				sameSite: "lax",
-				secure: false,
-				path: "/",
+			HttpServerResponse.setCookie(stashCookieName, value, {
+				...cookieOptions,
 				maxAge,
 			}),
 			// TODO: is this a correct silencing?
@@ -45,7 +55,13 @@ const addCookie =
 			),
 		);
 
-const clearStash = addCookie(stashCookieName, "", 0);
+const clearStash = setStash("", 0);
+
+const setSessionCookie = (value: string, maxAge: Duration.DurationInput) =>
+	HttpApiBuilder.securitySetCookie(sessionCookieSecurity, value, {
+		...cookieOptions,
+		maxAge,
+	});
 
 const callbackUri = (origin: string, provider: string) =>
 	`${origin}/api/authentication/callback/${provider}`;
@@ -94,7 +110,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						const stashId = yield* stashes.create(redirect.right.stash);
 						return yield* HttpServerResponse.redirect(redirect.right.url, {
 							status: 302,
-						}).pipe(addCookie(stashCookieName, stashId, "10 minutes")); // TODO: avoid hard-coded duration
+						}).pipe(setStash(stashId, "10 minutes")); // TODO: avoid hard-coded duration
 					}),
 				)
 				.handle("callback", ({ path: { provider: name } }) =>
@@ -170,10 +186,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							);
 						}
 						const sessionId = yield* sessions.create(account.right);
-						return yield* HttpServerResponse.text("Success").pipe(
-							addCookie(sessionCookieName, sessionId, ttl),
-							Effect.andThen(clearStash),
-						);
+						yield* setSessionCookie(sessionId, ttl);
+						return yield* HttpServerResponse.text("Success").pipe(clearStash);
 					}),
 				)
 				.handle("logout", () =>
@@ -183,9 +197,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						if (typeof sessionId !== "undefined") {
 							yield* sessions.revoke(sessionId);
 						}
-						return yield* HttpServerResponse.empty({ status: 204 }).pipe(
-							addCookie(sessionCookieName, "", 0),
-						);
+						yield* setSessionCookie("", 0);
+						return HttpServerResponse.empty({ status: 204 });
 					}),
 				);
 		}),
