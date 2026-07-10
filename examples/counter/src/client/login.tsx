@@ -74,9 +74,11 @@ export function Login() {
 	};
 
 	const logOut = () => {
-		void fetch("/api/internal/authentication/logout", { method: "POST" }).then(() => {
-			setState({ status: "ready", identity: { _tag: "anonymous" } });
-		});
+		void fetch("/api/internal/authentication/logout", { method: "POST" }).then(
+			() => {
+				setState({ status: "ready", identity: { _tag: "anonymous" } });
+			},
+		);
 	};
 
 	if (state.status === "loading") {
