@@ -51,11 +51,20 @@ export const sessionCookieSecurity = HttpApiSecurity.apiKey({
 	in: "cookie",
 });
 
-export class AuthenticationMiddleware extends HttpApiMiddleware.Tag<AuthenticationMiddleware>()(
+export class HumanAuthenticationMiddleware extends HttpApiMiddleware.Tag<HumanAuthenticationMiddleware>()(
 	"Authentication",
 	{
 		provides: CurrentIdentity,
 		failure: HttpApiError.Unauthorized,
 		security: { cookie: sessionCookieSecurity },
+	},
+) {}
+
+export class MachineAuthenticationMiddleware extends HttpApiMiddleware.Tag<MachineAuthenticationMiddleware>()(
+	"MachineAuthentication",
+	{
+		provides: CurrentIdentity,
+		failure: HttpApiError.Unauthorized,
+		security: { bearer: HttpApiSecurity.bearer },
 	},
 ) {}

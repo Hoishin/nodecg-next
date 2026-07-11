@@ -8,8 +8,6 @@ import {
 import { isAdminTier } from "@nodecg/core";
 import {
 	CurrentIdentity,
-	InternalApi,
-	RpcCallError,
 	sessionCookieName,
 	sessionCookieSecurity,
 } from "@nodecg/internal";
@@ -23,13 +21,20 @@ import {
 	Option,
 } from "effect";
 
-import { AuthProviderRegistry } from "../auth/auth-provider.ts";
-import { buildFieldRegistry } from "../field-registry.ts";
-import type { LoadedNamespace } from "../load-namespace.ts";
-import { config } from "../server-config.ts";
-import { RoleStoreService } from "../services/role-store/role-store.ts";
-import { SessionStoreService } from "../services/session-store/session-store.ts";
-import { StashStoreService } from "../services/stash-store/stash-store.ts";
+import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
+import type { FieldRegistry } from "../../field-registry.ts";
+import { config } from "../../server-config.ts";
+import { RoleStoreService } from "../../services/role-store/role-store.ts";
+import { SessionStoreService } from "../../services/session-store/session-store.ts";
+import { StashStoreService } from "../../services/stash-store/stash-store.ts";
+import { RootApi } from "../root-api.ts";
+import {
+	callRpc,
+	getComputed,
+	getReplicant,
+	publishTopic,
+	updateReplicant,
+} from "./shared.ts";
 
 const stashCookieName = "nodecg.login";
 
@@ -67,7 +72,7 @@ const callbackUri = (origin: string, provider: string) =>
 	`${origin}/api/internal/authentication/callback/${provider}`;
 
 const AuthenticationGroupLive = HttpApiBuilder.group(
-	InternalApi,
+	RootApi,
 	"Authentication",
 	(handlers) =>
 		Effect.gen(function* () {
@@ -204,7 +209,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 		}),
 );
 
-const RolesGroupLive = HttpApiBuilder.group(InternalApi, "Roles", (handlers) =>
+const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	Effect.gen(function* () {
 		const roleStore = yield* RoleStoreService;
 
@@ -233,133 +238,28 @@ const RolesGroupLive = HttpApiBuilder.group(InternalApi, "Roles", (handlers) =>
 	}),
 );
 
-export const buildInternalApi = (options: {
-	namespaces: ReadonlyArray<LoadedNamespace>;
-}) => {
-	const registry = buildFieldRegistry(options.namespaces);
-
-	const HealthGroupLive = HttpApiBuilder.group(
-		InternalApi,
-		"Health",
-		(handlers) => handlers.handle("ping", () => Effect.succeed("pong")),
-	);
-
-	const ReplicantGroupLive = HttpApiBuilder.group(
-		InternalApi,
-		"Replicant",
-		(handlers) =>
+export const buildInternalGroups = (registry: FieldRegistry) =>
+	Layer.mergeAll(
+		HttpApiBuilder.group(RootApi, "Field", (handlers) =>
 			handlers
-				.handle("get", ({ path: { namespace, name } }) =>
-					Effect.gen(function* () {
-						const field = registry.replicant.get(namespace)?.get(name);
-						if (typeof field === "undefined") {
-							return yield* new HttpApiError.NotFound();
-						}
-						return yield* field.getEncoded().pipe(
-							Effect.catchTags({
-								FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-								ReplicantNotFound: () => new HttpApiError.NotFound(),
-							}),
-						);
-					}),
+				.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
+					getReplicant(registry, namespace, fieldName),
 				)
-				.handle("update", ({ path: { namespace, name }, payload }) =>
-					Effect.gen(function* () {
-						const field = registry.replicant.get(namespace)?.get(name);
-						if (typeof field === "undefined") {
-							return yield* new HttpApiError.NotFound();
-						}
-						yield* field.setEncoded(payload).pipe(
-							Effect.mapError((error) =>
-								Match.value(error).pipe(
-									Match.tag(
-										"FieldPermissionDenied",
-										() => new HttpApiError.Forbidden(),
-									),
-									Match.tag(
-										"FieldDecodeError",
-										() => new HttpApiError.BadRequest(),
-									),
-									Match.tag(
-										"ReplicantNotFound",
-										() => new HttpApiError.NotFound(),
-									),
-									Match.exhaustive,
-								),
-							),
-						);
-					}),
+				.handle(
+					"replicantUpdate",
+					({ path: { namespace, fieldName }, payload }) =>
+						updateReplicant(registry, namespace, fieldName, payload),
+				)
+				.handle("computedGet", ({ path: { namespace, fieldName } }) =>
+					getComputed(registry, namespace, fieldName),
+				)
+				.handle("topicPublish", ({ path: { namespace, fieldName }, payload }) =>
+					publishTopic(registry, namespace, fieldName, payload),
+				)
+				.handle("rpcCall", ({ path: { namespace, fieldName }, payload }) =>
+					callRpc(registry, namespace, fieldName, payload),
 				),
-	);
-
-	const ComputedGroupLive = HttpApiBuilder.group(
-		InternalApi,
-		"Computed",
-		(handlers) =>
-			handlers.handle("get", ({ path: { namespace, name } }) =>
-				Effect.gen(function* () {
-					const field = registry.computed.get(namespace)?.get(name);
-					if (typeof field === "undefined") {
-						return yield* new HttpApiError.NotFound();
-					}
-					return yield* field.getEncoded().pipe(
-						Effect.catchTags({
-							FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-							ReplicantNotFound: () => new HttpApiError.NotFound(),
-							ComputedComputeError: () =>
-								new HttpApiError.InternalServerError(),
-							FieldEncodeError: () => new HttpApiError.InternalServerError(),
-						}),
-					);
-				}),
-			),
-	);
-
-	const TopicGroupLive = HttpApiBuilder.group(InternalApi, "Topic", (handlers) =>
-		handlers.handle("publish", ({ path: { namespace, name }, payload }) =>
-			Effect.gen(function* () {
-				const field = registry.topic.get(namespace)?.get(name);
-				if (typeof field === "undefined") {
-					return yield* new HttpApiError.NotFound();
-				}
-				yield* field.publishEncoded(payload).pipe(
-					Effect.catchTags({
-						FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-						FieldDecodeError: () => new HttpApiError.BadRequest(),
-					}),
-				);
-			}),
 		),
+		AuthenticationGroupLive,
+		RolesGroupLive,
 	);
-
-	const RpcGroupLive = HttpApiBuilder.group(InternalApi, "Rpc", (handlers) =>
-		handlers.handle("call", ({ path: { namespace, name }, payload }) =>
-			Effect.gen(function* () {
-				const field = registry.rpc.get(namespace)?.get(name);
-				if (typeof field === "undefined") {
-					return yield* new HttpApiError.NotFound();
-				}
-				return yield* field.callEncoded(payload).pipe(
-					Effect.catchTags({
-						FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-						FieldDecodeError: () => new HttpApiError.BadRequest(),
-						RpcCallFailed: (error) =>
-							new RpcCallError({ message: error.message }),
-						FieldEncodeError: (error) =>
-							new RpcCallError({ message: error.message }),
-					}),
-				);
-			}),
-		),
-	);
-
-	return HttpApiBuilder.api(InternalApi).pipe(
-		Layer.provide(HealthGroupLive),
-		Layer.provide(ReplicantGroupLive),
-		Layer.provide(ComputedGroupLive),
-		Layer.provide(TopicGroupLive),
-		Layer.provide(RpcGroupLive),
-		Layer.provide(AuthenticationGroupLive),
-		Layer.provide(RolesGroupLive),
-	);
-};

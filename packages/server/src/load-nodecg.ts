@@ -6,10 +6,13 @@ import {
 	type AuthProvider,
 	AuthProviderRegistry,
 } from "./auth/auth-provider.ts";
-import { AuthenticationMiddlewareLive } from "./auth/middleware.ts";
+import {
+	MachineAuthenticationMiddlewareLive,
+	HumanAuthenticationMiddlewareLive,
+} from "./auth/middleware.ts";
 import { type LoadedNamespace } from "./load-namespace.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
-import { buildInternalApi } from "./server/http-api.ts";
+import { buildRootApi } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
@@ -41,8 +44,9 @@ export const loadNodecgEffect = Effect.fn(function* (
 				dev: options.dev ?? false,
 			}),
 		),
-		Layer.provide(buildInternalApi({ namespaces: options.namespaces })),
-		Layer.provide(AuthenticationMiddlewareLive),
+		Layer.provide(buildRootApi({ namespaces: options.namespaces })),
+		Layer.provide(HumanAuthenticationMiddlewareLive),
+		Layer.provide(MachineAuthenticationMiddlewareLive),
 		Layer.provide(InMemorySessionStore),
 		Layer.provide(InMemoryStashStore),
 		Layer.provide(seededRoleStore(options.superadmins ?? [])),

@@ -1,7 +1,7 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg/core";
 import {
-	AuthenticationMiddleware,
+	HumanAuthenticationMiddleware,
 	CurrentIdentity,
 	HumanIdentitySchema,
 	type Identity,
@@ -15,7 +15,10 @@ import {
 	type AuthProvider,
 	AuthProviderRegistry,
 } from "../auth/auth-provider.ts";
-import { AuthenticationMiddlewareLive } from "../auth/middleware.ts";
+import {
+	HumanAuthenticationMiddlewareLive,
+	MachineAuthenticationMiddlewareLive,
+} from "../auth/middleware.ts";
 import {
 	type LoadedNamespace,
 	FieldPermissionDenied,
@@ -28,7 +31,7 @@ import { ReplicantNotFound } from "../services/replicant-storage/replicant-stora
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
-import { buildInternalApi } from "./http-api.ts";
+import { buildRootApi } from "./http-api/build-root-api.ts";
 
 type Internal = ReplicantField<unknown>[typeof fieldInternal];
 
@@ -132,20 +135,18 @@ function loadedNamespace(
 }
 
 const asIdentity = (identity: Identity) =>
-	Layer.succeed(AuthenticationMiddleware, {
+	Layer.succeed(HumanAuthenticationMiddleware, {
 		cookie: () => Effect.succeed(identity),
 	});
 
 function webHandler(
 	namespaces: ReadonlyArray<LoadedNamespace>,
-	middleware: typeof AuthenticationMiddlewareLive = AuthenticationMiddlewareLive,
+	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
 ) {
 	const { handler } = HttpApiBuilder.toWebHandler(
-		Layer.mergeAll(
-			buildInternalApi({ namespaces }),
-			HttpServer.layerContext,
-		).pipe(
+		Layer.mergeAll(buildRootApi({ namespaces }), HttpServer.layerContext).pipe(
 			Layer.provide(middleware),
+			Layer.provide(MachineAuthenticationMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
@@ -178,15 +179,6 @@ const postRequest = (url: string, value: unknown) =>
 		body: JSON.stringify(value),
 		headers: { "content-type": "application/json" },
 	});
-
-describe("ping", () => {
-	test("returns pong", async () => {
-		const handler = webHandler([]);
-		const res = await handler(new Request("http://x/api/internal/ping"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toBe("pong");
-	});
-});
 
 describe("me", () => {
 	test("resolves an anonymous request to the anonymous identity", async () => {
@@ -576,5 +568,44 @@ describe("rpc call", () => {
 			),
 		]);
 		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(500);
+	});
+});
+
+describe("public surface (v0) — always denies", () => {
+	const tokenRequest = () =>
+		new Request("http://x/api/v0/oauth/token", {
+			method: "POST",
+			body: JSON.stringify({ clientId: "bot", clientSecret: "s3cr3t" }),
+			headers: { "content-type": "application/json" },
+		});
+
+	const countNamespace = () =>
+		loadedNamespace("root", {
+			count: stubField({
+				getEncoded: () => Effect.succeed(42),
+				setEncoded: () => Effect.void,
+			}),
+		});
+
+	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
+
+	test("401 for the token endpoint (no machine-auth backend yet)", async () => {
+		const handler = webHandler([]);
+		expect((await handler(tokenRequest())).status).toBe(401);
+	});
+
+	test("401 for a resource request without a bearer", async () => {
+		const handler = webHandler([countNamespace()]);
+		expect((await handler(new Request(publicGetUrl))).status).toBe(401);
+	});
+
+	test("401 for a resource request even with a bearer", async () => {
+		const handler = webHandler([countNamespace()]);
+		const res = await handler(
+			new Request(publicGetUrl, {
+				headers: { authorization: "Bearer anything" },
+			}),
+		);
+		expect(res.status).toBe(401);
 	});
 });

@@ -23,7 +23,9 @@ export const HttpFieldTransport = Layer.effect(
 			namespace: string,
 			name: string,
 		) {
-			return yield* client.Replicant.get({ path: { namespace, name } }).pipe(
+			return yield* client.Field.replicantGet({
+				path: { namespace, fieldName: name },
+			}).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
@@ -43,7 +45,9 @@ export const HttpFieldTransport = Layer.effect(
 			namespace: string,
 			name: string,
 		) {
-			return yield* client.Computed.get({ path: { namespace, name } }).pipe(
+			return yield* client.Field.computedGet({
+				path: { namespace, fieldName: name },
+			}).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
@@ -61,8 +65,8 @@ export const HttpFieldTransport = Layer.effect(
 
 		const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
 			function* (namespace: string, name: string, value: JsonValue) {
-				yield* client.Replicant.update({
-					path: { namespace, name },
+				yield* client.Field.replicantUpdate({
+					path: { namespace, fieldName: name },
 					payload: value,
 				}).pipe(
 					Effect.mapError((error) =>
@@ -90,8 +94,8 @@ export const HttpFieldTransport = Layer.effect(
 			name: string,
 			value: JsonValue,
 		) {
-			yield* client.Topic.publish({
-				path: { namespace, name },
+			yield* client.Field.topicPublish({
+				path: { namespace, fieldName: name },
 				payload: value,
 			}).pipe(
 				Effect.mapError((error) =>
@@ -115,8 +119,8 @@ export const HttpFieldTransport = Layer.effect(
 			name: string,
 			request: JsonValue,
 		) {
-			return yield* client.Rpc.call({
-				path: { namespace, name },
+			return yield* client.Field.rpcCall({
+				path: { namespace, fieldName: name },
 				payload: request,
 			}).pipe(
 				Effect.mapError((error) =>

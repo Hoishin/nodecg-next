@@ -1,5 +1,8 @@
 import { HttpApiError } from "@effect/platform";
-import { AuthenticationMiddleware } from "@nodecg/internal";
+import {
+	HumanAuthenticationMiddleware,
+	MachineAuthenticationMiddleware,
+} from "@nodecg/internal";
 import { Effect, Layer, Option, Redacted } from "effect";
 
 import { config } from "../server-config.ts";
@@ -10,8 +13,8 @@ import {
 	resolveSessionIdentity,
 } from "./resolve-session-identity.ts";
 
-export const AuthenticationMiddlewareLive = Layer.effect(
-	AuthenticationMiddleware,
+export const HumanAuthenticationMiddlewareLive = Layer.effect(
+	HumanAuthenticationMiddleware,
 	Effect.gen(function* () {
 		const requireAuth = yield* config.requireAuth;
 		const sessions = yield* SessionStoreService;
@@ -35,4 +38,9 @@ export const AuthenticationMiddlewareLive = Layer.effect(
 				}),
 		};
 	}),
+);
+
+export const MachineAuthenticationMiddlewareLive = Layer.succeed(
+	MachineAuthenticationMiddleware,
+	{ bearer: () => new HttpApiError.Unauthorized() },
 );
