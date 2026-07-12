@@ -62,10 +62,15 @@ const CreateApiKeyResultSchema = Schema.Struct({
 const MachineClientSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
+	roles: Schema.ReadonlySet(RoleNameSchema),
 });
 
 const ListMachinesResultSchema = Schema.Struct({
 	machines: Schema.Array(MachineClientSchema),
+});
+
+const MachineRoleRequestSchema = Schema.Struct({
+	role: RoleNameSchema,
 });
 
 const MachinesGroup = HttpApiGroup.make("Machines")
@@ -93,6 +98,23 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 			"refresh",
 		)`/machines/${HttpApiSchema.param("id", Schema.String)}/refresh`
 			.addSuccess(CreateApiKeyResultSchema)
+			.addError(HttpApiError.Forbidden)
+			.addError(HttpApiError.NotFound),
+	)
+	.add(
+		HttpApiEndpoint.post(
+			"grantRole",
+		)`/machines/${HttpApiSchema.param("id", Schema.String)}/roles`
+			.setPayload(MachineRoleRequestSchema)
+			.addSuccess(RoleAssignmentResultSchema)
+			.addError(HttpApiError.Forbidden)
+			.addError(HttpApiError.NotFound),
+	)
+	.add(
+		HttpApiEndpoint.del(
+			"revokeRole",
+		)`/machines/${HttpApiSchema.param("id", Schema.String)}/roles/${HttpApiSchema.param("role", RoleNameSchema)}`
+			.addSuccess(RoleAssignmentResultSchema)
 			.addError(HttpApiError.Forbidden)
 			.addError(HttpApiError.NotFound),
 	);

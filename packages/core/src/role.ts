@@ -50,7 +50,7 @@ const getRolesFromIdentity = (caller: Identity) =>
 	Match.value(caller).pipe(
 		Match.withReturnType<ReadonlySet<RoleName>>(),
 		Match.tag("human", (human) => human.roles),
-		Match.tag("machine", () => new Set()), // TODO: resolve once machine account has roles
+		Match.tag("machine", (machine) => machine.roles),
 		Match.tag("anonymous", () => new Set()),
 		Match.tag("server", () => new Set([RESERVED_ROLE.server])),
 		Match.exhaustive,

@@ -25,6 +25,7 @@ export type HumanIdentity = typeof HumanIdentitySchema.Type;
 export const MachineIdentitySchema = Schema.TaggedStruct("machine", {
 	id: Schema.String,
 	displayName: Schema.String,
+	roles: Schema.ReadonlySet(RoleNameSchema),
 });
 export type MachineIdentity = typeof MachineIdentitySchema.Type;
 

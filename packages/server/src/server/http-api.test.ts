@@ -305,7 +305,7 @@ describe("machines", () => {
 		const res = await handler(listRequest());
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
-			machines: [{ id, displayName: "scoreboard" }],
+			machines: [{ id, displayName: "scoreboard", roles: [] }],
 		});
 	});
 
@@ -355,6 +355,63 @@ describe("machines", () => {
 	test("404 when refreshing an unknown id for an admin", async () => {
 		const handler = webHandler([], admin);
 		expect((await handler(refreshRequest("ghost"))).status).toBe(404);
+	});
+
+	const grantRoleRequest = (id: string, role: string) =>
+		new Request(`http://x/api/internal/machines/${id}/roles`, {
+			method: "POST",
+			body: JSON.stringify({ role }),
+			headers: { "content-type": "application/json" },
+		});
+
+	const revokeRoleRequest = (id: string, role: string) =>
+		new Request(`http://x/api/internal/machines/${id}/roles/${role}`, {
+			method: "DELETE",
+		});
+
+	test("403 for an anonymous caller granting a role", async () => {
+		const handler = webHandler([]);
+		expect((await handler(grantRoleRequest("anything", "viewer"))).status).toBe(
+			403,
+		);
+	});
+
+	test("grants a named role and returns the updated set for an admin", async () => {
+		const handler = webHandler([], admin);
+		const { id } = decodeCreated(await (await handler(createRequest())).json());
+		const res = await handler(grantRoleRequest(id, "viewer"));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ roles: ["viewer"] });
+	});
+
+	test("403 when granting a reserved role to a machine", async () => {
+		const handler = webHandler([], admin);
+		const { id } = decodeCreated(await (await handler(createRequest())).json());
+		expect((await handler(grantRoleRequest(id, "admin"))).status).toBe(403);
+	});
+
+	test("404 when granting to an unknown id for an admin", async () => {
+		const handler = webHandler([], admin);
+		expect((await handler(grantRoleRequest("ghost", "viewer"))).status).toBe(
+			404,
+		);
+	});
+
+	test("revokes a named role and returns the remaining set for an admin", async () => {
+		const handler = webHandler([], admin);
+		const { id } = decodeCreated(await (await handler(createRequest())).json());
+		await handler(grantRoleRequest(id, "viewer"));
+		await handler(grantRoleRequest(id, "judge"));
+		const res = await handler(revokeRoleRequest(id, "viewer"));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ roles: ["judge"] });
+	});
+
+	test("404 when revoking a role from an unknown id for an admin", async () => {
+		const handler = webHandler([], admin);
+		expect((await handler(revokeRoleRequest("ghost", "viewer"))).status).toBe(
+			404,
+		);
 	});
 });
 

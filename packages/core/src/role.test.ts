@@ -22,6 +22,12 @@ const human = (...roles: RoleName[]) =>
 		}),
 		roles: new Set(roles),
 	});
+const machine = (...roles: RoleName[]) =>
+	MachineIdentitySchema.make({
+		id: "robot",
+		displayName: "Bot",
+		roles: new Set(roles),
+	});
 const anonymous = AnonymousIdentitySchema.make();
 const server = ServerIdentitySchema.make();
 
@@ -78,12 +84,20 @@ describe("canRead / canWrite", () => {
 		expect(manifest.replicant.open.permission.canRead(anonymous)).toBe(true);
 	});
 
-	test("a machine identity carries no roles", () => {
-		const machine = MachineIdentitySchema.make({
-			id: "robot",
-			displayName: "Bot",
-		});
-		expect(manifest.replicant.score.permission.canRead(machine)).toBe(false);
+	test("a machine with no roles matches nothing", () => {
+		expect(manifest.replicant.score.permission.canRead(machine())).toBe(false);
+	});
+
+	test("a machine's assigned roles are enforced like a human's", () => {
+		expect(
+			manifest.replicant.score.permission.canRead(machine(RoleName("viewer"))),
+		).toBe(true);
+		expect(
+			manifest.replicant.score.permission.canWrite(machine(RoleName("viewer"))),
+		).toBe(false);
+		expect(
+			manifest.replicant.score.permission.canWrite(machine(RoleName("judge"))),
+		).toBe(true);
 	});
 
 	test("computed fields are never writable, even for superadmin", () => {

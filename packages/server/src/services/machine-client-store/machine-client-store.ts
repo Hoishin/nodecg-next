@@ -1,8 +1,10 @@
+import type { RoleName } from "@nodecg/internal";
 import { Context, type Effect, type Option, type Redacted } from "effect";
 
 export interface MachineClient {
 	readonly id: string;
 	readonly displayName: string;
+	readonly roles: ReadonlySet<RoleName>;
 }
 
 export interface CreatedApiKey {
@@ -27,6 +29,16 @@ export interface MachineClientStore {
 	readonly refreshApiKey: (
 		id: string,
 	) => Effect.Effect<Option.Option<CreatedApiKey>>;
+
+	readonly grantRole: (
+		id: string,
+		role: RoleName,
+	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
+
+	readonly revokeRole: (
+		id: string,
+		role: RoleName,
+	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
 }
 
 export class MachineClientStoreService extends Context.Tag(

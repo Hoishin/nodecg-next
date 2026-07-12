@@ -1,3 +1,4 @@
+import { RoleName } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect, Option, Redacted } from "effect";
 import { assert, describe, expect, test } from "vitest";
@@ -32,7 +33,11 @@ describe("validateApiKey", () => {
 					Redacted.value(created.token),
 				);
 				assert(Option.isSome(resolved));
-				expect(resolved.value).toEqual({ id: created.id, displayName: "Bot" });
+				expect(resolved.value).toEqual({
+					id: created.id,
+					displayName: "Bot",
+					roles: new Set(),
+				});
 			}).pipe(Effect.provide(InMemoryMachineClientStore)),
 		),
 	);
@@ -62,8 +67,8 @@ describe("list", () => {
 				expect(clients).toHaveLength(2);
 				expect(clients).toEqual(
 					expect.arrayContaining([
-						{ id: a.id, displayName: "Bot A" },
-						{ id: b.id, displayName: "Bot B" },
+						{ id: a.id, displayName: "Bot A", roles: new Set() },
+						{ id: b.id, displayName: "Bot B", roles: new Set() },
 					]),
 				);
 			}).pipe(Effect.provide(InMemoryMachineClientStore)),
@@ -90,7 +95,11 @@ describe("revoke", () => {
 				const created = yield* machines.createApiKey({ displayName: "Bot" });
 				const revoked = yield* machines.revoke(created.id);
 				assert(Option.isSome(revoked));
-				expect(revoked.value).toEqual({ id: created.id, displayName: "Bot" });
+				expect(revoked.value).toEqual({
+					id: created.id,
+					displayName: "Bot",
+					roles: new Set(),
+				});
 				expect(
 					Option.isNone(
 						yield* machines.validateApiKey(Redacted.value(created.token)),
@@ -113,7 +122,11 @@ describe("revoke", () => {
 					Redacted.value(b.token),
 				);
 				assert(Option.isSome(resolved));
-				expect(resolved.value).toEqual({ id: b.id, displayName: "Bot B" });
+				expect(resolved.value).toEqual({
+					id: b.id,
+					displayName: "Bot B",
+					roles: new Set(),
+				});
 			}).pipe(Effect.provide(InMemoryMachineClientStore)),
 		),
 	);
@@ -160,7 +173,11 @@ describe("refreshApiKey", () => {
 					Redacted.value(refreshed.value.token),
 				);
 				assert(Option.isSome(byNew));
-				expect(byNew.value).toEqual({ id: created.id, displayName: "Bot" });
+				expect(byNew.value).toEqual({
+					id: created.id,
+					displayName: "Bot",
+					roles: new Set(),
+				});
 				expect(
 					Option.isNone(
 						yield* machines.validateApiKey(Redacted.value(created.token)),
@@ -178,7 +195,7 @@ describe("refreshApiKey", () => {
 				const created = yield* machines.createApiKey({ displayName: "Bot" });
 				yield* machines.refreshApiKey(created.id);
 				expect(yield* machines.list()).toEqual([
-					{ id: created.id, displayName: "Bot" },
+					{ id: created.id, displayName: "Bot", roles: new Set() },
 				]);
 			}).pipe(Effect.provide(InMemoryMachineClientStore)),
 		),
@@ -192,6 +209,95 @@ describe("refreshApiKey", () => {
 				expect(Option.isNone(yield* machines.refreshApiKey("ghost"))).toBe(
 					true,
 				);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+});
+
+describe("grantRole / revokeRole", () => {
+	test(
+		"accumulates granted roles and surfaces them on the client",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				const afterFirst = yield* machines.grantRole(
+					created.id,
+					RoleName("viewer"),
+				);
+				assert(Option.isSome(afterFirst));
+				expect(afterFirst.value).toEqual(new Set([RoleName("viewer")]));
+				yield* machines.grantRole(created.id, RoleName("judge"));
+				const resolved = yield* machines.validateApiKey(
+					Redacted.value(created.token),
+				);
+				assert(Option.isSome(resolved));
+				expect(resolved.value.roles).toEqual(
+					new Set([RoleName("viewer"), RoleName("judge")]),
+				);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"granting the same role twice is idempotent",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				yield* machines.grantRole(created.id, RoleName("viewer"));
+				const again = yield* machines.grantRole(created.id, RoleName("viewer"));
+				assert(Option.isSome(again));
+				expect(again.value).toEqual(new Set([RoleName("viewer")]));
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"revoking a role removes only that role",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				yield* machines.grantRole(created.id, RoleName("viewer"));
+				yield* machines.grantRole(created.id, RoleName("judge"));
+				const remaining = yield* machines.revokeRole(
+					created.id,
+					RoleName("viewer"),
+				);
+				assert(Option.isSome(remaining));
+				expect(remaining.value).toEqual(new Set([RoleName("judge")]));
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"revoking a role the machine lacks is a no-op",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				const remaining = yield* machines.revokeRole(
+					created.id,
+					RoleName("viewer"),
+				);
+				assert(Option.isSome(remaining));
+				expect(remaining.value).toEqual(new Set());
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"return None for an unknown id",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				expect(
+					Option.isNone(yield* machines.grantRole("ghost", RoleName("viewer"))),
+				).toBe(true);
+				expect(
+					Option.isNone(yield* machines.revokeRole("ghost", RoleName("viewer"))),
+				).toBe(true);
 			}).pipe(Effect.provide(InMemoryMachineClientStore)),
 		),
 	);
