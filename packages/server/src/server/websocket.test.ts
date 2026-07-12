@@ -2,7 +2,10 @@ import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { HashMap, Layer } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { type AuthProvider, AuthProviderRegistry } from "../auth/auth-provider.ts";
+import {
+	type AuthProvider,
+	AuthProviderRegistry,
+} from "../auth/auth-provider.ts";
 import {
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
@@ -26,7 +29,10 @@ const handler = () => {
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryMachineClientStore),
 			Layer.provide(
-				Layer.succeed(AuthProviderRegistry, HashMap.empty<string, AuthProvider>()),
+				Layer.succeed(
+					AuthProviderRegistry,
+					HashMap.empty<string, AuthProvider>(),
+				),
 			),
 		),
 	);

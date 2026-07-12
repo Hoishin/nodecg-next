@@ -59,12 +59,43 @@ const CreateApiKeyResultSchema = Schema.Struct({
 	token: Schema.Redacted(Schema.String),
 });
 
-const MachinesGroup = HttpApiGroup.make("Machines").add(
-	HttpApiEndpoint.post("createApiKey", "/machines")
-		.setPayload(CreateApiKeyRequestSchema)
-		.addSuccess(CreateApiKeyResultSchema)
-		.addError(HttpApiError.Forbidden),
-);
+const MachineClientSchema = Schema.Struct({
+	id: Schema.String,
+	displayName: Schema.String,
+});
+
+const ListMachinesResultSchema = Schema.Struct({
+	machines: Schema.Array(MachineClientSchema),
+});
+
+const MachinesGroup = HttpApiGroup.make("Machines")
+	.add(
+		HttpApiEndpoint.post("createApiKey", "/machines")
+			.setPayload(CreateApiKeyRequestSchema)
+			.addSuccess(CreateApiKeyResultSchema)
+			.addError(HttpApiError.Forbidden),
+	)
+	.add(
+		HttpApiEndpoint.get("list", "/machines")
+			.addSuccess(ListMachinesResultSchema)
+			.addError(HttpApiError.Forbidden),
+	)
+	.add(
+		HttpApiEndpoint.del(
+			"revoke",
+		)`/machines/${HttpApiSchema.param("id", Schema.String)}`
+			.addSuccess(HttpApiSchema.Empty(204))
+			.addError(HttpApiError.Forbidden)
+			.addError(HttpApiError.NotFound),
+	)
+	.add(
+		HttpApiEndpoint.post(
+			"refresh",
+		)`/machines/${HttpApiSchema.param("id", Schema.String)}/refresh`
+			.addSuccess(CreateApiKeyResultSchema)
+			.addError(HttpApiError.Forbidden)
+			.addError(HttpApiError.NotFound),
+	);
 
 const RolesGroup = HttpApiGroup.make("Roles")
 	.add(

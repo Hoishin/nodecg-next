@@ -1,41 +1,83 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { Effect, Layer, Option, Redacted } from "effect";
+import { Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
-import { MachineClientStoreService } from "./machine-client-store.ts";
-
-interface StoredClient {
-	readonly id: string;
-	readonly displayName: string;
-}
-
-const hashToken = (token: string) =>
-	createHash("sha256").update(token).digest("base64url");
-
-export const InMemoryMachineClientStore = Layer.sync(
+import {
+	type MachineClient,
 	MachineClientStoreService,
-	() => {
-		const clients = new Map<string, StoredClient>();
+} from "./machine-client-store.ts";
+
+const hashToken = (token: string): Redacted.Redacted<string> =>
+	Redacted.make(createHash("sha256").update(token).digest("base64url"));
+
+const newToken = () => `ncg_${randomBytes(32).toString("base64url")}`;
+
+export const InMemoryMachineClientStore = Layer.effect(
+	MachineClientStoreService,
+	Effect.gen(function* () {
+		const clients = yield* Ref.make(
+			HashMap.empty<Redacted.Redacted<string>, MachineClient>(),
+		);
 
 		const createApiKey = Effect.fn("MachineClientStore.createApiKey")(
 			(input: { readonly displayName: string }) =>
-				Effect.sync(() => {
+				Ref.modify(clients, (map) => {
 					const id = randomBytes(16).toString("base64url");
-					const token = `ncg_${randomBytes(32).toString("base64url")}`;
-					clients.set(hashToken(token), { id, displayName: input.displayName });
-					return {
-						id,
-						displayName: input.displayName,
-						token: Redacted.make(token),
-					};
+					const token = newToken();
+					const client = { id, displayName: input.displayName };
+					return [
+						{ ...client, token: Redacted.make(token) },
+						HashMap.set(map, hashToken(token), client),
+					];
 				}),
 		);
 
 		const validateApiKey = Effect.fn("MachineClientStore.validateApiKey")(
 			(token: string) =>
-				Effect.sync(() => Option.fromNullable(clients.get(hashToken(token)))),
+				Ref.get(clients).pipe(
+					Effect.map((map) => HashMap.get(map, hashToken(token))),
+				),
 		);
 
-		return { createApiKey, validateApiKey };
-	},
+		const list = Effect.fn("MachineClientStore.list")(() =>
+			Ref.get(clients).pipe(
+				Effect.map((map) => Array.from(HashMap.values(map))),
+			),
+		);
+
+		const revoke = Effect.fn("MachineClientStore.revoke")((id: string) =>
+			Ref.modify(clients, (map) => {
+				const entry = HashMap.findFirst(map, (client) => client.id === id);
+				if (Option.isNone(entry)) {
+					return [Option.none(), map];
+				}
+				return [
+					Option.some(entry.value[1]),
+					HashMap.remove(map, entry.value[0]),
+				];
+			}),
+		);
+
+		const refreshApiKey = Effect.fn("MachineClientStore.refreshApiKey")(
+			(id: string) =>
+				Ref.modify(clients, (map) => {
+					const entry = HashMap.findFirst(map, (client) => client.id === id);
+					if (Option.isNone(entry)) {
+						return [Option.none(), map];
+					}
+					const client = entry.value[1];
+					const token = newToken();
+					return [
+						Option.some({ ...client, token: Redacted.make(token) }),
+						HashMap.set(
+							HashMap.remove(map, entry.value[0]),
+							hashToken(token),
+							client,
+						),
+					];
+				}),
+		);
+
+		return { createApiKey, validateApiKey, list, revoke, refreshApiKey };
+	}),
 );

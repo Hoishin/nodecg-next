@@ -283,6 +283,79 @@ describe("machines", () => {
 			token: expect.stringMatching(/^ncg_/),
 		});
 	});
+
+	const decodeCreated = Schema.decodeUnknownSync(
+		Schema.Struct({ id: Schema.String }),
+	);
+
+	const listRequest = () =>
+		new Request("http://x/api/internal/machines", { method: "GET" });
+
+	const revokeRequest = (id: string) =>
+		new Request(`http://x/api/internal/machines/${id}`, { method: "DELETE" });
+
+	test("403 for an anonymous caller listing keys", async () => {
+		const handler = webHandler([]);
+		expect((await handler(listRequest())).status).toBe(403);
+	});
+
+	test("lists created keys without their token for an admin", async () => {
+		const handler = webHandler([], admin);
+		const { id } = decodeCreated(await (await handler(createRequest())).json());
+		const res = await handler(listRequest());
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			machines: [{ id, displayName: "scoreboard" }],
+		});
+	});
+
+	test("403 for an anonymous caller revoking a key", async () => {
+		const handler = webHandler([]);
+		expect((await handler(revokeRequest("anything"))).status).toBe(403);
+	});
+
+	test("revokes a key and drops it from the listing for an admin", async () => {
+		const handler = webHandler([], admin);
+		const { id } = decodeCreated(await (await handler(createRequest())).json());
+		expect((await handler(revokeRequest(id))).status).toBe(204);
+		expect(await (await handler(listRequest())).json()).toEqual({
+			machines: [],
+		});
+	});
+
+	test("404 when revoking an unknown id for an admin", async () => {
+		const handler = webHandler([], admin);
+		expect((await handler(revokeRequest("ghost"))).status).toBe(404);
+	});
+
+	const refreshRequest = (id: string) =>
+		new Request(`http://x/api/internal/machines/${id}/refresh`, {
+			method: "POST",
+		});
+
+	test("403 for an anonymous caller refreshing a key", async () => {
+		const handler = webHandler([]);
+		expect((await handler(refreshRequest("anything"))).status).toBe(403);
+	});
+
+	test("refreshes a key, keeping id and display name, for an admin", async () => {
+		const handler = webHandler([], admin);
+		const created = decodeCreated(
+			await (await handler(createRequest())).json(),
+		);
+		const res = await handler(refreshRequest(created.id));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			id: created.id,
+			displayName: "scoreboard",
+			token: expect.stringMatching(/^ncg_/),
+		});
+	});
+
+	test("404 when refreshing an unknown id for an admin", async () => {
+		const handler = webHandler([], admin);
+		expect((await handler(refreshRequest("ghost"))).status).toBe(404);
+	});
 });
 
 describe("get", () => {

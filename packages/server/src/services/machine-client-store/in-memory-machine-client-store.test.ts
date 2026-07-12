@@ -49,3 +49,150 @@ describe("validateApiKey", () => {
 		),
 	);
 });
+
+describe("list", () => {
+	test(
+		"returns every created client without its token",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const a = yield* machines.createApiKey({ displayName: "Bot A" });
+				const b = yield* machines.createApiKey({ displayName: "Bot B" });
+				const clients = yield* machines.list();
+				expect(clients).toHaveLength(2);
+				expect(clients).toEqual(
+					expect.arrayContaining([
+						{ id: a.id, displayName: "Bot A" },
+						{ id: b.id, displayName: "Bot B" },
+					]),
+				);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"is empty before any key is created",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				expect(yield* machines.list()).toEqual([]);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+});
+
+describe("revoke", () => {
+	test(
+		"removes the client and stops its token validating",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				const revoked = yield* machines.revoke(created.id);
+				assert(Option.isSome(revoked));
+				expect(revoked.value).toEqual({ id: created.id, displayName: "Bot" });
+				expect(
+					Option.isNone(
+						yield* machines.validateApiKey(Redacted.value(created.token)),
+					),
+				).toBe(true);
+				expect(yield* machines.list()).toEqual([]);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"leaves other clients intact",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const a = yield* machines.createApiKey({ displayName: "Bot A" });
+				const b = yield* machines.createApiKey({ displayName: "Bot B" });
+				yield* machines.revoke(a.id);
+				const resolved = yield* machines.validateApiKey(
+					Redacted.value(b.token),
+				);
+				assert(Option.isSome(resolved));
+				expect(resolved.value).toEqual({ id: b.id, displayName: "Bot B" });
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"returns None for an unknown id",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				expect(Option.isNone(yield* machines.revoke("ghost"))).toBe(true);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+});
+
+describe("refreshApiKey", () => {
+	test(
+		"rotates the token while keeping id and display name",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				const refreshed = yield* machines.refreshApiKey(created.id);
+				assert(Option.isSome(refreshed));
+				expect(refreshed.value.id).toBe(created.id);
+				expect(refreshed.value.displayName).toBe("Bot");
+				expect(Redacted.value(refreshed.value.token)).toMatch(/^ncg_/);
+				expect(Redacted.value(refreshed.value.token)).not.toBe(
+					Redacted.value(created.token),
+				);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"validates the new token and stops validating the old one",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				const refreshed = yield* machines.refreshApiKey(created.id);
+				assert(Option.isSome(refreshed));
+				const byNew = yield* machines.validateApiKey(
+					Redacted.value(refreshed.value.token),
+				);
+				assert(Option.isSome(byNew));
+				expect(byNew.value).toEqual({ id: created.id, displayName: "Bot" });
+				expect(
+					Option.isNone(
+						yield* machines.validateApiKey(Redacted.value(created.token)),
+					),
+				).toBe(true);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"does not add or remove a listing entry",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				yield* machines.refreshApiKey(created.id);
+				expect(yield* machines.list()).toEqual([
+					{ id: created.id, displayName: "Bot" },
+				]);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"returns None for an unknown id",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				expect(Option.isNone(yield* machines.refreshApiKey("ghost"))).toBe(
+					true,
+				);
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+});

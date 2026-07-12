@@ -222,12 +222,39 @@ const MachinesGroupLive = HttpApiBuilder.group(
 	(handlers) =>
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			return handlers.handle("createApiKey", ({ payload: { displayName } }) =>
-				Effect.gen(function* () {
-					yield* requireAdminTier;
-					return yield* machines.createApiKey({ displayName });
-				}),
-			);
+			return handlers
+				.handle("createApiKey", ({ payload: { displayName } }) =>
+					Effect.gen(function* () {
+						yield* requireAdminTier;
+						return yield* machines.createApiKey({ displayName });
+					}),
+				)
+				.handle("list", () =>
+					Effect.gen(function* () {
+						yield* requireAdminTier;
+						const machineList = yield* machines.list();
+						return { machines: machineList };
+					}),
+				)
+				.handle("revoke", ({ path: { id } }) =>
+					Effect.gen(function* () {
+						yield* requireAdminTier;
+						const revoked = yield* machines.revoke(id);
+						if (Option.isNone(revoked)) {
+							return yield* new HttpApiError.NotFound();
+						}
+					}),
+				)
+				.handle("refresh", ({ path: { id } }) =>
+					Effect.gen(function* () {
+						yield* requireAdminTier;
+						const refreshed = yield* machines.refreshApiKey(id);
+						if (Option.isNone(refreshed)) {
+							return yield* new HttpApiError.NotFound();
+						}
+						return refreshed.value;
+					}),
+				);
 		}),
 );
 
