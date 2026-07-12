@@ -49,6 +49,23 @@ const RoleAssignmentResultSchema = Schema.Struct({
 	roles: Schema.ReadonlySet(RoleNameSchema),
 });
 
+const CreateApiKeyRequestSchema = Schema.Struct({
+	displayName: Schema.String,
+});
+
+const CreateApiKeyResultSchema = Schema.Struct({
+	id: Schema.String,
+	displayName: Schema.String,
+	token: Schema.Redacted(Schema.String),
+});
+
+const MachinesGroup = HttpApiGroup.make("Machines").add(
+	HttpApiEndpoint.post("createApiKey", "/machines")
+		.setPayload(CreateApiKeyRequestSchema)
+		.addSuccess(CreateApiKeyResultSchema)
+		.addError(HttpApiError.Forbidden),
+);
+
 const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
 		HttpApiEndpoint.post("grant", "/roles/grant")
@@ -66,6 +83,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 export const InternalApi = HttpApi.make("InternalApi")
 	.add(fieldGroup("Field"))
 	.add(AuthenticationGroup)
+	.add(MachinesGroup)
 	.add(RolesGroup)
 	.middleware(HumanAuthenticationMiddleware)
 	.prefix("/api/internal");

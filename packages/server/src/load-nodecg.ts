@@ -16,6 +16,7 @@ import { frontendRoutes } from "./server/frontend-serving.ts";
 import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
+import { InMemoryMachineClientStore } from "./services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
 import { seededRoleStore } from "./superadmin-seed.ts";
@@ -51,6 +52,7 @@ export const loadNodecgEffect = Effect.fn(function* (
 		Layer.provide(MachineAuthenticationMiddlewareLive),
 		Layer.provide(InMemorySessionStore),
 		Layer.provide(InMemoryStashStore),
+		Layer.provide(InMemoryMachineClientStore),
 		Layer.provide(seededRoleStore(options.superadmins ?? [])),
 		Layer.provide(
 			Layer.succeed(

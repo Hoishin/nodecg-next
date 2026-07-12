@@ -23,6 +23,7 @@ import {
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
 import { config } from "../../server-config.ts";
+import { MachineClientStoreService } from "../../services/machine-client-store/machine-client-store.ts";
 import { RoleStoreService } from "../../services/role-store/role-store.ts";
 import { SessionStoreService } from "../../services/session-store/session-store.ts";
 import { StashStoreService } from "../../services/stash-store/stash-store.ts";
@@ -208,16 +209,31 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 		}),
 );
 
+const requireAdminTier = Effect.gen(function* () {
+	const identity = yield* CurrentIdentity;
+	if (!isAdminTier(identity)) {
+		return yield* new HttpApiError.Forbidden();
+	}
+});
+
+const MachinesGroupLive = HttpApiBuilder.group(
+	RootApi,
+	"Machines",
+	(handlers) =>
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			return handlers.handle("createApiKey", ({ payload: { displayName } }) =>
+				Effect.gen(function* () {
+					yield* requireAdminTier;
+					return yield* machines.createApiKey({ displayName });
+				}),
+			);
+		}),
+);
+
 const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	Effect.gen(function* () {
 		const roleStore = yield* RoleStoreService;
-
-		const requireAdminTier = Effect.gen(function* () {
-			const identity = yield* CurrentIdentity;
-			if (!isAdminTier(identity)) {
-				return yield* new HttpApiError.Forbidden();
-			}
-		});
 
 		return handlers
 			.handle("grant", ({ payload: { issuer, subject, role } }) =>
@@ -259,5 +275,6 @@ export const InternalGroupsLive = Layer.mergeAll(
 			),
 	),
 	AuthenticationGroupLive,
+	MachinesGroupLive,
 	RolesGroupLive,
 );

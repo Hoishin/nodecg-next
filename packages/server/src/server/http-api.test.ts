@@ -28,6 +28,7 @@ import {
 	fieldInternal,
 	namespaceMetadataKey,
 } from "../load-namespace.ts";
+import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
 import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
@@ -152,6 +153,7 @@ function webHandler(
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
+			Layer.provide(InMemoryMachineClientStore),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,
@@ -248,6 +250,38 @@ describe("roles", () => {
 		const grant = await handler(rolesRequest("grant", "producer"));
 		expect(grant.status).toBe(200);
 		expect(await grant.json()).toEqual({ roles: ["producer"] });
+	});
+});
+
+describe("machines", () => {
+	const createRequest = () =>
+		new Request("http://x/api/internal/machines", {
+			method: "POST",
+			body: JSON.stringify({ displayName: "scoreboard" }),
+			headers: { "content-type": "application/json" },
+		});
+
+	const admin = asIdentity(
+		HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			roles: new Set([RESERVED_ROLE.admin]),
+		}),
+	);
+
+	test("403 for an anonymous caller", async () => {
+		const handler = webHandler([]);
+		expect((await handler(createRequest())).status).toBe(403);
+	});
+
+	test("mints an api key with an id and prefixed token for an admin", async () => {
+		const handler = webHandler([], admin);
+		const res = await handler(createRequest());
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			id: expect.any(String),
+			displayName: "scoreboard",
+			token: expect.stringMatching(/^ncg_/),
+		});
 	});
 });
 
