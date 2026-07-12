@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { Effect, Layer, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
 
 import { MachineClientStoreService } from "./machine-client-store.ts";
 
@@ -31,6 +31,11 @@ export const InMemoryMachineClientStore = Layer.sync(
 				}),
 		);
 
-		return { createApiKey };
+		const validateApiKey = Effect.fn("MachineClientStore.validateApiKey")(
+			(token: string) =>
+				Effect.sync(() => Option.fromNullable(clients.get(hashToken(token)))),
+		);
+
+		return { createApiKey, validateApiKey };
 	},
 );

@@ -8,7 +8,7 @@ import {
 	RESERVED_ROLE,
 	RoleName,
 } from "@nodecg/internal";
-import { Effect, HashMap, Layer, Stream } from "effect";
+import { Effect, HashMap, Layer, Schema, Stream } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -607,7 +607,7 @@ describe("rpc call", () => {
 	});
 });
 
-describe("public surface (v0) — always denies", () => {
+describe("public surface (v0) with bearer token", () => {
 	const countNamespace = () =>
 		loadedNamespace("root", {
 			count: stubField({
@@ -618,12 +618,33 @@ describe("public surface (v0) — always denies", () => {
 
 	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
 
+	const admin = asIdentity(
+		HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			roles: new Set([RESERVED_ROLE.admin]),
+		}),
+	);
+
+	const mintKey = async (handler: (req: Request) => Promise<Response>) => {
+		const res = await handler(
+			new Request("http://x/api/internal/machines", {
+				method: "POST",
+				body: JSON.stringify({ displayName: "scoreboard" }),
+				headers: { "content-type": "application/json" },
+			}),
+		);
+		const { token } = Schema.decodeUnknownSync(
+			Schema.Struct({ token: Schema.String }),
+		)(await res.json());
+		return token;
+	};
+
 	test("401 for a resource request without a bearer", async () => {
 		const handler = webHandler([countNamespace()]);
 		expect((await handler(new Request(publicGetUrl))).status).toBe(401);
 	});
 
-	test("401 for a resource request even with a bearer", async () => {
+	test("401 for a resource request with an unknown bearer", async () => {
 		const handler = webHandler([countNamespace()]);
 		const res = await handler(
 			new Request(publicGetUrl, {
@@ -631,5 +652,17 @@ describe("public surface (v0) — always denies", () => {
 			}),
 		);
 		expect(res.status).toBe(401);
+	});
+
+	test("authenticates a request bearing a provisioned api key", async () => {
+		const handler = webHandler([countNamespace()], admin);
+		const token = await mintKey(handler);
+		const res = await handler(
+			new Request(publicGetUrl, {
+				headers: { authorization: `Bearer ${token}` },
+			}),
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toBe(42);
 	});
 });

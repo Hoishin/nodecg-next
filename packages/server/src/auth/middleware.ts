@@ -2,10 +2,12 @@ import { HttpApiError } from "@effect/platform";
 import {
 	HumanAuthenticationMiddleware,
 	MachineAuthenticationMiddleware,
+	MachineIdentitySchema,
 } from "@nodecg/internal";
 import { Effect, Layer, Option, Redacted } from "effect";
 
 import { config } from "../server-config.ts";
+import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import {
@@ -40,7 +42,23 @@ export const HumanAuthenticationMiddlewareLive = Layer.effect(
 	}),
 );
 
-export const MachineAuthenticationMiddlewareLive = Layer.succeed(
+export const MachineAuthenticationMiddlewareLive = Layer.effect(
 	MachineAuthenticationMiddleware,
-	{ bearer: () => new HttpApiError.Unauthorized() },
+	Effect.gen(function* () {
+		const machines = yield* MachineClientStoreService;
+
+		return {
+			bearer: (token: Redacted.Redacted<string>) =>
+				Effect.gen(function* () {
+					const value = Redacted.value(token);
+					if (value.length > 0) {
+						const client = yield* machines.validateApiKey(value);
+						if (Option.isSome(client)) {
+							return MachineIdentitySchema.make(client.value);
+						}
+					}
+					return yield* new HttpApiError.Unauthorized();
+				}),
+		};
+	}),
 );
