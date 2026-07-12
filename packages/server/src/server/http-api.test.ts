@@ -19,6 +19,7 @@ import {
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
+import { fieldRegistryLayer } from "../field-registry.ts";
 import {
 	type LoadedNamespace,
 	FieldPermissionDenied,
@@ -31,7 +32,7 @@ import { ReplicantNotFound } from "../services/replicant-storage/replicant-stora
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
-import { buildRootApi } from "./http-api/build-root-api.ts";
+import { RootApiLive } from "./http-api/build-root-api.ts";
 
 type Internal = ReplicantField<unknown>[typeof fieldInternal];
 
@@ -144,8 +145,9 @@ function webHandler(
 	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
 ) {
 	const { handler } = HttpApiBuilder.toWebHandler(
-		Layer.mergeAll(buildRootApi({ namespaces }), HttpServer.layerContext).pipe(
+		Layer.mergeAll(RootApiLive, HttpServer.layerContext).pipe(
 			Layer.provide(middleware),
+			Layer.provide(fieldRegistryLayer(namespaces)),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),

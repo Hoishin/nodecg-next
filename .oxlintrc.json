@@ -14,13 +14,5 @@
 	},
 	"options": {
 		"typeAware": true
-	},
-	"overrides": [
-		{
-			"files": ["./**/*.test.ts"],
-			"rules": {
-				"max-lines-per-function": "off"
-			}
-		}
-	]
+	}
 }

@@ -10,9 +10,10 @@ import {
 	MachineAuthenticationMiddlewareLive,
 	HumanAuthenticationMiddlewareLive,
 } from "./auth/middleware.ts";
+import { fieldRegistryLayer } from "./field-registry.ts";
 import { type LoadedNamespace } from "./load-namespace.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
-import { buildRootApi } from "./server/http-api/build-root-api.ts";
+import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { websocketRoute } from "./server/websocket.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
@@ -37,14 +38,15 @@ export const loadNodecgEffect = Effect.fn(function* (
 	options: LoadNodecgOptions,
 ) {
 	const ServerLive = HttpApiBuilder.serve().pipe(
-		Layer.provide(websocketRoute(options)),
+		Layer.provide(websocketRoute),
 		Layer.provide(
 			frontendRoutes({
 				namespaces: options.namespaces,
 				dev: options.dev ?? false,
 			}),
 		),
-		Layer.provide(buildRootApi({ namespaces: options.namespaces })),
+		Layer.provide(RootApiLive),
+		Layer.provide(fieldRegistryLayer(options.namespaces)),
 		Layer.provide(HumanAuthenticationMiddlewareLive),
 		Layer.provide(MachineAuthenticationMiddlewareLive),
 		Layer.provide(InMemorySessionStore),

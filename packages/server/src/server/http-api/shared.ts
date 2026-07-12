@@ -3,14 +3,11 @@ import { RpcCallError } from "@nodecg/internal";
 import { Effect, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
-import type { FieldRegistry } from "../../field-registry.ts";
+import { FieldRegistryService } from "../../field-registry.ts";
 
-export const getReplicant = (
-	registry: FieldRegistry,
-	namespace: string,
-	name: string,
-) =>
+export const getReplicant = (namespace: string, name: string) =>
 	Effect.gen(function* () {
+		const registry = yield* FieldRegistryService;
 		const field = registry.replicant.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -24,12 +21,12 @@ export const getReplicant = (
 	});
 
 export const updateReplicant = (
-	registry: FieldRegistry,
 	namespace: string,
 	name: string,
 	payload: JsonValue,
 ) =>
 	Effect.gen(function* () {
+		const registry = yield* FieldRegistryService;
 		const field = registry.replicant.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -49,12 +46,9 @@ export const updateReplicant = (
 		);
 	});
 
-export const getComputed = (
-	registry: FieldRegistry,
-	namespace: string,
-	name: string,
-) =>
+export const getComputed = (namespace: string, name: string) =>
 	Effect.gen(function* () {
+		const registry = yield* FieldRegistryService;
 		const field = registry.computed.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -70,12 +64,12 @@ export const getComputed = (
 	});
 
 export const publishTopic = (
-	registry: FieldRegistry,
 	namespace: string,
 	name: string,
 	payload: JsonValue,
 ) =>
 	Effect.gen(function* () {
+		const registry = yield* FieldRegistryService;
 		const field = registry.topic.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -88,13 +82,9 @@ export const publishTopic = (
 		);
 	});
 
-export const callRpc = (
-	registry: FieldRegistry,
-	namespace: string,
-	name: string,
-	payload: JsonValue,
-) =>
+export const callRpc = (namespace: string, name: string, payload: JsonValue) =>
 	Effect.gen(function* () {
+		const registry = yield* FieldRegistryService;
 		const field = registry.rpc.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();

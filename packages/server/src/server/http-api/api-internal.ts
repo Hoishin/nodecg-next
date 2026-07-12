@@ -22,7 +22,6 @@ import {
 } from "effect";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
-import type { FieldRegistry } from "../../field-registry.ts";
 import { config } from "../../server-config.ts";
 import { RoleStoreService } from "../../services/role-store/role-store.ts";
 import { SessionStoreService } from "../../services/session-store/session-store.ts";
@@ -238,28 +237,27 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	}),
 );
 
-export const buildInternalGroups = (registry: FieldRegistry) =>
-	Layer.mergeAll(
-		HttpApiBuilder.group(RootApi, "Field", (handlers) =>
-			handlers
-				.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
-					getReplicant(registry, namespace, fieldName),
-				)
-				.handle(
-					"replicantUpdate",
-					({ path: { namespace, fieldName }, payload }) =>
-						updateReplicant(registry, namespace, fieldName, payload),
-				)
-				.handle("computedGet", ({ path: { namespace, fieldName } }) =>
-					getComputed(registry, namespace, fieldName),
-				)
-				.handle("topicPublish", ({ path: { namespace, fieldName }, payload }) =>
-					publishTopic(registry, namespace, fieldName, payload),
-				)
-				.handle("rpcCall", ({ path: { namespace, fieldName }, payload }) =>
-					callRpc(registry, namespace, fieldName, payload),
-				),
-		),
-		AuthenticationGroupLive,
-		RolesGroupLive,
-	);
+export const InternalGroupsLive = Layer.mergeAll(
+	HttpApiBuilder.group(RootApi, "Field", (handlers) =>
+		handlers
+			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
+				getReplicant(namespace, fieldName),
+			)
+			.handle(
+				"replicantUpdate",
+				({ path: { namespace, fieldName }, payload }) =>
+					updateReplicant(namespace, fieldName, payload),
+			)
+			.handle("computedGet", ({ path: { namespace, fieldName } }) =>
+				getComputed(namespace, fieldName),
+			)
+			.handle("topicPublish", ({ path: { namespace, fieldName }, payload }) =>
+				publishTopic(namespace, fieldName, payload),
+			)
+			.handle("rpcCall", ({ path: { namespace, fieldName }, payload }) =>
+				callRpc(namespace, fieldName, payload),
+			),
+	),
+	AuthenticationGroupLive,
+	RolesGroupLive,
+);
