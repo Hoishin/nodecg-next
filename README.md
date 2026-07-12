@@ -293,8 +293,8 @@ match.replicant.label.subscribe((label) => {
       message: {
         schema: Schema.String,
         permission: {
-          read: { allow: ["anonymous"] },
-          write: { allow: ["anonymous"] },
+          read: { allow: ["everyone"] },
+          write: { allow: ["everyone"] },
         },
       },
     },
@@ -314,7 +314,7 @@ match.replicant.label.subscribe((label) => {
     rpc: {
       roll: {
         schema: { request: Schema.Number, response: Schema.Number },
-        permission: { write: { allow: ["anonymous"] } },
+        permission: { write: { allow: ["everyone"] } },
       },
     },
   });

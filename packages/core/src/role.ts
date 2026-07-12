@@ -67,7 +67,7 @@ const isAllowed = (
 ): boolean =>
 	caller.has(RESERVED_ROLE.superadmin) ||
 	caller.has(RESERVED_ROLE.admin) ||
-	resolved.has(RESERVED_ROLE.anonymous) ||
+	resolved.has(RESERVED_ROLE.everyone) ||
 	[...caller].some((role) => resolved.has(role));
 
 export const buildPermission = (

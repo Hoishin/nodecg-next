@@ -39,7 +39,7 @@ const manifest = defineNamespace("match", {
 		},
 		open: {
 			schema: Schema.Number,
-			permission: { read: { allow: ["anonymous"] } },
+			permission: { read: { allow: ["everyone"] } },
 		},
 		config: {
 			schema: Schema.String,

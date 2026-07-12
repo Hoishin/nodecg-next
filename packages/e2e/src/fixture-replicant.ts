@@ -1,12 +1,12 @@
 import { defineNamespace, extendNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
-const anonymousRead = { read: { allow: ["anonymous"] } } as const;
-const anonymousReadWrite = {
-	read: { allow: ["anonymous"] },
-	write: { allow: ["anonymous"] },
+const everyoneRead = { read: { allow: ["everyone"] } } as const;
+const everyoneReadWrite = {
+	read: { allow: ["everyone"] },
+	write: { allow: ["everyone"] },
 } as const;
-const anonymousWrite = { write: { allow: ["anonymous"] } } as const;
+const everyoneWrite = { write: { allow: ["everyone"] } } as const;
 
 export const fixtureManifest = defineNamespace("e2e", {
 	roles: {
@@ -14,8 +14,8 @@ export const fixtureManifest = defineNamespace("e2e", {
 		viewer: { permission: [] },
 	},
 	replicant: {
-		count: { schema: Schema.Number, permission: anonymousRead },
-		label: { schema: Schema.String, permission: anonymousRead },
+		count: { schema: Schema.Number, permission: everyoneRead },
+		label: { schema: Schema.String, permission: everyoneRead },
 		secret: { schema: Schema.String },
 		producerOnly: {
 			schema: Schema.String,
@@ -27,20 +27,20 @@ export const fixtureManifest = defineNamespace("e2e", {
 		},
 	},
 	computed: {
-		doubledCount: { schema: Schema.Number, permission: anonymousRead },
-		summary: { schema: Schema.String, permission: anonymousRead },
+		doubledCount: { schema: Schema.Number, permission: everyoneRead },
+		summary: { schema: Schema.String, permission: everyoneRead },
 	},
 	topic: {
-		chat: { schema: Schema.String, permission: anonymousReadWrite },
+		chat: { schema: Schema.String, permission: everyoneReadWrite },
 	},
 	rpc: {
 		echo: {
 			schema: { request: Schema.String, response: Schema.String },
-			permission: anonymousWrite,
+			permission: everyoneWrite,
 		},
 		bump: {
 			schema: { request: Schema.Number, response: Schema.Number },
-			permission: anonymousWrite,
+			permission: everyoneWrite,
 		},
 	},
 });
@@ -50,15 +50,15 @@ export const baseManifest = defineNamespace("e2e-extend", {
 		producer: { permission: ["replicant-write"] },
 	},
 	replicant: {
-		score: { schema: Schema.Number, permission: anonymousRead },
+		score: { schema: Schema.Number, permission: everyoneRead },
 	},
 });
 
 export const extendedManifest = extendNamespace(baseManifest, {
 	replicant: {
-		bonus: { schema: Schema.Number, permission: anonymousRead },
+		bonus: { schema: Schema.Number, permission: everyoneRead },
 	},
 	computed: {
-		total: { schema: Schema.Number, permission: anonymousRead },
+		total: { schema: Schema.Number, permission: everyoneRead },
 	},
 });

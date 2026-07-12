@@ -826,8 +826,8 @@ describe("encoded read/write enforce permission", () => {
 			open: {
 				schema: Schema.Number,
 				permission: {
-					read: { allow: ["anonymous"] },
-					write: { allow: ["anonymous"] },
+					read: { allow: ["everyone"] },
+					write: { allow: ["everyone"] },
 				},
 			},
 			locked: { schema: Schema.Number },
@@ -835,7 +835,7 @@ describe("encoded read/write enforce permission", () => {
 		computed: {
 			openComputed: {
 				schema: Schema.Number,
-				permission: { read: { allow: ["anonymous"] } },
+				permission: { read: { allow: ["everyone"] } },
 			},
 			lockedComputed: { schema: Schema.Number },
 		},
@@ -961,8 +961,8 @@ describe("topic", () => {
 			open: {
 				schema: Schema.NumberFromString,
 				permission: {
-					read: { allow: ["anonymous"] },
-					write: { allow: ["anonymous"] },
+					read: { allow: ["everyone"] },
+					write: { allow: ["everyone"] },
 				},
 			},
 			locked: { schema: Schema.NumberFromString },
@@ -1083,7 +1083,7 @@ describe("rpc", () => {
 					request: Schema.NumberFromString,
 					response: Schema.NumberFromString,
 				},
-				permission: { write: { allow: ["anonymous"] } },
+				permission: { write: { allow: ["everyone"] } },
 			},
 			locked: {
 				schema: { request: Schema.String, response: Schema.String },
@@ -1189,7 +1189,7 @@ describe("rpc", () => {
 });
 
 describe("rpc handler context (2nd arg)", () => {
-	const anonWrite = { write: { allow: ["anonymous"] } } as const;
+	const everyoneWrite = { write: { allow: ["everyone"] } } as const;
 	const ctxManifest = defineNamespace("ns", {
 		replicant: { count: { schema: Schema.Number } },
 		computed: { doubled: { schema: Schema.Number } },
@@ -1197,27 +1197,27 @@ describe("rpc handler context (2nd arg)", () => {
 		rpc: {
 			readCount: {
 				schema: { request: Schema.String, response: Schema.Number },
-				permission: anonWrite,
+				permission: everyoneWrite,
 			},
 			setCount: {
 				schema: { request: Schema.Number, response: Schema.Number },
-				permission: anonWrite,
+				permission: everyoneWrite,
 			},
 			bump: {
 				schema: { request: Schema.Number, response: Schema.Number },
-				permission: anonWrite,
+				permission: everyoneWrite,
 			},
 			readDoubled: {
 				schema: { request: Schema.String, response: Schema.Number },
-				permission: anonWrite,
+				permission: everyoneWrite,
 			},
 			announce: {
 				schema: { request: Schema.String, response: Schema.String },
-				permission: anonWrite,
+				permission: everyoneWrite,
 			},
 			pure: {
 				schema: { request: Schema.String, response: Schema.String },
-				permission: anonWrite,
+				permission: everyoneWrite,
 			},
 		},
 	});
