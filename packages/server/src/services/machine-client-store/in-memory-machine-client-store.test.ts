@@ -296,7 +296,9 @@ describe("grantRole / revokeRole", () => {
 					Option.isNone(yield* machines.grantRole("ghost", RoleName("viewer"))),
 				).toBe(true);
 				expect(
-					Option.isNone(yield* machines.revokeRole("ghost", RoleName("viewer"))),
+					Option.isNone(
+						yield* machines.revokeRole("ghost", RoleName("viewer")),
+					),
 				).toBe(true);
 			}).pipe(Effect.provide(InMemoryMachineClientStore)),
 		),
