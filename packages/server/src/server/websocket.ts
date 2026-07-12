@@ -179,6 +179,8 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 		const sessions = yield* SessionStoreService;
 		const roleStore = yield* RoleStoreService;
 		const machines = yield* MachineClientStoreService;
+
+		// TODO: keep contexts contexts, pass it to handler if needed
 		const resolveSession = resolveSessionIdentity({ sessions, roleStore });
 		const resolveMachine = resolveMachineIdentity({ machines });
 
