@@ -266,7 +266,6 @@ match.replicant.label.subscribe((label) => {
 - 🚧 Replicant in client-side is synchronized on reconnect
 - 🚧 Revision number
 - 🚧 Conflict resolution with custom logic
-- 🚧 Encryption at rest
 - 🚧 Subscription update frequency control
 - 🚧 Replicant update audit log (user, timestamp, label)
 - 🚧 List of subscribers with user, session, connection
