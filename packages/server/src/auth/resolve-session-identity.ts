@@ -12,16 +12,13 @@ export const anonymousIdentity = AnonymousIdentitySchema.make();
 
 export const resolveSessionIdentity =
 	(deps: { readonly sessions: SessionStore; readonly roleStore: RoleStore }) =>
-	(sessionId: Option.Option<string>): Effect.Effect<Option.Option<Identity>> =>
+	(sessionId: string): Effect.Effect<Option.Option<Identity>> =>
 		Effect.gen(function* () {
-			if (Option.isNone(sessionId)) {
-				return Option.none();
-			}
-			const resolved = yield* deps.sessions.lookup(sessionId.value);
+			const resolved = yield* deps.sessions.lookup(sessionId);
 			if (Option.isNone(resolved)) {
 				return Option.none();
 			}
-			yield* deps.sessions.refreshTTL(sessionId.value);
+			yield* deps.sessions.refreshTTL(sessionId);
 			const account = resolved.value;
 			const roles = yield* deps.roleStore.get({
 				issuer: account.issuer,

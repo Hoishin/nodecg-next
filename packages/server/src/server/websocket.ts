@@ -26,18 +26,28 @@ import {
 } from "effect";
 import type { JsonValue } from "type-fest";
 
+import { resolveMachineIdentity } from "../auth/resolve-machine-identity.ts";
 import {
 	anonymousIdentity,
 	resolveSessionIdentity,
 } from "../auth/resolve-session-identity.ts";
 import { FieldRegistryService } from "../field-registry.ts";
 import { config } from "../server-config.ts";
+import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
 import type { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
+const decodeBearerToken = Schema.decodeUnknownOption(
+	Schema.TemplateLiteralParser("Bearer ", Schema.NonEmptyTrimmedString).pipe(
+		Schema.transform(Schema.NonEmptyTrimmedString, {
+			decode: ([, token]) => token,
+			encode: (token) => ["Bearer ", token],
+		}),
+	),
+);
 
 export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 	Effect.gen(function* () {
@@ -168,25 +178,45 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 		const requireAuth = yield* config.requireAuth;
 		const sessions = yield* SessionStoreService;
 		const roleStore = yield* RoleStoreService;
-		const resolve = resolveSessionIdentity({ sessions, roleStore });
+		const machines = yield* MachineClientStoreService;
+		const resolveSession = resolveSessionIdentity({ sessions, roleStore });
+		const resolveMachine = resolveMachineIdentity({ machines });
+
+		const catchUnexpectedError = Effect.catchAll(() =>
+			Effect.succeed(HttpServerResponse.empty({ status: 500 })),
+		);
 
 		yield* router.get(
-			"/ws",
+			"/ws/internal",
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest;
-				const resolved = yield* resolve(
-					Option.fromNullable(request.cookies[sessionCookieName]),
-				);
+				const cookie = Option.fromNullable(request.cookies[sessionCookieName]);
+				const resolved = Option.isSome(cookie)
+					? yield* resolveSession(cookie.value)
+					: Option.none();
 				if (Option.isNone(resolved) && requireAuth) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
 				const identity = Option.getOrElse(resolved, () => anonymousIdentity);
 				return yield* wsHandler(identity);
-			}).pipe(
-				Effect.catchAll(() =>
-					Effect.succeed(HttpServerResponse.empty({ status: 500 })),
-				),
-			),
+			}).pipe(catchUnexpectedError),
+		);
+
+		yield* router.get(
+			"/ws/v0",
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest;
+				const bearer = Option.fromNullable(
+					request.headers["authorization"],
+				).pipe(Option.flatMap(decodeBearerToken));
+				const resolved = Option.isSome(bearer)
+					? yield* resolveMachine(bearer.value)
+					: Option.none();
+				if (Option.isNone(resolved)) {
+					return HttpServerResponse.empty({ status: 401 });
+				}
+				return yield* wsHandler(resolved.value);
+			}).pipe(catchUnexpectedError),
 		);
 	}),
 );
