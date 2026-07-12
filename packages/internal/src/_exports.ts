@@ -1,10 +1,6 @@
 export { RpcCallError } from "./api/shared.ts";
 export { InternalApi } from "./api/api-internal.ts";
-export {
-	PublicApi,
-	MachineTokenRequestSchema,
-	MachineTokenResponseSchema,
-} from "./api/api-v0.ts";
+export { PublicApi } from "./api/api-v0.ts";
 export {
 	HumanAuthenticationMiddleware,
 	MachineAuthenticationMiddleware,

@@ -574,13 +574,6 @@ describe("rpc call", () => {
 });
 
 describe("public surface (v0) — always denies", () => {
-	const tokenRequest = () =>
-		new Request("http://x/api/v0/oauth/token", {
-			method: "POST",
-			body: JSON.stringify({ clientId: "bot", clientSecret: "s3cr3t" }),
-			headers: { "content-type": "application/json" },
-		});
-
 	const countNamespace = () =>
 		loadedNamespace("root", {
 			count: stubField({
@@ -590,11 +583,6 @@ describe("public surface (v0) — always denies", () => {
 		});
 
 	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
-
-	test("401 for the token endpoint (no machine-auth backend yet)", async () => {
-		const handler = webHandler([]);
-		expect((await handler(tokenRequest())).status).toBe(401);
-	});
 
 	test("401 for a resource request without a bearer", async () => {
 		const handler = webHandler([countNamespace()]);

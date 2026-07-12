@@ -1,5 +1,4 @@
-import { HttpApiBuilder, HttpApiError } from "@effect/platform";
-import { Layer } from "effect";
+import { HttpApiBuilder } from "@effect/platform";
 
 import { RootApi } from "../root-api.ts";
 import {
@@ -10,14 +9,10 @@ import {
 	updateReplicant,
 } from "./shared.ts";
 
-const OAuthTokenGroupLive = HttpApiBuilder.group(
+export const PublicGroupsLive = HttpApiBuilder.group(
 	RootApi,
-	"OAuthToken",
-	(handlers) => handlers.handle("token", () => new HttpApiError.Unauthorized()),
-);
-
-export const PublicGroupsLive = Layer.mergeAll(
-	HttpApiBuilder.group(RootApi, "PublicField", (handlers) =>
+	"PublicField",
+	(handlers) =>
 		handlers
 			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
 				getReplicant(namespace, fieldName),
@@ -36,6 +31,4 @@ export const PublicGroupsLive = Layer.mergeAll(
 			.handle("rpcCall", ({ path: { namespace, fieldName }, payload }) =>
 				callRpc(namespace, fieldName, payload),
 			),
-	),
-	OAuthTokenGroupLive,
 );
