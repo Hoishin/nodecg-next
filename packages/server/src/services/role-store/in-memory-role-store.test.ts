@@ -1,4 +1,4 @@
-import { RESERVED_ROLE } from "@nodecg/internal";
+import { ADMIN_ROLE } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
@@ -28,10 +28,10 @@ describe("grant", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
-				const result = yield* roles.grant(alice, RESERVED_ROLE.superadmin);
-				expect(result).toEqual(new Set([RESERVED_ROLE.superadmin]));
+				const result = yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				expect(result).toEqual(new Set([ADMIN_ROLE.superadmin]));
 				expect(yield* roles.get(alice)).toEqual(
-					new Set([RESERVED_ROLE.superadmin]),
+					new Set([ADMIN_ROLE.superadmin]),
 				);
 			}).pipe(Effect.provide(InMemoryRoleStore)),
 		),
@@ -42,11 +42,11 @@ describe("grant", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
-				yield* roles.grant(alice, RESERVED_ROLE.superadmin);
-				yield* roles.grant(alice, RESERVED_ROLE.superadmin);
-				const result = yield* roles.grant(alice, RESERVED_ROLE.admin);
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				const result = yield* roles.grant(alice, ADMIN_ROLE.admin);
 				expect(result).toEqual(
-					new Set([RESERVED_ROLE.superadmin, RESERVED_ROLE.admin]),
+					new Set([ADMIN_ROLE.superadmin, ADMIN_ROLE.admin]),
 				);
 			}).pipe(Effect.provide(InMemoryRoleStore)),
 		),
@@ -57,7 +57,7 @@ describe("grant", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
-				yield* roles.grant(alice, RESERVED_ROLE.superadmin);
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
 				expect(yield* roles.get(bob)).toEqual(new Set());
 				expect(yield* roles.get(aliceElsewhere)).toEqual(new Set());
 			}).pipe(Effect.provide(InMemoryRoleStore)),
@@ -71,12 +71,12 @@ describe("revoke", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
-				yield* roles.grant(alice, RESERVED_ROLE.superadmin);
-				yield* roles.grant(alice, RESERVED_ROLE.admin);
-				const result = yield* roles.revoke(alice, RESERVED_ROLE.admin);
-				expect(result).toEqual(new Set([RESERVED_ROLE.superadmin]));
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				yield* roles.grant(alice, ADMIN_ROLE.admin);
+				const result = yield* roles.revoke(alice, ADMIN_ROLE.admin);
+				expect(result).toEqual(new Set([ADMIN_ROLE.superadmin]));
 				expect(yield* roles.get(alice)).toEqual(
-					new Set([RESERVED_ROLE.superadmin]),
+					new Set([ADMIN_ROLE.superadmin]),
 				);
 			}).pipe(Effect.provide(InMemoryRoleStore)),
 		),
@@ -87,8 +87,8 @@ describe("revoke", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
-				yield* roles.grant(alice, RESERVED_ROLE.superadmin);
-				expect(yield* roles.revoke(alice, RESERVED_ROLE.superadmin)).toEqual(
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				expect(yield* roles.revoke(alice, ADMIN_ROLE.superadmin)).toEqual(
 					new Set(),
 				);
 				expect(yield* roles.get(alice)).toEqual(new Set());
@@ -101,7 +101,7 @@ describe("revoke", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
-				expect(yield* roles.revoke(alice, RESERVED_ROLE.superadmin)).toEqual(
+				expect(yield* roles.revoke(alice, ADMIN_ROLE.superadmin)).toEqual(
 					new Set(),
 				);
 			}).pipe(Effect.provide(InMemoryRoleStore)),

@@ -56,15 +56,6 @@ describe("defineNamespace", () => {
 			expect(error).toBeInstanceOf(FieldDecodeError);
 		});
 
-		test("declaring a reserved role throws", () => {
-			expect(() =>
-				defineNamespace("match", {
-					roles: { everyone: { permission: ["replicant-read"] } },
-					replicant: { count: { schema: Schema.Number } },
-				}),
-			).toThrow(/reserved/);
-		});
-
 		test(
 			"rpc request and response encode/decode round-trip independently",
 			testEffect(
@@ -131,40 +122,155 @@ describe("defineNamespace", () => {
 
 		test("no rule → inherits the role-level base", () => {
 			expect(manifest.replicant.label.permission.read).toEqual(
-				new Set(["judge", "viewer"]),
+				new Set(["judge", "viewer", "admin"]),
 			);
 			expect(manifest.replicant.label.permission.write).toEqual(
-				new Set(["judge"]),
+				new Set(["judge", "admin"]),
 			);
 		});
 
 		test("deny subtracts from the base", () => {
 			expect(manifest.replicant.score.permission.read).toEqual(
-				new Set(["judge"]),
+				new Set(["judge", "admin"]),
 			);
 		});
 
 		test("allow overrides the base", () => {
 			expect(manifest.replicant.score.permission.write).toEqual(
-				new Set(["judge"]),
+				new Set(["judge", "admin"]),
 			);
 		});
 
 		test("client expands to all named roles", () => {
 			expect(manifest.replicant.banner.permission.read).toEqual(
-				new Set(["judge", "monitor", "viewer"]),
+				new Set(["judge", "monitor", "viewer", "admin"]),
 			);
 		});
 
 		test("server-owned write", () => {
 			expect(manifest.replicant.banner.permission.write).toEqual(
-				new Set(["server"]),
+				new Set(["server", "admin"]),
 			);
 		});
 
 		test("computed resolves its read base", () => {
 			expect(manifest.computed.winning.permission.read).toEqual(
-				new Set(["judge", "monitor", "viewer"]),
+				new Set(["judge", "monitor", "viewer", "admin"]),
+			);
+		});
+	});
+
+	describe("principals as capability bases", () => {
+		test("everyone opens every field of the capability", () => {
+			const manifest = defineNamespace("match", {
+				principals: { everyone: { permission: ["computed-read"] } },
+				roles: { judge: { permission: ["replicant-read"] } },
+				replicant: { score: { schema: Schema.Number } },
+				computed: { winning: { schema: Schema.Boolean } },
+			});
+
+			expect(manifest.computed.winning.permission.read).toEqual(
+				new Set(["everyone", "admin"]),
+			);
+			expect(manifest.replicant.score.permission.read).toEqual(
+				new Set(["judge", "admin"]),
+			);
+		});
+
+		test("client never expands to a declared everyone", () => {
+			const manifest = defineNamespace("match", {
+				principals: { everyone: { permission: ["replicant-read"] } },
+				roles: {
+					judge: { permission: ["replicant-read"] },
+					viewer: { permission: [] },
+				},
+				replicant: {
+					internal: {
+						schema: Schema.Number,
+						permission: { read: { allow: ["client"] } },
+					},
+				},
+			});
+
+			expect(manifest.replicant.internal.permission.read).toEqual(
+				new Set(["judge", "viewer", "admin"]),
+			);
+		});
+
+		test("client is a blanket base every named role holds", () => {
+			const manifest = defineNamespace("match", {
+				principals: { client: { permission: ["replicant-read"] } },
+				roles: {
+					judge: { permission: ["replicant-write"] },
+					viewer: { permission: [] },
+				},
+				replicant: { score: { schema: Schema.Number } },
+			});
+
+			expect(manifest.replicant.score.permission.read).toEqual(
+				new Set(["judge", "viewer", "admin"]),
+			);
+			expect(manifest.replicant.score.permission.write).toEqual(
+				new Set(["judge", "admin"]),
+			);
+		});
+
+		test("server takes a capability base like any other role", () => {
+			const manifest = defineNamespace("match", {
+				principals: { server: { permission: ["replicant-write"] } },
+				roles: { viewer: { permission: ["replicant-read"] } },
+				replicant: { score: { schema: Schema.Number } },
+			});
+
+			expect(manifest.replicant.score.permission.write).toEqual(
+				new Set(["server", "admin"]),
+			);
+		});
+
+		test("overriding the admin principal overwrites its all-capabilities default", () => {
+			const manifest = defineNamespace("match", {
+				principals: { admin: { permission: ["replicant-read"] } },
+				roles: { viewer: { permission: ["replicant-read"] } },
+				replicant: { score: { schema: Schema.Number } },
+			});
+
+			expect(manifest.replicant.score.permission.read).toEqual(
+				new Set(["admin", "viewer"]),
+			);
+			expect(manifest.replicant.score.permission.write).toEqual(new Set());
+		});
+
+		test("a principal cannot be declared as a named role", () => {
+			expect(() =>
+				defineNamespace("match", {
+					// @ts-expect-error a principal belongs under "principals"
+					roles: { everyone: { permission: ["replicant-read"] } },
+				}),
+			).toThrow(/principal — declare it under "principals"/);
+		});
+
+		test("superadmin can be declared nowhere — it is granted, never declared", () => {
+			expect(() =>
+				defineNamespace("match", {
+					// @ts-expect-error superadmin cannot be declared anywhere
+					roles: { superadmin: { permission: ["replicant-read"] } },
+				}),
+			).toThrow(/granted to a user, never declared/);
+		});
+
+		test("a deny removes the admin from a field", () => {
+			const manifest = defineNamespace("match", {
+				roles: { judge: { permission: ["replicant-read"] } },
+				replicant: {
+					sealed: {
+						schema: Schema.Number,
+						permission: { read: { deny: ["admin"] } },
+					},
+				},
+			});
+
+			expect(manifest.replicant.sealed.permission.read).toEqual(
+				new Set(["judge"]),
 			);
 		});
 	});
@@ -184,7 +290,7 @@ describe("defineNamespace", () => {
 			});
 
 			expect(manifest.rpc.restart.permission.write).toEqual(
-				new Set(["operator"]),
+				new Set(["operator", "admin"]),
 			);
 			expect(manifest.rpc.restart.permission.read).toEqual(new Set());
 		});
@@ -204,7 +310,7 @@ describe("defineNamespace", () => {
 			});
 
 			expect(manifest.rpc.restart.permission.write).toEqual(
-				new Set(["producer"]),
+				new Set(["producer", "admin"]),
 			);
 		});
 	});
@@ -222,9 +328,11 @@ describe("defineNamespace", () => {
 			});
 
 			expect(manifest.topic.start.permission.write).toEqual(
-				new Set(["server"]),
+				new Set(["server", "admin"]),
 			);
-			expect(manifest.topic.start.permission.read).toEqual(new Set(["viewer"]));
+			expect(manifest.topic.start.permission.read).toEqual(
+				new Set(["viewer", "admin"]),
+			);
 		});
 	});
 
@@ -341,19 +449,23 @@ describe("defineNamespace", () => {
 		});
 
 		describe("permission tokens restricted to declared + reserved roles", () => {
-			test("accepts a declared role and a reserved role", () => {
-				defineNamespace("match", {
+			test("accepts a declared role and any principal, declared or not", () => {
+				const manifest = defineNamespace("match", {
 					roles: { judge: { permission: ["replicant-read"] } },
 					replicant: {
 						score: {
 							schema: Schema.Number,
 							permission: {
-								read: { allow: ["judge", "client"] },
+								read: { allow: ["judge", "admin"] },
 								write: { deny: ["everyone", "server"] },
 							},
 						},
 					},
 				});
+
+				expect(manifest.replicant.score.permission.read).toEqual(
+					new Set(["judge", "admin"]),
+				);
 			});
 
 			test("rejects an unknown token in allow or deny", () => {
@@ -382,21 +494,6 @@ describe("defineNamespace", () => {
 						},
 					}),
 				).toThrow(/Unknown role "vewer" in replicant "score" read\.deny/);
-			});
-
-			test("rejects a tier role (admin/superadmin) as a field token", () => {
-				expect(() =>
-					defineNamespace("match", {
-						roles: { judge: { permission: ["replicant-read"] } },
-						replicant: {
-							score: {
-								schema: Schema.Number,
-								// @ts-expect-error admin is a tier role, not a usable field token
-								permission: { read: { allow: ["admin"] } },
-							},
-						},
-					}),
-				).toThrow(/Unknown role "admin" in replicant "score" read\.allow/);
 			});
 		});
 	});
@@ -427,10 +524,10 @@ describe("extendNamespace", () => {
 			});
 
 			expect(extended.replicant.score.permission.read).toEqual(
-				new Set(["judge"]),
+				new Set(["judge", "admin"]),
 			);
 			expect(extended.replicant.score.permission.write).toEqual(
-				new Set(["judge"]),
+				new Set(["judge", "admin"]),
 			);
 		});
 
@@ -449,10 +546,10 @@ describe("extendNamespace", () => {
 
 					expect(yield* extended.replicant.pinned.encode("hi")).toBe("hi");
 					expect(extended.replicant.pinned.permission.write).toEqual(
-						new Set(["judge"]),
+						new Set(["judge", "admin"]),
 					);
 					expect(extended.replicant.score.permission.read).toEqual(
-						new Set(["judge", "viewer"]),
+						new Set(["judge", "viewer", "admin"]),
 					);
 				}),
 			),
@@ -464,10 +561,10 @@ describe("extendNamespace", () => {
 			});
 
 			expect(extended.replicant.score.permission.read).toEqual(
-				new Set(["auditor", "judge", "viewer"]),
+				new Set(["auditor", "judge", "viewer", "admin"]),
 			);
 			expect(extended.replicant.secret.permission.read).toEqual(
-				new Set(["auditor", "judge"]),
+				new Set(["auditor", "judge", "admin"]),
 			);
 		});
 
@@ -476,15 +573,17 @@ describe("extendNamespace", () => {
 				roles: { judge: { permission: ["replicant-read"] } },
 			});
 
-			expect(extended.replicant.score.permission.write).toEqual(new Set());
+			expect(extended.replicant.score.permission.write).toEqual(
+				new Set(["admin"]),
+			);
 			expect(extended.computed.total.permission.read).toEqual(
-				new Set(["viewer"]),
+				new Set(["viewer", "admin"]),
 			);
 			expect(extended.replicant.secret.permission.read).toEqual(
-				new Set(["judge"]),
+				new Set(["judge", "admin"]),
 			);
 			expect(extended.replicant.score.permission.read).toEqual(
-				new Set(["judge", "viewer"]),
+				new Set(["judge", "viewer", "admin"]),
 			);
 		});
 
@@ -501,7 +600,7 @@ describe("extendNamespace", () => {
 			}));
 
 			expect(extended.replicant.mirror.permission.read).toEqual(
-				new Set(["judge", "viewer"]),
+				new Set(["judge", "viewer", "admin"]),
 			);
 		});
 
@@ -517,9 +616,11 @@ describe("extendNamespace", () => {
 					expect(yield* extended.computed.ratio.encode(0.5)).toBe(0.5);
 					expect(yield* extended.topic.ping.encode("x")).toBe("x");
 					expect(extended.computed.ratio.permission.read).toEqual(
-						new Set(["judge", "viewer"]),
+						new Set(["judge", "viewer", "admin"]),
 					);
-					expect(extended.topic.ping.permission.read).toEqual(new Set());
+					expect(extended.topic.ping.permission.read).toEqual(
+						new Set(["admin"]),
+					);
 				}),
 			),
 		);
@@ -544,7 +645,7 @@ describe("extendNamespace", () => {
 					expect(yield* extended.rpc.restart.request.encode("go")).toBe("go");
 					expect(yield* extended.rpc.restart.response.decode(true)).toBe(true);
 					expect(extended.rpc.restart.permission.write).toEqual(
-						new Set(["operator"]),
+						new Set(["operator", "admin"]),
 					);
 					expect(extended.rpc.restart.permission.read).toEqual(new Set());
 				}),
@@ -564,22 +665,66 @@ describe("extendNamespace", () => {
 			const vetoed = extendNamespace(rpcBase, {
 				roles: { operator: { permission: [] } },
 			});
-			expect(vetoed.rpc.restart.permission.write).toEqual(new Set());
+			expect(vetoed.rpc.restart.permission.write).toEqual(new Set(["admin"]));
 
 			const granted = extendNamespace(rpcBase, {
 				roles: { producer: { permission: ["rpc-call"] } },
 			});
 			expect(granted.rpc.restart.permission.write).toEqual(
-				new Set(["operator", "producer"]),
+				new Set(["operator", "producer", "admin"]),
 			);
 		});
 
-		test("declaring a reserved role throws", () => {
-			expect(() =>
-				extendNamespace(base, {
-					roles: { everyone: { permission: ["replicant-read"] } },
-				}),
-			).toThrow(/reserved/);
+		test("declaring everyone opens the precedent's fields, and re-listing it locks them back down", () => {
+			const opened = extendNamespace(base, {
+				principals: { everyone: { permission: ["replicant-read"] } },
+			});
+			expect(opened.replicant.score.permission.read).toEqual(
+				new Set(["everyone", "judge", "viewer", "admin"]),
+			);
+			expect(opened.replicant.secret.permission.read).toEqual(
+				new Set(["everyone", "judge", "admin"]),
+			);
+
+			const closed = extendNamespace(opened, {
+				principals: { everyone: { permission: [] } },
+			});
+			expect(closed.replicant.score.permission.read).toEqual(
+				new Set(["judge", "viewer", "admin"]),
+			);
+			expect(closed.replicant.secret.permission.read).toEqual(
+				new Set(["judge", "admin"]),
+			);
+		});
+
+		test("a client blanket reaches roles added in a later extend", () => {
+			const blanketed = extendNamespace(base, {
+				principals: { client: { permission: ["replicant-read"] } },
+			});
+			const withAuditor = extendNamespace(blanketed, {
+				roles: { auditor: { permission: [] } },
+			});
+
+			expect(withAuditor.replicant.score.permission.read).toEqual(
+				new Set(["auditor", "judge", "viewer", "admin"]),
+			);
+		});
+
+		test("re-listing client drops the blanket but keeps roles holding the capability outright", () => {
+			const blanketed = extendNamespace(base, {
+				principals: { client: { permission: ["replicant-write"] } },
+				roles: { viewer: { permission: ["replicant-read"] } },
+			});
+			expect(blanketed.replicant.score.permission.write).toEqual(
+				new Set(["judge", "viewer", "admin"]),
+			);
+
+			const revoked = extendNamespace(blanketed, {
+				principals: { client: { permission: [] } },
+			});
+			expect(revoked.replicant.score.permission.write).toEqual(
+				new Set(["judge", "admin"]),
+			);
 		});
 
 		test("throws on an unknown token in an added field", () => {
@@ -607,7 +752,7 @@ describe("extendNamespace", () => {
 			});
 
 			expect(extended.replicant.pinned.permission.read).toEqual(
-				new Set(["auditor"]),
+				new Set(["auditor", "admin"]),
 			);
 		});
 	});

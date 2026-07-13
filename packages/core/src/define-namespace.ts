@@ -1,8 +1,10 @@
 import {
-	RESERVED_ROLE,
-	RESERVED_ROLE_SET,
+	isUndeclarableRole,
+	PRINCIPAL,
+	Principal,
+	PRINCIPAL_BY_NAME,
 	RoleName,
-	USABLE_RESERVED_ROLE_SET,
+	type UndeclarableRoleName,
 } from "@nodecg/internal";
 import {
 	type AddedRpcSchemas,
@@ -17,7 +19,9 @@ import type { JsonValue } from "type-fest";
 
 import {
 	buildPermission,
+	ROLE_CAPABILITY,
 	type PermissionArg,
+	type PrincipalsArg,
 	type PermissionRuleArg,
 	type ReadOnlyPermissionArg,
 	type ResolvedPermission,
@@ -72,7 +76,7 @@ export interface NamespaceManifest<
 	> = {},
 > {
 	readonly namespace: string;
-	readonly [manifestRolesKey]: Map<RoleName, RoleManifest>;
+	readonly [manifestRolesKey]: RoleRegistry;
 
 	readonly replicant: {
 		[K in keyof Replicant & string]: FieldManifest<Replicant[K]>;
@@ -172,35 +176,48 @@ function implementCodec<D, E extends JsonValue>(
 	return { name, ...makeCodec(name, schema) };
 }
 
+interface RoleRegistry {
+	readonly roles: Map<RoleName, RoleManifest>;
+	readonly principals: Map<Principal, RoleManifest>;
+}
+
+const brandToken = (token: string): RoleName | Principal =>
+	PRINCIPAL_BY_NAME.get(token) ?? RoleName(token);
+
 const expandClientRoles = (
-	roles: ReadonlyArray<RoleName>,
+	tokens: ReadonlyArray<RoleName | Principal>,
 	namedRoles: ReadonlySet<RoleName>,
-): Set<RoleName> => {
-	const result = new Set<RoleName>();
-	for (const role of roles) {
-		if (role === RESERVED_ROLE.client) {
-			for (const role of namedRoles) {
-				result.add(role);
+): Set<RoleName | Principal> => {
+	const result = new Set<RoleName | Principal>();
+	for (const token of tokens) {
+		if (token === PRINCIPAL.client) {
+			for (const named of namedRoles) {
+				result.add(named);
 			}
 		} else {
-			result.add(role);
+			result.add(token);
 		}
 	}
 	return result;
 };
 
 const resolveFieldAllowedRoles = (
-	base: ReadonlySet<RoleName>,
+	base: ReadonlySet<RoleName | Principal>,
 	rule: PermissionRuleArg<string> | undefined,
 	namedRoles: ReadonlySet<RoleName>,
-): ReadonlySet<RoleName> => {
+): ReadonlySet<RoleName | Principal> => {
 	let result = new Set(base);
 	if (rule?.allow) {
-		result = expandClientRoles(rule.allow.map(RoleName), namedRoles);
+		// Allow field overrides entire list, except admin who is always allowed
+		result = expandClientRoles(rule.allow.map(brandToken), namedRoles);
+		if (base.has(PRINCIPAL.admin)) {
+			result.add(PRINCIPAL.admin);
+		}
 	}
 	if (rule?.deny) {
+		// Deny field then subtracts roles
 		result = result.difference(
-			expandClientRoles(rule.deny.map(RoleName), namedRoles),
+			expandClientRoles(rule.deny.map(brandToken), namedRoles),
 		);
 	}
 	return result;
@@ -216,18 +233,14 @@ type FieldPermissionOptions = {
 const validatePermissionTokens = (
 	group: "replicant" | "computed" | "topic" | "rpc",
 	fields: Readonly<Record<string, FieldPermissionOptions>> | undefined,
-	namedRoles: ReadonlySet<RoleName>,
+	tokens: ReadonlySet<RoleName | Principal>,
 ): void => {
 	for (const [name, field] of Object.entries(fields ?? {})) {
 		for (const operation of ["read", "write"] as const) {
 			const rule = field.permission?.[operation];
 			for (const kind of ["allow", "deny"] as const) {
 				for (const token of rule?.[kind] ?? []) {
-					const roleName = RoleName(token);
-					if (
-						!namedRoles.has(roleName) &&
-						!USABLE_RESERVED_ROLE_SET.has(roleName)
-					) {
+					if (!tokens.has(brandToken(token))) {
 						throw new Error(
 							`Unknown role "${token}" in ${group} "${name}" ${operation}.${kind}`,
 						);
@@ -238,17 +251,103 @@ const validatePermissionTokens = (
 	}
 };
 
-const findRolesWithCapability = (
+const collectPermissionTokens = (
+	registry: RoleRegistry,
+): ReadonlySet<RoleName | Principal> =>
+	new Set([...registry.roles.keys(), ...registry.principals.keys()]);
+
+const seedPrincipals = (): Map<Principal, RoleManifest> => {
+	const principals = new Map<Principal, RoleManifest>();
+	for (const principal of Object.values(PRINCIPAL)) {
+		principals.set(principal, {
+			name: principal,
+			capabilities: new Set(
+				principal === PRINCIPAL.admin ? ROLE_CAPABILITY : [],
+			),
+		});
+	}
+	return principals;
+};
+
+const declareRoles = (
+	precedent: RoleRegistry,
+	named: Readonly<Record<string, RoleArg | undefined>> | undefined,
+	overrides: PrincipalsArg | undefined,
+): {
+	registry: RoleRegistry;
+	declared: {
+		roles: ReadonlySet<RoleName>;
+		principals: ReadonlySet<Principal>;
+	};
+} => {
+	const roles = new Map(precedent.roles);
+	const principals = new Map(precedent.principals);
+	const declaredRoles = new Set<RoleName>();
+	const declaredPrincipals = new Set<Principal>();
+
+	// Resolve principals
+	for (const [key, arg] of Object.entries(overrides ?? {})) {
+		if (typeof arg === "undefined") {
+			continue;
+		}
+		const principal = PRINCIPAL_BY_NAME.get(key);
+		if (typeof principal === "undefined") {
+			continue;
+		}
+		principals.set(principal, {
+			name: principal,
+			capabilities: new Set(arg.permission),
+		});
+		declaredPrincipals.add(principal);
+	}
+
+	// Resolve roles
+	for (const [key, arg] of Object.entries(named ?? {})) {
+		if (typeof arg === "undefined") {
+			continue;
+		}
+		if (PRINCIPAL_BY_NAME.has(key)) {
+			throw new Error(
+				`Role "${key}" is a principal — declare it under "principals"`,
+			);
+		}
+		if (isUndeclarableRole(key)) {
+			throw new Error(
+				`Role "${key}" cannot be declared: it is granted to a user, never declared by a namespace`,
+			);
+		}
+		const roleName = RoleName(key);
+		roles.set(roleName, {
+			name: roleName,
+			description: arg.description ?? roles.get(roleName)?.description,
+			capabilities: new Set(arg.permission),
+		});
+		declaredRoles.add(roleName);
+	}
+
+	return {
+		registry: { roles, principals },
+		declared: { roles: declaredRoles, principals: declaredPrincipals },
+	};
+};
+
+const capabilityBase = (
 	capability: RoleCapability,
-	roles: ReadonlyMap<RoleName, RoleManifest>,
-): ReadonlySet<RoleName> => {
-	const holders = new Set<RoleName>();
-	for (const [role, roleManifest] of roles) {
-		if (roleManifest.capabilities.has(capability)) {
-			holders.add(role);
+	registry: RoleRegistry,
+	namedRoles: ReadonlySet<RoleName>,
+): ReadonlySet<RoleName | Principal> => {
+	const holders: (RoleName | Principal)[] = [];
+	for (const [role, manifest] of registry.roles) {
+		if (manifest.capabilities.has(capability)) {
+			holders.push(role);
 		}
 	}
-	return holders;
+	for (const [principal, manifest] of registry.principals) {
+		if (manifest.capabilities.has(capability)) {
+			holders.push(principal);
+		}
+	}
+	return expandClientRoles(holders, namedRoles);
 };
 
 export function defineNamespace<
@@ -263,7 +362,8 @@ export function defineNamespace<
 >(
 	namespace: string,
 	defineOption: {
-		roles?: Roles;
+		roles?: Roles & { [K in UndeclarableRoleName]?: never };
+		principals?: PrincipalsArg;
 		replicant?: {
 			[K in keyof Replicant & string]: FieldOption<
 				Replicant[K],
@@ -290,36 +390,26 @@ export function defineNamespace<
 	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> },
 	AddedRpcDecoded<Rpc>
 > {
-	const roles = new Map<RoleName, RoleManifest>();
+	const { registry } = declareRoles(
+		{ roles: new Map(), principals: seedPrincipals() },
+		defineOption.roles,
+		defineOption.principals,
+	);
 
-	if (defineOption.roles) {
-		for (const [key, roleArg] of Object.entries(defineOption.roles)) {
-			const roleName = RoleName(key);
-			if (RESERVED_ROLE_SET.has(roleName)) {
-				throw new Error(
-					`Role "${roleName}" is reserved and cannot be declared`,
-				);
-			}
-			roles.set(roleName, {
-				name: roleName,
-				description: roleArg.description,
-				capabilities: new Set(roleArg.permission),
-			});
-		}
-	}
-	const namedRoles = new Set(roles.keys());
+	const namedRoles = new Set(registry.roles.keys());
+	const tokens = collectPermissionTokens(registry);
 
-	validatePermissionTokens("replicant", defineOption.replicant, namedRoles);
-	validatePermissionTokens("computed", defineOption.computed, namedRoles);
-	validatePermissionTokens("topic", defineOption.topic, namedRoles);
-	validatePermissionTokens("rpc", defineOption.rpc, namedRoles);
+	validatePermissionTokens("replicant", defineOption.replicant, tokens);
+	validatePermissionTokens("computed", defineOption.computed, tokens);
+	validatePermissionTokens("topic", defineOption.topic, tokens);
+	validatePermissionTokens("rpc", defineOption.rpc, tokens);
 
 	const resolve = (
 		capability: RoleCapability,
 		rule: PermissionRuleArg<keyof Roles & string> | undefined,
 	) =>
 		resolveFieldAllowedRoles(
-			findRolesWithCapability(capability, roles),
+			capabilityBase(capability, registry, namedRoles),
 			rule,
 			namedRoles,
 		);
@@ -380,7 +470,7 @@ export function defineNamespace<
 		computed,
 		topic,
 		rpc,
-		[manifestRolesKey]: roles,
+		[manifestRolesKey]: registry,
 	};
 }
 
@@ -442,6 +532,7 @@ export function extendNamespace<
 	extendOptionOrFn:
 		| {
 				readonly roles?: Record<string, RoleArg>;
+				readonly principals?: PrincipalsArg;
 				readonly replicant?: EReplicant;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
@@ -449,6 +540,7 @@ export function extendNamespace<
 		  }
 		| ((precedent: NamespaceManifest<PReplicant, PComputed, PTopic, PRpc>) => {
 				readonly roles?: Record<string, RoleArg>;
+				readonly principals?: PrincipalsArg;
 				readonly replicant?: EReplicant;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
@@ -465,65 +557,53 @@ export function extendNamespace<
 			? extendOptionOrFn(manifest)
 			: extendOptionOrFn;
 
-	// merge roles
-	const roles = new Map(manifest[manifestRolesKey]);
-	if (extendOption.roles) {
-		for (const [key, arg] of Object.entries(extendOption.roles)) {
-			const roleName = RoleName(key);
-			if (RESERVED_ROLE_SET.has(roleName)) {
-				throw new Error(
-					`Role "${roleName}" is reserved and cannot be declared`,
-				);
-			}
-			const prev = roles.get(roleName);
-			roles.set(roleName, {
-				name: roleName,
-				description: arg.description ?? prev?.description,
-				capabilities: new Set(arg.permission),
-			});
-		}
-	}
+	const { registry, declared } = declareRoles(
+		manifest[manifestRolesKey],
+		extendOption.roles,
+		extendOption.principals,
+	);
 
-	const namedRoles = new Set(roles.keys());
+	const namedRoles = new Set(registry.roles.keys());
 
-	const granted = new Map<RoleName, RoleManifest>();
-	for (const key of Object.keys(extendOption.roles ?? {})) {
-		const roleName = RoleName(key);
-		const role = roles.get(roleName);
-		if (role) {
-			granted.set(roleName, role);
-		}
-	}
+	const affected = new Set<RoleName | Principal>([
+		...(declared.principals.has(PRINCIPAL.client)
+			? namedRoles
+			: declared.roles),
+		...declared.principals,
+	]);
 
-	validatePermissionTokens("replicant", extendOption.replicant, namedRoles);
-	validatePermissionTokens("computed", extendOption.computed, namedRoles);
-	validatePermissionTokens("topic", extendOption.topic, namedRoles);
-	validatePermissionTokens("rpc", extendOption.rpc, namedRoles);
+	const tokens = collectPermissionTokens(registry);
+
+	validatePermissionTokens("replicant", extendOption.replicant, tokens);
+	validatePermissionTokens("computed", extendOption.computed, tokens);
+	validatePermissionTokens("topic", extendOption.topic, tokens);
+	validatePermissionTokens("rpc", extendOption.rpc, tokens);
 
 	const resolve = (
 		capability: RoleCapability,
 		rule: PermissionRuleArg<string> | undefined,
 	) =>
 		resolveFieldAllowedRoles(
-			findRolesWithCapability(capability, roles),
+			capabilityBase(capability, registry, namedRoles),
 			rule,
 			namedRoles,
 		);
 
 	const remap = (
 		capability: RoleCapability,
-		current: ReadonlySet<RoleName>,
+		current: ReadonlySet<RoleName | Principal>,
 		rule: PermissionRuleArg<string> | undefined,
 	) => {
-		const base = new Set(current);
-		for (const [role, roleManifest] of granted) {
-			if (roleManifest.capabilities.has(capability)) {
-				base.add(role);
+		const base = capabilityBase(capability, registry, namedRoles);
+		const result = new Set(current);
+		for (const role of affected) {
+			if (base.has(role)) {
+				result.add(role);
 			} else {
-				base.delete(role);
+				result.delete(role);
 			}
 		}
-		return resolveFieldAllowedRoles(base, rule, namedRoles);
+		return resolveFieldAllowedRoles(result, rule, namedRoles);
 	};
 
 	const replicantRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
@@ -692,7 +772,7 @@ export function extendNamespace<
 
 	return {
 		namespace: manifest.namespace,
-		[manifestRolesKey]: roles,
+		[manifestRolesKey]: registry,
 		replicant: replicant,
 		computed,
 		topic,

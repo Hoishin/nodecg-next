@@ -8,7 +8,7 @@ import {
 import { isAdminTier } from "@nodecg/core";
 import {
 	CurrentIdentity,
-	RESERVED_ROLE_SET,
+	isUndeclarableRole,
 	sessionCookieName,
 	sessionCookieSecurity,
 } from "@nodecg/internal";
@@ -223,62 +223,66 @@ const MachinesGroupLive = HttpApiBuilder.group(
 	(handlers) =>
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			return handlers
-				.handle("createApiKey", ({ payload: { displayName } }) =>
-					Effect.gen(function* () {
-						yield* requireAdminTier;
-						return yield* machines.createApiKey({ displayName });
-					}),
-				)
-				.handle("list", () =>
-					Effect.gen(function* () {
-						yield* requireAdminTier;
-						const machineList = yield* machines.list();
-						return { machines: machineList };
-					}),
-				)
-				.handle("revoke", ({ path: { id } }) =>
-					Effect.gen(function* () {
-						yield* requireAdminTier;
-						const revoked = yield* machines.revoke(id);
-						if (Option.isNone(revoked)) {
-							return yield* new HttpApiError.NotFound();
-						}
-					}),
-				)
-				.handle("refresh", ({ path: { id } }) =>
-					Effect.gen(function* () {
-						yield* requireAdminTier;
-						const refreshed = yield* machines.refreshApiKey(id);
-						if (Option.isNone(refreshed)) {
-							return yield* new HttpApiError.NotFound();
-						}
-						return refreshed.value;
-					}),
-				)
-				.handle("grantRole", ({ path: { id }, payload: { role } }) =>
-					Effect.gen(function* () {
-						yield* requireAdminTier;
-						if (RESERVED_ROLE_SET.has(role)) {
-							return yield* new HttpApiError.Forbidden();
-						}
-						const roles = yield* machines.grantRole(id, role);
-						if (Option.isNone(roles)) {
-							return yield* new HttpApiError.NotFound();
-						}
-						return { roles: roles.value };
-					}),
-				)
-				.handle("revokeRole", ({ path: { id, role } }) =>
-					Effect.gen(function* () {
-						yield* requireAdminTier;
-						const roles = yield* machines.revokeRole(id, role);
-						if (Option.isNone(roles)) {
-							return yield* new HttpApiError.NotFound();
-						}
-						return { roles: roles.value };
-					}),
-				);
+			return (
+				handlers
+					.handle("createApiKey", ({ payload: { displayName } }) =>
+						Effect.gen(function* () {
+							yield* requireAdminTier;
+							return yield* machines.createApiKey({ displayName });
+						}),
+					)
+					.handle("list", () =>
+						Effect.gen(function* () {
+							yield* requireAdminTier;
+							const machineList = yield* machines.list();
+							return { machines: machineList };
+						}),
+					)
+					.handle("revoke", ({ path: { id } }) =>
+						Effect.gen(function* () {
+							yield* requireAdminTier;
+							const revoked = yield* machines.revoke(id);
+							if (Option.isNone(revoked)) {
+								return yield* new HttpApiError.NotFound();
+							}
+						}),
+					)
+					.handle("refresh", ({ path: { id } }) =>
+						Effect.gen(function* () {
+							yield* requireAdminTier;
+							const refreshed = yield* machines.refreshApiKey(id);
+							if (Option.isNone(refreshed)) {
+								return yield* new HttpApiError.NotFound();
+							}
+							return refreshed.value;
+						}),
+					)
+					// TODO: has to be scoped into namespace
+					.handle("grantRole", ({ path: { id }, payload: { role } }) =>
+						Effect.gen(function* () {
+							yield* requireAdminTier;
+							// TODO: use the resolved list of roles in the namespace
+							if (isUndeclarableRole(role)) {
+								return yield* new HttpApiError.Forbidden();
+							}
+							const roles = yield* machines.grantRole(id, role);
+							if (Option.isNone(roles)) {
+								return yield* new HttpApiError.NotFound();
+							}
+							return { roles: roles.value };
+						}),
+					)
+					.handle("revokeRole", ({ path: { id, role } }) =>
+						Effect.gen(function* () {
+							yield* requireAdminTier;
+							const roles = yield* machines.revokeRole(id, role);
+							if (Option.isNone(roles)) {
+								return yield* new HttpApiError.NotFound();
+							}
+							return { roles: roles.value };
+						}),
+					)
+			);
 		}),
 );
 

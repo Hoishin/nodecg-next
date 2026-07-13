@@ -1,4 +1,4 @@
-import { RESERVED_ROLE } from "@nodecg/internal";
+import { ADMIN_ROLE } from "@nodecg/internal";
 import { Effect, Layer } from "effect";
 
 import { InMemoryRoleStore } from "./services/role-store/in-memory-role-store.ts";
@@ -15,7 +15,7 @@ export const seededRoleStore = (
 		Effect.gen(function* () {
 			const roleStore = yield* RoleStoreService;
 			yield* Effect.forEach(superadmins, ({ issuer, subject }) =>
-				roleStore.grant({ issuer, subject }, RESERVED_ROLE.superadmin),
+				roleStore.grant({ issuer, subject }, ADMIN_ROLE.superadmin),
 			);
 		}),
 	).pipe(Layer.provideMerge(InMemoryRoleStore));

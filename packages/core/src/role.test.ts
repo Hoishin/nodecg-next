@@ -1,9 +1,9 @@
 import {
+	ADMIN_ROLE,
 	HumanAccountSchema,
 	HumanIdentitySchema,
 	MachineIdentitySchema,
 	AnonymousIdentitySchema,
-	RESERVED_ROLE,
 	RoleName,
 	ServerIdentitySchema,
 } from "@nodecg/internal";
@@ -68,14 +68,14 @@ describe("canRead / canWrite", () => {
 		).toBe(true);
 	});
 
-	test("superadmin and admin bypass every field set", () => {
+	test("admin and superadmin pass every field set by default", () => {
 		expect(
 			manifest.replicant.score.permission.canWrite(
-				human(RESERVED_ROLE.superadmin),
+				human(ADMIN_ROLE.superadmin),
 			),
 		).toBe(true);
 		expect(
-			manifest.replicant.score.permission.canWrite(human(RESERVED_ROLE.admin)),
+			manifest.replicant.score.permission.canWrite(human(ADMIN_ROLE.admin)),
 		).toBe(true);
 	});
 
@@ -100,14 +100,12 @@ describe("canRead / canWrite", () => {
 		).toBe(true);
 	});
 
-	test("computed fields are never writable, even for superadmin", () => {
+	test("computed fields are never writable, not even for an admin", () => {
 		expect(
 			manifest.computed.total.permission.canRead(human(RoleName("viewer"))),
 		).toBe(true);
 		expect(
-			manifest.computed.total.permission.canWrite(
-				human(RESERVED_ROLE.superadmin),
-			),
+			manifest.computed.total.permission.canWrite(human(ADMIN_ROLE.superadmin)),
 		).toBe(false);
 	});
 
@@ -120,10 +118,102 @@ describe("canRead / canWrite", () => {
 	});
 });
 
+describe("principals as capability bases", () => {
+	const based = defineNamespace("match", {
+		principals: {
+			everyone: { permission: ["computed-read"] },
+			server: { permission: ["replicant-write"] },
+		},
+		roles: { judge: { permission: ["replicant-read"] } },
+		replicant: { score: { schema: Schema.Number } },
+		computed: { total: { schema: Schema.Number } },
+	});
+
+	test("an everyone base admits every caller without a field rule", () => {
+		expect(based.computed.total.permission.canRead(anonymous)).toBe(true);
+		expect(
+			based.computed.total.permission.canRead(human(RoleName("judge"))),
+		).toBe(true);
+	});
+
+	test("a server base admits the server identity but not a named role", () => {
+		expect(based.replicant.score.permission.canWrite(server)).toBe(true);
+		expect(
+			based.replicant.score.permission.canWrite(human(RoleName("judge"))),
+		).toBe(false);
+	});
+
+	test("an everyone base on one capability does not leak into another", () => {
+		expect(based.replicant.score.permission.canRead(anonymous)).toBe(false);
+	});
+});
+
+describe("overriding the admin principal", () => {
+	const narrowed = defineNamespace("match", {
+		principals: { admin: { permission: ["replicant-read"] } },
+		roles: { judge: { permission: ["replicant-read", "replicant-write"] } },
+		replicant: { score: { schema: Schema.Number } },
+	});
+
+	test("narrows the admin to the declared capabilities", () => {
+		expect(
+			narrowed.replicant.score.permission.canRead(human(ADMIN_ROLE.admin)),
+		).toBe(true);
+		expect(
+			narrowed.replicant.score.permission.canWrite(human(ADMIN_ROLE.admin)),
+		).toBe(false);
+	});
+
+	test("narrows a superadmin with it — holding superadmin means having the admin principal", () => {
+		expect(
+			narrowed.replicant.score.permission.canRead(human(ADMIN_ROLE.superadmin)),
+		).toBe(true);
+		expect(
+			narrowed.replicant.score.permission.canWrite(
+				human(ADMIN_ROLE.superadmin),
+			),
+		).toBe(false);
+	});
+
+	test("deny locks a single field against the admin, superadmin included", () => {
+		const sealed = defineNamespace("match", {
+			replicant: {
+				audit: {
+					schema: Schema.Number,
+					permission: { read: { deny: ["admin"] } },
+				},
+			},
+		});
+
+		expect(
+			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
+		).toBe(false);
+		expect(
+			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.superadmin)),
+		).toBe(false);
+	});
+
+	test("an explicit allow still grants an admin whose base was emptied", () => {
+		const pinned = defineNamespace("match", {
+			principals: { admin: { permission: [] } },
+			replicant: {
+				audit: {
+					schema: Schema.Number,
+					permission: { write: { allow: ["admin"] } },
+				},
+			},
+		});
+
+		expect(
+			pinned.replicant.audit.permission.canWrite(human(ADMIN_ROLE.admin)),
+		).toBe(true);
+	});
+});
+
 describe("isAdminTier", () => {
 	test("holds for superadmin and admin", () => {
-		expect(isAdminTier(human(RESERVED_ROLE.superadmin))).toBe(true);
-		expect(isAdminTier(human(RESERVED_ROLE.admin))).toBe(true);
+		expect(isAdminTier(human(ADMIN_ROLE.superadmin))).toBe(true);
+		expect(isAdminTier(human(ADMIN_ROLE.admin))).toBe(true);
 	});
 
 	test("fails for a named role, anonymous, and server", () => {

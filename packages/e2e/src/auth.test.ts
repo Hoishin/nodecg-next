@@ -1,4 +1,4 @@
-import { IdentitySchema, RESERVED_ROLE } from "@nodecg/internal";
+import { ADMIN_ROLE, IdentitySchema } from "@nodecg/internal";
 import { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 
@@ -66,7 +66,7 @@ describe("runtime role assignment", () => {
 		await login("operator");
 		const granted = (await fetchMe()).identity;
 		assert(granted._tag === "human");
-		expect(granted.roles).toEqual(new Set([RESERVED_ROLE.superadmin]));
+		expect(granted.roles).toEqual(new Set([ADMIN_ROLE.superadmin]));
 
 		await revokeAsAdmin("operator", "superadmin");
 		await login("operator");

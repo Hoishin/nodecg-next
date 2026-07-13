@@ -27,11 +27,15 @@ export {
 	fieldIdentifierEquivalence,
 } from "./messages.ts";
 export {
-	RESERVED_ROLE,
-	RESERVED_ROLE_SET,
+	Principal,
+	PRINCIPAL,
+	PRINCIPAL_BY_NAME,
+	type PrincipalName,
+} from "./principal.ts";
+export {
+	ADMIN_ROLE,
+	isUndeclarableRole,
 	RoleName,
-	USABLE_RESERVED_ROLE_SET,
-	type UsableReservedRoleName,
-	type ReservedRoleName,
+	type UndeclarableRoleName,
 } from "./role.ts";
 export { JsonValueSchema } from "./utils/json-value-schema.ts";

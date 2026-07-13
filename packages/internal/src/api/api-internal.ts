@@ -102,6 +102,7 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 			.addError(HttpApiError.NotFound),
 	)
 	.add(
+		// TODO: make a separate "grantAdminRole"
 		HttpApiEndpoint.post(
 			"grantRole",
 		)`/machines/${HttpApiSchema.param("id", Schema.String)}/roles`

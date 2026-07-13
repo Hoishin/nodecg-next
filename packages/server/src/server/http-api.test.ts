@@ -5,7 +5,7 @@ import {
 	CurrentIdentity,
 	HumanIdentitySchema,
 	type Identity,
-	RESERVED_ROLE,
+	ADMIN_ROLE,
 	RoleName,
 } from "@nodecg/internal";
 import { Effect, HashMap, Layer, Schema, Stream } from "effect";
@@ -205,7 +205,7 @@ describe("roles", () => {
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([RESERVED_ROLE.admin]),
+			roles: new Set([ADMIN_ROLE.admin]),
 		}),
 	);
 
@@ -264,7 +264,7 @@ describe("machines", () => {
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([RESERVED_ROLE.admin]),
+			roles: new Set([ADMIN_ROLE.admin]),
 		}),
 	);
 
@@ -751,7 +751,7 @@ describe("public surface (v0) with bearer token", () => {
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([RESERVED_ROLE.admin]),
+			roles: new Set([ADMIN_ROLE.admin]),
 		}),
 	);
 
