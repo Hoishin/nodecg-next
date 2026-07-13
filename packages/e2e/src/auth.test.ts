@@ -1,4 +1,4 @@
-import { ADMIN_ROLE, IdentitySchema } from "@nodecg/internal";
+import { IdentitySchema, RoleName } from "@nodecg/internal";
 import { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 
@@ -62,18 +62,27 @@ describe("runtime role assignment", () => {
 		assert(before._tag === "human");
 		expect(before.roles).toEqual(new Set());
 
-		await grantAsAdmin("operator", "superadmin");
+		await grantAsAdmin("operator", "producer");
 		await login("operator");
 		const granted = (await fetchMe()).identity;
 		assert(granted._tag === "human");
-		expect(granted.roles).toEqual(new Set([ADMIN_ROLE.superadmin]));
+		expect(granted.roles).toEqual(new Set([RoleName("producer")]));
 
-		await revokeAsAdmin("operator", "superadmin");
+		await revokeAsAdmin("operator", "producer");
 		await login("operator");
 		const revoked = (await fetchMe()).identity;
 		assert(revoked._tag === "human");
 		expect(revoked.roles).toEqual(new Set());
 
+		await logout();
+	});
+
+	test("even an admin cannot grant an undeclarable role (403)", async () => {
+		await login("root");
+		expect((await assignRole("grant", "operator", "server")).status).toBe(403);
+		expect((await assignRole("grant", "operator", "superadmin")).status).toBe(
+			403,
+		);
 		await logout();
 	});
 

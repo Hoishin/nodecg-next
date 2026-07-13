@@ -294,6 +294,9 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 			.handle("grant", ({ payload: { issuer, subject, role } }) =>
 				Effect.gen(function* () {
 					yield* requireAdminTier;
+					if (isUndeclarableRole(role)) {
+						return yield* new HttpApiError.Forbidden();
+					}
 					const roles = yield* roleStore.grant({ issuer, subject }, role);
 					return { roles };
 				}),

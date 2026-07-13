@@ -109,12 +109,30 @@ describe("canRead / canWrite", () => {
 		).toBe(false);
 	});
 
-	test("a server identity matches only server-owned fields", () => {
+	test("a server identity holds every capability by default", () => {
+		expect(manifest.replicant.score.permission.canWrite(server)).toBe(true);
+		expect(manifest.computed.total.permission.canRead(server)).toBe(true);
+	});
+
+	test("an allow narrows the named roles without revoking the server", () => {
+		expect(manifest.replicant.score.permission.canWrite(server)).toBe(true);
 		expect(manifest.replicant.config.permission.canWrite(server)).toBe(true);
 		expect(
 			manifest.replicant.config.permission.canWrite(human(RoleName("judge"))),
 		).toBe(false);
-		expect(manifest.replicant.score.permission.canWrite(server)).toBe(false);
+	});
+
+	test("deny revokes the server from a single field", () => {
+		const sealed = defineNamespace("match", {
+			replicant: {
+				audit: {
+					schema: Schema.Number,
+					permission: { write: { deny: ["server"] } },
+				},
+			},
+		});
+
+		expect(sealed.replicant.audit.permission.canWrite(server)).toBe(false);
 	});
 });
 

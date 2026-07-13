@@ -236,20 +236,22 @@ describe("roles", () => {
 
 	test("grant returns the updated set, revoke removes it for an admin", async () => {
 		const handler = webHandler([], admin);
-		const grant = await handler(rolesRequest("grant", "superadmin"));
+		const grant = await handler(rolesRequest("grant", "producer"));
 		expect(grant.status).toBe(200);
-		expect(await grant.json()).toEqual({ roles: ["superadmin"] });
+		expect(await grant.json()).toEqual({ roles: ["producer"] });
 
-		const revoke = await handler(rolesRequest("revoke", "superadmin"));
+		const revoke = await handler(rolesRequest("revoke", "producer"));
 		expect(revoke.status).toBe(200);
 		expect(await revoke.json()).toEqual({ roles: [] });
 	});
 
-	test("accepts an arbitrary named role", async () => {
+	test("403 when an admin grants an undeclarable role", async () => {
 		const handler = webHandler([], admin);
-		const grant = await handler(rolesRequest("grant", "producer"));
-		expect(grant.status).toBe(200);
-		expect(await grant.json()).toEqual({ roles: ["producer"] });
+		expect((await handler(rolesRequest("grant", "superadmin"))).status).toBe(
+			403,
+		);
+		expect((await handler(rolesRequest("grant", "admin"))).status).toBe(403);
+		expect((await handler(rolesRequest("grant", "server"))).status).toBe(403);
 	});
 });
 

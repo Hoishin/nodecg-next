@@ -201,6 +201,11 @@ const expandClientRoles = (
 	return result;
 };
 
+const PRIVILEGED_PRINCIPALS: ReadonlySet<Principal> = new Set([
+	PRINCIPAL.admin,
+	PRINCIPAL.server,
+]);
+
 const resolveFieldAllowedRoles = (
 	base: ReadonlySet<RoleName | Principal>,
 	rule: PermissionRuleArg<string> | undefined,
@@ -208,10 +213,11 @@ const resolveFieldAllowedRoles = (
 ): ReadonlySet<RoleName | Principal> => {
 	let result = new Set(base);
 	if (rule?.allow) {
-		// Allow field overrides entire list, except admin who is always allowed
 		result = expandClientRoles(rule.allow.map(brandToken), namedRoles);
-		if (base.has(PRINCIPAL.admin)) {
-			result.add(PRINCIPAL.admin);
+		for (const principal of PRIVILEGED_PRINCIPALS) {
+			if (base.has(principal)) {
+				result.add(principal);
+			}
 		}
 	}
 	if (rule?.deny) {
@@ -262,7 +268,7 @@ const seedPrincipals = (): Map<Principal, RoleManifest> => {
 		principals.set(principal, {
 			name: principal,
 			capabilities: new Set(
-				principal === PRINCIPAL.admin ? ROLE_CAPABILITY : [],
+				PRIVILEGED_PRINCIPALS.has(principal) ? ROLE_CAPABILITY : [],
 			),
 		});
 	}
