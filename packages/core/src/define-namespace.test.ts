@@ -220,13 +220,17 @@ describe("defineNamespace", () => {
 				principals: { server: { permission: ["replicant-write"] } },
 				roles: { viewer: { permission: ["replicant-read"] } },
 				replicant: { score: { schema: Schema.Number } },
+				computed: { total: { schema: Schema.Number } },
 			});
 
 			expect(manifest.replicant.score.permission.write).toEqual(
 				new Set(["server", "admin"]),
 			);
 			expect(manifest.replicant.score.permission.read).toEqual(
-				new Set(["viewer", "admin"]),
+				new Set(["viewer", "admin", "server"]),
+			);
+			expect(manifest.computed.total.permission.read).toEqual(
+				new Set(["admin"]),
 			);
 		});
 
@@ -299,6 +303,76 @@ describe("defineNamespace", () => {
 			);
 			expect(manifest.replicant.pinned.permission.read).toEqual(
 				new Set(["judge", "admin"]),
+			);
+		});
+	});
+
+	describe("a replicant writer is a reader", () => {
+		test("the write set folds into read, so a write capability carries read", () => {
+			const manifest = defineNamespace("match", {
+				roles: { producer: { permission: ["replicant-write"] } },
+				replicant: { score: { schema: Schema.Number } },
+			});
+
+			expect(manifest.replicant.score.permission.write).toEqual(
+				new Set(["producer", "admin", "server"]),
+			);
+			expect(manifest.replicant.score.permission.read).toEqual(
+				new Set(["producer", "admin", "server"]),
+			);
+		});
+
+		test("a topic publisher is not a subscriber", () => {
+			const manifest = defineNamespace("match", {
+				roles: { announcer: { permission: ["topic-publish"] } },
+				topic: { bell: { schema: Schema.String } },
+			});
+
+			expect(manifest.topic.bell.permission.write).toEqual(
+				new Set(["announcer", "admin", "server"]),
+			);
+			expect(manifest.topic.bell.permission.read).toEqual(
+				new Set(["admin", "server"]),
+			);
+		});
+
+		test("denying read denies write with it", () => {
+			const manifest = defineNamespace("match", {
+				roles: { producer: { permission: ["replicant-write"] } },
+				replicant: {
+					secret: {
+						schema: Schema.String,
+						permission: { read: { deny: ["producer"] } },
+					},
+				},
+			});
+
+			expect(manifest.replicant.secret.permission.read).toEqual(
+				new Set(["admin", "server"]),
+			);
+			expect(manifest.replicant.secret.permission.write).toEqual(
+				new Set(["admin", "server"]),
+			);
+		});
+
+		test("denying write leaves read intact", () => {
+			const manifest = defineNamespace("match", {
+				roles: {
+					viewer: { permission: ["replicant-read", "replicant-write"] },
+				},
+				replicant: {
+					board: {
+						schema: Schema.String,
+						permission: { write: { deny: ["viewer"] } },
+					},
+				},
+			});
+
+			expect(manifest.replicant.board.permission.read).toEqual(
+				new Set(["viewer", "admin", "server"]),
+			);
+			expect(manifest.replicant.board.permission.write).toEqual(
+				new Set(["admin", "server"]),
 			);
 		});
 	});
@@ -773,6 +847,80 @@ describe("extendNamespace", () => {
 			);
 		});
 
+		const locked = extendNamespace(base, {
+			replicant: { score: { permission: { read: { deny: ["viewer"] } } } },
+		});
+
+		test("a denial carries into the extended manifest, folding into write", () => {
+			expect(locked.replicant.score.permission.readDenied).toEqual(
+				new Set(["viewer"]),
+			);
+			expect(locked.replicant.score.permission.writeDenied).toEqual(
+				new Set(["viewer"]),
+			);
+		});
+
+		test("a denial survives an extend that does not speak about the field", () => {
+			const untouched = extendNamespace(locked, {
+				roles: { auditor: { permission: ["replicant-read"] } },
+			});
+
+			expect(untouched.replicant.score.permission.readDenied).toEqual(
+				new Set(["viewer"]),
+			);
+		});
+
+		test("re-allowing a denied role lifts the denial", () => {
+			const regranted = extendNamespace(locked, {
+				replicant: {
+					score: { permission: { read: { allow: ["viewer", "judge"] } } },
+				},
+			});
+
+			expect(regranted.replicant.score.permission.readDenied).toEqual(
+				new Set(),
+			);
+			expect(regranted.replicant.score.permission.read).toEqual(
+				new Set(["viewer", "judge", "admin", "server"]),
+			);
+		});
+
+		test("lifting read does not hand back write — that needs its own allow", () => {
+			const readOnly = extendNamespace(locked, {
+				replicant: {
+					score: { permission: { read: { allow: ["viewer", "judge"] } } },
+				},
+			});
+			expect(readOnly.replicant.score.permission.writeDenied).toEqual(
+				new Set(["viewer"]),
+			);
+
+			const full = extendNamespace(locked, {
+				replicant: {
+					score: {
+						permission: {
+							read: { allow: ["viewer", "judge"] },
+							write: { allow: ["viewer", "judge"] },
+						},
+					},
+				},
+			});
+			expect(full.replicant.score.permission.writeDenied).toEqual(new Set());
+			expect(full.replicant.score.permission.write).toEqual(
+				new Set(["viewer", "judge", "admin", "server"]),
+			);
+		});
+
+		test("re-allowing everyone lifts every denial on the field", () => {
+			const opened = extendNamespace(locked, {
+				replicant: {
+					score: { permission: { read: { allow: ["everyone"] } } },
+				},
+			});
+
+			expect(opened.replicant.score.permission.readDenied).toEqual(new Set());
+		});
+
 		test("throws on an unknown token in an added field", () => {
 			expect(() =>
 				extendNamespace(base, {
@@ -798,7 +946,10 @@ describe("extendNamespace", () => {
 			});
 
 			expect(extended.replicant.pinned.permission.read).toEqual(
-				new Set(["auditor", "admin", "server"]),
+				new Set(["auditor", "judge", "admin", "server"]),
+			);
+			expect(extended.replicant.pinned.permission.write).toEqual(
+				new Set(["judge", "admin", "server"]),
 			);
 		});
 	});

@@ -156,6 +156,8 @@ describe("loadNamespaceEffect seeding", () => {
 					permission: {
 						read: new Set(),
 						write: new Set(),
+						readDenied: new Set(),
+						writeDenied: new Set(),
 						canRead: () => false,
 						canWrite: () => false,
 					},

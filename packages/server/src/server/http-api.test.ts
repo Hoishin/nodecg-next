@@ -40,6 +40,8 @@ type Internal = ReplicantField<unknown>[typeof fieldInternal];
 const openPermission: ResolvedPermission = {
 	read: new Set(),
 	write: new Set(),
+	readDenied: new Set(),
+	writeDenied: new Set(),
 	canRead: () => true,
 	canWrite: () => true,
 };

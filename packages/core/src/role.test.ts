@@ -228,6 +228,65 @@ describe("overriding the admin principal", () => {
 	});
 });
 
+describe("deny beats a wildcard grant", () => {
+	const wildcard = defineNamespace("match", {
+		roles: { viewer: { permission: [] } },
+		replicant: {
+			open: {
+				schema: Schema.Number,
+				permission: { read: { allow: ["everyone"] } },
+			},
+			hidden: {
+				schema: Schema.Number,
+				permission: { read: { allow: ["everyone"], deny: ["viewer"] } },
+			},
+		},
+	});
+
+	test("an explicit deny excludes a caller the wildcard would have admitted", () => {
+		expect(
+			wildcard.replicant.open.permission.canRead(human(RoleName("viewer"))),
+		).toBe(true);
+		expect(
+			wildcard.replicant.hidden.permission.canRead(human(RoleName("viewer"))),
+		).toBe(false);
+		expect(wildcard.replicant.hidden.permission.canRead(anonymous)).toBe(true);
+	});
+
+	test("denying everyone revokes the grant without locking out the admin or the server", () => {
+		const sealed = defineNamespace("match", {
+			replicant: {
+				audit: {
+					schema: Schema.Number,
+					permission: { read: { allow: ["everyone"], deny: ["everyone"] } },
+				},
+			},
+		});
+
+		expect(sealed.replicant.audit.permission.canRead(anonymous)).toBe(false);
+		expect(
+			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
+		).toBe(true);
+		expect(sealed.replicant.audit.permission.canRead(server)).toBe(true);
+	});
+});
+
+describe("the server is not a member of the public", () => {
+	test("a world-open namespace can still be sealed against the server", () => {
+		const sealed = defineNamespace("match", {
+			principals: {
+				everyone: { permission: ["replicant-read", "replicant-write"] },
+				server: { permission: [] },
+			},
+			replicant: { score: { schema: Schema.Number } },
+		});
+
+		expect(sealed.replicant.score.permission.canWrite(anonymous)).toBe(true);
+		expect(sealed.replicant.score.permission.canWrite(server)).toBe(false);
+		expect(sealed.replicant.score.permission.canRead(server)).toBe(false);
+	});
+});
+
 describe("isAdminTier", () => {
 	test("holds for superadmin and admin", () => {
 		expect(isAdminTier(human(ADMIN_ROLE.superadmin))).toBe(true);

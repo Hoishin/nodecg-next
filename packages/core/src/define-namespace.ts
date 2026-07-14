@@ -18,10 +18,14 @@ import { Data, Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
-	buildPermission,
+	computedPermission,
+	replicantPermission,
 	ROLE_CAPABILITY,
+	rpcPermission,
+	topicPermission,
 	type PermissionArg,
 	type PrincipalsArg,
+	type PermissionRule,
 	type PermissionRuleArg,
 	type ReadOnlyPermissionArg,
 	type ResolvedPermission,
@@ -206,27 +210,37 @@ const PRIVILEGED_PRINCIPALS: ReadonlySet<Principal> = new Set([
 	PRINCIPAL.server,
 ]);
 
-const resolveFieldAllowedRoles = (
+const EVERYONE: ReadonlySet<RoleName | Principal> = new Set([
+	PRINCIPAL.everyone,
+]);
+
+const resolveFieldRule = (
 	base: ReadonlySet<RoleName | Principal>,
 	rule: PermissionRuleArg<string> | undefined,
 	namedRoles: ReadonlySet<RoleName>,
-): ReadonlySet<RoleName | Principal> => {
-	let result = new Set(base);
+	inherited: ReadonlySet<RoleName | Principal>,
+): PermissionRule => {
+	let allowed = new Set(base);
+	let denied = new Set(inherited);
 	if (rule?.allow) {
-		result = expandClientRoles(rule.allow.map(brandToken), namedRoles);
+		const named = expandClientRoles(rule.allow.map(brandToken), namedRoles);
+		allowed = new Set(named);
 		for (const principal of PRIVILEGED_PRINCIPALS) {
 			if (base.has(principal)) {
-				result.add(principal);
+				allowed.add(principal);
 			}
 		}
+		// An allow restates who may, so it lifts an inherited denial for whoever it names — and `everyone` names all.
+		denied = named.has(PRINCIPAL.everyone)
+			? new Set()
+			: denied.difference(named);
 	}
 	if (rule?.deny) {
-		// Deny field then subtracts roles
-		result = result.difference(
-			expandClientRoles(rule.deny.map(brandToken), namedRoles),
-		);
+		const tokens = expandClientRoles(rule.deny.map(brandToken), namedRoles);
+		allowed = allowed.difference(tokens);
+		denied = denied.union(tokens.difference(EVERYONE));
 	}
-	return result;
+	return { allowed, denied };
 };
 
 type FieldPermissionOptions = {
@@ -414,10 +428,11 @@ export function defineNamespace<
 		capability: RoleCapability,
 		rule: PermissionRuleArg<keyof Roles & string> | undefined,
 	) =>
-		resolveFieldAllowedRoles(
+		resolveFieldRule(
 			capabilityBase(capability, registry, namedRoles),
 			rule,
 			namedRoles,
+			new Set(),
 		);
 
 	const replicant = mapValues<
@@ -425,10 +440,9 @@ export function defineNamespace<
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: buildPermission(
+		permission: replicantPermission(
 			resolve("replicant-read", option.permission?.read),
 			resolve("replicant-write", option.permission?.write),
-			true,
 		),
 	}))(defineOption.replicant);
 
@@ -437,10 +451,8 @@ export function defineNamespace<
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: buildPermission(
+		permission: computedPermission(
 			resolve("computed-read", option.permission?.read),
-			new Set(),
-			false,
 		),
 	}))(defineOption.computed);
 
@@ -449,10 +461,9 @@ export function defineNamespace<
 		FieldManifestFromSchemaLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: buildPermission(
+		permission: topicPermission(
 			resolve("topic-subscribe", option.permission?.read),
 			resolve("topic-publish", option.permission?.write),
-			true,
 		),
 	}))(defineOption.topic);
 
@@ -463,11 +474,7 @@ export function defineNamespace<
 		name,
 		request: makeCodec(name, option.schema.request),
 		response: makeCodec(name, option.schema.response),
-		permission: buildPermission(
-			new Set(),
-			resolve("rpc-call", option.permission?.write),
-			true,
-		),
+		permission: rpcPermission(resolve("rpc-call", option.permission?.write)),
 	}));
 
 	return {
@@ -589,15 +596,18 @@ export function extendNamespace<
 		capability: RoleCapability,
 		rule: PermissionRuleArg<string> | undefined,
 	) =>
-		resolveFieldAllowedRoles(
+		resolveFieldRule(
 			capabilityBase(capability, registry, namedRoles),
 			rule,
 			namedRoles,
+			new Set(),
 		);
 
+	/** Denials accumulate across an extend: a lock-down the precedent baked in cannot be lifted downstream. */
 	const remap = (
 		capability: RoleCapability,
 		current: ReadonlySet<RoleName | Principal>,
+		inherited: ReadonlySet<RoleName | Principal>,
 		rule: PermissionRuleArg<string> | undefined,
 	) => {
 		const base = capabilityBase(capability, registry, namedRoles);
@@ -609,7 +619,7 @@ export function extendNamespace<
 				result.delete(role);
 			}
 		}
-		return resolveFieldAllowedRoles(result, rule, namedRoles);
+		return resolveFieldRule(result, rule, namedRoles, inherited);
 	};
 
 	const replicantRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
@@ -619,18 +629,19 @@ export function extendNamespace<
 				name: field.name,
 				decode: field.decode,
 				encode: field.encode,
-				permission: buildPermission(
+				permission: replicantPermission(
 					remap(
 						"replicant-read",
 						field.permission.read,
+						field.permission.readDenied,
 						override?.permission?.read,
 					),
 					remap(
 						"replicant-write",
 						field.permission.write,
+						field.permission.writeDenied,
 						override?.permission?.write,
 					),
-					true,
 				),
 			};
 		},
@@ -641,10 +652,9 @@ export function extendNamespace<
 		FieldManifestLambda
 	>()(extendOption.replicant, (option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: buildPermission(
+		permission: replicantPermission(
 			resolve("replicant-read", option.permission?.read),
 			resolve("replicant-write", option.permission?.write),
-			true,
 		),
 	}));
 	const replicant = mergeRecords<
@@ -662,14 +672,13 @@ export function extendNamespace<
 				name: field.name,
 				decode: field.decode,
 				encode: field.encode,
-				permission: buildPermission(
+				permission: computedPermission(
 					remap(
 						"computed-read",
 						field.permission.read,
+						field.permission.readDenied,
 						override?.permission?.read,
 					),
-					new Set(),
-					false,
 				),
 			};
 		},
@@ -679,10 +688,8 @@ export function extendNamespace<
 		FieldManifestLambda
 	>()(extendOption.computed, (option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: buildPermission(
+		permission: computedPermission(
 			resolve("computed-read", option.permission?.read),
-			new Set(),
-			false,
 		),
 	}));
 	const computed = mergeRecords<
@@ -700,18 +707,19 @@ export function extendNamespace<
 				name: field.name,
 				encode: field.encode,
 				decode: field.decode,
-				permission: buildPermission(
+				permission: topicPermission(
 					remap(
 						"topic-subscribe",
 						field.permission.read,
+						field.permission.readDenied,
 						override?.permission?.read,
 					),
 					remap(
 						"topic-publish",
 						field.permission.write,
+						field.permission.writeDenied,
 						override?.permission?.write,
 					),
-					true,
 				),
 			};
 		},
@@ -721,10 +729,9 @@ export function extendNamespace<
 		FieldManifestLambda
 	>()(extendOption.topic, (option, name) => ({
 		...implementCodec(name, option.schema),
-		permission: buildPermission(
+		permission: topicPermission(
 			resolve("topic-subscribe", option.permission?.read),
 			resolve("topic-publish", option.permission?.write),
-			true,
 		),
 	}));
 	const topic = mergeRecords<
@@ -742,14 +749,13 @@ export function extendNamespace<
 				name: field.name,
 				request: field.request,
 				response: field.response,
-				permission: buildPermission(
-					new Set(),
+				permission: rpcPermission(
 					remap(
 						"rpc-call",
 						field.permission.write,
+						field.permission.writeDenied,
 						override?.permission?.write,
 					),
-					true,
 				),
 			};
 		},
@@ -761,11 +767,7 @@ export function extendNamespace<
 		name,
 		request: makeCodec(name, option.schema.request),
 		response: makeCodec(name, option.schema.response),
-		permission: buildPermission(
-			new Set(),
-			resolve("rpc-call", option.permission?.write),
-			true,
-		),
+		permission: rpcPermission(resolve("rpc-call", option.permission?.write)),
 	}));
 	const rpc = mergeRecords<
 		NamespaceManifest<
