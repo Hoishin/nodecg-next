@@ -83,7 +83,7 @@ const match = defineNamespace("match", {
 });
 
 // Server-side
-const match = loadNamespace(match, {
+const match = implementNamespace(match, {
   seedReplicant: {
     score: () => ({ left: 0, right: 0 }),
     label: () => "Match 1",
@@ -96,7 +96,7 @@ const match = loadNamespace(match, {
   },
 });
 
-match.replicant.label.get() === "Match 123";
+loadNodeCG({ namespaces: [match] });
 
 // Client-side
 const match = loadNamespace(match);
@@ -120,12 +120,14 @@ match.replicant.label.subscribe((label) => {
 
   ```ts
   // Server-side
-  import { loadNamespace } from "@nodecg/server";
+  import { implementNamespace, loadNodeCG } from "@nodecg/server";
 
-  const ns = await loadNamespace(manifest, {
+  const match = implementNamespace(manifest, {
     seedReplicant: { counter: () => 0, games: () => [] },
   });
-  console.log(ns.replicant.counter.get()); // synchronous on the server
+  const nodecg = loadNodeCG({ namespaces: [match] });
+
+  console.log(nodecg.match.replicant.counter.get());
 
   // Client-side
   import { loadNamespace } from "@nodecg/client";
@@ -214,12 +216,13 @@ match.replicant.label.subscribe((label) => {
   });
 
   // Server: provide the compute function
-  const ns = await loadNamespace(manifest, {
+  const match = implementNamespace(manifest, {
     seedReplicant: { counter: () => 0, games: () => [] },
     implementComputed: {
       firstGameId: (sources) => sources.games[0]?.id ?? null,
     },
   });
+  loadNodeCG({ namespaces: [match] });
 
   // Client: read-only
   const ns = await loadNamespace(manifest);
@@ -254,10 +257,12 @@ match.replicant.label.subscribe((label) => {
     computed: { total: { schema } }, // may read original + newly-added replicants
   });
 
-  const loaded = await loadExtendedNamespace(extendedManifest, base, {
+  const extended = implementExtendedNamespace(extendedManifest, base, {
     seedReplicant: { round: () => 0 },
     implementComputed: { total: (sources) => sources.score + sources.round },
   });
+
+  loadNodeCG({ namespaces: [extended] });
   ```
 
 - 🚧 Admin dashboard (view, clear, export, import, freeze)
@@ -319,11 +324,13 @@ match.replicant.label.subscribe((label) => {
   });
 
   // Server: provide the handler
-  const ns = await loadNamespace(manifest, {
+  const dice = implementNamespace(manifest, {
     implementRpc: { roll: (max) => 1 + Math.floor(Math.random() * max) },
   });
+  loadNodeCG({ namespaces: [dice] });
 
   // Client: call and await the reply
+  const ns = await loadNamespace(manifest);
   const rolled = await ns.rpc.roll.call(6);
   ```
 

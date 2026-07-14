@@ -1,16 +1,16 @@
 import {
-	loadExtendedNamespace,
-	loadNodecg,
+	implementExtendedNamespace,
+	loadNodeCG,
 	makeOidcProvider,
 } from "@nodecg/server";
 import { OAuth2Server } from "oauth2-mock-server";
 
 import { extendedCounterManifest } from "../shared/manifest.ts";
-import { counterImplemented, settingsImplemented } from "./library/server.ts";
+import { counter, settings } from "./library/server.ts";
 
-const counter = await loadExtendedNamespace(
+const extendedCounter = implementExtendedNamespace(
 	extendedCounterManifest,
-	counterImplemented,
+	counter,
 	{
 		seedReplicant: { step: () => 1 },
 		implementComputed: {
@@ -24,8 +24,6 @@ const counter = await loadExtendedNamespace(
 		},
 	},
 );
-
-const settings = await settingsImplemented.load();
 
 const idp = new OAuth2Server();
 await idp.issuer.keys.generate("RS256");
@@ -43,8 +41,8 @@ const localProvider = await makeOidcProvider({
 	allowInsecure: true,
 });
 
-loadNodecg({
-	namespaces: [counter, settings],
+loadNodeCG({
+	namespaces: [extendedCounter, settings],
 	authProviders: [localProvider],
 	dev: process.env["NODE_ENV"] !== "production",
 	superadmins: [{ issuer, subject: "johndoe" }],

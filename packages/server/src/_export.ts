@@ -1,4 +1,9 @@
-export { loadNodecgEffect, loadNodecg } from "./load-nodecg.ts";
+export {
+	loadNodeCGEffect,
+	loadNodeCG,
+	type LoadNodeCGOptions,
+	type StorageOption,
+} from "./load-nodecg.ts";
 export {
 	type AuthProvider,
 	OAuthStateMismatchError,
@@ -14,13 +19,11 @@ export {
 export { type AuthStash } from "./services/stash-store/stash-store.ts";
 export {
 	implementNamespace,
-	loadExtendedNamespace,
-	loadNamespace,
-	loadNamespaceEffect,
+	implementExtendedNamespace,
 	type FrontendConfig,
-	type LoadedNamespace,
+	type ImplementedNamespace,
 	type RpcContext,
 	type RpcReplicantAccessor,
 	type RpcComputedAccessor,
 	type RpcTopicAccessor,
-} from "./load-namespace.ts";
+} from "./implement-namespace.ts";

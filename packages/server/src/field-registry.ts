@@ -1,18 +1,13 @@
 import { Context, Layer } from "effect";
 
-import {
-	type LoadedNamespace,
-	fieldInternal,
-	namespaceMetadataKey,
-} from "./load-namespace.ts";
+import { type BuiltNamespace, fieldInternal } from "./build-namespace.ts";
 
 type ReplicantFieldInternal =
-	LoadedNamespace["replicant"][string][typeof fieldInternal];
+	BuiltNamespace["replicant"][string][typeof fieldInternal];
 type ComputedFieldInternal =
-	LoadedNamespace["computed"][string][typeof fieldInternal];
-type TopicFieldInternal =
-	LoadedNamespace["topic"][string][typeof fieldInternal];
-type RpcFieldInternal = LoadedNamespace["rpc"][string][typeof fieldInternal];
+	BuiltNamespace["computed"][string][typeof fieldInternal];
+type TopicFieldInternal = BuiltNamespace["topic"][string][typeof fieldInternal];
+type RpcFieldInternal = BuiltNamespace["rpc"][string][typeof fieldInternal];
 
 export interface FieldRegistry {
 	readonly replicant: ReadonlyMap<
@@ -27,41 +22,45 @@ export interface FieldRegistry {
 	readonly rpc: ReadonlyMap<string, ReadonlyMap<string, RpcFieldInternal>>;
 }
 
+export interface RegisteredNamespace {
+	readonly namespace: string;
+	readonly fields: BuiltNamespace;
+}
+
 export class FieldRegistryService extends Context.Tag("FieldRegistry")<
 	FieldRegistryService,
 	FieldRegistry
 >() {}
 
 export const fieldRegistryLayer = (
-	namespaces: ReadonlyArray<LoadedNamespace>,
+	namespaces: ReadonlyArray<RegisteredNamespace>,
 ) =>
 	Layer.sync(FieldRegistryService, () => {
 		const replicant = new Map<string, Map<string, ReplicantFieldInternal>>();
 		const computed = new Map<string, Map<string, ComputedFieldInternal>>();
 		const topic = new Map<string, Map<string, TopicFieldInternal>>();
 		const rpc = new Map<string, Map<string, RpcFieldInternal>>();
-		for (const loaded of namespaces) {
-			const { namespace } = loaded[namespaceMetadataKey];
+		for (const { namespace, fields } of namespaces) {
 			const replicantFields = new Map<string, ReplicantFieldInternal>();
-			for (const [name, field] of Object.entries(loaded.replicant)) {
+			for (const [name, field] of Object.entries(fields.replicant)) {
 				replicantFields.set(name, field[fieldInternal]);
 			}
 			replicant.set(namespace, replicantFields);
 			const computedFields = new Map<string, ComputedFieldInternal>();
-			for (const [name, field] of Object.entries(loaded.computed)) {
+			for (const [name, field] of Object.entries(fields.computed)) {
 				computedFields.set(name, field[fieldInternal]);
 			}
 			computed.set(namespace, computedFields);
 			const topicFields = new Map<string, TopicFieldInternal>();
-			for (const [name, field] of Object.entries(loaded.topic)) {
+			for (const [name, field] of Object.entries(fields.topic)) {
 				topicFields.set(name, field[fieldInternal]);
 			}
 			topic.set(namespace, topicFields);
 			const rpcFields = new Map<string, RpcFieldInternal>();
-			for (const [name, field] of Object.entries(loaded.rpc)) {
+			for (const [name, field] of Object.entries(fields.rpc)) {
 				rpcFields.set(name, field[fieldInternal]);
 			}
 			rpc.set(namespace, rpcFields);
 		}
-		return { replicant: replicant, computed, topic, rpc };
+		return { replicant, computed, topic, rpc };
 	});

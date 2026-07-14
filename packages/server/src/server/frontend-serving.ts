@@ -4,10 +4,7 @@ import { HttpApiBuilder } from "@effect/platform";
 import { Effect } from "effect";
 import sirv from "sirv";
 
-import {
-	namespaceMetadataKey,
-	type LoadedNamespace,
-} from "../load-namespace.ts";
+import { type ImplementedNamespace } from "../implement-namespace.ts";
 import { connectToHttpApp } from "./connect-middleware.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
 
@@ -25,13 +22,14 @@ const coerceToPath = (url: string | URL) => {
 };
 
 export const frontendRoutes = (options: {
-	namespaces: ReadonlyArray<LoadedNamespace>;
+	namespaces: ReadonlyArray<ImplementedNamespace<{}, {}, {}, {}>>;
 	dev: boolean;
 }) =>
 	HttpApiBuilder.Router.use((router) =>
 		Effect.gen(function* () {
-			for (const namespace of options.namespaces) {
-				const { namespace: name, frontend } = namespace[namespaceMetadataKey];
+			for (const { manifest, impl } of options.namespaces) {
+				const name = manifest.namespace;
+				const frontend = impl?.frontend;
 				if (typeof frontend === "undefined") {
 					continue;
 				}

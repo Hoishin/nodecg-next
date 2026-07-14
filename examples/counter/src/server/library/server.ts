@@ -5,7 +5,7 @@ import {
 	settingsManifest,
 } from "../../shared/library/manifest.ts";
 
-export const counterImplemented = implementNamespace(counterManifest, {
+export const counter = implementNamespace(counterManifest, {
 	seedReplicant: { count: () => 0 },
 	implementRpc: {
 		roll: async (max, ctx) => {
@@ -18,6 +18,6 @@ export const counterImplemented = implementNamespace(counterManifest, {
 	},
 });
 
-export const settingsImplemented = implementNamespace(settingsManifest, {
+export const settings = implementNamespace(settingsManifest, {
 	seedReplicant: { title: () => "My Stream" },
 });

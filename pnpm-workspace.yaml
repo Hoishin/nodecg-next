@@ -26,3 +26,5 @@ allowBuilds:
   msgpackr-extract: false
 
 minimumReleaseAge: 4320
+
+verifyDepsBeforeRun: warn

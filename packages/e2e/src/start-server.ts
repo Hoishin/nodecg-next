@@ -1,10 +1,9 @@
 import { fileURLToPath } from "node:url";
 
 import {
+	implementExtendedNamespace,
 	implementNamespace,
-	loadExtendedNamespace,
-	loadNamespace,
-	loadNodecg,
+	loadNodeCG,
 } from "@nodecg/server";
 
 import { makeFakeAuthProvider } from "./fake-auth-provider.ts";
@@ -14,7 +13,7 @@ import {
 	fixtureManifest,
 } from "./fixture-replicant.ts";
 
-const loaded = await loadNamespace(fixtureManifest, {
+const fixture = implementNamespace(fixtureManifest, {
 	seedReplicant: {
 		count: () => 0,
 		label: () => "hello",
@@ -42,19 +41,15 @@ const loaded = await loadNamespace(fixtureManifest, {
 const baseImplemented = implementNamespace(baseManifest, {
 	seedReplicant: { score: () => 0 },
 });
-const extended = await loadExtendedNamespace(
-	extendedManifest,
-	baseImplemented,
-	{
-		seedReplicant: { bonus: () => 0 },
-		implementComputed: {
-			total: (sources) => sources.score + sources.bonus,
-		},
+const extended = implementExtendedNamespace(extendedManifest, baseImplemented, {
+	seedReplicant: { bonus: () => 0 },
+	implementComputed: {
+		total: (sources) => sources.score + sources.bonus,
 	},
-);
+});
 
-loadNodecg({
-	namespaces: [loaded, extended],
+loadNodeCG({
+	namespaces: [fixture, extended],
 	authProviders: [
 		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
 	],

@@ -1,8 +1,8 @@
 import { defineNamespace } from "@nodecg/core";
 import {
 	type AuthProvider,
-	loadNamespace,
-	loadNodecg,
+	implementNamespace,
+	loadNodeCG,
 	makeOAuth2Provider,
 	makeOidcProvider,
 } from "@nodecg/server";
@@ -87,14 +87,14 @@ if (providers.length === 0) {
 	);
 }
 
-const showcase = await loadNamespace(defineNamespace("social-login", {}), {
+const showcase = implementNamespace(defineNamespace("social-login", {}), {
 	frontend: {
 		dir: import.meta.resolve("../../dist"),
 		vite: { root: import.meta.resolve("../..") },
 	},
 });
 
-loadNodecg({
+loadNodeCG({
 	namespaces: [showcase],
 	authProviders: providers,
 	dev: process.env["NODE_ENV"] !== "production",

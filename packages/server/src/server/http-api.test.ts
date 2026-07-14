@@ -19,15 +19,16 @@ import {
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
-import { fieldRegistryLayer } from "../field-registry.ts";
 import {
-	type LoadedNamespace,
+	type BuiltNamespace,
 	FieldPermissionDenied,
 	RpcCallFailed,
-	type ReplicantField,
 	fieldInternal,
-	namespaceMetadataKey,
-} from "../load-namespace.ts";
+} from "../build-namespace.ts";
+import {
+	fieldRegistryLayer,
+	type RegisteredNamespace,
+} from "../field-registry.ts";
 import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
 import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
@@ -35,7 +36,8 @@ import { InMemorySessionStore } from "../services/session-store/in-memory-sessio
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 
-type Internal = ReplicantField<unknown>[typeof fieldInternal];
+type ReplicantStub = BuiltNamespace["replicant"][string];
+type Internal = ReplicantStub[typeof fieldInternal];
 
 const openPermission: ResolvedPermission = {
 	read: new Set(),
@@ -48,7 +50,7 @@ const openPermission: ResolvedPermission = {
 
 function stubField(
 	internal: Pick<Internal, "getEncoded" | "setEncoded">,
-): ReplicantField<unknown> {
+): ReplicantStub {
 	const unused = vi.fn();
 	const subscribeEncoded = () => Effect.succeed(Stream.empty);
 	const subscribe = () => Effect.succeed(Stream.empty);
@@ -64,7 +66,6 @@ function stubField(
 			update: unused,
 			validate: unused,
 			subscribe,
-			getEncodedNoAuth: unused,
 			getEncoded: internal.getEncoded,
 			setEncoded: internal.setEncoded,
 			subscribeEncoded,
@@ -75,7 +76,7 @@ function stubField(
 
 function stubComputed(
 	getEncoded: Internal["getEncoded"],
-): LoadedNamespace["computed"][string] {
+): BuiltNamespace["computed"][string] {
 	const unused = vi.fn();
 	return {
 		get: unused,
@@ -91,12 +92,12 @@ function stubComputed(
 	};
 }
 
-type TopicInternal = LoadedNamespace["topic"][string][typeof fieldInternal];
-type RpcInternal = LoadedNamespace["rpc"][string][typeof fieldInternal];
+type TopicInternal = BuiltNamespace["topic"][string][typeof fieldInternal];
+type RpcInternal = BuiltNamespace["rpc"][string][typeof fieldInternal];
 
 function stubTopic(
 	publishEncoded: TopicInternal["publishEncoded"],
-): LoadedNamespace["topic"][string] {
+): BuiltNamespace["topic"][string] {
 	const unused = vi.fn();
 	return {
 		publish: unused,
@@ -113,7 +114,7 @@ function stubTopic(
 
 function stubRpc(
 	callEncoded: RpcInternal["callEncoded"],
-): LoadedNamespace["rpc"][string] {
+): BuiltNamespace["rpc"][string] {
 	return {
 		[fieldInternal]: {
 			callEncoded,
@@ -122,20 +123,14 @@ function stubRpc(
 	};
 }
 
-function loadedNamespace(
+function registeredNamespace(
 	namespace: string,
-	fields: Record<string, ReplicantField<unknown>>,
-	computed: LoadedNamespace["computed"] = {},
-	topic: LoadedNamespace["topic"] = {},
-	rpc: LoadedNamespace["rpc"] = {},
-): LoadedNamespace {
-	return {
-		replicant: fields,
-		computed,
-		topic,
-		rpc,
-		[namespaceMetadataKey]: { namespace },
-	};
+	replicant: Record<string, ReplicantStub>,
+	computed: BuiltNamespace["computed"] = {},
+	topic: BuiltNamespace["topic"] = {},
+	rpc: BuiltNamespace["rpc"] = {},
+): RegisteredNamespace {
+	return { namespace, fields: { replicant, computed, topic, rpc } };
 }
 
 const asIdentity = (identity: Identity) =>
@@ -144,7 +139,7 @@ const asIdentity = (identity: Identity) =>
 	});
 
 function webHandler(
-	namespaces: ReadonlyArray<LoadedNamespace>,
+	namespaces: ReadonlyArray<RegisteredNamespace>,
 	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
 ) {
 	const { handler } = HttpApiBuilder.toWebHandler(
@@ -422,7 +417,7 @@ describe("machines", () => {
 describe("get", () => {
 	test("returns the stored value", async () => {
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(42),
 					setEncoded: () => Effect.void,
@@ -442,7 +437,7 @@ describe("get", () => {
 
 	test("404 when the field reports ReplicantNotFound", async () => {
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({
 					getEncoded: () =>
 						Effect.fail(
@@ -458,7 +453,7 @@ describe("get", () => {
 
 	test("returns a computed field's value", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{ count: stubComputed(() => Effect.succeed(84)) },
@@ -474,7 +469,7 @@ describe("update", () => {
 	test("stores the decoded payload and returns 204", async () => {
 		const setEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
 			}),
 		]);
@@ -491,7 +486,7 @@ describe("update", () => {
 
 	test("400 when the field reports FieldDecodeError", async () => {
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
@@ -511,7 +506,7 @@ describe("update", () => {
 
 	test("404 when the field reports ReplicantNotFound", async () => {
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
@@ -546,7 +541,7 @@ describe("permission enforcement", () => {
 
 	test("403 when replicant getEncoded denies the caller", async () => {
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({
 					getEncoded: readDenied,
 					setEncoded: () => Effect.void,
@@ -560,7 +555,7 @@ describe("permission enforcement", () => {
 	test("403 when replicant setEncoded denies the caller", async () => {
 		const setEncoded = vi.fn(writeDenied);
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
 			}),
 		]);
@@ -570,7 +565,7 @@ describe("permission enforcement", () => {
 
 	test("403 when computed getEncoded denies the caller", async () => {
 		const handler = webHandler([
-			loadedNamespace("root", {}, { count: stubComputed(readDenied) }),
+			registeredNamespace("root", {}, { count: stubComputed(readDenied) }),
 		]);
 		const res = await handler(new Request(computedUrl));
 		expect(res.status).toBe(403);
@@ -580,7 +575,7 @@ describe("permission enforcement", () => {
 		const getEncoded = () =>
 			CurrentIdentity.pipe(Effect.map((identity) => identity._tag));
 		const handler = webHandler([
-			loadedNamespace("root", {
+			registeredNamespace("root", {
 				count: stubField({ getEncoded, setEncoded: () => Effect.void }),
 			}),
 		]);
@@ -593,7 +588,7 @@ describe("topic publish", () => {
 	test("forwards an allowed value and returns 204", async () => {
 		const publishEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
-			loadedNamespace("root", {}, {}, { chat: stubTopic(publishEncoded) }),
+			registeredNamespace("root", {}, {}, { chat: stubTopic(publishEncoded) }),
 		]);
 		const res = await handler(postRequest(topicUrl, 5));
 		expect(res.status).toBe(204);
@@ -607,7 +602,7 @@ describe("topic publish", () => {
 
 	test("403 when publishEncoded denies the caller", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{},
@@ -629,7 +624,7 @@ describe("topic publish", () => {
 
 	test("400 when publishEncoded reports FieldDecodeError", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{},
@@ -653,7 +648,7 @@ describe("topic publish", () => {
 describe("rpc call", () => {
 	test("returns the encoded handler response", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{},
@@ -673,7 +668,7 @@ describe("rpc call", () => {
 
 	test("403 when callEncoded denies the caller", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{},
@@ -696,7 +691,7 @@ describe("rpc call", () => {
 
 	test("400 when callEncoded reports FieldDecodeError", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{},
@@ -719,7 +714,7 @@ describe("rpc call", () => {
 
 	test("500 when the handler fails", async () => {
 		const handler = webHandler([
-			loadedNamespace(
+			registeredNamespace(
 				"root",
 				{},
 				{},
@@ -743,7 +738,7 @@ describe("rpc call", () => {
 
 describe("public surface (v0) with bearer token", () => {
 	const countNamespace = () =>
-		loadedNamespace("root", {
+		registeredNamespace("root", {
 			count: stubField({
 				getEncoded: () => Effect.succeed(42),
 				setEncoded: () => Effect.void,
