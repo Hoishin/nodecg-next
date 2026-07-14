@@ -30,8 +30,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-  fmt:
+      - run: pnpm oxlint
+  format-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,7 +41,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm fmt --check
+      - run: pnpm oxfmt --check
 
   test-matrix:
     strategy:
@@ -60,7 +60,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps
-      - run: pnpm test
+      - run: pnpm vitest run
 
   test:
     needs: test-matrix

@@ -358,9 +358,9 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 
 - Install: `pnpm install`
 - Type check: `pnpm type-check`
-- Test: `pnpm test`
-- Lint: `pnpm lint`
-- Format: `pnpm fmt`
+- Test: `pnpm vitest`
+- Lint: `pnpm oxlint`
+- Format: `pnpm oxfmt`
 - Start dev server: `pnpm dev`
 
 ### Architecture

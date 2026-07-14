@@ -4,9 +4,6 @@
 	"author": "Keiichiro Amemiya",
 	"type": "module",
 	"scripts": {
-		"fmt": "oxfmt",
-		"lint": "oxlint",
-		"test": "vitest",
 		"type-check": "pnpm -r run type-check"
 	},
 	"devDependencies": {
