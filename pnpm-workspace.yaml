@@ -13,7 +13,7 @@ catalog:
   "@vitest/browser": ^4.1.10
   "effect": ^3.21.4
   "oauth2-mock-server": ^9.1.0
-  "playwright": ^1.60.0
+  "playwright": ^1.61.1
   "react-dom": ^19.2.7
   "react": ^19.2.7
   "type-fest": ^5.8.0
