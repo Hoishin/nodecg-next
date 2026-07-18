@@ -29,6 +29,10 @@ import {
 	MachineAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
 import { type BuiltNamespace } from "../build-fields.ts";
+import {
+	DerivationEngineService,
+	ReplicantNotFound2,
+} from "../derivation-graph.ts";
 import { RpcCallFailed } from "../field-builders/build-rpc.ts";
 import { fieldInternal } from "../field-builders/field-internal-key.ts";
 import { FieldPermissionDenied } from "../field-builders/permission.ts";
@@ -81,8 +85,11 @@ function stubField(
 	};
 }
 
+type ComputedInternal =
+	BuiltNamespace["computed"][string][typeof fieldInternal];
+
 function stubComputed(
-	getEncoded: Internal["getEncoded"],
+	getEncoded: ComputedInternal["getEncoded"],
 ): BuiltNamespace["computed"][string] {
 	const unused = vi.fn();
 	return {
@@ -162,6 +169,7 @@ function webHandler(
 			Layer.provide(InMemoryMachineClientStore),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(InMemoryTopicBroker),
+			Layer.provide(DerivationEngineService.Default),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,
@@ -908,13 +916,13 @@ describe("get", () => {
 		expect(res.status).toBe(404);
 	});
 
-	test("404 when the field reports ReplicantNotFound", async () => {
+	test("404 when a replicant read reports not-found", async () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
 					getEncoded: () =>
 						Effect.fail(
-							new ReplicantNotFound({ namespace: "root", name: "count" }),
+							new ReplicantNotFound2({ namespace: "root", name: "count" }),
 						),
 					setEncoded: () => Effect.void,
 				}),
@@ -977,7 +985,7 @@ describe("update", () => {
 		expect(res.status).toBe(400);
 	});
 
-	test("404 when the field reports ReplicantNotFound", async () => {
+	test("404 when a replicant write reports not-found", async () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({

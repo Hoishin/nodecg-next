@@ -7,6 +7,7 @@ import {
 import { makeFakeAuthProvider } from "./fake-auth-provider.ts";
 import {
 	baseManifest,
+	chainManifest,
 	crossManifest,
 	extendedManifest,
 	fixtureManifest,
@@ -23,9 +24,11 @@ const fixture = implementNamespace(fixtureManifest, {
 		membersOnly: () => "members-only",
 	},
 	implementComputed: {
-		doubledCount: (sources: { count: number }) => sources.count * 2,
-		summary: (sources: { count: number; label: string }) =>
-			sources.count > 0 ? `${sources.label} x${sources.count}` : "idle",
+		doubledCount: (ctx) => ctx.replicant.count.get() * 2,
+		summary: (ctx) =>
+			ctx.replicant.count.get() > 0
+				? `${ctx.replicant.label.get()} x${ctx.replicant.count.get()}`
+				: "idle",
 	},
 	implementRpc: {
 		echo: (request: string) => request.toUpperCase(),
@@ -49,18 +52,29 @@ const baseImplemented = implementNamespace(baseManifest, {
 const extended = implementExtendedNamespace(extendedManifest, baseImplemented, {
 	seedReplicant: { bonus: () => 0 },
 	implementComputed: {
-		total: (sources) => sources.score + sources.bonus,
+		total: (ctx) => ctx.replicant.score.get() + ctx.replicant.bonus.get(),
 	},
 	frontend: {
 		dir: [import.meta.resolve("./fixture-frontend-extra")],
 	},
 });
 
+const chain = implementNamespace(chainManifest, {
+	seedReplicant: { points: () => 0, target: () => 0 },
+	implementComputed: {
+		lead: (ctx) => ctx.replicant.points.get() - ctx.replicant.target.get(),
+		status: (ctx) => {
+			const lead = ctx.computed.lead.get();
+			return lead > 0 ? "ahead" : lead < 0 ? "behind" : "level";
+		},
+	},
+});
+
 const cross = implementNamespace(crossManifest, {
 	seedReplicant: { factor: () => 2 },
 	implementComputed: {
-		scaledScore: (sources, ctx) =>
-			sources.factor * ctx.use(extended).replicant.score.get(),
+		scaledScore: (ctx) =>
+			ctx.replicant.factor.get() * ctx.use(extended).replicant.score.get(),
 	},
 	implementRpc: {
 		addScore: (points, ctx) => {
@@ -73,8 +87,7 @@ const cross = implementNamespace(crossManifest, {
 process.env["SUPERADMINS"] = "dev:root";
 
 const nodecg = await loadNodeCG({
-	// `cross` listed before the namespace its computed reads, so build order must not matter
-	namespaces: { cross, fixture, extended },
+	namespaces: { cross, fixture, extended, chain },
 	authProviders: [
 		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
 	],

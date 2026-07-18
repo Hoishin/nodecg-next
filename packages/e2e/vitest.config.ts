@@ -16,6 +16,7 @@ export default defineProject({
 			instances: [
 				{ browser: "chromium", globalSetup: ["./src/global-setup.ts"] },
 			],
+			screenshotFailures: true,
 		},
 	},
 });

@@ -21,35 +21,52 @@ export type BaseNamespaceShape = {
 };
 
 export type SeedReplicant<out Replicant extends Record<string, unknown>> = {
-	readonly [K in keyof Replicant & string]: () => Promisable<Replicant[K]>;
+	readonly [K in keyof Replicant & string]: () => Replicant[K];
 };
 
-export type SourceSnapshot<out Replicant extends Record<string, unknown>> = {
-	readonly [K in keyof Replicant & string]: Replicant[K];
-};
-
-export type CrossReplicantView<out Replicant extends Record<string, unknown>> =
-	{
-		readonly replicant: {
-			readonly [K in keyof Replicant & string]: {
-				readonly get: () => Replicant[K];
-			};
+export type CrossComputeView<
+	out Replicant extends Record<string, unknown>,
+	out Computed extends Record<string, unknown>,
+> = {
+	readonly replicant: {
+		readonly [K in keyof Replicant & string]: {
+			readonly get: () => Replicant[K];
 		};
 	};
+	readonly computed: {
+		readonly [K in keyof Computed & string]: {
+			readonly get: () => Computed[K];
+		};
+	};
+};
 
-export type ComputeContext = {
-	readonly use: <S extends BaseNamespaceShape>(
-		implemented: ImplementedNamespace<S>,
-	) => CrossReplicantView<S["replicant"]>;
+export type ComputeContextUse = <S extends BaseNamespaceShape>(
+	implemented: ImplementedNamespace<S>,
+) => CrossComputeView<S["replicant"], S["computed"]>;
+
+export type ComputeContext<
+	out Replicant extends Record<string, unknown>,
+	out Computed extends Record<string, unknown>,
+> = {
+	readonly replicant: {
+		readonly [K in keyof Replicant & string]: {
+			readonly get: () => Replicant[K];
+		};
+	};
+	readonly computed: {
+		readonly [K in keyof Computed & string]: {
+			readonly get: () => Computed[K];
+		};
+	};
+	readonly use: ComputeContextUse;
 };
 
 export type ImplementComputed<
 	in Replicant extends Record<string, unknown>,
-	out Computed extends Record<string, unknown>,
+	in out Computed extends Record<string, unknown>,
 > = {
 	readonly [K in keyof Computed & string]: (
-		sources: SourceSnapshot<Replicant>,
-		ctx: ComputeContext,
+		ctx: ComputeContext<Replicant, Omit<Computed, K>>,
 	) => Computed[K];
 };
 

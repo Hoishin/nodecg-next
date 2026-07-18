@@ -4,11 +4,7 @@ import type {
 	FieldManifest,
 	RpcFieldManifest,
 } from "@nodecg/core";
-import {
-	InternalApi,
-	type FieldIdentifier,
-	fieldIdentifierEquivalence,
-} from "@nodecg/internal";
+import { InternalApi } from "@nodecg/internal";
 import {
 	mapEffectValues,
 	mapValues,
@@ -16,23 +12,28 @@ import {
 	type StreamToSubscribeLambda,
 	type ApplyLambdaToObject,
 } from "@nodecg/internal/utils";
+import { effect } from "@preact/signals-core";
 import {
+	Deferred,
 	Effect,
 	Exit,
 	type HKT,
 	Layer,
+	Mailbox,
 	ManagedRuntime,
-	Match,
-	Option,
 	Scope,
 	Stream,
-	SubscriptionRef,
 } from "effect";
 import type { Promisable } from "type-fest";
 
+import { type FieldSource, fieldSource } from "./derive.ts";
 import {
-	FieldNotFound,
-	FieldPermissionDenied,
+	type FieldCell,
+	FieldCellsService,
+	type FieldFailure,
+} from "./field-cells.ts";
+import { isFailure, isReady, matchLoadable } from "./loadable.ts";
+import {
 	FieldTransportService,
 	type FieldTransport,
 } from "./services/field-transport/field-transport.ts";
@@ -48,117 +49,49 @@ type RpcShape = Record<
 	{ readonly request: unknown; readonly response: unknown }
 >;
 
-const implementSubscription = Effect.fn("implementSubscription")(function* <
-	Decoded,
->(field: FieldIdentifier, manifest: FieldManifest<Decoded>) {
-	const messageChannel = yield* MessageChannelService;
-	const latest = yield* SubscriptionRef.make<Option.Option<Decoded>>(
-		Option.none(),
-	);
-	const rejection = yield* SubscriptionRef.make<
-		Option.Option<FieldNotFound | FieldPermissionDenied>
-	>(Option.none());
-	let refcount = 0;
-
-	const stream = yield* messageChannel.receive();
-
-	yield* Effect.forkScoped(
-		Stream.runForEach(stream, (msg) =>
-			Match.value(msg).pipe(
-				Match.when({ _tag: "publish", field }, (msg) =>
-					manifest.decode(msg.value).pipe(
-						Effect.flatMap((decoded) =>
-							SubscriptionRef.set(latest, Option.some(decoded)),
-						),
-						Effect.catchAll((error) =>
-							Effect.logError(
-								`Failed to decode published value for "${field.namespace}/${field.name}":`,
-								error,
-							),
-						),
-					),
-				),
-				Match.when({ _tag: "subscribe-rejected", field }, (msg) =>
-					SubscriptionRef.set(
-						rejection,
-						Option.some(
-							Match.value(msg.reason).pipe(
-								Match.when(
-									"not-found",
-									() =>
-										new FieldNotFound({
-											namespace: field.namespace,
-											name: field.name,
-										}),
-								),
-								Match.when(
-									"forbidden",
-									() =>
-										new FieldPermissionDenied({
-											namespace: field.namespace,
-											name: field.name,
-										}),
-								),
-								Match.exhaustive,
-							),
-						),
-					),
-				),
-				Match.orElse(() => Effect.void),
-			),
+const subscribeCell = Effect.fn(function* <Decoded>(cell: FieldCell<Decoded>) {
+	const mailbox = yield* Mailbox.make<Decoded>();
+	const ready = yield* Deferred.make<void, FieldFailure>();
+	yield* Effect.acquireRelease(
+		Effect.sync(() =>
+			effect(() => {
+				const value = cell.signal.value;
+				if (isReady(value)) {
+					mailbox.unsafeOffer(value.value);
+					Deferred.unsafeDone(ready, Effect.void);
+				} else if (isFailure(value)) {
+					Deferred.unsafeDone(ready, Effect.fail(value.error));
+				}
+			}),
 		),
+		(dispose) => Effect.sync(dispose),
 	);
+	yield* Deferred.await(ready);
+	return Mailbox.toStream(mailbox);
+});
 
-	const subscribe = () =>
-		Effect.gen(function* () {
-			yield* Effect.acquireRelease(
-				Effect.gen(function* () {
-					refcount += 1;
-					if (refcount === 1) {
-						yield* messageChannel.send({ _tag: "subscribe", field });
-					}
-				}),
-				() =>
-					Effect.gen(function* () {
-						refcount -= 1;
-						if (refcount > 0) {
-							return;
-						}
-						yield* messageChannel
-							.send({ _tag: "unsubscribe", field })
-							.pipe(
-								Effect.catchAll((error) =>
-									Effect.logError(
-										`Failed to send unsubscribe for "${field.namespace}/${field.name}":`,
-										error,
-									),
-								),
-							);
-					}),
-			);
-
-			yield* Effect.raceFirst(
-				latest.changes.pipe(
-					Stream.filterMap((value) => value),
-					Stream.take(1),
-					Stream.runDrain,
-				),
-				rejection.changes.pipe(
-					Stream.filterMap((value) => value),
-					Stream.runHead,
-					Effect.flatMap(
-						Option.match({
-							onNone: () => Effect.never,
-							onSome: (error) => Effect.fail(error),
-						}),
-					),
-				),
-			);
-
-			return latest.changes.pipe(Stream.filterMap((value) => value));
-		});
-
-	return subscribe;
+// Topic doesn't have to wait for first value
+const subscribeTopicCell = Effect.fn(function* <Decoded>(
+	cell: FieldCell<Decoded>,
+) {
+	const mailbox = yield* Mailbox.make<Decoded>();
+	let initial = true;
+	yield* Effect.acquireRelease(
+		Effect.sync(() =>
+			effect(() => {
+				const value = cell.signal.value;
+				if (initial) {
+					initial = false;
+					return;
+				}
+				if (isReady(value)) {
+					mailbox.unsafeOffer(value.value);
+				}
+			}),
+		),
+		(dispose) => Effect.sync(dispose),
+	);
+	return Mailbox.toStream(mailbox);
 });
 
 const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
@@ -167,19 +100,24 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	manifest: FieldManifest<Decoded>,
 ) {
 	const transport = yield* FieldTransportService;
-	const subscribe = yield* implementSubscription(
-		{ type: "replicant", namespace, name },
-		manifest,
-	);
+	const cells = yield* FieldCellsService;
+	const cell = cells.replicant(namespace, name, manifest);
 
 	const get = Effect.fn("get")(function* () {
-		const current = yield* transport.readReplicant(namespace, name);
-		return yield* manifest.decode(current);
+		return yield* matchLoadable(cell.peek(), {
+			Ready: ({ value }) => Effect.succeed(value),
+			Failure: ({ error }) => Effect.fail(error),
+			Pending: () =>
+				transport
+					.readReplicant(namespace, name)
+					.pipe(Effect.flatMap(manifest.decode)),
+		});
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
 		yield* transport.updateReplicant(namespace, name, encoded);
+		cell.reflect(value);
 	});
 
 	const update = Effect.fn("update")(function* (
@@ -189,23 +127,27 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		const next = yield* Effect.try(() => fn(current));
 		const encoded = yield* manifest.encode(next);
 		yield* transport.updateReplicant(namespace, name, encoded);
+		cell.reflect(next);
 	});
 
-	return { get, set, update, subscribe };
+	const subscribe = () => subscribeCell(cell);
+
+	return { get, set, update, subscribe, [fieldSource]: cell.signal };
 });
 
 type ReplicantFieldEffect<Decoded> = Effect.Effect.Success<
 	ReturnType<typeof implementReplicant<Decoded>>
 >;
 export type ReplicantField<Decoded> = ApplyLambdaToObject<
-	ReplicantFieldEffect<Decoded>,
+	Omit<ReplicantFieldEffect<Decoded>, typeof fieldSource>,
 	{
 		get: EffectToPromiseLambda;
 		set: EffectToPromiseLambda;
 		update: EffectToPromiseLambda;
 		subscribe: StreamToSubscribeLambda;
 	}
->;
+> &
+	FieldSource<Decoded>;
 
 const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 	namespace: string,
@@ -213,29 +155,36 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 	manifest: FieldManifest<Decoded>,
 ) {
 	const transport = yield* FieldTransportService;
-	const subscribe = yield* implementSubscription(
-		{ type: "computed", namespace, name },
-		manifest,
-	);
+	const cells = yield* FieldCellsService;
+	const cell = cells.computed(namespace, name, manifest);
 
 	const get = Effect.fn("get")(function* () {
-		const current = yield* transport.readComputed(namespace, name);
-		return yield* manifest.decode(current);
+		return yield* matchLoadable(cell.peek(), {
+			Ready: ({ value }) => Effect.succeed(value),
+			Failure: ({ error }) => Effect.fail(error),
+			Pending: () =>
+				transport
+					.readComputed(namespace, name)
+					.pipe(Effect.flatMap(manifest.decode)),
+		});
 	});
 
-	return { get, subscribe };
+	const subscribe = () => subscribeCell(cell);
+
+	return { get, subscribe, [fieldSource]: cell.signal };
 });
 
 type ComputedFieldEffect<Decoded> = Effect.Effect.Success<
 	ReturnType<typeof implementComputed<Decoded>>
 >;
 export type ComputedField<Decoded> = ApplyLambdaToObject<
-	ComputedFieldEffect<Decoded>,
+	Omit<ComputedFieldEffect<Decoded>, typeof fieldSource>,
 	{
 		get: EffectToPromiseLambda;
 		subscribe: StreamToSubscribeLambda;
 	}
->;
+> &
+	FieldSource<Decoded>;
 
 const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	namespace: string,
@@ -243,64 +192,15 @@ const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	manifest: FieldManifest<Decoded>,
 ) {
 	const transport = yield* FieldTransportService;
-	const messageChannel = yield* MessageChannelService;
-	const field: FieldIdentifier = { type: "topic", namespace, name };
-	let refcount = 0;
+	const cells = yield* FieldCellsService;
+	const cell = cells.topic(namespace, name, manifest);
 
 	const publish = Effect.fn("publish")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
 		yield* transport.publishTopic(namespace, name, encoded);
 	});
 
-	const subscribe = () =>
-		Effect.gen(function* () {
-			const stream = yield* messageChannel.receive();
-			yield* Effect.acquireRelease(
-				Effect.gen(function* () {
-					refcount += 1;
-					if (refcount === 1) {
-						yield* messageChannel.send({ _tag: "subscribe", field });
-					}
-				}),
-				() =>
-					Effect.gen(function* () {
-						refcount -= 1;
-						if (refcount > 0) {
-							return;
-						}
-						yield* messageChannel
-							.send({ _tag: "unsubscribe", field })
-							.pipe(
-								Effect.catchAll((error) =>
-									Effect.logError(
-										`Failed to send unsubscribe for topic "${namespace}/${name}":`,
-										error,
-									),
-								),
-							);
-					}),
-			);
-
-			return stream.pipe(
-				Stream.filterMap((msg) =>
-					msg._tag === "publish" && fieldIdentifierEquivalence(msg.field, field)
-						? Option.some(msg.value)
-						: Option.none(),
-				),
-				Stream.mapEffect((value) =>
-					manifest.decode(value).pipe(
-						Effect.map(Option.some),
-						Effect.catchAll((error) =>
-							Effect.logError(
-								`Failed to decode published value for topic "${namespace}/${name}":`,
-								error,
-							).pipe(Effect.as(Option.none<Decoded>())),
-						),
-					),
-				),
-				Stream.filterMap((value) => value),
-			);
-		});
+	const subscribe = () => subscribeTopicCell(cell);
 
 	return { publish, subscribe };
 });
@@ -402,33 +302,37 @@ const buildNamespace = <
 >(
 	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 ) =>
-	Effect.gen(function* () {
-		const fields = yield* mapEffectValues<
-			FieldManifestLambda,
-			ReplicantFieldEffectLambda
-		>()((codec, name) => implementReplicant(manifest.namespace, name, codec))(
-			manifest.replicant,
-		);
-		const computedFields = yield* mapEffectValues<
-			FieldManifestLambda,
-			ComputedFieldEffectLambda
-		>()((codec, name) => implementComputed(manifest.namespace, name, codec))(
-			manifest.computed,
-		);
-		const topicFields = yield* mapEffectValues<
-			FieldManifestLambda,
-			TopicFieldEffectLambda
-		>()((codec, name) => implementTopic(manifest.namespace, name, codec))(
-			manifest.topic,
-		);
-		const rpcFields = yield* mapEffectValues<
-			RpcFieldManifestLambda,
-			RpcFieldEffectLambda
-		>()((codec, name) => implementRpc(manifest.namespace, name, codec))(
-			manifest.rpc,
-		);
-		return { fields, computedFields, topicFields, rpcFields };
-	});
+	Layer.build(FieldCellsService.Default).pipe(
+		Effect.flatMap((context) =>
+			Effect.gen(function* () {
+				const fields = yield* mapEffectValues<
+					FieldManifestLambda,
+					ReplicantFieldEffectLambda
+				>()((codec, name) =>
+					implementReplicant(manifest.namespace, name, codec),
+				)(manifest.replicant);
+				const computedFields = yield* mapEffectValues<
+					FieldManifestLambda,
+					ComputedFieldEffectLambda
+				>()((codec, name) =>
+					implementComputed(manifest.namespace, name, codec),
+				)(manifest.computed);
+				const topicFields = yield* mapEffectValues<
+					FieldManifestLambda,
+					TopicFieldEffectLambda
+				>()((codec, name) => implementTopic(manifest.namespace, name, codec))(
+					manifest.topic,
+				);
+				const rpcFields = yield* mapEffectValues<
+					RpcFieldManifestLambda,
+					RpcFieldEffectLambda
+				>()((codec, name) => implementRpc(manifest.namespace, name, codec))(
+					manifest.rpc,
+				);
+				return { fields, computedFields, topicFields, rpcFields };
+			}).pipe(Effect.provide(context)),
+		),
+	);
 
 const buildHttpClient = Effect.fn("buildHttpClient")(function* () {
 	const httpClient = yield* HttpApiClient.make(InternalApi);
@@ -515,7 +419,6 @@ export async function loadNamespace<
 			: Layer.sync(MessageChannelService, messageChannel)
 		: WebSocketMessageChannel;
 
-	// TODO: expose a cleanup function that calls runtime.dispose()
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
 			transportLayer,
@@ -550,7 +453,7 @@ export async function loadNamespace<
 							Effect.tryPromise(async () => callback(value)).pipe(
 								Effect.catchAll((error) =>
 									Effect.logError(
-										`Replicant subscription handler for "${manifest.namespace}/${name}" threw`,
+										`Subscription handler for "${manifest.namespace}/${name}" threw`,
 										error,
 									),
 								),
@@ -570,6 +473,7 @@ export async function loadNamespace<
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn) => runtime.runPromise(field.update(fn)),
 		subscribe: subscribeEffectToPromise(field.subscribe, name),
+		[fieldSource]: field[fieldSource],
 	}))(effectFields);
 
 	const computed = mapValues<
@@ -578,6 +482,7 @@ export async function loadNamespace<
 	>((field, name) => ({
 		get: () => runtime.runPromise(field.get()),
 		subscribe: subscribeEffectToPromise(field.subscribe, name),
+		[fieldSource]: field[fieldSource],
 	}))(effectComputedFields);
 
 	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(

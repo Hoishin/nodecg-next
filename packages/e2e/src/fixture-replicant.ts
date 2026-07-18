@@ -1,12 +1,12 @@
 import { defineNamespace, extendNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
-const everyoneRead = { read: { allow: ["everyone"] } } as const;
+const everyoneRead = { read: { everyone: "allow" } } as const;
 const everyoneReadWrite = {
-	read: { allow: ["everyone"] },
-	write: { allow: ["everyone"] },
+	read: { everyone: "allow" },
+	write: { everyone: "allow" },
 } as const;
-const everyoneWrite = { write: { allow: ["everyone"] } } as const;
+const everyoneWrite = { write: { everyone: "allow" } } as const;
 
 export const fixtureManifest = defineNamespace("e2e", {
 	roles: {
@@ -25,7 +25,7 @@ export const fixtureManifest = defineNamespace("e2e", {
 		},
 		membersOnly: {
 			schema: Schema.String,
-			permission: { read: { allow: ["client"] } },
+			permission: { read: { client: "allow" } },
 		},
 	},
 	computed: {
@@ -62,6 +62,17 @@ export const extendedManifest = extendNamespace(baseManifest, {
 	},
 	computed: {
 		total: { schema: Schema.Number, permission: everyoneRead },
+	},
+});
+
+export const chainManifest = defineNamespace("e2e-chain", {
+	replicant: {
+		points: { schema: Schema.Number, permission: everyoneReadWrite },
+		target: { schema: Schema.Number, permission: everyoneReadWrite },
+	},
+	computed: {
+		lead: { schema: Schema.Number, permission: everyoneRead },
+		status: { schema: Schema.String, permission: everyoneRead },
 	},
 });
 

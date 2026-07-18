@@ -32,13 +32,14 @@ import {
 	anonymousIdentity,
 	resolveSessionIdentity,
 } from "../auth/resolve-session-identity.ts";
+import {
+	DerivationEngineService,
+	ReplicantNotFound2,
+} from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
 import { config } from "../server-config.ts";
 import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
-import {
-	type ReplicantNotFound,
-	ReplicantStorageService,
-} from "../services/replicant-storage/replicant-storage.ts";
+import { ReplicantStorageService } from "../services/replicant-storage/replicant-storage.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
@@ -66,7 +67,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					readonly field: FieldIdentifier;
 					readonly fiber: Fiber.RuntimeFiber<
 						void,
-						ParseResult.ParseError | Socket.SocketError | ReplicantNotFound
+						ParseResult.ParseError | Socket.SocketError | ReplicantNotFound2
 					>;
 				}>
 			>([]);
@@ -103,9 +104,11 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 						if (list.some((s) => fieldIdentifierEquivalence(s.field, field))) {
 							// If there is stored value, send it immediately
 							if ("getEncoded" in internal) {
-								yield* internal.getEncoded().pipe(
+								yield* Effect.gen(function* () {
+									const value = yield* internal.getEncoded();
+									yield* publish(field, value);
+								}).pipe(
 									Effect.provideService(CurrentIdentity, identity),
-									Effect.flatMap((value) => publish(field, value)),
 									Effect.catchTag("FieldPermissionDenied", () =>
 										send(
 											SubscribeRejectedMessage.make({
@@ -186,6 +189,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 		const machines = yield* MachineClientStoreService;
 		const storage = yield* ReplicantStorageService;
 		const broker = yield* TopicBrokerService;
+		const engine = yield* DerivationEngineService;
 
 		// TODO: keep contexts contexts, pass it to handler if needed
 		const resolveSession = resolveSessionIdentity({ sessions, roleStore });
@@ -231,6 +235,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 			),
 			HttpRouter.provideService(ReplicantStorageService, storage),
 			HttpRouter.provideService(TopicBrokerService, broker),
+			HttpRouter.provideService(DerivationEngineService, engine),
 		);
 
 		yield* router.concat(ws);

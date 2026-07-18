@@ -7,7 +7,6 @@ import type { ReplicantFieldEffect } from "./field-builders/build-replicant.ts";
 import type { RpcFieldEffect } from "./field-builders/build-rpc.ts";
 import type { TopicFieldEffect } from "./field-builders/build-topic.ts";
 import type {
-	ComputeContext,
 	ComputedField,
 	ReplicantField,
 	RpcComputedAccessor,
@@ -25,14 +24,18 @@ export interface DecodedLambda extends HKT.TypeLambda {
 	readonly type: this["Target"];
 }
 
-export type CrossReplicantRead<Decoded> = { readonly get: () => Decoded };
+export type CrossFieldRead<Decoded> = { readonly get: () => Decoded };
 
-export interface CrossReplicantReadLambda extends HKT.TypeLambda {
-	readonly type: CrossReplicantRead<this["Target"]>;
+export interface CrossFieldReadLambda extends HKT.TypeLambda {
+	readonly type: CrossFieldRead<this["Target"]>;
 }
 
 export interface ComputeFnLambda extends HKT.TypeLambda {
-	readonly type: (sources: this["In"], ctx: ComputeContext) => this["Target"];
+	readonly type: (ctx: this["In"]) => this["Target"];
+}
+
+export interface SeedFnLambda extends HKT.TypeLambda {
+	readonly type: () => this["Target"];
 }
 
 export interface ReplicantFieldEffectLambda extends HKT.TypeLambda {

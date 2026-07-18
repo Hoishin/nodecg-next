@@ -1,5 +1,13 @@
 import { loadNamespace } from "@nodecg/client";
-import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+	afterAll,
+	beforeAll,
+	describe,
+	expect,
+	onTestFinished,
+	test,
+	vi,
+} from "vitest";
 
 import { extendedManifest, fixtureManifest } from "./fixture-replicant.ts";
 
@@ -266,6 +274,42 @@ describe("messaging (topic + rpc)", () => {
 			{ timeout: 5000, interval: 100 },
 		);
 		await cancel();
+	});
+
+	test("a second subscriber on the same client joins live without replaying the last event", async () => {
+		const ns = await loadNamespace(fixtureManifest);
+		const publisher = await loadNamespace(fixtureManifest);
+		const first: string[] = [];
+		const cancelFirst = await ns.topic.chat.subscribe((value) => {
+			first.push(value);
+		});
+		onTestFinished(() => cancelFirst());
+		await vi.waitFor(
+			async () => {
+				await publisher.topic.chat.publish("seed");
+				expect(first).toContain("seed");
+			},
+			{ timeout: 5000, interval: 100 },
+		);
+		await publisher.topic.chat.publish("sync");
+		await vi.waitFor(() => expect(first).toContain("sync"));
+
+		const second: string[] = [];
+		const cancelSecond = await ns.topic.chat.subscribe((value) => {
+			second.push(value);
+		});
+		onTestFinished(() => cancelSecond());
+		await vi.waitFor(
+			async () => {
+				await publisher.topic.chat.publish("live");
+				expect(second).toContain("live");
+			},
+			{ timeout: 5000, interval: 100 },
+		);
+
+		expect(second).not.toContain("seed");
+		expect(second).not.toContain("sync");
+		expect(first).toContain("live");
 	});
 
 	test("an rpc call runs the server handler and returns its response", async () => {

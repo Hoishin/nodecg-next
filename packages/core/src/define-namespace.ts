@@ -1,9 +1,11 @@
 import {
 	isUndeclarableRole,
 	PRINCIPAL,
-	Principal,
 	PRINCIPAL_BY_NAME,
+	PrincipalNameSchema,
 	RoleName,
+	type Principal,
+	type PrincipalName,
 	type UndeclarableRoleName,
 } from "@nodecg/internal";
 import {
@@ -23,9 +25,10 @@ import {
 	ROLE_CAPABILITY,
 	rpcPermission,
 	topicPermission,
+	type Access,
+	type Grant,
 	type PermissionArg,
 	type PrincipalsArg,
-	type PermissionRule,
 	type PermissionRuleArg,
 	type ReadOnlyPermissionArg,
 	type ResolvedPermission,
@@ -185,62 +188,95 @@ interface RoleRegistry {
 	readonly principals: Map<Principal, RoleManifest>;
 }
 
-const brandToken = (token: string): RoleName | Principal =>
-	PRINCIPAL_BY_NAME.get(token) ?? RoleName(token);
+interface DeclaredTokens {
+	readonly roles: ReadonlySet<RoleName>;
+	readonly principals: ReadonlySet<PrincipalName>;
+}
 
-const expandClientRoles = (
-	tokens: ReadonlyArray<RoleName | Principal>,
-	namedRoles: ReadonlySet<RoleName>,
-): Set<RoleName | Principal> => {
-	const result = new Set<RoleName | Principal>();
-	for (const token of tokens) {
-		if (token === PRINCIPAL.client) {
-			for (const named of namedRoles) {
-				result.add(named);
-			}
-		} else {
-			result.add(token);
-		}
-	}
-	return result;
+type AccessBuilder = {
+	[K in PrincipalName]?: Grant;
+} & {
+	roles: Set<RoleName>;
+	rolesDenied: Set<RoleName>;
 };
 
-const PRIVILEGED_PRINCIPALS: ReadonlySet<Principal> = new Set([
-	PRINCIPAL.admin,
-	PRINCIPAL.server,
-]);
+const initializeAccess = (): AccessBuilder => ({
+	roles: new Set(),
+	rolesDenied: new Set(),
+});
 
-const EVERYONE: ReadonlySet<RoleName | Principal> = new Set([
-	PRINCIPAL.everyone,
-]);
+const updateAccess = (access: Access): AccessBuilder => ({
+	...access,
+	roles: new Set(access.roles),
+	rolesDenied: new Set(access.rolesDenied),
+});
 
-const resolveFieldRule = (
-	base: ReadonlySet<RoleName | Principal>,
+const writeRule = (
+	access: AccessBuilder,
 	rule: PermissionRuleArg<string> | undefined,
-	namedRoles: ReadonlySet<RoleName>,
-	inherited: ReadonlySet<RoleName | Principal>,
-): PermissionRule => {
-	let allowed = new Set(base);
-	let denied = new Set(inherited);
-	if (rule?.allow) {
-		const named = expandClientRoles(rule.allow.map(brandToken), namedRoles);
-		allowed = new Set(named);
-		for (const principal of PRIVILEGED_PRINCIPALS) {
-			if (base.has(principal)) {
-				allowed.add(principal);
-			}
+): void => {
+	if (typeof rule === "undefined") {
+		return;
+	}
+	if (rule.allow) {
+		access.roles = new Set(rule.allow.map(RoleName));
+		// an allow lifts a denial it names
+		access.rolesDenied = access.rolesDenied.difference(access.roles);
+	}
+	if (rule.deny) {
+		const denied = new Set(rule.deny.map(RoleName));
+		access.roles = access.roles.difference(denied);
+		access.rolesDenied = access.rolesDenied.union(denied);
+	}
+	for (const principal of PrincipalNameSchema.literals) {
+		const grant = rule[principal];
+		if (typeof grant !== "undefined") {
+			access[principal] = grant;
 		}
-		// An allow restates who may, so it lifts an inherited denial for whoever it names — and `everyone` names all.
-		denied = named.has(PRINCIPAL.everyone)
-			? new Set()
-			: denied.difference(named);
 	}
-	if (rule?.deny) {
-		const tokens = expandClientRoles(rule.deny.map(brandToken), namedRoles);
-		allowed = allowed.difference(tokens);
-		denied = denied.union(tokens.difference(EVERYONE));
+};
+
+/**
+ * A fresh field (no precedent) replays every registry row onto a seed;
+ * an inherited field replays only the tokens this layer re-declared.
+ */
+const resolveAccess = (
+	registry: RoleRegistry,
+	declared: DeclaredTokens,
+	capability: RoleCapability,
+	precedent: Access | undefined,
+	rule: PermissionRuleArg<string> | undefined,
+): Access => {
+	const access = precedent ? updateAccess(precedent) : initializeAccess();
+	const roles = precedent ? declared.roles : registry.roles.keys();
+	for (const role of roles) {
+		if (access.rolesDenied.has(role)) {
+			// a field-level deny stands
+			continue;
+		}
+		if (registry.roles.get(role)?.capabilities.has(capability)) {
+			access.roles.add(role);
+		} else {
+			access.roles.delete(role);
+		}
 	}
-	return { allowed, denied };
+	const principals = precedent
+		? declared.principals
+		: PrincipalNameSchema.literals;
+	for (const name of principals) {
+		if (access[name] === "deny") {
+			continue;
+		}
+		if (
+			registry.principals.get(PRINCIPAL[name])?.capabilities.has(capability)
+		) {
+			access[name] = "allow";
+		} else {
+			access[name] = undefined;
+		}
+	}
+	writeRule(access, rule);
+	return access;
 };
 
 type FieldPermissionOptions = {
@@ -253,14 +289,14 @@ type FieldPermissionOptions = {
 const validatePermissionTokens = (
 	group: "replicant" | "computed" | "topic" | "rpc",
 	fields: Readonly<Record<string, FieldPermissionOptions>> | undefined,
-	tokens: ReadonlySet<RoleName | Principal>,
+	roles: ReadonlyMap<RoleName, RoleManifest>,
 ): void => {
 	for (const [name, field] of Object.entries(fields ?? {})) {
 		for (const operation of ["read", "write"] as const) {
 			const rule = field.permission?.[operation];
 			for (const kind of ["allow", "deny"] as const) {
 				for (const token of rule?.[kind] ?? []) {
-					if (!tokens.has(brandToken(token))) {
+					if (!roles.has(RoleName(token))) {
 						throw new Error(
 							`Unknown role "${token}" in ${group} "${name}" ${operation}.${kind}`,
 						);
@@ -271,23 +307,20 @@ const validatePermissionTokens = (
 	}
 };
 
-const collectPermissionTokens = (
-	registry: RoleRegistry,
-): ReadonlySet<RoleName | Principal> =>
-	new Set([...registry.roles.keys(), ...registry.principals.keys()]);
-
 const seedPrincipals = (): Map<Principal, RoleManifest> => {
 	const principals = new Map<Principal, RoleManifest>();
-	for (const principal of Object.values(PRINCIPAL)) {
-		principals.set(principal, {
-			name: principal,
+	for (const name of PrincipalNameSchema.literals) {
+		principals.set(PRINCIPAL[name], {
+			name: PRINCIPAL[name],
 			capabilities: new Set(
-				PRIVILEGED_PRINCIPALS.has(principal) ? ROLE_CAPABILITY : [],
+				name === "admin" || name === "server" ? ROLE_CAPABILITY : [],
 			),
 		});
 	}
 	return principals;
 };
+
+const isPrincipalName = Schema.is(PrincipalNameSchema);
 
 const declareRoles = (
 	precedent: RoleRegistry,
@@ -295,30 +328,23 @@ const declareRoles = (
 	overrides: PrincipalsArg | undefined,
 ): {
 	registry: RoleRegistry;
-	declared: {
-		roles: ReadonlySet<RoleName>;
-		principals: ReadonlySet<Principal>;
-	};
+	declared: DeclaredTokens;
 } => {
 	const roles = new Map(precedent.roles);
 	const principals = new Map(precedent.principals);
 	const declaredRoles = new Set<RoleName>();
-	const declaredPrincipals = new Set<Principal>();
+	const declaredPrincipals = new Set<PrincipalName>();
 
 	// Resolve principals
 	for (const [key, arg] of Object.entries(overrides ?? {})) {
-		if (typeof arg === "undefined") {
+		if (typeof arg === "undefined" || !isPrincipalName(key)) {
 			continue;
 		}
-		const principal = PRINCIPAL_BY_NAME.get(key);
-		if (typeof principal === "undefined") {
-			continue;
-		}
-		principals.set(principal, {
-			name: principal,
+		principals.set(PRINCIPAL[key], {
+			name: PRINCIPAL[key],
 			capabilities: new Set(arg.permission),
 		});
-		declaredPrincipals.add(principal);
+		declaredPrincipals.add(key);
 	}
 
 	// Resolve roles
@@ -349,25 +375,6 @@ const declareRoles = (
 		registry: { roles, principals },
 		declared: { roles: declaredRoles, principals: declaredPrincipals },
 	};
-};
-
-const capabilityBase = (
-	capability: RoleCapability,
-	registry: RoleRegistry,
-	namedRoles: ReadonlySet<RoleName>,
-): ReadonlySet<RoleName | Principal> => {
-	const holders: (RoleName | Principal)[] = [];
-	for (const [role, manifest] of registry.roles) {
-		if (manifest.capabilities.has(capability)) {
-			holders.push(role);
-		}
-	}
-	for (const [principal, manifest] of registry.principals) {
-		if (manifest.capabilities.has(capability)) {
-			holders.push(principal);
-		}
-	}
-	return expandClientRoles(holders, namedRoles);
 };
 
 export function defineNamespace<
@@ -410,30 +417,23 @@ export function defineNamespace<
 	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> },
 	AddedRpcDecoded<Rpc>
 > {
-	const { registry } = declareRoles(
+	const { registry, declared } = declareRoles(
 		{ roles: new Map(), principals: seedPrincipals() },
 		defineOption.roles,
 		defineOption.principals,
 	);
 
 	const namedRoles = new Set(registry.roles.keys());
-	const tokens = collectPermissionTokens(registry);
 
-	validatePermissionTokens("replicant", defineOption.replicant, tokens);
-	validatePermissionTokens("computed", defineOption.computed, tokens);
-	validatePermissionTokens("topic", defineOption.topic, tokens);
-	validatePermissionTokens("rpc", defineOption.rpc, tokens);
+	validatePermissionTokens("replicant", defineOption.replicant, registry.roles);
+	validatePermissionTokens("computed", defineOption.computed, registry.roles);
+	validatePermissionTokens("topic", defineOption.topic, registry.roles);
+	validatePermissionTokens("rpc", defineOption.rpc, registry.roles);
 
 	const resolve = (
 		capability: RoleCapability,
 		rule: PermissionRuleArg<keyof Roles & string> | undefined,
-	) =>
-		resolveFieldRule(
-			capabilityBase(capability, registry, namedRoles),
-			rule,
-			namedRoles,
-			new Set(),
-		);
+	) => resolveAccess(registry, declared, capability, undefined, rule);
 
 	const replicant = mapValues<
 		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
@@ -443,6 +443,7 @@ export function defineNamespace<
 		permission: replicantPermission(
 			resolve("replicant-read", option.permission?.read),
 			resolve("replicant-write", option.permission?.write),
+			namedRoles,
 		),
 	}))(defineOption.replicant);
 
@@ -453,6 +454,7 @@ export function defineNamespace<
 		...implementCodec(name, option.schema),
 		permission: computedPermission(
 			resolve("computed-read", option.permission?.read),
+			namedRoles,
 		),
 	}))(defineOption.computed);
 
@@ -464,6 +466,7 @@ export function defineNamespace<
 		permission: topicPermission(
 			resolve("topic-subscribe", option.permission?.read),
 			resolve("topic-publish", option.permission?.write),
+			namedRoles,
 		),
 	}))(defineOption.topic);
 
@@ -474,7 +477,10 @@ export function defineNamespace<
 		name,
 		request: makeCodec(name, option.schema.request),
 		response: makeCodec(name, option.schema.response),
-		permission: rpcPermission(resolve("rpc-call", option.permission?.write)),
+		permission: rpcPermission(
+			resolve("rpc-call", option.permission?.write),
+			namedRoles,
+		),
 	}));
 
 	return {
@@ -578,49 +584,21 @@ export function extendNamespace<
 
 	const namedRoles = new Set(registry.roles.keys());
 
-	const affected = new Set<RoleName | Principal>([
-		...(declared.principals.has(PRINCIPAL.client)
-			? namedRoles
-			: declared.roles),
-		...declared.principals,
-	]);
-
-	const tokens = collectPermissionTokens(registry);
-
-	validatePermissionTokens("replicant", extendOption.replicant, tokens);
-	validatePermissionTokens("computed", extendOption.computed, tokens);
-	validatePermissionTokens("topic", extendOption.topic, tokens);
-	validatePermissionTokens("rpc", extendOption.rpc, tokens);
+	validatePermissionTokens("replicant", extendOption.replicant, registry.roles);
+	validatePermissionTokens("computed", extendOption.computed, registry.roles);
+	validatePermissionTokens("topic", extendOption.topic, registry.roles);
+	validatePermissionTokens("rpc", extendOption.rpc, registry.roles);
 
 	const resolve = (
 		capability: RoleCapability,
 		rule: PermissionRuleArg<string> | undefined,
-	) =>
-		resolveFieldRule(
-			capabilityBase(capability, registry, namedRoles),
-			rule,
-			namedRoles,
-			new Set(),
-		);
+	) => resolveAccess(registry, declared, capability, undefined, rule);
 
-	/** Denials accumulate across an extend: a lock-down the precedent baked in cannot be lifted downstream. */
 	const remap = (
 		capability: RoleCapability,
-		current: ReadonlySet<RoleName | Principal>,
-		inherited: ReadonlySet<RoleName | Principal>,
+		precedent: Access,
 		rule: PermissionRuleArg<string> | undefined,
-	) => {
-		const base = capabilityBase(capability, registry, namedRoles);
-		const result = new Set(current);
-		for (const role of affected) {
-			if (base.has(role)) {
-				result.add(role);
-			} else {
-				result.delete(role);
-			}
-		}
-		return resolveFieldRule(result, rule, namedRoles, inherited);
-	};
+	) => resolveAccess(registry, declared, capability, precedent, rule);
 
 	const replicantRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
@@ -633,15 +611,14 @@ export function extendNamespace<
 					remap(
 						"replicant-read",
 						field.permission.read,
-						field.permission.readDenied,
 						override?.permission?.read,
 					),
 					remap(
 						"replicant-write",
 						field.permission.write,
-						field.permission.writeDenied,
 						override?.permission?.write,
 					),
+					namedRoles,
 				),
 			};
 		},
@@ -655,6 +632,7 @@ export function extendNamespace<
 		permission: replicantPermission(
 			resolve("replicant-read", option.permission?.read),
 			resolve("replicant-write", option.permission?.write),
+			namedRoles,
 		),
 	}));
 	const replicant = mergeRecords<
@@ -676,9 +654,9 @@ export function extendNamespace<
 					remap(
 						"computed-read",
 						field.permission.read,
-						field.permission.readDenied,
 						override?.permission?.read,
 					),
+					namedRoles,
 				),
 			};
 		},
@@ -690,6 +668,7 @@ export function extendNamespace<
 		...implementCodec(name, option.schema),
 		permission: computedPermission(
 			resolve("computed-read", option.permission?.read),
+			namedRoles,
 		),
 	}));
 	const computed = mergeRecords<
@@ -711,15 +690,14 @@ export function extendNamespace<
 					remap(
 						"topic-subscribe",
 						field.permission.read,
-						field.permission.readDenied,
 						override?.permission?.read,
 					),
 					remap(
 						"topic-publish",
 						field.permission.write,
-						field.permission.writeDenied,
 						override?.permission?.write,
 					),
+					namedRoles,
 				),
 			};
 		},
@@ -732,6 +710,7 @@ export function extendNamespace<
 		permission: topicPermission(
 			resolve("topic-subscribe", option.permission?.read),
 			resolve("topic-publish", option.permission?.write),
+			namedRoles,
 		),
 	}));
 	const topic = mergeRecords<
@@ -753,9 +732,9 @@ export function extendNamespace<
 					remap(
 						"rpc-call",
 						field.permission.write,
-						field.permission.writeDenied,
 						override?.permission?.write,
 					),
+					namedRoles,
 				),
 			};
 		},
@@ -767,7 +746,10 @@ export function extendNamespace<
 		name,
 		request: makeCodec(name, option.schema.request),
 		response: makeCodec(name, option.schema.response),
-		permission: rpcPermission(resolve("rpc-call", option.permission?.write)),
+		permission: rpcPermission(
+			resolve("rpc-call", option.permission?.write),
+			namedRoles,
+		),
 	}));
 	const rpc = mergeRecords<
 		NamespaceManifest<

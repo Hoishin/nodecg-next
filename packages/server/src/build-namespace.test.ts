@@ -4,7 +4,9 @@ import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
+import { DerivationEngineService } from "./derivation-graph.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
@@ -26,12 +28,20 @@ const testStubbed = makeTestEffect(
 	Layer.mergeAll(
 		Layer.succeed(ReplicantStorageService, storage),
 		Layer.succeed(TopicBrokerService, broker),
+		DerivationEngineService.Default,
+		BuiltNamespaceRegistry.Default,
 		identity,
 	),
 );
 
 const testInMemory = makeTestEffect(
-	Layer.mergeAll(InMemoryReplicantStorage, InMemoryTopicBroker, identity),
+	Layer.mergeAll(
+		InMemoryReplicantStorage,
+		InMemoryTopicBroker,
+		DerivationEngineService.Default,
+		BuiltNamespaceRegistry.Default,
+		identity,
+	),
 );
 
 // Different encoded and decoded
@@ -55,19 +65,29 @@ describe("seeding", () => {
 	);
 
 	test(
-		"supports an async thunk",
+		"hydrates the engine replicant with the seeded value",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				yield* buildNamespace(countManifest, {
-					seedReplicant: {
-						count: async () => {
-							await new Promise((resolve) => setTimeout(resolve, 1));
-							return 7;
-						},
-					},
+					seedReplicant: { count: () => 42 },
 				});
+				expect(yield* engine.readReplicant("ns", "count")).toEqual("42");
+			}),
+		),
+	);
 
-				expect(storage.create).toHaveBeenCalledWith("ns", "count", "7");
+	test(
+		"hydrates the engine replicant with an already-persisted value",
+		testStubbed(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				storage.read.mockReturnValue(Effect.succeed("7"));
+				yield* buildNamespace(countManifest, {
+					seedReplicant: { count: () => 42 },
+				});
+				expect(storage.create).not.toHaveBeenCalled();
+				expect(yield* engine.readReplicant("ns", "count")).toEqual("7");
 			}),
 		),
 	);
@@ -138,7 +158,9 @@ describe("adaptNamespace", () => {
 				const publish = vi.spyOn(broker, "publish");
 				const built = yield* buildNamespace(manifest, {
 					seedReplicant: { count: () => 1 },
-					implementComputed: { doubled: (sources) => sources.count * 2 },
+					implementComputed: {
+						doubled: (ctx) => ctx.replicant.count.get() * 2,
+					},
 					implementRpc: { echo: (request) => request * 10 },
 				});
 				const handle = yield* adaptNamespace(built);

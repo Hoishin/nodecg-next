@@ -8,6 +8,7 @@ import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Cause, Chunk, Effect, Layer, Option, Schema, Stream } from "effect";
 import { afterEach, assert, describe, expect, test } from "vitest";
 
+import { DerivationEngineService } from "../derivation-graph.ts";
 import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
 import { createStorageStub } from "../services/replicant-storage/replicant-storage.stub.ts";
 import { ReplicantStorageService } from "../services/replicant-storage/replicant-storage.ts";
@@ -24,11 +25,19 @@ const { stub: storage, reset } = createStorageStub();
 afterEach(reset);
 
 const testStubbed = makeTestEffect(
-	Layer.merge(Layer.succeed(ReplicantStorageService, storage), identity),
+	Layer.mergeAll(
+		Layer.succeed(ReplicantStorageService, storage),
+		DerivationEngineService.Default,
+		identity,
+	),
 );
 
 const testInMemory = makeTestEffect(
-	Layer.merge(InMemoryReplicantStorage, identity),
+	Layer.mergeAll(
+		InMemoryReplicantStorage,
+		DerivationEngineService.Default,
+		identity,
+	),
 );
 
 // Different encoded and decoded
@@ -38,39 +47,23 @@ const manifest = defineNamespace("ns", {
 		other: { schema: Schema.NumberFromString },
 		locked: {
 			schema: Schema.NumberFromString,
-			permission: { write: { deny: ["server"] } },
+			permission: { write: { server: "deny" } },
 		},
 	},
 });
 
 describe("get", () => {
 	test(
-		"decodes the value returned by storage",
+		"decodes the value held by the engine",
 		testStubbed(
 			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed("42"));
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
 					manifest.replicant.count,
+					42,
 				);
 				expect(yield* field.get()).toBe(42);
-				expect(storage.read).toHaveBeenCalledWith("ns", "count");
-			}),
-		),
-	);
-
-	test(
-		"propagates ReplicantNotFound from storage",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* buildReplicant(
-					"ns",
-					"count",
-					manifest.replicant.count,
-				);
-				const error = yield* field.get().pipe(Effect.flip);
-				expect(error._tag).toBe("ReplicantNotFound");
 			}),
 		),
 	);
@@ -79,12 +72,14 @@ describe("get", () => {
 		"dies when the stored value does not match the schema",
 		testStubbed(
 			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed("not a number"));
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
+				yield* engine.setReplicant("ns", "count", "not a number");
 				const cause = yield* field.get().pipe(Effect.sandbox, Effect.flip);
 				const defect = Cause.dieOption(cause);
 				assert(Option.isSome(defect));
@@ -104,6 +99,7 @@ describe("set", () => {
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
 				yield* field.set(7);
 				expect(storage.update).toHaveBeenCalledWith("ns", "count", "7");
@@ -119,6 +115,7 @@ describe("set", () => {
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
 				const error = yield* field
 					.set("not a number" as unknown as number)
@@ -137,6 +134,7 @@ describe("set", () => {
 					"ns",
 					"locked",
 					manifest.replicant.locked,
+					0,
 				);
 				const error = yield* field.set(1).pipe(Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
@@ -151,11 +149,11 @@ describe("update", () => {
 		"reads the current value, applies the fn, and writes the result",
 		testStubbed(
 			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed("10"));
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
 					manifest.replicant.count,
+					10,
 				);
 				yield* field.update((v) => v + 3);
 				expect(storage.update).toHaveBeenLastCalledWith("ns", "count", "13");
@@ -167,11 +165,11 @@ describe("update", () => {
 		"surfaces a throwing update fn as ReplicantUpdateFnError without writing",
 		testStubbed(
 			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed("10"));
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
 					manifest.replicant.count,
+					10,
 				);
 				const error = yield* field
 					.update(() => {
@@ -195,6 +193,7 @@ describe("validate", () => {
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
 				expect(yield* field.validate(7)).toBe("7");
 				const error = yield* field
@@ -217,6 +216,7 @@ describe("subscribe", () => {
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
 
 				const stream = yield* field.subscribe();
@@ -239,11 +239,13 @@ describe("subscribe", () => {
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
 				const other = yield* buildReplicant(
 					"ns",
 					"other",
 					manifest.replicant.other,
+					0,
 				);
 
 				const stream = yield* count.subscribe();
@@ -266,6 +268,7 @@ describe("subscribe", () => {
 					"ns",
 					"count",
 					manifest.replicant.count,
+					0,
 				);
 
 				const stream = yield* field[fieldInternal].subscribeEncoded();
@@ -278,14 +281,57 @@ describe("subscribe", () => {
 	);
 });
 
+describe("derivation engine write-through", () => {
+	test(
+		"set, setEncoded, and update feed the engine replicant",
+		testStubbed(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const field = yield* buildReplicant(
+					"ns",
+					"count",
+					manifest.replicant.count,
+					0,
+				);
+
+				yield* field.set(7);
+				expect(yield* engine.readReplicant("ns", "count")).toEqual("7");
+
+				yield* field[fieldInternal].setEncoded("8");
+				expect(yield* engine.readReplicant("ns", "count")).toEqual("8");
+
+				yield* field.update((v) => v + 3);
+				expect(yield* engine.readReplicant("ns", "count")).toEqual("11");
+			}),
+		),
+	);
+
+	test(
+		"a failed write leaves the replicant untouched",
+		testStubbed(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const field = yield* buildReplicant(
+					"ns",
+					"locked",
+					manifest.replicant.locked,
+					0,
+				);
+				yield* field.set(1).pipe(Effect.flip);
+				expect(yield* engine.readReplicant("ns", "locked")).toEqual("0");
+			}),
+		),
+	);
+});
+
 describe("encoded read/write enforce permission", () => {
 	const permissioned = defineNamespace("ns", {
 		replicant: {
 			open: {
 				schema: Schema.Number,
 				permission: {
-					read: { allow: ["everyone"] },
-					write: { allow: ["everyone"] },
+					read: { everyone: "allow" },
+					write: { everyone: "allow" },
 				},
 			},
 			locked: { schema: Schema.Number },
@@ -293,14 +339,14 @@ describe("encoded read/write enforce permission", () => {
 	});
 
 	test(
-		"getEncoded returns the validated value for an allowed caller",
+		"getEncoded returns the raw stored value for an allowed caller",
 		testStubbed(
 			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed(42));
 				const field = yield* buildReplicant(
 					"ns",
 					"open",
 					permissioned.replicant.open,
+					42,
 				);
 				expect(
 					yield* field[fieldInternal]
@@ -312,35 +358,14 @@ describe("encoded read/write enforce permission", () => {
 	);
 
 	test(
-		"getEncoded dies when the stored value does not match the schema",
-		testStubbed(
-			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed("corrupt"));
-				const field = yield* buildReplicant(
-					"ns",
-					"open",
-					permissioned.replicant.open,
-				);
-				const cause = yield* field[fieldInternal]
-					.getEncoded()
-					.pipe(Effect.provide(anonymous), Effect.sandbox, Effect.flip);
-				const defect = Cause.dieOption(cause);
-				assert(Option.isSome(defect));
-				assert(typeof defect.value === "string");
-				expect(defect.value).toContain("Migration is not supported yet");
-			}),
-		),
-	);
-
-	test(
 		"getEncoded fails FieldPermissionDenied for a denied caller",
 		testStubbed(
 			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed(42));
 				const field = yield* buildReplicant(
 					"ns",
 					"locked",
 					permissioned.replicant.locked,
+					0,
 				);
 				const error = yield* field[fieldInternal]
 					.getEncoded()
@@ -358,6 +383,7 @@ describe("encoded read/write enforce permission", () => {
 					"ns",
 					"open",
 					permissioned.replicant.open,
+					0,
 				);
 				yield* field[fieldInternal]
 					.setEncoded(7)
@@ -375,6 +401,7 @@ describe("encoded read/write enforce permission", () => {
 					"ns",
 					"open",
 					permissioned.replicant.open,
+					0,
 				);
 				const error = yield* field[fieldInternal]
 					.setEncoded("not a number")
@@ -393,6 +420,7 @@ describe("encoded read/write enforce permission", () => {
 					"ns",
 					"locked",
 					permissioned.replicant.locked,
+					0,
 				);
 				const error = yield* field[fieldInternal]
 					.setEncoded(7)

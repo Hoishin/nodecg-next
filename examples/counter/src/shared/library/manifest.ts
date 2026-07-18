@@ -1,12 +1,12 @@
 import { defineNamespace } from "@nodecg/core";
 import { Schema } from "effect";
 
-const everyoneRead = { read: { allow: ["everyone"] } } as const;
+const everyoneRead = { read: { everyone: "allow" } } as const;
 const everyoneReadWrite = {
-	read: { allow: ["everyone"] },
-	write: { allow: ["everyone"] },
+	read: { everyone: "allow" },
+	write: { everyone: "allow" },
 } as const;
-const everyoneWrite = { write: { allow: ["everyone"] } } as const;
+const everyoneWrite = { write: { everyone: "allow" } } as const;
 
 export const counterManifest = defineNamespace("counter", {
 	roles: {

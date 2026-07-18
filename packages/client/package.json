@@ -13,6 +13,7 @@
 		"@effect/platform": "catalog:",
 		"@effect/platform-browser": "^0.76.0",
 		"@nodecg/core": "workspace:*",
+		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"type-fest": "catalog:"
 	},

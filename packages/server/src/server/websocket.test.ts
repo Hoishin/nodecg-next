@@ -10,6 +10,7 @@ import {
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
+import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
 import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
@@ -28,6 +29,7 @@ const handler = () => {
 			Layer.provide(FieldRegistryService.Default([])),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(InMemoryTopicBroker),
+			Layer.provide(DerivationEngineService.Default),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),

@@ -201,25 +201,26 @@ match.replicant.label.subscribe((label) => {
     },
     replicant: {
       counter: { schema, permission: { read: { deny: ["viewer"] } } },
-      games: { schema, permission: { write: { allow: ["server"] } } }, // server-owned
+      games: { schema, permission: { write: { allow: [] } } }, // server-owned
     },
   });
   ```
 
-- ✅ Replicant supports computed values derived from other replicants: the manifest declares the schema, the compute function is provided on the server at load
+- ✅ Replicant supports computed values derived from other replicants or computed fields: the manifest declares the schema, the compute function is provided on the server at load
 
   ```ts
   // Manifest: declare schema only
   const manifest = defineNamespace("match", {
     replicant: { counter: { schema }, games: { schema } },
-    computed: { firstGameId: { schema } },
+    computed: { firstGameId: { schema }, summary: { schema } },
   });
 
-  // Server: provide the compute function
+  // Server: provide the compute functions
   const match = implementNamespace(manifest, {
     seedReplicant: { counter: () => 0, games: () => [] },
     implementComputed: {
       firstGameId: (sources) => sources.games[0]?.id ?? null,
+      summary: (sources, ctx) => `first: ${ctx.computed.firstGameId.get()}`,
     },
   });
   loadNodeCG({ namespaces: { match } });
@@ -229,6 +230,20 @@ match.replicant.label.subscribe((label) => {
   await ns.computed.firstGameId.subscribe((firstGameId) => {
     console.log("First game updated:", firstGameId);
   });
+  ```
+
+- ✅ Clients can derive values locally over live fields: recomputed in the browser on every server push with no round-trip
+
+  ```ts
+  import { derive, loadNamespace } from "@nodecg/client";
+
+  const match = await loadNamespace(manifest);
+  const leader = derive((get) =>
+    get(match.replicant.scoreLeft) > get(match.replicant.scoreRight)
+      ? "left"
+      : "right",
+  );
+  leader.subscribe((value) => console.log("leader:", value));
   ```
 
 - ✅ Replicant is grouped into namespaces to avoid name conflicts and scope permissions
@@ -297,8 +312,8 @@ match.replicant.label.subscribe((label) => {
       message: {
         schema: Schema.String,
         permission: {
-          read: { allow: ["everyone"] },
-          write: { allow: ["everyone"] },
+          read: { everyone: "allow" },
+          write: { everyone: "allow" },
         },
       },
     },
@@ -318,7 +333,7 @@ match.replicant.label.subscribe((label) => {
     rpc: {
       roll: {
         schema: { request: Schema.Number, response: Schema.Number },
-        permission: { write: { allow: ["everyone"] } },
+        permission: { write: { everyone: "allow" } },
       },
     },
   });

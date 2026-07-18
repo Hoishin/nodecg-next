@@ -15,7 +15,7 @@ export const getReplicant = (namespace: string, name: string) =>
 		return yield* field.getEncoded().pipe(
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-				ReplicantNotFound: () => new HttpApiError.NotFound(),
+				ReplicantNotFound2: () => new HttpApiError.NotFound(),
 			}),
 		);
 	});
@@ -40,6 +40,7 @@ export const updateReplicant = (
 					),
 					Match.tag("FieldDecodeError", () => new HttpApiError.BadRequest()),
 					Match.tag("ReplicantNotFound", () => new HttpApiError.NotFound()),
+					Match.tag("ReplicantNotFound2", () => new HttpApiError.NotFound()),
 					Match.exhaustive,
 				),
 			),
@@ -56,6 +57,7 @@ export const getComputed = (namespace: string, name: string) =>
 		return yield* field.getEncoded().pipe(
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
+				ComputedNotFound: () => new HttpApiError.NotFound(),
 				ReplicantNotFound: () => new HttpApiError.NotFound(),
 				ComputedComputeError: () => new HttpApiError.InternalServerError(),
 				FieldEncodeError: () => new HttpApiError.InternalServerError(),

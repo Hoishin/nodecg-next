@@ -10,7 +10,7 @@ import {
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { defineNamespace } from "./define-namespace.ts";
+import { defineNamespace, extendNamespace } from "./define-namespace.ts";
 import { isAdminTier } from "./role.ts";
 
 const human = (...roles: RoleName[]) =>
@@ -45,11 +45,11 @@ const manifest = defineNamespace("match", {
 		},
 		open: {
 			schema: Schema.Number,
-			permission: { read: { allow: ["everyone"] } },
+			permission: { read: { everyone: "allow" } },
 		},
 		config: {
 			schema: Schema.String,
-			permission: { write: { allow: ["server"] } },
+			permission: { write: { allow: [] } },
 		},
 	},
 	computed: { total: { schema: Schema.Number } },
@@ -122,12 +122,36 @@ describe("canRead / canWrite", () => {
 		).toBe(false);
 	});
 
+	test("a client grant admits any declared role, including one added by a later extend", () => {
+		const members = defineNamespace("match", {
+			roles: { judge: { permission: [] } },
+			replicant: {
+				lounge: {
+					schema: Schema.Number,
+					permission: { read: { client: "allow" } },
+				},
+			},
+		});
+
+		expect(
+			members.replicant.lounge.permission.canRead(human(RoleName("judge"))),
+		).toBe(true);
+		expect(members.replicant.lounge.permission.canRead(anonymous)).toBe(false);
+
+		const extended = extendNamespace(members, {
+			roles: { auditor: { permission: [] } },
+		});
+		expect(
+			extended.replicant.lounge.permission.canRead(human(RoleName("auditor"))),
+		).toBe(true);
+	});
+
 	test("deny revokes the server from a single field", () => {
 		const sealed = defineNamespace("match", {
 			replicant: {
 				audit: {
 					schema: Schema.Number,
-					permission: { write: { deny: ["server"] } },
+					permission: { write: { server: "deny" } },
 				},
 			},
 		});
@@ -198,7 +222,7 @@ describe("overriding the admin principal", () => {
 			replicant: {
 				audit: {
 					schema: Schema.Number,
-					permission: { read: { deny: ["admin"] } },
+					permission: { read: { admin: "deny" } },
 				},
 			},
 		});
@@ -217,7 +241,7 @@ describe("overriding the admin principal", () => {
 			replicant: {
 				audit: {
 					schema: Schema.Number,
-					permission: { write: { allow: ["admin"] } },
+					permission: { write: { admin: "allow" } },
 				},
 			},
 		});
@@ -234,11 +258,11 @@ describe("deny beats a wildcard grant", () => {
 		replicant: {
 			open: {
 				schema: Schema.Number,
-				permission: { read: { allow: ["everyone"] } },
+				permission: { read: { everyone: "allow" } },
 			},
 			hidden: {
 				schema: Schema.Number,
-				permission: { read: { allow: ["everyone"], deny: ["viewer"] } },
+				permission: { read: { everyone: "allow", deny: ["viewer"] } },
 			},
 		},
 	});
@@ -253,12 +277,12 @@ describe("deny beats a wildcard grant", () => {
 		expect(wildcard.replicant.hidden.permission.canRead(anonymous)).toBe(true);
 	});
 
-	test("denying everyone revokes the grant without locking out the admin or the server", () => {
+	test("denying everyone seals the field against every wire caller, admin included", () => {
 		const sealed = defineNamespace("match", {
 			replicant: {
 				audit: {
 					schema: Schema.Number,
-					permission: { read: { allow: ["everyone"], deny: ["everyone"] } },
+					permission: { read: { everyone: "deny" } },
 				},
 			},
 		});
@@ -266,7 +290,7 @@ describe("deny beats a wildcard grant", () => {
 		expect(sealed.replicant.audit.permission.canRead(anonymous)).toBe(false);
 		expect(
 			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
-		).toBe(true);
+		).toBe(false);
 		expect(sealed.replicant.audit.permission.canRead(server)).toBe(true);
 	});
 });

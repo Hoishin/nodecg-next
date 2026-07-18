@@ -23,10 +23,12 @@ import {
 } from "./auth/middleware.ts";
 import {
 	type BuiltNamespace,
+	BuiltNamespaceRegistry,
 	LoadedNamespacesService,
 	makeUseCross,
 } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
+import { DerivationEngineService } from "./derivation-graph.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import {
 	FieldRegistryService,
@@ -171,8 +173,12 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 
 	return yield* Effect.gen(function* () {
 		const runtime = yield* Effect.runtime<
-			ReplicantStorageService | TopicBrokerService
+			| ReplicantStorageService
+			| TopicBrokerService
+			| DerivationEngineService
+			| BuiltNamespaceRegistry
 		>();
+		const engine = yield* DerivationEngineService;
 		const useCross = makeUseCross(runtime);
 
 		const prepareNamespace = Effect.fn("prepareNamespace")(function* <
@@ -276,6 +282,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				),
 				Layer.provide(RootApiLive),
 				Layer.provide(FieldRegistryService.Default(registered)),
+				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
 				Layer.provide(HumanAuthenticationMiddlewareLive),
 				Layer.provide(MachineAuthenticationMiddlewareLive),
 				Layer.provide(InMemorySessionStore),
@@ -300,7 +307,11 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		});
 
 		return { namespaces, start };
-	}).pipe(Effect.provideService(LoadedNamespacesService, loaded));
+	}).pipe(
+		Effect.provideService(LoadedNamespacesService, loaded),
+		Effect.provide(DerivationEngineService.Default),
+		Effect.provide(BuiltNamespaceRegistry.Default),
+	);
 });
 
 export interface LoadedNodeCG<

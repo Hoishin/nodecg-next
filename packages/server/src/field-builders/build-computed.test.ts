@@ -5,24 +5,14 @@ import {
 	ServerIdentitySchema,
 } from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
-import { Effect, Layer, Queue, Schema, Stream } from "effect";
-import {
-	afterEach,
-	assert,
-	describe,
-	expect,
-	expectTypeOf,
-	test,
-	vi,
-} from "vitest";
+import { Effect, Layer, Schema, Stream } from "effect";
+import { describe, expect, test, vi } from "vitest";
 
-import type { ComputeContext } from "../implement-namespace.ts";
-import { createStorageStub } from "../services/replicant-storage/replicant-storage.stub.ts";
 import {
-	type ReplicantChange,
-	ReplicantNotFound,
-	ReplicantStorageService,
-} from "../services/replicant-storage/replicant-storage.ts";
+	ComputedComputeError,
+	DerivationEngineService,
+} from "../derivation-graph.ts";
+import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { buildComputed } from "./build-computed.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
@@ -35,108 +25,94 @@ const anonymousIdentity = Layer.succeed(
 	AnonymousIdentitySchema.make(),
 );
 
-const { stub: storage, reset } = createStorageStub();
-afterEach(reset);
-
-const testStubbed = makeTestEffect(
-	Layer.merge(Layer.succeed(ReplicantStorageService, storage), serverIdentity),
+const testGraph = makeTestEffect(
+	Layer.merge(DerivationEngineService.Default, serverIdentity),
 );
 
 const manifest = defineNamespace("ns", {
 	replicant: {
-		games: { schema: Schema.Array(Schema.Struct({ id: Schema.String })) },
+		count: { schema: Schema.NumberFromString },
 	},
 	computed: {
-		firstGameId: { schema: Schema.NullOr(Schema.String) },
+		doubled: { schema: Schema.NumberFromString },
 		open: {
-			schema: Schema.NullOr(Schema.String),
-			permission: { read: { allow: ["everyone"] } },
+			schema: Schema.NumberFromString,
+			permission: { read: { everyone: "allow" } },
 		},
+		positive: { schema: Schema.NumberFromString.pipe(Schema.positive()) },
 	},
 });
 
-type Sources = { readonly games: readonly { readonly id: string }[] };
+const doubledCount = Effect.gen(function* () {
+	const engine = yield* DerivationEngineService;
+	const encoded = yield* engine
+		.readReplicant("ns", "count")
+		.pipe(
+			Effect.catchTag(
+				"ReplicantNotFound2",
+				() => new ReplicantNotFound({ namespace: "ns", name: "count" }),
+			),
+		);
+	const count = Number(encoded);
+	if (Number.isNaN(count)) {
+		return yield* new ComputedComputeError({
+			namespace: "ns",
+			name: "doubled",
+			cause: new Error(`not a number: ${JSON.stringify(encoded)}`),
+		});
+	}
+	return count * 2;
+});
 
-const firstGameId = (sources: Sources) => sources.games[0]?.id ?? null;
-
-const dummyContext: ComputeContext = {
-	use: () => {
-		throw new Error("not used in these tests");
-	},
-};
-
-const build = (
-	compute: (sources: Sources, ctx: ComputeContext) => string | null,
-	snapshot: Effect.Effect<Sources, ReplicantNotFound, ReplicantStorageService>,
-) =>
-	buildComputed(
-		"ns",
-		"firstGameId",
-		manifest.computed.firstGameId,
-		compute,
-		snapshot,
-		dummyContext,
+const initCount = (value: string) =>
+	Effect.flatMap(DerivationEngineService, (engine) =>
+		engine.initializeReplicant("ns", "count", value),
 	);
+
+const setCount = (value: string) =>
+	Effect.flatMap(DerivationEngineService, (engine) =>
+		engine.setReplicant("ns", "count", value),
+	);
+
+const build = buildComputed(
+	"ns",
+	"doubled",
+	manifest.computed.doubled,
+	doubledCount,
+);
+
+const waitFor = (assertion: () => void) =>
+	Effect.promise(() => vi.waitFor(assertion));
 
 describe("get", () => {
 	test(
-		"computes from the source snapshot",
-		testStubbed(
+		"returns the computed value",
+		testGraph(
 			Effect.gen(function* () {
-				const field = yield* build(
-					firstGameId,
-					Effect.succeed({ games: [{ id: "a" }, { id: "b" }] }),
-				);
-				expect(yield* field.get()).toBe("a");
+				yield* initCount("3");
+				const field = yield* build;
+				expect(yield* field.get()).toBe(6);
 			}),
 		),
 	);
 
 	test(
-		"passes the decoded sources and the compute context to the compute fn",
-		testStubbed(
+		"propagates a compute failure",
+		testGraph(
 			Effect.gen(function* () {
-				let received: { sources: Sources; ctx: ComputeContext } | undefined;
-				const field = yield* build(
-					(sources, ctx) => {
-						expectTypeOf(sources).toEqualTypeOf<Sources>();
-						expectTypeOf(ctx).toEqualTypeOf<ComputeContext>();
-						received = { sources, ctx };
-						return firstGameId(sources);
-					},
-					Effect.succeed({ games: [{ id: "a" }] }),
-				);
-				yield* field.get();
-
-				assert(received);
-				expect(received.sources).toEqual({ games: [{ id: "a" }] });
-				expect(received.ctx.use).toBeTypeOf("function");
-			}),
-		),
-	);
-
-	test(
-		"surfaces a throwing compute fn as ComputedComputeError",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* build(
-					() => {
-						throw new Error("boom");
-					},
-					Effect.succeed({ games: [] }),
-				);
+				const field = yield* build;
 				const error = yield* field.get().pipe(Effect.flip);
-				expect(error._tag).toBe("ComputedComputeError");
-				expect(error.message).toContain("boom");
+				expect(error._tag).toBe("ReplicantNotFound");
 			}),
 		),
 	);
 
 	test(
 		"fails FieldPermissionDenied for a denied caller",
-		testStubbed(
+		testGraph(
 			Effect.gen(function* () {
-				const field = yield* build(firstGameId, Effect.succeed({ games: [] }));
+				yield* initCount("3");
+				const field = yield* build;
 				const error = yield* field
 					.get()
 					.pipe(Effect.provide(anonymousIdentity), Effect.flip);
@@ -149,30 +125,30 @@ describe("get", () => {
 describe("getEncoded", () => {
 	test(
 		"encodes the computed value for an allowed caller",
-		testStubbed(
+		testGraph(
 			Effect.gen(function* () {
+				yield* initCount("3");
 				const field = yield* buildComputed(
 					"ns",
 					"open",
 					manifest.computed.open,
-					firstGameId,
-					Effect.succeed<Sources>({ games: [{ id: "a" }] }),
-					dummyContext,
+					doubledCount,
 				);
 				expect(
 					yield* field[fieldInternal]
 						.getEncoded()
 						.pipe(Effect.provide(anonymousIdentity)),
-				).toBe("a");
+				).toBe("6");
 			}),
 		),
 	);
 
 	test(
 		"fails FieldPermissionDenied for a denied caller",
-		testStubbed(
+		testGraph(
 			Effect.gen(function* () {
-				const field = yield* build(firstGameId, Effect.succeed({ games: [] }));
+				yield* initCount("3");
+				const field = yield* build;
 				const error = yield* field[fieldInternal]
 					.getEncoded()
 					.pipe(Effect.provide(anonymousIdentity), Effect.flip);
@@ -183,11 +159,13 @@ describe("getEncoded", () => {
 
 	test(
 		"fails FieldEncodeError when the computed value fails its schema",
-		testStubbed(
+		testGraph(
 			Effect.gen(function* () {
-				const field = yield* build(
-					() => 42 as unknown as string,
-					Effect.succeed({ games: [] }),
+				const field = yield* buildComputed(
+					"ns",
+					"positive",
+					manifest.computed.positive,
+					Effect.succeed(-1),
 				);
 				const error = yield* field[fieldInternal]
 					.getEncodedNoAuth()
@@ -199,23 +177,14 @@ describe("getEncoded", () => {
 });
 
 describe("subscribe", () => {
-	const change: ReplicantChange = { namespace: "any", name: "any", value: 0 };
-
 	test(
-		"seeds with the current value, recomputes on any change, and dedupes",
-		testStubbed(
+		"seeds with the current value, recomputes on a source change, and dedupes",
+		testGraph(
 			Effect.gen(function* () {
-				const queue = yield* Queue.unbounded<ReplicantChange>();
-				storage.subscribe.mockReturnValue(
-					Effect.succeed(Stream.fromQueue(queue)),
-				);
-				let games: Sources["games"] = [];
-				const field = yield* build(
-					firstGameId,
-					Effect.sync(() => ({ games })),
-				);
+				yield* initCount("3");
+				const field = yield* build;
 
-				const received: (string | null)[] = [];
+				const received: number[] = [];
 				yield* field.subscribe().pipe(
 					Effect.flatMap((stream) =>
 						Stream.runForEach(stream, (value) =>
@@ -225,45 +194,24 @@ describe("subscribe", () => {
 					Effect.fork,
 				);
 
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual([null])),
-				);
-				games = [{ id: "a" }];
-				yield* Queue.offer(queue, change);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual([null, "a"])),
-				);
-				yield* Queue.offer(queue, change);
-				games = [{ id: "b" }];
-				yield* Queue.offer(queue, change);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual([null, "a", "b"])),
-				);
+				yield* waitFor(() => expect(received).toEqual([6]));
+				yield* setCount("5");
+				yield* waitFor(() => expect(received).toEqual([6, 10]));
+				yield* setCount("5");
+				yield* setCount("7");
+				yield* waitFor(() => expect(received).toEqual([6, 10, 14]));
 			}),
 		),
 	);
 
 	test(
 		"logs and skips a compute failure without ending the stream",
-		testStubbed(
+		testGraph(
 			Effect.gen(function* () {
-				const queue = yield* Queue.unbounded<ReplicantChange>();
-				storage.subscribe.mockReturnValue(
-					Effect.succeed(Stream.fromQueue(queue)),
-				);
-				let games: Sources["games"] = [{ id: "a" }];
-				let shouldThrow = false;
-				const field = yield* build(
-					(sources) => {
-						if (shouldThrow) {
-							throw new Error("boom");
-						}
-						return firstGameId(sources);
-					},
-					Effect.sync(() => ({ games })),
-				);
+				yield* initCount("3");
+				const field = yield* build;
 
-				const received: (string | null)[] = [];
+				const received: number[] = [];
 				yield* field.subscribe().pipe(
 					Effect.flatMap((stream) =>
 						Stream.runForEach(stream, (value) =>
@@ -273,17 +221,10 @@ describe("subscribe", () => {
 					Effect.fork,
 				);
 
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual(["a"])),
-				);
-				shouldThrow = true;
-				yield* Queue.offer(queue, change);
-				shouldThrow = false;
-				games = [{ id: "b" }];
-				yield* Queue.offer(queue, change);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual(["a", "b"])),
-				);
+				yield* waitFor(() => expect(received).toEqual([6]));
+				yield* setCount("boom");
+				yield* setCount("5");
+				yield* waitFor(() => expect(received).toEqual([6, 10]));
 			}),
 		),
 	);

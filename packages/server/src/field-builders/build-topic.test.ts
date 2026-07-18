@@ -35,8 +35,8 @@ const manifest = defineNamespace("ns", {
 		open: {
 			schema: Schema.NumberFromString,
 			permission: {
-				read: { allow: ["everyone"] },
-				write: { allow: ["everyone"] },
+				read: { everyone: "allow" },
+				write: { everyone: "allow" },
 			},
 		},
 		locked: { schema: Schema.NumberFromString },

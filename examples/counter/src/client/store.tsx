@@ -1,6 +1,7 @@
 import {
 	loadNamespace,
 	type ComputedField,
+	type DerivedHandle,
 	type ReplicantField,
 	type TopicField,
 } from "@nodecg/client";
@@ -82,6 +83,59 @@ function getStore<T>(
 
 export function useField<T>(field: ReplicantField<T> | ComputedField<T>): T {
 	const [syncStore] = useState(() => getStore(field));
+	const snapshot = useSyncExternalStore(
+		syncStore.subscribe,
+		syncStore.getSnapshot,
+	);
+	if (typeof snapshot === "undefined") {
+		throw syncStore.ready();
+	}
+	return snapshot.value;
+}
+
+const DerivedStores = new WeakMap<
+	DerivedHandle<unknown>,
+	FieldSyncStore<unknown>
+>();
+
+function getDerivedStore<T>(handle: DerivedHandle<T>): FieldSyncStore<T> {
+	const existing = DerivedStores.get(handle);
+	if (typeof existing !== "undefined") {
+		return existing as FieldSyncStore<T>;
+	}
+	let snapshot: Snapshot<T> | undefined;
+	let started: Promise<void> | undefined;
+	const listeners = new Set<() => void>();
+	const store: FieldSyncStore<T> = {
+		ready() {
+			if (typeof started === "undefined") {
+				started = new Promise((resolve) => {
+					handle.subscribe((value) => {
+						snapshot = { value };
+						for (const listener of listeners) {
+							listener();
+						}
+						resolve();
+					});
+				});
+			}
+			return started;
+		},
+		subscribe(onStoreChange) {
+			listeners.add(onStoreChange);
+			void store.ready();
+			return () => {
+				listeners.delete(onStoreChange);
+			};
+		},
+		getSnapshot: () => snapshot,
+	};
+	DerivedStores.set(handle, store);
+	return store;
+}
+
+export function useDerived<T>(handle: DerivedHandle<T>): T {
+	const [syncStore] = useState(() => getDerivedStore(handle));
 	const snapshot = useSyncExternalStore(
 		syncStore.subscribe,
 		syncStore.getSnapshot,

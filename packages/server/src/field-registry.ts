@@ -53,6 +53,7 @@ export interface RegisteredNamespace {
 	};
 }
 
+// transport lookup on single field by name, encoded types only
 export class FieldRegistryService extends Effect.Service<FieldRegistryService>()(
 	"FieldRegistry",
 	{

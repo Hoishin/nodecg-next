@@ -15,6 +15,7 @@ import {
 } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { derive } from "./derive.ts";
 import { loadNamespace, loadNamespaceEffect } from "./load-namespace.ts";
 import {
 	FieldNotFound,
@@ -673,7 +674,7 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"re-subscribing after a rejection sends a fresh server subscribe",
+		"re-subscribing after a rejection sends a fresh subscribe and heals on the next publish",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
@@ -702,19 +703,30 @@ describe("subscribe", () => {
 					}),
 				);
 				yield* mailbox.offer(rejectedFrame("forbidden"));
-				yield* Fiber.join(fiber1);
+				const firstError = yield* Fiber.join(fiber1);
+				expect(firstError._tag).toBe("FieldPermissionDenied");
 				yield* Scope.close(scope1, Exit.void);
 
 				const scope2 = yield* Scope.make();
-				const fiber2 = yield* loaded.replicant.count
+				const head = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.flip, Scope.extend(scope2), Effect.fork);
-				yield* Fiber.join(fiber2);
-
-				const subscribeCount = send.mock.calls.filter(
-					([msg]) => msg._tag === "subscribe",
-				).length;
-				expect(subscribeCount).toBe(2);
+					.pipe(
+						Effect.flatMap(Stream.runHead),
+						Scope.extend(scope2),
+						Effect.fork,
+					);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						const subscribeCount = send.mock.calls.filter(
+							([msg]) => msg._tag === "subscribe",
+						).length;
+						expect(subscribeCount).toBe(2);
+					}),
+				);
+				yield* mailbox.offer(publishFrame(5));
+				const result = yield* Fiber.join(head);
+				assert(Option.isSome(result));
+				expect(result.value).toBe(5);
 				yield* Scope.close(scope2, Exit.void);
 			}),
 		),
@@ -889,11 +901,11 @@ describe("topic", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const pubsub = yield* PubSub.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 					Effect.provideService(FieldTransportService, transportStub),
@@ -909,12 +921,12 @@ describe("topic", () => {
 					}),
 				);
 
-				yield* mailbox.offer({
+				yield* PubSub.publish(pubsub, {
 					_tag: "publish",
 					field: { type: "topic", namespace: "root", name: "other" },
 					value: 99,
 				});
-				yield* mailbox.offer(publishFrame(42));
+				yield* PubSub.publish(pubsub, publishFrame(42));
 
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
@@ -971,6 +983,57 @@ describe("topic", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
+					}),
+				);
+			}),
+		),
+	);
+
+	test(
+		"a late subscriber does not replay the topic's last event",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const pubsub = yield* PubSub.unbounded<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+				};
+				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const seen1: number[] = [];
+				const stream1 = yield* loaded.topic.chat.subscribe();
+				yield* Stream.runForEach(stream1, (v) =>
+					Effect.sync(() => seen1.push(v)),
+				).pipe(Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send).toHaveBeenCalledWith(subscribeFrame);
+					}),
+				);
+
+				yield* PubSub.publish(pubsub, publishFrame(1));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(seen1).toEqual([1]);
+					}),
+				);
+
+				const seen2: number[] = [];
+				const stream2 = yield* loaded.topic.chat.subscribe();
+				yield* Stream.runForEach(stream2, (v) =>
+					Effect.sync(() => seen2.push(v)),
+				).pipe(Effect.fork);
+
+				yield* PubSub.publish(pubsub, publishFrame(2));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(seen1).toEqual([1, 2]);
+						expect(seen2).toEqual([2]);
 					}),
 				);
 			}),
@@ -1136,4 +1199,195 @@ describe("loadNamespace (Promise wrapper)", () => {
 		expect(await loaded.rpc.echo.call(42)).toBe(84);
 		expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
 	});
+});
+
+describe("derivation over loaded fields", () => {
+	const manifest = defineNamespace("match", {
+		replicant: {
+			scoreLeft: { schema: Schema.NumberFromString },
+			scoreRight: { schema: Schema.NumberFromString },
+		},
+	});
+
+	const makePubSubChannel = Effect.gen(function* () {
+		const pubsub = yield* PubSub.unbounded<ServerMessage>();
+		const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+		const channel: MessageChannel = {
+			send,
+			receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+		};
+		return { channel, pubsub, send };
+	});
+
+	const publish = (name: string, value: number): ServerMessage => ({
+		_tag: "publish",
+		field: { type: "replicant", namespace: "match", name },
+		value: String(value),
+	});
+
+	test(
+		"derive spans loaded fields and updates as publishes arrive",
+		testEffect(
+			Effect.gen(function* () {
+				const { channel, pubsub, send } = yield* makePubSubChannel;
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, createTransportStub()),
+					Effect.provideService(MessageChannelService, channel),
+				);
+
+				const leader = derive((get) => {
+					const left = get(loaded.replicant.scoreLeft);
+					const right = get(loaded.replicant.scoreRight);
+					if (left === right) {
+						return "tie";
+					}
+					return left > right ? "left" : "right";
+				});
+
+				const seen: string[] = [];
+				const unsubscribe = leader.subscribe((value) => {
+					seen.push(value);
+				});
+
+				// Synchronous get() suspensions
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(
+							send.mock.calls.filter(([msg]) => msg._tag === "subscribe"),
+						).toHaveLength(1);
+					}),
+				);
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(
+							send.mock.calls.filter(([msg]) => msg._tag === "subscribe"),
+						).toHaveLength(2);
+					}),
+				);
+				yield* PubSub.publish(pubsub, publish("scoreRight", 0));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(seen.at(-1)).toBe("tie");
+					}),
+				);
+
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 3));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(seen.at(-1)).toBe("left");
+					}),
+				);
+
+				// get() runs the compute directly off the sources' own get()
+				expect(yield* Effect.promise(() => leader.get())).toBe("left");
+
+				unsubscribe();
+			}),
+		),
+	);
+
+	test(
+		"get reads the live cell without a transport round-trip while subscribed",
+		testEffect(
+			Effect.gen(function* () {
+				const { channel, pubsub, send } = yield* makePubSubChannel;
+				const transportStub = createTransportStub();
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(MessageChannelService, channel),
+				);
+
+				const scope = yield* Scope.make();
+				yield* loaded.replicant.scoreLeft
+					.subscribe()
+					.pipe(Scope.extend(scope), Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(
+							send.mock.calls.some(([msg]) => msg._tag === "subscribe"),
+						).toBe(true);
+					}),
+				);
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 7));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(send.mock.calls.length).toBeGreaterThan(0);
+					}),
+				);
+
+				yield* Effect.promise(() =>
+					vi.waitFor(async () => {
+						expect(
+							await Effect.runPromise(
+								loaded.replicant.scoreLeft
+									.get()
+									.pipe(
+										Effect.provideService(FieldTransportService, transportStub),
+									),
+							),
+						).toBe(7);
+					}),
+				);
+				expect(transportStub.readReplicant).not.toHaveBeenCalled();
+
+				yield* Scope.close(scope, Exit.void);
+			}),
+		),
+	);
+
+	test(
+		"set reflects into the hot cell so a following update reads it, not a stale value",
+		testEffect(
+			Effect.gen(function* () {
+				const { channel, pubsub, send } = yield* makePubSubChannel;
+				const transportStub = createTransportStub();
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(MessageChannelService, channel),
+				);
+
+				const scope = yield* Scope.make();
+				yield* loaded.replicant.scoreLeft
+					.subscribe()
+					.pipe(Scope.extend(scope), Effect.fork);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => {
+						expect(
+							send.mock.calls.some(([msg]) => msg._tag === "subscribe"),
+						).toBe(true);
+					}),
+				);
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
+				yield* Effect.promise(() =>
+					vi.waitFor(async () => {
+						expect(
+							await Effect.runPromise(
+								loaded.replicant.scoreLeft
+									.get()
+									.pipe(
+										Effect.provideService(FieldTransportService, transportStub),
+									),
+							),
+						).toBe(0);
+					}),
+				);
+
+				yield* loaded.replicant.scoreLeft
+					.set(10)
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
+				yield* loaded.replicant.scoreLeft
+					.update((v) => v + 1)
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
+
+				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+					"match",
+					"scoreLeft",
+					"11",
+				);
+
+				yield* Scope.close(scope, Exit.void);
+			}),
+		),
+	);
 });

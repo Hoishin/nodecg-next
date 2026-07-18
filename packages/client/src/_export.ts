@@ -1,4 +1,10 @@
 export {
+	derive,
+	type DerivedHandle,
+	type FieldSource,
+	type Get,
+} from "./derive.ts";
+export {
 	loadNamespace,
 	loadNamespaceEffect,
 	type LoadedNamespace,

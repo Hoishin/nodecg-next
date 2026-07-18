@@ -142,8 +142,9 @@ describe("computed validation", () => {
 					{
 						seedReplicant: { total: () => 10 },
 						implementComputed: {
-							weighted: (sources, ctx) =>
-								sources.total * ctx.use(settings).replicant.multiplier.get(),
+							weighted: (ctx) =>
+								ctx.replicant.total.get() *
+								ctx.use(settings).replicant.multiplier.get(),
 						},
 					},
 				);
@@ -153,6 +154,35 @@ describe("computed validation", () => {
 				});
 
 				expect(namespaces.scoreboard.computed.weighted.get()).toBe(30);
+			}),
+		),
+	);
+
+	test(
+		"fails the load when computed fields form a cycle",
+		testEffect(
+			Effect.gen(function* () {
+				const cyclic = implementNamespace(
+					defineNamespace("cyclic", {
+						computed: {
+							a: { schema: Schema.Number },
+							b: { schema: Schema.Number },
+						},
+					}),
+					{
+						implementComputed: {
+							a: (ctx) => ctx.computed.b.get() + 1,
+							b: (ctx) => ctx.computed.a.get() + 1,
+						},
+					},
+				);
+
+				const error = yield* loadNodeCGEffect({
+					namespaces: { cyclic },
+				}).pipe(Effect.flip);
+
+				expect(error._tag).toBe("ComputedComputeError");
+				expect(error.message).toContain("Cycle detected");
 			}),
 		),
 	);
@@ -323,7 +353,6 @@ describe("loadNodeCG", () => {
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
 
 		expect(storage.create).toHaveBeenCalledWith("settings", "multiplier", "3");
-		storage.read.mockReturnValue(Effect.succeed("4"));
-		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(4);
+		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(3);
 	});
 });

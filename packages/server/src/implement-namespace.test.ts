@@ -4,7 +4,9 @@ import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
+import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { buildNamespace } from "./build-namespace.ts";
+import { DerivationEngineService } from "./derivation-graph.ts";
 import {
 	implementExtendedNamespace,
 	implementNamespace,
@@ -12,10 +14,14 @@ import {
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
-const storage = Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker);
-
 const testEffect = makeTestEffect(
-	Layer.succeed(CurrentIdentity, ServerIdentitySchema.make()),
+	Layer.mergeAll(
+		Layer.succeed(CurrentIdentity, ServerIdentitySchema.make()),
+		InMemoryReplicantStorage,
+		InMemoryTopicBroker,
+		DerivationEngineService.Default,
+		BuiltNamespaceRegistry.Default,
+	),
 );
 
 describe("implementNamespace", () => {
@@ -89,7 +95,8 @@ describe("implementExtendedNamespace", () => {
 					{
 						seedReplicant: { round: () => 3 },
 						implementComputed: {
-							total: (sources) => sources.score + sources.round,
+							total: (ctx) =>
+								ctx.replicant.score.get() + ctx.replicant.round.get(),
 						},
 					},
 				);
@@ -102,7 +109,7 @@ describe("implementExtendedNamespace", () => {
 				expect(yield* built.replicant.score.get()).toBe(10);
 				expect(yield* built.replicant.round.get()).toBe(3);
 				expect(yield* built.computed.total.get()).toBe(13);
-			}).pipe(Effect.provide(storage)),
+			}),
 		),
 	);
 
@@ -154,23 +161,30 @@ describe("implementExtendedNamespace", () => {
 		expect(composed.impl?.onLoad).toBeTypeOf("function");
 	});
 
-	test("omitting impl for a newly-added field is a type error", async () => {
-		const extended = extendNamespace(base, {
-			replicant: { round: { schema: Schema.Number } },
-		});
+	test(
+		"omitting impl for a newly-added field is a type error",
+		testEffect(
+			Effect.gen(function* () {
+				const extended = extendNamespace(base, {
+					replicant: { round: { schema: Schema.Number } },
+				});
 
-		const implemented = implementExtendedNamespace(extended, baseImplemented, {
-			// @ts-expect-error missing seedReplicant for the newly-added "round"
-			seedReplicant: {},
-		});
-
-		await expect(
-			Effect.runPromise(
-				buildNamespace(implemented.manifest, implemented.impl).pipe(
-					Effect.provide(storage),
-					Effect.scoped,
-				),
-			),
-		).rejects.toThrow(/Missing seed value for replicant "round"/);
-	});
+				const implemented = implementExtendedNamespace(
+					extended,
+					baseImplemented,
+					{
+						// @ts-expect-error missing seedReplicant for the newly-added "round"
+						seedReplicant: {},
+					},
+				);
+				const failure = yield* buildNamespace(
+					implemented.manifest,
+					implemented.impl,
+				).pipe(Effect.flip);
+				expect(failure.message).toMatch(
+					/Missing seed value for replicant "round"/,
+				);
+			}),
+		),
+	);
 });

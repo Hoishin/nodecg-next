@@ -12,6 +12,9 @@ catalogs:
     '@effect/platform-node':
       specifier: ^0.107.0
       version: 0.107.0
+    '@preact/signals-core':
+      specifier: ^1.14.4
+      version: 1.14.4
     '@types/node':
       specifier: ^24.13.3
       version: 24.13.3
@@ -184,6 +187,9 @@ importers:
       '@nodecg/core':
         specifier: workspace:*
         version: link:../core
+      '@preact/signals-core':
+        specifier: 'catalog:'
+        version: 1.14.4
       effect:
         specifier: 'catalog:'
         version: 3.21.4
@@ -313,6 +319,9 @@ importers:
       '@nodecg/core':
         specifier: workspace:*
         version: link:../core
+      '@preact/signals-core':
+        specifier: 'catalog:'
+        version: 1.14.4
       effect:
         specifier: 'catalog:'
         version: 3.21.4
@@ -841,6 +850,9 @@ packages:
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
+
+  '@preact/signals-core@1.14.4':
+    resolution: {integrity: sha512-HNB6HYeYKhQbJ1aKl+YRjrS4+QWHLKX6qKoUsfS/m0vqzsVaEBiZiaKbG/e+NKk2ch5ALQr/ihWaMHxiCuuWHA==}
 
   '@rolldown/binding-android-arm64@1.1.4':
     resolution: {integrity: sha512-EZLpf/8y7GXkkra90ML47kzik/GMP3EMcE9bPyHmRfxLC6z9+aW5A8poCsoxjrT5GfEcNAAvWwUHjvP1pUQkfw==}
@@ -1933,6 +1945,8 @@ snapshots:
       '@parcel/watcher-win32-x64': 2.5.6
 
   '@polka/url@1.0.0-next.29': {}
+
+  '@preact/signals-core@1.14.4': {}
 
   '@rolldown/binding-android-arm64@1.1.4':
     optional: true

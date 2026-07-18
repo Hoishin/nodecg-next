@@ -2,11 +2,19 @@ import { defineNamespace } from "@nodecg/core";
 import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
 
-import { LoadedNamespacesService } from "./build-fields.ts";
+import {
+	BuiltNamespaceRegistry,
+	LoadedNamespacesService,
+} from "./build-fields.ts";
 import { buildNamespace } from "./build-namespace.ts";
-import { implementNamespace, type RpcContext } from "./implement-namespace.ts";
+import { DerivationEngineService } from "./derivation-graph.ts";
+import {
+	type ComputeContext,
+	implementNamespace,
+	type RpcContext,
+} from "./implement-namespace.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
@@ -15,7 +23,13 @@ const server = ServerIdentitySchema.make();
 const identity = Layer.succeed(CurrentIdentity, server);
 
 const testInMemory = makeTestEffect(
-	Layer.mergeAll(InMemoryReplicantStorage, InMemoryTopicBroker, identity),
+	Layer.mergeAll(
+		InMemoryReplicantStorage,
+		InMemoryTopicBroker,
+		DerivationEngineService.Default,
+		BuiltNamespaceRegistry.Default,
+		identity,
+	),
 );
 
 describe("computed source snapshot", () => {
@@ -29,7 +43,7 @@ describe("computed source snapshot", () => {
 	const load = buildNamespace(manifest, {
 		seedReplicant: { games: () => [] },
 		implementComputed: {
-			firstGameId: (sources) => sources.games[0]?.id ?? null,
+			firstGameId: (ctx) => ctx.replicant.games.get()[0]?.id ?? null,
 		},
 	});
 
@@ -75,6 +89,161 @@ describe("computed source snapshot", () => {
 	);
 });
 
+describe("compute fn contract", () => {
+	const manifest = defineNamespace("ns", {
+		replicant: {
+			games: { schema: Schema.Array(Schema.Struct({ id: Schema.String })) },
+		},
+		computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } },
+	});
+
+	test(
+		"passes a compute context whose replicant view holds the decoded sources",
+		testInMemory(
+			Effect.gen(function* () {
+				let received:
+					| ComputeContext<
+							{ readonly games: readonly { readonly id: string }[] },
+							{}
+					  >
+					| undefined;
+				const built = yield* buildNamespace(manifest, {
+					seedReplicant: { games: () => [{ id: "a" }] },
+					implementComputed: {
+						firstGameId: (ctx) => {
+							// the own key is excluded, leaving no computed siblings here
+							expectTypeOf(ctx).toExtend<
+								ComputeContext<
+									{ readonly games: readonly { readonly id: string }[] },
+									{}
+								>
+							>();
+							// @ts-expect-error a computed cannot read itself
+							void ctx.computed.firstGameId;
+							received = ctx;
+							return ctx.replicant.games.get()[0]?.id ?? null;
+						},
+					},
+				});
+				yield* built.computed.firstGameId.get();
+
+				assert(received);
+				expect(received.replicant.games.get()).toEqual([{ id: "a" }]);
+				expect(received.use).toBeTypeOf("function");
+			}),
+		),
+	);
+
+	test(
+		"surfaces a throwing compute fn as ComputedComputeError",
+		testInMemory(
+			Effect.gen(function* () {
+				const built = yield* buildNamespace(manifest, {
+					seedReplicant: { games: () => [] },
+					implementComputed: {
+						firstGameId: () => {
+							throw new Error("boom");
+						},
+					},
+				});
+				const error = yield* built.computed.firstGameId.get().pipe(Effect.flip);
+				expect(error._tag).toBe("ComputedComputeError");
+				expect(error.message).toContain("boom");
+			}),
+		),
+	);
+});
+
+describe("computed-on-computed via ctx.computed", () => {
+	const manifest = defineNamespace("chain", {
+		replicant: { score: { schema: Schema.NumberFromString } },
+		computed: {
+			delta: { schema: Schema.NumberFromString },
+			winning: { schema: Schema.Boolean },
+		},
+	});
+
+	const load = buildNamespace(manifest, {
+		seedReplicant: { score: () => 8 },
+		implementComputed: {
+			delta: (ctx) => ctx.replicant.score.get() - 10,
+			winning: (ctx) => ctx.computed.delta.get() > 0,
+		},
+	});
+
+	test(
+		"a computed reads another computed of its own namespace",
+		testInMemory(
+			Effect.gen(function* () {
+				const built = yield* load;
+
+				expect(yield* built.computed.winning.get()).toBe(false);
+
+				yield* built.replicant.score.set(15);
+				expect(yield* built.computed.winning.get()).toBe(true);
+			}),
+		),
+	);
+
+	test(
+		"subscribe recomputes through the chain and dedupes unchanged values",
+		testInMemory(
+			Effect.gen(function* () {
+				const built = yield* load;
+
+				const received: boolean[] = [];
+				yield* built.computed.winning.subscribe().pipe(
+					Effect.flatMap((stream) =>
+						Stream.runForEach(stream, (value) =>
+							Effect.sync(() => received.push(value)),
+						),
+					),
+					Effect.fork,
+				);
+
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([false])),
+				);
+				yield* built.replicant.score.set(15);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([false, true])),
+				);
+				// delta changes but winning stays true → no frame
+				yield* built.replicant.score.set(16);
+				yield* built.replicant.score.set(5);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([false, true, false])),
+				);
+			}),
+		),
+	);
+
+	test(
+		"a computed cycle fails as ComputedComputeError instead of looping",
+		testInMemory(
+			Effect.gen(function* () {
+				const cyclic = defineNamespace("cyclic", {
+					computed: {
+						a: { schema: Schema.Number },
+						b: { schema: Schema.Number },
+					},
+				});
+				const built = yield* buildNamespace(cyclic, {
+					implementComputed: {
+						a: (ctx) => ctx.computed.b.get() + 1,
+						b: (ctx) => ctx.computed.a.get() + 1,
+					},
+				});
+
+				const error = yield* built.computed.a.get().pipe(Effect.flip);
+
+				expect(error._tag).toBe("ComputedComputeError");
+				expect(error.message).toContain("Cycle detected");
+			}),
+		),
+	);
+});
+
 describe("rpc ctx", () => {
 	const manifest = defineNamespace("ns", {
 		replicant: { count: { schema: Schema.Number } },
@@ -99,7 +268,7 @@ describe("rpc ctx", () => {
 	) =>
 		buildNamespace(manifest, {
 			seedReplicant: { count: () => 0 },
-			implementComputed: { doubled: (sources) => sources.count * 2 },
+			implementComputed: { doubled: (ctx) => ctx.replicant.count.get() * 2 },
 			implementRpc: { bump },
 		});
 
@@ -222,8 +391,9 @@ describe("cross-namespace computed via ctx.use", () => {
 		{
 			seedReplicant: { total: () => 10 },
 			implementComputed: {
-				weighted: (sources, ctx) =>
-					sources.total * ctx.use(settings).replicant.multiplier.get(),
+				weighted: (ctx) =>
+					ctx.replicant.total.get() *
+					ctx.use(settings).replicant.multiplier.get(),
 			},
 		},
 	);
@@ -348,15 +518,19 @@ describe("cross-namespace rpc via ctx.use", () => {
 	);
 
 	const loadBoth = Effect.gen(function* () {
-		yield* buildNamespace(settings.manifest, settings.impl);
-		return yield* buildNamespace(scoreboard.manifest, scoreboard.impl);
+		const settingsBuilt = yield* buildNamespace(
+			settings.manifest,
+			settings.impl,
+		);
+		const built = yield* buildNamespace(scoreboard.manifest, scoreboard.impl);
+		return { built, settingsBuilt };
 	});
 
 	test(
 		"a handler reads another namespace's replicant through ctx.use",
 		testInMemory(
 			Effect.gen(function* () {
-				const built = yield* loadBoth;
+				const { built } = yield* loadBoth;
 
 				expect(yield* built.rpc.award.call(5)).toBe(15);
 				expect(yield* built.replicant.total.get()).toBe(15);
@@ -368,11 +542,7 @@ describe("cross-namespace rpc via ctx.use", () => {
 		"a handler writes another namespace's replicant through ctx.use",
 		testInMemory(
 			Effect.gen(function* () {
-				const built = yield* loadBoth;
-				const settingsBuilt = yield* buildNamespace(
-					settings.manifest,
-					settings.impl,
-				);
+				const { built, settingsBuilt } = yield* loadBoth;
 
 				yield* built.rpc.reset.call(null);
 
@@ -385,7 +555,7 @@ describe("cross-namespace rpc via ctx.use", () => {
 		"a handler calls another namespace's rpc through ctx.use",
 		testInMemory(
 			Effect.gen(function* () {
-				const built = yield* loadBoth;
+				const { built } = yield* loadBoth;
 				const relay = implementNamespace(
 					defineNamespace("relay", {
 						rpc: {

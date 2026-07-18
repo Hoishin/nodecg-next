@@ -7,13 +7,17 @@ export const extendedCounterManifest = extendNamespace(counterManifest, {
 	replicant: {
 		step: {
 			schema: Schema.Number,
-			permission: { read: { allow: ["everyone"] } },
+			permission: { read: { everyone: "allow" } },
 		},
 	},
 	computed: {
 		parity: {
 			schema: Schema.Literal("even", "odd"),
-			permission: { read: { allow: ["everyone"] } },
+			permission: { read: { everyone: "allow" } },
+		},
+		announcement: {
+			schema: Schema.String,
+			permission: { read: { everyone: "allow" } },
 		},
 	},
 });

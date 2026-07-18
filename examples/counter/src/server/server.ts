@@ -14,7 +14,9 @@ const extendedCounter = implementExtendedNamespace(
 	{
 		seedReplicant: { step: () => 1 },
 		implementComputed: {
-			parity: (sources) => (sources.count % 2 === 0 ? "even" : "odd"),
+			parity: (ctx) => (ctx.replicant.count.get() % 2 === 0 ? "even" : "odd"),
+			announcement: (ctx) =>
+				`count is ${ctx.replicant.count.get()} (${ctx.computed.parity.get()})`,
 		},
 		frontend: {
 			dir: [import.meta.resolve("../../dist")],

@@ -1,9 +1,15 @@
-import type { FieldManifest, NamespaceManifest } from "@nodecg/core";
+import type { NamespaceManifest } from "@nodecg/core";
 import { mapValues } from "@nodecg/internal/utils";
 import { Data, Effect, Exit, Runtime, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
-import { asServer, type BuiltNamespace, buildFields } from "./build-fields.ts";
+import {
+	asServer,
+	type BuiltNamespace,
+	buildFields,
+	BuiltNamespaceRegistry,
+} from "./build-fields.ts";
+import { DerivationEngineService } from "./derivation-graph.ts";
 import type {
 	ComputedFieldEffectLambda,
 	ComputedFieldLambda,
@@ -42,33 +48,42 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 ) {
 	const seedReplicant = options?.seedReplicant;
 	const storage = yield* ReplicantStorageService;
+	const engine = yield* DerivationEngineService;
 
-	// Populate replicant with default values using seedReplicant
+	for (const name of Object.keys(manifest.replicant)) {
+		if (typeof seedReplicant?.[name] === "undefined") {
+			return yield* new MissingReplicantSeedError({
+				namespace: manifest.namespace,
+				name,
+			});
+		}
+	}
+
+	const built = yield* buildFields(manifest, options);
+	const registry = yield* BuiltNamespaceRegistry;
+	yield* registry.register(built);
+
 	yield* Effect.all(
-		Object.entries(manifest.replicant).map(
-			([name, codec]: [string, FieldManifest<unknown>]) =>
-				storage.read(manifest.namespace, name).pipe(
-					Effect.catchTag("ReplicantNotFound", () =>
-						Effect.gen(function* () {
-							const thunk = seedReplicant?.[name];
-							if (typeof thunk === "undefined") {
-								return yield* new MissingReplicantSeedError({
-									namespace: manifest.namespace,
-									name,
-								});
-							}
-							const value = yield* Effect.tryPromise(async () => thunk());
-							const encoded = yield* codec.encode(value);
-							yield* storage.create(manifest.namespace, name, encoded);
-						}),
-					),
-					Effect.asVoid,
+		Object.keys(manifest.replicant).map((name) =>
+			storage.read(manifest.namespace, name).pipe(
+				Effect.flatMap((persisted) =>
+					engine.setReplicant(manifest.namespace, name, persisted),
 				),
+				Effect.catchTag("ReplicantNotFound", () =>
+					engine
+						.readReplicant(manifest.namespace, name)
+						.pipe(
+							Effect.flatMap((seeded) =>
+								storage.create(manifest.namespace, name, seeded),
+							),
+						),
+				),
+			),
 		),
 		{ concurrency: "unbounded" },
 	);
 
-	return yield* buildFields(manifest, options);
+	return built;
 });
 
 export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
@@ -78,7 +93,7 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	Rpc extends RpcShape,
 >(built: BuiltNamespace<Replicant, Computed, Topic, Rpc>) {
 	const runtime = yield* Effect.runtime<
-		ReplicantStorageService | TopicBrokerService
+		ReplicantStorageService | TopicBrokerService | DerivationEngineService
 	>();
 
 	const subscribeAdapter =
@@ -87,10 +102,13 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 				Stream.Stream<
 					Decoded,
 					never,
-					ReplicantStorageService | TopicBrokerService
+					ReplicantStorageService | TopicBrokerService | DerivationEngineService
 				>,
 				E,
-				ReplicantStorageService | TopicBrokerService | Scope.Scope
+				| ReplicantStorageService
+				| TopicBrokerService
+				| DerivationEngineService
+				| Scope.Scope
 			>,
 			name: string,
 		) =>
