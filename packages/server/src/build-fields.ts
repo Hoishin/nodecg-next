@@ -6,7 +6,7 @@ import {
 	toError,
 	zipEffectValues,
 } from "@nodecg/internal/utils";
-import { Context, Data, Effect, Option, Ref, Runtime } from "effect";
+import { Context, Data, Effect, Option, Runtime } from "effect";
 
 import {
 	ComputedComputeError,
@@ -51,6 +51,7 @@ import type {
 	RpcContext,
 	RpcShape,
 	UseCrossNamespace,
+	WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
@@ -71,49 +72,44 @@ export class LoadedNamespacesService extends Context.Tag("LoadedNamespaces")<
 	ReadonlySet<string>
 >() {}
 
-// ctx.use lookup by shape. Returns typed whole namespace
+// ctx.use lookup keyed by ImplementedNamespace. Returns typed whole namespace
 export class BuiltNamespaceRegistry extends Effect.Service<BuiltNamespaceRegistry>()(
 	"BuiltNamespaceRegistry",
 	{
-		effect: Effect.gen(function* () {
-			const ref = yield* Ref.make(new Map<string, unknown>());
+		sync: () => {
+			const map = new WeakMap<WidenedImplementedNamespace, unknown>();
 			return {
-				register: <
-					Replicant extends Record<string, unknown>,
-					Computed extends Record<string, unknown>,
-					Topic extends Record<string, unknown>,
-					Rpc extends RpcShape,
-				>(
-					built: BuiltNamespace<Replicant, Computed, Topic, Rpc>,
-				) => Ref.update(ref, (map) => new Map(map).set(built.namespace, built)),
+				register: <S extends BaseNamespaceShape>(
+					implemented: ImplementedNamespace<S>,
+					built: BuiltNamespace<
+						S["replicant"],
+						S["computed"],
+						S["topic"],
+						S["rpc"]
+					>,
+				) =>
+					Effect.sync(() => {
+						map.set(implemented, built);
+					}),
 				lookup: <S extends BaseNamespaceShape>(
 					implemented: ImplementedNamespace<S>,
 				) =>
-					Ref.get(ref).pipe(
-						Effect.map((map) => {
-							const found = map.get(implemented.manifest.namespace);
-							if (typeof found === "undefined") {
-								return Option.none<
-									BuiltNamespace<
-										S["replicant"],
-										S["computed"],
-										S["topic"],
-										S["rpc"]
-									>
-								>();
-							}
-							return Option.some(
-								found as BuiltNamespace<
-									S["replicant"],
-									S["computed"],
-									S["topic"],
-									S["rpc"]
-								>,
-							);
-						}),
-					),
+					Effect.gen(function* () {
+						const found = map.get(implemented);
+						if (typeof found === "undefined") {
+							return yield* new NamespaceNotLoaded({
+								namespace: implemented.manifest.namespace,
+							});
+						}
+						return found as BuiltNamespace<
+							S["replicant"],
+							S["computed"],
+							S["topic"],
+							S["rpc"]
+						>;
+					}),
 			};
-		}),
+		},
 	},
 ) {}
 
@@ -140,13 +136,7 @@ const makeComputeUse =
 			Effect.gen(function* () {
 				yield* requireLoaded(implemented.manifest.namespace);
 				const registry = yield* BuiltNamespaceRegistry;
-				const found = yield* registry.lookup(implemented);
-				if (Option.isNone(found)) {
-					return yield* new NamespaceNotLoaded({
-						namespace: implemented.manifest.namespace,
-					});
-				}
-				const fields = found.value;
+				const fields = yield* registry.lookup(implemented);
 
 				return {
 					replicant: mapValues<
@@ -221,13 +211,7 @@ export const makeUseCross =
 			Effect.gen(function* () {
 				yield* requireLoaded(implemented.manifest.namespace);
 				const registry = yield* BuiltNamespaceRegistry;
-				const found = yield* registry.lookup(implemented);
-				if (Option.isNone(found)) {
-					return yield* new NamespaceNotLoaded({
-						namespace: implemented.manifest.namespace,
-					});
-				}
-				return found.value;
+				return yield* registry.lookup(implemented);
 			}),
 		);
 		return {

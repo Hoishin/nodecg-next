@@ -1,4 +1,3 @@
-import type { NamespaceManifest } from "@nodecg/core";
 import { mapValues } from "@nodecg/internal/utils";
 import { Data, Effect, Exit, Runtime, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
@@ -21,8 +20,9 @@ import type {
 	TopicFieldLambda,
 } from "./field-lambdas.ts";
 import type {
+	BaseNamespaceShape,
+	ImplementedNamespace,
 	LoadedNamespace,
-	NamespaceOptions,
 	RpcShape,
 } from "./implement-namespace.ts";
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
@@ -38,15 +38,10 @@ export class MissingReplicantSeedError extends Data.TaggedError(
 }
 
 export const buildNamespace = Effect.fn("buildNamespace")(function* <
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
->(
-	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
-	options?: NamespaceOptions<Replicant, Computed, Topic, Rpc>,
-) {
-	const seedReplicant = options?.seedReplicant;
+	S extends BaseNamespaceShape,
+>(implemented: ImplementedNamespace<S>) {
+	const { manifest, impl } = implemented;
+	const seedReplicant = impl?.seedReplicant;
 	const storage = yield* ReplicantStorageService;
 	const engine = yield* DerivationEngineService;
 
@@ -59,9 +54,9 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 		}
 	}
 
-	const built = yield* buildFields(manifest, options);
+	const built = yield* buildFields(manifest, impl);
 	const registry = yield* BuiltNamespaceRegistry;
-	yield* registry.register(built);
+	yield* registry.register(implemented, built);
 
 	yield* Effect.all(
 		Object.keys(manifest.replicant).map((name) =>

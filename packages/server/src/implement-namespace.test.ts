@@ -101,10 +101,7 @@ describe("implementExtendedNamespace", () => {
 					},
 				);
 
-				const built = yield* buildNamespace(
-					implemented.manifest,
-					implemented.impl,
-				);
+				const built = yield* buildNamespace(implemented);
 
 				expect(yield* built.replicant.score.get()).toBe(10);
 				expect(yield* built.replicant.round.get()).toBe(3);
@@ -177,10 +174,7 @@ describe("implementExtendedNamespace", () => {
 						seedReplicant: {},
 					},
 				);
-				const failure = yield* buildNamespace(
-					implemented.manifest,
-					implemented.impl,
-				).pipe(Effect.flip);
+				const failure = yield* buildNamespace(implemented).pipe(Effect.flip);
 				expect(failure.message).toMatch(
 					/Missing seed value for replicant "round"/,
 				);

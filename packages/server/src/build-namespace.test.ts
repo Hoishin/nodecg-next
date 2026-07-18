@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
+import { implementNamespace } from "./implement-namespace.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
@@ -54,9 +55,11 @@ describe("seeding", () => {
 		"encodes the seed value and creates it when storage has none",
 		testStubbed(
 			Effect.gen(function* () {
-				yield* buildNamespace(countManifest, {
-					seedReplicant: { count: () => 42 },
-				});
+				yield* buildNamespace(
+					implementNamespace(countManifest, {
+						seedReplicant: { count: () => 42 },
+					}),
+				);
 
 				expect(storage.create).toHaveBeenCalledWith("ns", "count", "42");
 				expect(storage.create).toHaveBeenCalledTimes(1);
@@ -69,9 +72,11 @@ describe("seeding", () => {
 		testStubbed(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
-				yield* buildNamespace(countManifest, {
-					seedReplicant: { count: () => 42 },
-				});
+				yield* buildNamespace(
+					implementNamespace(countManifest, {
+						seedReplicant: { count: () => 42 },
+					}),
+				);
 				expect(yield* engine.readReplicant("ns", "count")).toEqual("42");
 			}),
 		),
@@ -83,9 +88,11 @@ describe("seeding", () => {
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
 				storage.read.mockReturnValue(Effect.succeed("7"));
-				yield* buildNamespace(countManifest, {
-					seedReplicant: { count: () => 42 },
-				});
+				yield* buildNamespace(
+					implementNamespace(countManifest, {
+						seedReplicant: { count: () => 42 },
+					}),
+				);
 				expect(storage.create).not.toHaveBeenCalled();
 				expect(yield* engine.readReplicant("ns", "count")).toEqual("7");
 			}),
@@ -97,9 +104,11 @@ describe("seeding", () => {
 		testStubbed(
 			Effect.gen(function* () {
 				storage.read.mockReturnValue(Effect.succeed("5"));
-				yield* buildNamespace(countManifest, {
-					seedReplicant: { count: () => 0 },
-				});
+				yield* buildNamespace(
+					implementNamespace(countManifest, {
+						seedReplicant: { count: () => 0 },
+					}),
+				);
 
 				expect(storage.create).not.toHaveBeenCalled();
 			}),
@@ -110,7 +119,12 @@ describe("seeding", () => {
 		"fails MissingReplicantSeedError when a replicant has no seed",
 		testStubbed(
 			Effect.gen(function* () {
-				const error = yield* buildNamespace(countManifest).pipe(Effect.flip);
+				const error = yield* buildNamespace(
+					implementNamespace(countManifest, {
+						// @ts-expect-error a replicant with no seed is a type error; exercising the runtime guard
+						seedReplicant: {},
+					}),
+				).pipe(Effect.flip);
 
 				expect(error._tag).toBe("MissingReplicantSeedError");
 				expect(error.message).toContain('"count"');
@@ -123,9 +137,11 @@ describe("seeding", () => {
 		"fails if encode rejects the seed value",
 		testStubbed(
 			Effect.gen(function* () {
-				const error = yield* buildNamespace(countManifest, {
-					seedReplicant: { count: () => "nope" as unknown as number },
-				}).pipe(Effect.flip);
+				const error = yield* buildNamespace(
+					implementNamespace(countManifest, {
+						seedReplicant: { count: () => "nope" as unknown as number },
+					}),
+				).pipe(Effect.flip);
 
 				expect(error._tag).toBe("FieldEncodeError");
 				expect(storage.create).not.toHaveBeenCalled();
@@ -156,13 +172,15 @@ describe("adaptNamespace", () => {
 			Effect.gen(function* () {
 				const broker = yield* TopicBrokerService;
 				const publish = vi.spyOn(broker, "publish");
-				const built = yield* buildNamespace(manifest, {
-					seedReplicant: { count: () => 1 },
-					implementComputed: {
-						doubled: (ctx) => ctx.replicant.count.get() * 2,
-					},
-					implementRpc: { echo: (request) => request * 10 },
-				});
+				const built = yield* buildNamespace(
+					implementNamespace(manifest, {
+						seedReplicant: { count: () => 1 },
+						implementComputed: {
+							doubled: (ctx) => ctx.replicant.count.get() * 2,
+						},
+						implementRpc: { echo: (request) => request * 10 },
+					}),
+				);
 				const handle = yield* adaptNamespace(built);
 
 				expect(handle.replicant.count.get()).toBe(1);

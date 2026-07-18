@@ -193,10 +193,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				Target
 			>,
 		) {
-			const built = yield* buildNamespace(
-				implemented.manifest,
-				implemented.impl,
-			);
+			const built = yield* buildNamespace(implemented);
 			const handle = yield* adaptNamespace(built);
 			const onLoad = implemented.impl?.onLoad;
 			const runOnLoad =
