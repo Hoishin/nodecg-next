@@ -70,7 +70,7 @@ export type LoadNodeCGOptions<
 	storage?: StorageOption;
 	authProviders?: ReadonlyArray<AuthProvider>;
 	dev?: boolean;
-	onReady?: () => void;
+	onReady?: (address?: string) => void;
 };
 
 export type LoadedNamespaces<

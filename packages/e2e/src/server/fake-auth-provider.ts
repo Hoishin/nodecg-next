@@ -43,3 +43,7 @@ export const makeFakeAuthProvider = (
 		}),
 	};
 };
+
+export const devProvider = makeFakeAuthProvider("dev", [
+	{ id: "alice", displayName: "Alice" },
+]);

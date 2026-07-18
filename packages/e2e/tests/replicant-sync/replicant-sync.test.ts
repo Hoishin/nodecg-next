@@ -9,33 +9,16 @@ import {
 	vi,
 } from "vitest";
 
-import { extendedManifest, fixtureManifest } from "./fixture-replicant.ts";
-
-const login = (subject: string) =>
-	fetch(`/api/internal/authentication/login/dev?as=${subject}`, {
-		method: "POST",
-	});
-const logout = () =>
-	fetch("/api/internal/authentication/logout", { method: "POST" });
-const assignRole = (
-	action: "grant" | "revoke",
-	subject: string,
-	role: string,
-) =>
-	fetch(`/api/internal/roles/${action}`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ issuer: "dev", subject, role }),
-	});
-
-const grantAsAdmin = async (subject: string, role: string) => {
-	await login("root");
-	await assignRole("grant", subject, role);
-};
-const revokeAsAdmin = async (subject: string, role: string) => {
-	await login("root");
-	await assignRole("revoke", subject, role);
-};
+import {
+	grantAsAdmin,
+	login,
+	logout,
+	revokeAsAdmin,
+} from "../../src/client/auth.ts";
+import {
+	extendedManifest,
+	fixtureManifest,
+} from "../../src/shared/manifests.ts";
 
 // Assign the roles the field-access tests rely on once, so those tests just log
 // in as the subject. Grant/revoke behavior itself is covered in auth.test.ts.

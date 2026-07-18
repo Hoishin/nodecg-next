@@ -2,37 +2,19 @@ import { IdentitySchema, RoleName } from "@nodecg/internal";
 import { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 
+import {
+	assignRole,
+	grantAsAdmin,
+	login,
+	logout,
+	revokeAsAdmin,
+} from "../../src/client/auth.ts";
+
 const MeSchema = Schema.Struct({ identity: IdentitySchema });
 const decodeMe = Schema.decodeUnknownSync(MeSchema);
 
 const fetchMe = async (init?: RequestInit) =>
 	decodeMe(await (await fetch("/api/internal/me", init)).json());
-
-const login = (subject: string) =>
-	fetch(`/api/internal/authentication/login/dev?as=${subject}`, {
-		method: "POST",
-	});
-const logout = () =>
-	fetch("/api/internal/authentication/logout", { method: "POST" });
-const assignRole = (
-	action: "grant" | "revoke",
-	subject: string,
-	role: string,
-) =>
-	fetch(`/api/internal/roles/${action}`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ issuer: "dev", subject, role }),
-	});
-
-const grantAsAdmin = async (subject: string, role: string) => {
-	await login("root");
-	await assignRole("grant", subject, role);
-};
-const revokeAsAdmin = async (subject: string, role: string) => {
-	await login("root");
-	await assignRole("revoke", subject, role);
-};
 
 describe("anonymous identity", () => {
 	test("a request without a session resolves to the anonymous identity", async () => {

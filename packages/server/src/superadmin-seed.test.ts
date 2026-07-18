@@ -78,6 +78,20 @@ describe("seededRoleStore", () => {
 	);
 
 	test(
+		"seeds nothing when SUPERADMINS is an empty string",
+		testEffect(
+			Effect.gen(function* () {
+				const roles = yield* RoleStoreService;
+				expect(yield* roles.list()).toEqual([]);
+			}).pipe(
+				Effect.provide(
+					seeded({ SUPERADMINS: "" }, [stubProvider("dev", "https://idp.test")]),
+				),
+			),
+		),
+	);
+
+	test(
 		"skips seeding when a superadmin already exists",
 		testEffect(
 			Effect.gen(function* () {

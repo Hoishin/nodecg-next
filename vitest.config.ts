@@ -1,14 +1,10 @@
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
-const NODE_TESTS = [
-	// "packages/client",
-	"packages/core",
-	"packages/internal",
-	"packages/server",
-];
+import { projects as e2eProjects } from "./packages/e2e/vitest-projects.ts";
 
-const BROWSER_TESTS = ["packages/client", "packages/core", "packages/internal"];
+const NODE_TESTS = ["packages/internal", "packages/core", "packages/server"];
+const BROWSER_TESTS = ["packages/internal", "packages/core", "packages/client"];
 
 export default defineConfig({
 	test: {
@@ -16,6 +12,9 @@ export default defineConfig({
 			{
 				test: {
 					name: "node-unit",
+					sequence: {
+						groupOrder: 0,
+					},
 					include: NODE_TESTS.map(
 						(projectPath) => `${projectPath}/**/*.test.ts`,
 					),
@@ -24,6 +23,9 @@ export default defineConfig({
 			{
 				test: {
 					name: "browser-unit",
+					sequence: {
+						groupOrder: 1,
+					},
 					include: BROWSER_TESTS.map(
 						(projectPath) => `${projectPath}/**/*.test.ts`,
 					),
@@ -39,7 +41,7 @@ export default defineConfig({
 					},
 				},
 			},
-			"packages/e2e",
+			...e2eProjects,
 		],
 	},
 });

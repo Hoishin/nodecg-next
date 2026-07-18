@@ -18,11 +18,17 @@ const SuperadminEntrySchema = Schema.TemplateLiteralParser(
 	),
 );
 
-const SuperadminsSchema = Schema.split(",").pipe(
-	Schema.compose(Schema.Array(SuperadminEntrySchema)),
+const SuperadminsSchema = Schema.Union(
+	Schema.transform(Schema.Literal(""), Schema.Array(SuperadminEntrySchema), {
+		strict: true,
+		decode: () => [],
+		encode: () => "" as const,
+	}),
+	Schema.split(",").pipe(Schema.compose(Schema.Array(SuperadminEntrySchema))),
 );
 
 export const config = {
+	port: Config.integer("PORT").pipe(Config.withDefault(3000)),
 	origin: Config.string("ORIGIN").pipe(
 		Config.withDefault("http://localhost:3000"),
 	),
@@ -32,6 +38,7 @@ export const config = {
 	),
 	superadminClaimToken: Config.option(
 		Config.redacted("SUPERADMIN_CLAIM_TOKEN").pipe(
+			// TODO: Use schema
 			Config.validate({
 				message: "SUPERADMIN_CLAIM_TOKEN must be at least 16 characters",
 				validation: (token) => Redacted.value(token).length >= 16,

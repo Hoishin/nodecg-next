@@ -1,19 +1,14 @@
-import {
-	implementExtendedNamespace,
-	implementNamespace,
-	loadNodeCG,
-} from "@nodecg/server";
+import { implementExtendedNamespace, implementNamespace } from "@nodecg/server";
 
-import { makeFakeAuthProvider } from "./fake-auth-provider.ts";
 import {
 	baseManifest,
 	chainManifest,
 	crossManifest,
 	extendedManifest,
 	fixtureManifest,
-} from "./fixture-replicant.ts";
+} from "../shared/manifests.ts";
 
-const fixture = implementNamespace(fixtureManifest, {
+export const fixture = implementNamespace(fixtureManifest, {
 	seedReplicant: {
 		count: () => 0,
 		mirrorSource: () => 0,
@@ -38,39 +33,51 @@ const fixture = implementNamespace(fixtureManifest, {
 		},
 	},
 	frontend: {
-		dir: [import.meta.resolve("./fixture-frontend")],
+		dir: [import.meta.resolve("../../assets/frontend")],
 	},
 });
 
 const baseImplemented = implementNamespace(baseManifest, {
 	seedReplicant: { score: () => 0 },
 	frontend: {
-		dir: [import.meta.resolve("./fixture-frontend-spa")],
+		dir: [import.meta.resolve("../../assets/frontend-spa")],
 		spa: true,
 	},
 });
-const extended = implementExtendedNamespace(extendedManifest, baseImplemented, {
-	seedReplicant: { bonus: () => 0 },
-	implementComputed: {
-		total: (ctx) => ctx.replicant.score.get() + ctx.replicant.bonus.get(),
-	},
-	frontend: {
-		dir: [import.meta.resolve("./fixture-frontend-extra")],
-	},
-});
 
-const chain = implementNamespace(chainManifest, {
-	seedReplicant: { points: () => 0, target: () => 0 },
+export const extended = implementExtendedNamespace(
+	extendedManifest,
+	baseImplemented,
+	{
+		seedReplicant: { bonus: () => 0 },
+		implementComputed: {
+			total: (ctx) => ctx.replicant.score.get() + ctx.replicant.bonus.get(),
+		},
+		frontend: {
+			dir: [import.meta.resolve("../../assets/frontend-widget")],
+		},
+	},
+);
+
+export const chain = implementNamespace(chainManifest, {
+	seedReplicant: { points: () => 0, target: () => 0, denominator: () => 1 },
 	implementComputed: {
 		lead: (ctx) => ctx.replicant.points.get() - ctx.replicant.target.get(),
 		status: (ctx) => {
 			const lead = ctx.computed.lead.get();
 			return lead > 0 ? "ahead" : lead < 0 ? "behind" : "level";
 		},
+		reciprocal: (ctx) => {
+			const denominator = ctx.replicant.denominator.get();
+			if (denominator === 0) {
+				throw new Error("denominator is zero");
+			}
+			return 1 / denominator;
+		},
 	},
 });
 
-const cross = implementNamespace(crossManifest, {
+export const cross = implementNamespace(crossManifest, {
 	seedReplicant: { factor: () => 2 },
 	implementComputed: {
 		scaledScore: (ctx) =>
@@ -83,25 +90,3 @@ const cross = implementNamespace(crossManifest, {
 		},
 	},
 });
-
-process.env["SUPERADMINS"] = "dev:root";
-
-const nodecg = await loadNodeCG({
-	namespaces: { cross, fixture, extended, chain },
-	authProviders: [
-		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
-	],
-	onReady: () => {
-		if (typeof process.send === "undefined") {
-			throw new Error("start-server.ts must be spawned with an IPC channel");
-		}
-		process.send("ready");
-	},
-});
-
-const { mirrorSource, mirror } = nodecg.namespaces.fixture.replicant;
-await mirrorSource.subscribe((value) => {
-	mirror.set(value);
-});
-
-nodecg.start();

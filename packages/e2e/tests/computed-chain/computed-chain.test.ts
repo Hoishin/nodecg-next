@@ -1,7 +1,7 @@
 import { derive, loadNamespace } from "@nodecg/client";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 
-import { chainManifest, crossManifest } from "./fixture-replicant.ts";
+import { chainManifest, crossManifest } from "../../src/shared/manifests.ts";
 
 describe("chained computed over the wire", () => {
 	test("reads through the chain", async () => {
@@ -34,6 +34,24 @@ describe("chained computed over the wire", () => {
 		await vi.waitFor(() =>
 			expect(statuses).toEqual(["level", "ahead", "behind"]),
 		);
+	});
+
+	test("subscribing to a currently-failing computed rejects instead of hanging", async () => {
+		const chain = await loadNamespace(chainManifest);
+		await chain.replicant.denominator.set(0); // makes reciprocal throw
+
+		await expect(chain.computed.reciprocal.subscribe(() => {})).rejects.toThrow(
+			/unavailable/i,
+		);
+
+		// a fresh subscribe heals once the source is fixed
+		await chain.replicant.denominator.set(2);
+		const values: number[] = [];
+		const cancel = await chain.computed.reciprocal.subscribe((value) => {
+			values.push(value);
+		});
+		onTestFinished(() => cancel());
+		await vi.waitFor(() => expect(values).toEqual([0.5]));
 	});
 
 	test("the intermediate computed streams its own values", async () => {

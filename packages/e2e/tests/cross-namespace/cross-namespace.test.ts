@@ -1,7 +1,7 @@
 import { loadNamespace } from "@nodecg/client";
 import { describe, expect, test, vi } from "vitest";
 
-import { crossManifest, extendedManifest } from "./fixture-replicant.ts";
+import { crossManifest, extendedManifest } from "../../src/shared/manifests.ts";
 
 describe("cross-namespace rpc via ctx.use", () => {
 	test("an rpc writes another namespace's replicant", async () => {

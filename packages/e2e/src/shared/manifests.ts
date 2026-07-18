@@ -69,10 +69,12 @@ export const chainManifest = defineNamespace("e2e-chain", {
 	replicant: {
 		points: { schema: Schema.Number, permission: everyoneReadWrite },
 		target: { schema: Schema.Number, permission: everyoneReadWrite },
+		denominator: { schema: Schema.Number, permission: everyoneReadWrite },
 	},
 	computed: {
 		lead: { schema: Schema.Number, permission: everyoneRead },
 		status: { schema: Schema.String, permission: everyoneRead },
+		reciprocal: { schema: Schema.Number, permission: everyoneRead },
 	},
 });
 

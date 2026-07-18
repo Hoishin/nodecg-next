@@ -270,6 +270,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.4
+      get-port:
+        specifier: ^7.2.0
+        version: 7.2.0
       playwright:
         specifier: 'catalog:'
         version: 1.61.1
@@ -1211,6 +1214,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  get-port@7.2.0:
+    resolution: {integrity: sha512-afP4W205ONCuMoPBqcR6PSXnzX35KTcJygfJfcp+QY+uwm3p20p1YczWXhlICIzGMCxYBQcySEcOgsJcrkyobg==}
+    engines: {node: '>=16'}
 
   is-extglob@2.1.1:
     resolution: {integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==}
@@ -2209,6 +2216,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  get-port@7.2.0: {}
 
   is-extglob@2.1.1: {}
 

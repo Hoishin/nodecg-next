@@ -1,19 +1,14 @@
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
+import { login, logout } from "../../src/client/auth.ts";
+
 const CreatedMachineSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
 	token: Schema.String,
 });
 const decodeCreatedMachine = Schema.decodeUnknownSync(CreatedMachineSchema);
-
-const login = (subject: string) =>
-	fetch(`/api/internal/authentication/login/dev?as=${subject}`, {
-		method: "POST",
-	});
-const logout = () =>
-	fetch("/api/internal/authentication/logout", { method: "POST" });
 
 const provisionMachine = async (displayName: string) => {
 	await login("root");

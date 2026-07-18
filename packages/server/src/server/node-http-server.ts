@@ -4,6 +4,8 @@ import { HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 
+import { config } from "../server-config.ts";
+
 const forceShutdownServer = Effect.fn("forceShutdownServer")(function* (
 	server: Server,
 ) {
@@ -23,20 +25,25 @@ const boundedClose = (server: Server) =>
 export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
 	onReady,
 }: {
-	onReady?: () => void;
+	onReady?: (address?: string) => void;
 }) {
 	const server = createServer();
 	if (onReady) {
-		server.addListener("listening", onReady);
+		const handleListening = () => {
+			const address = server.address();
+			onReady(typeof address === "string" ? address : address?.address);
+		};
+		server.addListener("listening", handleListening);
 		yield* Effect.addFinalizer(() =>
 			Effect.sync(() => {
-				server.removeListener("listening", onReady);
+				server.removeListener("listening", handleListening);
 			}),
 		);
 	}
 
+	const port = yield* config.port;
 	return boundedClose(server).pipe(
-		Layer.provideMerge(NodeHttpServer.layer(() => server, { port: 3000 })),
+		Layer.provideMerge(NodeHttpServer.layer(() => server, { port })),
 		HttpServer.withLogAddress,
 	);
 });
