@@ -15,6 +15,8 @@ import {
 const fixture = implementNamespace(fixtureManifest, {
 	seedReplicant: {
 		count: () => 0,
+		mirrorSource: () => 0,
+		mirror: () => 0,
 		label: () => "hello",
 		secret: () => "classified",
 		producerOnly: () => "producers-only",
@@ -72,17 +74,21 @@ process.env["SUPERADMINS"] = "dev:root";
 
 const nodecg = await loadNodeCG({
 	// `cross` listed before the namespace its computed reads, so build order must not matter
-	namespaces: [cross, fixture, extended],
+	namespaces: { cross, fixture, extended },
 	authProviders: [
 		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
 	],
-	superadmins: [{ issuer: "dev", subject: "root" }],
 	onReady: () => {
 		if (typeof process.send === "undefined") {
 			throw new Error("start-server.ts must be spawned with an IPC channel");
 		}
 		process.send("ready");
 	},
+});
+
+const { mirrorSource, mirror } = nodecg.namespaces.fixture.replicant;
+await mirrorSource.subscribe((value) => {
+	mirror.set(value);
 });
 
 nodecg.start();

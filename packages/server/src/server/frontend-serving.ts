@@ -4,7 +4,7 @@ import { HttpApiBuilder } from "@effect/platform";
 import { Effect } from "effect";
 import sirv from "sirv";
 
-import { type ImplementedNamespace } from "../implement-namespace.ts";
+import { type WidenedImplementedNamespace } from "../implement-namespace.ts";
 import { connectToHttpApp } from "./connect-middleware.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
 
@@ -32,7 +32,7 @@ const staticApp = (dirPath: string | URL, single: boolean) =>
 	);
 
 export const frontendRoutes = (options: {
-	namespaces: ReadonlyArray<ImplementedNamespace<{}, {}, {}, {}>>;
+	namespaces: ReadonlyArray<WidenedImplementedNamespace>;
 	dev: boolean;
 }) =>
 	HttpApiBuilder.Router.use((router) =>

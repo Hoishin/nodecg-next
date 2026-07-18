@@ -42,10 +42,13 @@ const localProvider = await makeOidcProvider({
 process.env["SUPERADMINS"] = "local:johndoe";
 
 const nodecg = await loadNodeCG({
-	namespaces: [extendedCounter, settings],
+	namespaces: { counter: extendedCounter, settings },
 	authProviders: [localProvider],
 	dev: process.env["NODE_ENV"] !== "production",
-	superadmins: [{ issuer, subject: "johndoe" }],
+});
+
+await nodecg.namespaces.counter.computed.parity.subscribe((parity) => {
+	console.log(`[server] count is now ${parity}`);
 });
 
 nodecg.start();

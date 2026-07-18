@@ -95,7 +95,7 @@ const showcase = implementNamespace(defineNamespace("social-login", {}), {
 });
 
 const nodecg = await loadNodeCG({
-	namespaces: [showcase],
+	namespaces: { showcase },
 	authProviders: providers,
 	dev: process.env["NODE_ENV"] !== "production",
 });

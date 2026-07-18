@@ -83,7 +83,7 @@ describe("rpc ctx", () => {
 		rpc: {
 			bump: {
 				schema: { request: Schema.Number, response: Schema.Number },
-				permission: { write: { allow: ["everyone"] } },
+				permission: { write: { everyone: "allow" } },
 			},
 		},
 	});
@@ -132,21 +132,21 @@ describe("rpc ctx runs as the server identity", () => {
 			open: { schema: Schema.NumberFromString },
 			sealed: {
 				schema: Schema.NumberFromString,
-				permission: { write: { deny: ["server"] } },
+				permission: { write: { server: "deny" } },
 			},
 		},
 		rpc: {
 			writeOpen: {
 				schema: { request: Schema.Number, response: Schema.Null },
-				permission: { write: { allow: ["everyone"] } },
+				permission: { write: { everyone: "allow" } },
 			},
 			writeSealed: {
 				schema: { request: Schema.Number, response: Schema.Null },
-				permission: { write: { allow: ["everyone"] } },
+				permission: { write: { everyone: "allow" } },
 			},
 			readSealed: {
 				schema: { request: Schema.Null, response: Schema.Number },
-				permission: { write: { allow: ["everyone"] } },
+				permission: { write: { everyone: "allow" } },
 			},
 		},
 	});
@@ -323,11 +323,11 @@ describe("cross-namespace rpc via ctx.use", () => {
 			rpc: {
 				award: {
 					schema: { request: Schema.Number, response: Schema.Number },
-					permission: { write: { allow: ["everyone"] } },
+					permission: { write: { everyone: "allow" } },
 				},
 				reset: {
 					schema: { request: Schema.Null, response: Schema.Null },
-					permission: { write: { allow: ["everyone"] } },
+					permission: { write: { everyone: "allow" } },
 				},
 			},
 		}),
@@ -391,7 +391,7 @@ describe("cross-namespace rpc via ctx.use", () => {
 						rpc: {
 							relayAward: {
 								schema: { request: Schema.Number, response: Schema.Number },
-								permission: { write: { allow: ["everyone"] } },
+								permission: { write: { everyone: "allow" } },
 							},
 						},
 					}),

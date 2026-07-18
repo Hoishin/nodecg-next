@@ -96,7 +96,7 @@ const match = implementNamespace(match, {
   },
 });
 
-loadNodeCG({ namespaces: [match] });
+loadNodeCG({ namespaces: { match } });
 
 // Client-side
 const match = loadNamespace(match);
@@ -125,9 +125,9 @@ match.replicant.label.subscribe((label) => {
   const match = implementNamespace(manifest, {
     seedReplicant: { counter: () => 0, games: () => [] },
   });
-  const nodecg = loadNodeCG({ namespaces: [match] });
+  const nodecg = await loadNodeCG({ namespaces: { match } });
 
-  console.log(nodecg.match.replicant.counter.get());
+  console.log(nodecg.namespaces.match.replicant.counter.get());
 
   // Client-side
   import { loadNamespace } from "@nodecg/client";
@@ -222,7 +222,7 @@ match.replicant.label.subscribe((label) => {
       firstGameId: (sources) => sources.games[0]?.id ?? null,
     },
   });
-  loadNodeCG({ namespaces: [match] });
+  loadNodeCG({ namespaces: { match } });
 
   // Client: read-only
   const ns = await loadNamespace(manifest);
@@ -262,7 +262,7 @@ match.replicant.label.subscribe((label) => {
     implementComputed: { total: (sources) => sources.score + sources.round },
   });
 
-  loadNodeCG({ namespaces: [extended] });
+  loadNodeCG({ namespaces: { extended } });
   ```
 
 - 🚧 Admin dashboard (view, clear, export, import, freeze)
@@ -327,7 +327,7 @@ match.replicant.label.subscribe((label) => {
   const dice = implementNamespace(manifest, {
     implementRpc: { roll: (max) => 1 + Math.floor(Math.random() * max) },
   });
-  loadNodeCG({ namespaces: [dice] });
+  loadNodeCG({ namespaces: { dice } });
 
   // Client: call and await the reply
   const ns = await loadNamespace(manifest);

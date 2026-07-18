@@ -446,8 +446,26 @@ describe("roles export/import", () => {
 		Schema.Struct({ roles: Schema.Array(Schema.String) }),
 	);
 
+	const decodeImportError = Schema.decodeUnknownSync(
+		Schema.Struct({ message: Schema.String }),
+	);
+
 	test("403 for an anonymous caller", async () => {
 		const handler = webHandler([]);
+		expect((await handler(exportRequest())).status).toBe(403);
+		expect((await handler(importRequest("merge", []))).status).toBe(403);
+	});
+
+	test("403 for a named-role caller without the admin tier", async () => {
+		const handler = webHandler(
+			[],
+			asIdentity(
+				HumanIdentitySchema.make({
+					account: { issuer: "dev", subject: "op", displayName: "Op" },
+					roles: new Set([RoleName("producer")]),
+				}),
+			),
+		);
 		expect((await handler(exportRequest())).status).toBe(403);
 		expect((await handler(importRequest("merge", []))).status).toBe(403);
 	});
@@ -619,22 +637,22 @@ describe("roles export/import", () => {
 		expect(roles).toEqual(["superadmin", "judge"]);
 	});
 
-	test("400 for an admin-tier role on a human entry", async () => {
+	test("400 with a detail message for an admin-tier role on a human entry", async () => {
 		const handler = webHandler([], admin);
-		expect(
-			(
-				await handler(
-					importRequest("merge", [
-						{
-							_tag: "human",
-							issuer: "dev",
-							subject: "operator",
-							roles: ["admin"],
-						},
-					]),
-				)
-			).status,
-		).toBe(400);
+		const res = await handler(
+			importRequest("merge", [
+				{
+					_tag: "human",
+					issuer: "dev",
+					subject: "operator",
+					roles: ["admin"],
+				},
+			]),
+		);
+		expect(res.status).toBe(400);
+		expect(decodeImportError(await res.json()).message).toContain(
+			"cannot be assigned via import",
+		);
 	});
 
 	test("400 for a principal role on a human entry", async () => {

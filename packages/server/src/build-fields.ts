@@ -148,7 +148,7 @@ const fieldAccessors =
 		)(fields.topic),
 	});
 
-const makeUseCross = (runtime: FieldOpsRuntime): UseCrossNamespace => {
+export const makeUseCross = (runtime: FieldOpsRuntime): UseCrossNamespace => {
 	return (implemented) => {
 		const fields = Runtime.runSync(
 			runtime,

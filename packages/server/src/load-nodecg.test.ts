@@ -3,7 +3,6 @@ import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Cause, Effect, Layer, Option, Queue, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
-import { NamespaceNotLoaded } from "./build-fields.ts";
 import {
 	implementExtendedNamespace,
 	implementNamespace,
@@ -27,7 +26,7 @@ const counter = implementNamespace(
 		rpc: {
 			bump: {
 				schema: { request: Schema.Number, response: Schema.Number },
-				permission: { write: { allow: ["everyone"] } },
+				permission: { write: { everyone: "allow" } },
 			},
 		},
 	}),
@@ -49,14 +48,16 @@ const settings = implementNamespace(
 	{ seedReplicant: { multiplier: () => 3 } },
 );
 
-describe("use", () => {
+describe("namespaces", () => {
 	test(
-		"returns a plain handle over the loaded namespace",
+		"returns a concretely-typed plain handle per loaded namespace",
 		testEffect(
 			Effect.gen(function* () {
-				const { use } = yield* loadNodeCGEffect({ namespaces: [counter] });
+				const { namespaces } = yield* loadNodeCGEffect({
+					namespaces: { counter },
+				});
 
-				const handle = use(counter);
+				const handle = namespaces.counter;
 				expect(handle.replicant.count.get()).toBe(1);
 				handle.replicant.count.set(5);
 				expect(handle.replicant.count.get()).toBe(5);
@@ -66,13 +67,16 @@ describe("use", () => {
 	);
 
 	test(
-		"throws NamespaceNotLoaded for a namespace that was not aggregated",
+		"a namespace that was not aggregated does not exist on the return",
 		testEffect(
 			Effect.gen(function* () {
-				const { use } = yield* loadNodeCGEffect({ namespaces: [counter] });
+				const { namespaces } = yield* loadNodeCGEffect({
+					namespaces: { counter },
+				});
 
-				expect(() => use(settings)).toThrow(NamespaceNotLoaded);
-				expect(() => use(settings)).toThrow(/"settings" was not loaded/);
+				// @ts-expect-error settings was not passed to loadNodeCG
+				void namespaces.settings;
+				expect("settings" in namespaces).toBe(false);
 			}),
 		),
 	);
@@ -98,7 +102,7 @@ describe("computed validation", () => {
 				});
 
 				const error = yield* loadNodeCGEffect({
-					namespaces: [implemented],
+					namespaces: { broken: implemented },
 				}).pipe(Effect.flip);
 
 				expect(error._tag).toBe("ComputedComputeError");
@@ -118,7 +122,7 @@ describe("computed validation", () => {
 				});
 
 				const error = yield* loadNodeCGEffect({
-					namespaces: [implemented],
+					namespaces: { broken: implemented },
 				}).pipe(Effect.flip);
 
 				expect(error._tag).toBe("FieldEncodeError");
@@ -144,11 +148,11 @@ describe("computed validation", () => {
 					},
 				);
 
-				const { use } = yield* loadNodeCGEffect({
-					namespaces: [scoreboard, settings],
+				const { namespaces } = yield* loadNodeCGEffect({
+					namespaces: { scoreboard, settings },
 				});
 
-				expect(use(scoreboard).computed.weighted.get()).toBe(30);
+				expect(namespaces.scoreboard.computed.weighted.get()).toBe(30);
 			}),
 		),
 	);
@@ -173,11 +177,11 @@ describe("onLoad", () => {
 					},
 				);
 
-				const { use } = yield* loadNodeCGEffect({
-					namespaces: [stats, settings],
+				const { namespaces } = yield* loadNodeCGEffect({
+					namespaces: { stats, settings },
 				});
 
-				expect(use(stats).replicant.viewers.get()).toBe(300);
+				expect(namespaces.stats.replicant.viewers.get()).toBe(300);
 			}),
 		),
 	);
@@ -197,7 +201,7 @@ describe("onLoad", () => {
 					},
 				);
 
-				yield* Effect.scoped(loadNodeCGEffect({ namespaces: [stats] }));
+				yield* Effect.scoped(loadNodeCGEffect({ namespaces: { stats } }));
 
 				expect(cleanup).toHaveBeenCalledTimes(1);
 			}),
@@ -241,7 +245,7 @@ describe("onLoad", () => {
 
 				yield* Effect.scoped(
 					Effect.gen(function* () {
-						yield* loadNodeCGEffect({ namespaces: [extended] });
+						yield* loadNodeCGEffect({ namespaces: { composed: extended } });
 						expect(calls).toEqual(["base:setup", "extension:setup"]);
 					}),
 				);
@@ -272,7 +276,7 @@ describe("onLoad", () => {
 					},
 				);
 
-				const error = yield* loadNodeCGEffect({ namespaces: [stats] }).pipe(
+				const error = yield* loadNodeCGEffect({ namespaces: { stats } }).pipe(
 					Effect.flip,
 				);
 
@@ -286,11 +290,11 @@ describe("onLoad", () => {
 
 describe("duplicate namespaces", () => {
 	test(
-		"dies when the same namespace is listed twice",
+		"dies when the same namespace is listed under two keys",
 		testEffect(
 			Effect.gen(function* () {
 				const cause = yield* loadNodeCGEffect({
-					namespaces: [counter, counter],
+					namespaces: { first: counter, second: counter },
 				}).pipe(Effect.sandbox, Effect.flip);
 
 				const defect = Cause.dieOption(cause);
@@ -303,7 +307,7 @@ describe("duplicate namespaces", () => {
 });
 
 describe("loadNodeCG", () => {
-	test("seeds through the injected plain storage and serves use", async () => {
+	test("seeds through the injected plain storage and serves the handles", async () => {
 		const storage = {
 			read: vi.fn<ReplicantStorage["read"]>(
 				(namespace, name) => new ReplicantNotFound({ namespace, name }),
@@ -316,10 +320,10 @@ describe("loadNodeCG", () => {
 			flush: vi.fn<ReplicantStorage["flush"]>(() => Effect.void),
 		} satisfies ReplicantStorage;
 
-		const nodecg = await loadNodeCG({ namespaces: [settings], storage });
+		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
 
 		expect(storage.create).toHaveBeenCalledWith("settings", "multiplier", "3");
 		storage.read.mockReturnValue(Effect.succeed("4"));
-		expect(nodecg.use(settings).replicant.multiplier.get()).toBe(4);
+		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(4);
 	});
 });

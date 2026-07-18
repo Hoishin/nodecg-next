@@ -3,12 +3,7 @@ import { mapValues } from "@nodecg/internal/utils";
 import { Data, Effect, Exit, Runtime, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
-import {
-	asServer,
-	type BuiltNamespace,
-	buildFields,
-	requireLoaded,
-} from "./build-fields.ts";
+import { asServer, type BuiltNamespace, buildFields } from "./build-fields.ts";
 import type {
 	ComputedFieldEffectLambda,
 	ComputedFieldLambda,
@@ -20,7 +15,6 @@ import type {
 	TopicFieldLambda,
 } from "./field-lambdas.ts";
 import type {
-	ImplementedNamespace,
 	LoadedNamespace,
 	NamespaceOptions,
 	RpcShape,
@@ -156,15 +150,4 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 		)(built.rpc),
 	};
 	return loaded;
-});
-
-export const useNamespace = Effect.fn("useNamespace")(function* <
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
->(implemented: ImplementedNamespace<Replicant, Computed, Topic, Rpc>) {
-	yield* requireLoaded(implemented.manifest.namespace);
-	const fields = yield* buildFields(implemented.manifest, implemented.impl);
-	return yield* adaptNamespace(fields);
 });

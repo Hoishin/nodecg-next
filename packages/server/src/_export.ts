@@ -2,6 +2,7 @@ export {
 	loadNodeCGEffect,
 	loadNodeCG,
 	OnLoadFailed,
+	type LoadedNamespaces,
 	type LoadedNodeCG,
 	type LoadNodeCGOptions,
 	type StorageOption,
@@ -38,5 +39,4 @@ export {
 	type RpcComputedAccessor,
 	type RpcTopicAccessor,
 	type Subscribe,
-	type UseNamespace,
 } from "./implement-namespace.ts";

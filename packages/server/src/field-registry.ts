@@ -3,11 +3,19 @@ import { Effect } from "effect";
 import { type BuiltNamespace } from "./build-fields.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 
-type ReplicantFieldInternal =
-	BuiltNamespace["replicant"][string][typeof fieldInternal];
-type ComputedFieldInternal =
-	BuiltNamespace["computed"][string][typeof fieldInternal];
-type TopicFieldInternal = BuiltNamespace["topic"][string][typeof fieldInternal];
+// Exclude Decoded types
+type ReplicantFieldInternal = Pick<
+	BuiltNamespace["replicant"][string][typeof fieldInternal],
+	"getEncoded" | "setEncoded" | "subscribeEncoded" | "permission"
+>;
+type ComputedFieldInternal = Pick<
+	BuiltNamespace["computed"][string][typeof fieldInternal],
+	"getEncoded" | "getEncodedNoAuth" | "subscribeEncoded" | "permission"
+>;
+type TopicFieldInternal = Pick<
+	BuiltNamespace["topic"][string][typeof fieldInternal],
+	"publishEncoded" | "subscribeEncoded" | "permission"
+>;
 type RpcFieldInternal = BuiltNamespace["rpc"][string][typeof fieldInternal];
 
 export interface FieldRegistry {
@@ -25,7 +33,24 @@ export interface FieldRegistry {
 
 export interface RegisteredNamespace {
 	readonly namespace: string;
-	readonly fields: BuiltNamespace;
+	readonly fields: {
+		readonly replicant: Record<
+			string,
+			{ readonly [fieldInternal]: ReplicantFieldInternal }
+		>;
+		readonly computed: Record<
+			string,
+			{ readonly [fieldInternal]: ComputedFieldInternal }
+		>;
+		readonly topic: Record<
+			string,
+			{ readonly [fieldInternal]: TopicFieldInternal }
+		>;
+		readonly rpc: Record<
+			string,
+			{ readonly [fieldInternal]: RpcFieldInternal }
+		>;
+	};
 }
 
 export class FieldRegistryService extends Effect.Service<FieldRegistryService>()(

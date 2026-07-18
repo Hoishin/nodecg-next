@@ -4,13 +4,7 @@ import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { LoadedNamespacesService } from "./build-fields.ts";
-import {
-	adaptNamespace,
-	buildNamespace,
-	useNamespace,
-} from "./build-namespace.ts";
-import { implementNamespace } from "./implement-namespace.ts";
+import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
@@ -131,7 +125,7 @@ describe("adaptNamespace", () => {
 					request: Schema.NumberFromString,
 					response: Schema.NumberFromString,
 				},
-				permission: { write: { allow: ["everyone"] } },
+				permission: { write: { everyone: "allow" } },
 			},
 		},
 	});
@@ -176,46 +170,6 @@ describe("adaptNamespace", () => {
 					vi.waitFor(() => expect(received).toEqual([3, 8])),
 				);
 				yield* Effect.promise(() => cancel());
-			}),
-		),
-	);
-});
-
-describe("useNamespace", () => {
-	test(
-		"builds a plain handle over the shared store without re-seeding",
-		testInMemory(
-			Effect.gen(function* () {
-				const implemented = implementNamespace(countManifest, {
-					seedReplicant: { count: () => 5 },
-				});
-				const built = yield* buildNamespace(
-					implemented.manifest,
-					implemented.impl,
-				);
-				yield* built.replicant.count.set(9);
-
-				const handle = yield* useNamespace(implemented);
-
-				expect(handle.replicant.count.get()).toBe(9);
-			}),
-		),
-	);
-
-	test(
-		"fails NamespaceNotLoaded for a target outside the loaded set",
-		testInMemory(
-			Effect.gen(function* () {
-				const implemented = implementNamespace(countManifest, {
-					seedReplicant: { count: () => 5 },
-				});
-
-				const error = yield* useNamespace(implemented).pipe(
-					Effect.provideService(LoadedNamespacesService, new Set(["other"])),
-					Effect.flip,
-				);
-
-				expect(error._tag).toBe("NamespaceNotLoaded");
 			}),
 		),
 	);
