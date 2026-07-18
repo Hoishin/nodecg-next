@@ -228,4 +228,16 @@ describe("subscribe", () => {
 			}),
 		),
 	);
+
+	test(
+		"fails when the seed cannot be computed",
+		testGraph(
+			Effect.gen(function* () {
+				yield* initCount("boom");
+				const field = yield* build;
+				const error = yield* field.subscribe().pipe(Effect.flip);
+				expect(error._tag).toBe("ComputedComputeError");
+			}),
+		),
+	);
 });

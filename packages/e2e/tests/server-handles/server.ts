@@ -1,7 +1,7 @@
 import { fixture } from "../../src/server/namespaces.ts";
-import { startServer } from "../../src/server/start-server.ts";
+import { loadNodeCG } from "@nodecg/server";
 
-const nodecg = await startServer({ namespaces: { fixture } });
+const nodecg = await loadNodeCG({ namespaces: { fixture } });
 
 const { mirrorSource, mirror } = nodecg.namespaces.fixture.replicant;
 await mirrorSource.subscribe((value) => {

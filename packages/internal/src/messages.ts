@@ -31,7 +31,8 @@ export const SubscribeRejectedMessage = Schema.TaggedStruct(
 	"subscribe-rejected",
 	{
 		field: FieldIdentifierSchema,
-		reason: Schema.Literal("forbidden", "not-found"),
+		reason: Schema.Literal("forbidden", "not-found", "unavailable"),
+		message: Schema.optional(Schema.String),
 	},
 );
 export type SubscribeRejectedMessage = typeof SubscribeRejectedMessage.Type;

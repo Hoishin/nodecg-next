@@ -8,7 +8,6 @@ import {
 	signal,
 } from "@preact/signals-core";
 import {
-	Cause,
 	Data,
 	Effect,
 	Equal,
@@ -72,22 +71,8 @@ export class DerivationReadValueError extends Schema.TaggedError<DerivationReadV
 	override readonly message = `Reading value for "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
-const readSignal = <T>(
-	signal: ReadonlySignal<T>,
-	meta: {
-		namespace: string;
-		name: string;
-	},
-) =>
-	Effect.try({
-		try: () => signal.value,
-		catch: (cause) =>
-			new DerivationReadValueError({
-				namespace: meta.namespace,
-				name: meta.name,
-				cause: toError(cause),
-			}),
-	}).pipe(Effect.orDie);
+const readSignal = <T>(signal: ReadonlySignal<T>) =>
+	Effect.try(() => signal.value);
 
 export class DerivationSetValueError extends Schema.TaggedError<DerivationSetValueError>()(
 	"DerivationSetValueError",
@@ -197,10 +182,16 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					if (Option.isNone(existing)) {
 						return yield* new ReplicantNotFound2({ namespace, name });
 					}
-					const replicant = yield* readSignal(existing.value, {
-						namespace,
-						name,
-					});
+					const replicant = yield* readSignal(existing.value).pipe(
+						Effect.orDieWith(
+							(cause) =>
+								new DerivationReadValueError({
+									namespace,
+									name,
+									cause: toError(cause.error),
+								}),
+						),
+					);
 					return replicant.value;
 				},
 			);
@@ -213,10 +204,16 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					if (Option.isNone(existing)) {
 						return yield* new ReplicantNotFound2({ namespace, name });
 					}
-					const current = yield* readSignal(existing.value, {
-						namespace,
-						name,
-					});
+					const current = yield* readSignal(existing.value).pipe(
+						Effect.orDieWith(
+							(cause) =>
+								new DerivationReadValueError({
+									namespace,
+									name,
+									cause: toError(cause.error),
+								}),
+						),
+					);
 					const newReplicant = makeStoredValue(value);
 					if (
 						current.hash !== newReplicant.hash ||
@@ -279,12 +276,20 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					if (Option.isNone(existing)) {
 						return yield* new ComputedNotFound({ namespace, name });
 					}
-					const stored = yield* readSignal(existing.value, { namespace, name });
+					const stored = yield* readSignal(existing.value).pipe(
+						Effect.orDieWith(
+							(cause) =>
+								new DerivationReadValueError({
+									namespace,
+									name,
+									cause: toError(cause.error),
+								}),
+						),
+					);
 					return yield* stored; // Unwrap the Exit
 				},
 			);
 
-			// TODO: apply refactors to other methods
 			const subscribeComputed = Effect.fn("DerivationEngine.subscribeComputed")(
 				function* (namespace: string, name: string) {
 					const result = Option.getOrUndefined(
@@ -294,48 +299,44 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 						),
 					);
 					if (typeof result === "undefined") {
-						return yield* Effect.die(
-							new Error(`Computed "${namespace}/${name}" is not registered`),
-						);
+						return yield* new ComputedNotFound({ namespace, name });
 					}
 					const mailbox = yield* Mailbox.make<JsonValue>();
+					const readNode = Effect.gen(function* () {
+						const evaluation = yield* readSignal(result).pipe(
+							Effect.mapError(
+								(cause) =>
+									new ComputedComputeError({
+										namespace,
+										name,
+										cause: toError(cause.error),
+									}),
+							),
+						);
+						return yield* evaluation;
+					});
 					yield* Effect.acquireRelease(
 						Effect.sync(() =>
 							effect(() =>
 								Runtime.runSync(
 									runtime,
-									Effect.gen(function* () {
-										// Reading value can throw with circular dependencies
-										const evaluation = yield* Effect.try({
-											try: () => result.value,
-											catch: (cause) =>
-												new ComputedComputeError({
-													namespace,
-													name,
-													cause: toError(cause),
-												}),
-										});
-										yield* Exit.match(evaluation, {
-											onFailure: (cause) =>
-												Effect.logError(
-													`Failed to compute "${namespace}/${name}"`,
-													Cause.squash(cause),
-												),
-											onSuccess: (encoded) => mailbox.offer(encoded),
-										});
-									}).pipe(
-										Effect.catchTag("ComputedComputeError", (error) =>
+									readNode.pipe(
+										Effect.flatMap((encoded) => mailbox.offer(encoded)),
+										Effect.catchAll((error) =>
 											Effect.logError(
 												`Failed to compute "${namespace}/${name}"`,
 												error,
 											),
 										),
+										Effect.asVoid,
 									),
 								),
 							),
 						),
 						(dispose) => Effect.sync(dispose),
 					);
+					// Gate: reject the subscribe if the current value can't be produced.
+					yield* readNode;
 					return Mailbox.toStream(mailbox);
 				},
 			);

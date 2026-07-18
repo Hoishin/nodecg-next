@@ -3,13 +3,14 @@ import type { ServerMessage } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { effect } from "@preact/signals-core";
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect";
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { FieldCellsService } from "./field-cells.ts";
 import { isFailure, isPending, isReady, Ready } from "./loadable.ts";
 import {
 	FieldNotFound,
 	FieldPermissionDenied,
+	FieldUnavailable,
 } from "./services/field-transport/field-transport.ts";
 import {
 	type MessageChannel,
@@ -20,6 +21,9 @@ const namespace = defineNamespace("match", {
 	replicant: {
 		scoreLeft: { schema: Schema.NumberFromString },
 		scoreRight: { schema: Schema.NumberFromString },
+	},
+	computed: {
+		total: { schema: Schema.NumberFromString },
 	},
 });
 
@@ -216,6 +220,41 @@ describe("FieldCellsService", () => {
 				assert(isFailure(value));
 				expect(value.error).toBeInstanceOf(FieldNotFound);
 				dispose();
+			}),
+		),
+	);
+
+	test(
+		"fails the cell with FieldUnavailable when a computed subscribe is unavailable",
+		testEffect(
+			Effect.gen(function* () {
+				const { channel, pubsub, sent } = yield* makeFakeChannel;
+				const cells = yield* makeCells.pipe(
+					Effect.provideService(MessageChannelService, channel),
+				);
+				const cell = cells.computed("match", "total", namespace.computed.total);
+
+				const dispose = effect(() => void cell.signal.value);
+				onTestFinished(() => dispose());
+
+				yield* waitFor(() => {
+					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
+				});
+
+				yield* PubSub.publish(pubsub, {
+					_tag: "subscribe-rejected",
+					field: { type: "computed", namespace: "match", name: "total" },
+					reason: "unavailable",
+					message: "compute boom",
+				});
+
+				yield* waitFor(() => {
+					expect(isFailure(cell.peek())).toBe(true);
+				});
+				const value = cell.peek();
+				assert(isFailure(value));
+				expect(value.error).toBeInstanceOf(FieldUnavailable);
+				expect(value.error.message).toContain("compute boom");
 			}),
 		),
 	);

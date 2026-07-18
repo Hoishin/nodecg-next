@@ -16,10 +16,14 @@ import { Failure, type Loadable, Pending, Ready } from "./loadable.ts";
 import {
 	FieldNotFound,
 	FieldPermissionDenied,
+	FieldUnavailable,
 } from "./services/field-transport/field-transport.ts";
 import { MessageChannelService } from "./services/message-channel/message-channel.ts";
 
-export type FieldFailure = FieldNotFound | FieldPermissionDenied;
+export type FieldFailure =
+	| FieldNotFound
+	| FieldPermissionDenied
+	| FieldUnavailable;
 
 /**
  * Field read/write container on top of signal
@@ -64,7 +68,8 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 			interface CellHandlers {
 				readonly valueChange: (value: JsonValue) => Effect.Effect<void>;
 				readonly reject: (
-					reason: "forbidden" | "not-found",
+					reason: "forbidden" | "not-found" | "unavailable",
+					message: string | undefined,
 				) => Effect.Effect<void>;
 			}
 			const handlers = MutableHashMap.empty<FieldKey, CellHandlers>();
@@ -113,7 +118,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 								),
 							),
 						),
-					reject: (reason) =>
+					reject: (reason, message) =>
 						Effect.sync(() => {
 							if (!hot) {
 								return;
@@ -126,6 +131,10 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 								Match.when(
 									"forbidden",
 									() => new FieldPermissionDenied({ namespace, name }),
+								),
+								Match.when(
+									"unavailable",
+									() => new FieldUnavailable({ namespace, name, detail: message }),
 								),
 								Match.exhaustive,
 							);
@@ -184,7 +193,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 									MutableHashMap.get(handlers, fieldKey(rejected.field)),
 								);
 								if (handler) {
-									yield* handler.reject(rejected.reason);
+									yield* handler.reject(rejected.reason, rejected.message);
 								}
 							}),
 						),

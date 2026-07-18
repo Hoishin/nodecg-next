@@ -189,6 +189,38 @@ describe("subscribeComputed", () => {
 	);
 
 	test(
+		"fails the subscribe when the current value cannot be produced",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", 2);
+				yield* engine.initializeComputed("ns", "c", () =>
+					Effect.runSync(
+						Effect.gen(function* () {
+							const value = yield* engine
+								.readReplicant("ns", "a")
+								.pipe(Effect.orDie);
+							if (value === 2) {
+								return yield* new ComputedComputeError({
+									namespace: "ns",
+									name: "c",
+									cause: new Error("boom"),
+								});
+							}
+							return value;
+						}).pipe(Effect.exit),
+					),
+				);
+				const exit = yield* Effect.scoped(
+					engine.subscribeComputed("ns", "c"),
+				).pipe(Effect.exit);
+				assert(Exit.isFailure(exit));
+				expect(Cause.pretty(exit.cause)).toContain("boom");
+			}),
+		),
+	);
+
+	test(
 		"closing the subscription scope disarms the computed",
 		testEngine(
 			Effect.gen(function* () {
@@ -210,7 +242,7 @@ describe("subscribeComputed", () => {
 	);
 
 	test(
-		"dies for an unregistered computed",
+		"fails for an unregistered computed",
 		testEngine(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -218,7 +250,7 @@ describe("subscribeComputed", () => {
 					engine.subscribeComputed("ns", "missing"),
 				).pipe(Effect.exit);
 				assert(Exit.isFailure(exit));
-				expect(Cause.pretty(exit.cause)).toContain("is not registered");
+				expect(Cause.pretty(exit.cause)).toContain("does not exist");
 			}),
 		),
 	);

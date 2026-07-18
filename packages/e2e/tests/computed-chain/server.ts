@@ -1,6 +1,7 @@
-import { chain, cross, extended } from "../../src/server/namespaces.ts";
-import { startServer } from "../../src/server/start-server.ts";
+import { loadNodeCG } from "@nodecg/server";
 
-const nodecg = await startServer({ namespaces: { chain, cross, extended } });
+import { chain, cross, extended } from "../../src/server/namespaces.ts";
+
+const nodecg = await loadNodeCG({ namespaces: { chain, cross, extended } });
 
 nodecg.start();

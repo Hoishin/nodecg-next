@@ -10,6 +10,7 @@ import {
 	Layer,
 	Logger,
 	ManagedRuntime,
+	Runtime,
 	type Scope,
 } from "effect";
 
@@ -179,7 +180,9 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			| BuiltNamespaceRegistry
 		>();
 		const engine = yield* DerivationEngineService;
-		const useCross = makeUseCross(runtime);
+		const useCross = <S extends BaseNamespaceShape>(
+			implemented: ImplementedNamespace<S>,
+		) => Runtime.runSync(runtime, makeUseCross(implemented));
 
 		const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 			Target,

@@ -17,6 +17,16 @@ export class FieldPermissionDenied extends Data.TaggedError(
 	override readonly message = `Permission denied for "${this.name}" in "${this.namespace}"`;
 }
 
+export class FieldUnavailable extends Data.TaggedError("FieldUnavailable")<{
+	namespace: string;
+	name: string;
+	detail?: string;
+}> {
+	override readonly message = `Field "${this.name}" in "${this.namespace}" is currently unavailable${
+		typeof this.detail === "undefined" ? "" : `: ${this.detail}`
+	}`;
+}
+
 export class FieldGetFailed extends Data.TaggedError("FieldGetFailed")<{
 	namespace: string;
 	name: string;

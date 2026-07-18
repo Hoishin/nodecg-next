@@ -45,12 +45,10 @@ import type {
 import type {
 	BaseNamespaceShape,
 	ComputeContext,
-	ComputeContextUse,
 	ImplementedNamespace,
 	NamespaceOptions,
 	RpcContext,
 	RpcShape,
-	UseCrossNamespace,
 	WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
@@ -121,47 +119,44 @@ export const requireLoaded = (namespace: string) =>
 		}
 	});
 
-type FieldOpsRuntime = Runtime.Runtime<
+type FieldOps =
 	| ReplicantStorageService
 	| TopicBrokerService
 	| DerivationEngineService
-	| BuiltNamespaceRegistry
->;
+	| BuiltNamespaceRegistry;
 
-const makeComputeUse =
-	(runtime: FieldOpsRuntime): ComputeContextUse =>
-	<S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) => {
-		return Runtime.runSync(
-			runtime,
-			Effect.gen(function* () {
-				yield* requireLoaded(implemented.manifest.namespace);
-				const registry = yield* BuiltNamespaceRegistry;
-				const fields = yield* registry.lookup(implemented);
+type FieldOpsRuntime = Runtime.Runtime<FieldOps>;
 
-				return {
-					replicant: mapValues<
-						ReplicantFieldEffectLambda,
-						CrossFieldReadLambda
-					>((field) => ({
-						get: () =>
-							Runtime.runSync(
-								runtime,
-								field[fieldInternal].get().pipe(asServer),
-							),
-					}))(fields.replicant),
-					computed: mapValues<ComputedFieldEffectLambda, CrossFieldReadLambda>(
-						(field) => ({
-							get: () =>
-								Runtime.runSync(
-									runtime,
-									field[fieldInternal].get().pipe(asServer),
-								),
-						}),
-					)(fields.computed),
-				};
-			}),
-		);
-	};
+const lookupLoaded = <S extends BaseNamespaceShape>(
+	implemented: ImplementedNamespace<S>,
+) =>
+	Effect.gen(function* () {
+		yield* requireLoaded(implemented.manifest.namespace);
+		const registry = yield* BuiltNamespaceRegistry;
+		return yield* registry.lookup(implemented);
+	});
+
+const makeComputeUse = <S extends BaseNamespaceShape>(
+	implemented: ImplementedNamespace<S>,
+) =>
+	Effect.gen(function* () {
+		const fields = yield* lookupLoaded(implemented);
+		const runtime = yield* Effect.runtime<FieldOps>();
+		return {
+			replicant: mapValues<ReplicantFieldEffectLambda, CrossFieldReadLambda>(
+				(field) => ({
+					get: () =>
+						Runtime.runSync(runtime, field[fieldInternal].get().pipe(asServer)),
+				}),
+			)(fields.replicant),
+			computed: mapValues<ComputedFieldEffectLambda, CrossFieldReadLambda>(
+				(field) => ({
+					get: () =>
+						Runtime.runSync(runtime, field[fieldInternal].get().pipe(asServer)),
+				}),
+			)(fields.computed),
+		};
+	});
 
 const fieldAccessors =
 	(runtime: FieldOpsRuntime) =>
@@ -203,17 +198,12 @@ const fieldAccessors =
 		)(fields.topic),
 	});
 
-export const makeUseCross =
-	(runtime: FieldOpsRuntime): UseCrossNamespace =>
-	<S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) => {
-		const fields = Runtime.runSync(
-			runtime,
-			Effect.gen(function* () {
-				yield* requireLoaded(implemented.manifest.namespace);
-				const registry = yield* BuiltNamespaceRegistry;
-				return yield* registry.lookup(implemented);
-			}),
-		);
+export const makeUseCross = <S extends BaseNamespaceShape>(
+	implemented: ImplementedNamespace<S>,
+) =>
+	Effect.gen(function* () {
+		const fields = yield* lookupLoaded(implemented);
+		const runtime = yield* Effect.runtime<FieldOps>();
 		return {
 			...fieldAccessors(runtime)(fields),
 			rpc: mapValues<RpcFieldEffectLambda, RpcFieldLambda>(
@@ -221,7 +211,7 @@ export const makeUseCross =
 					Runtime.runPromise(runtime, field.call(request).pipe(asServer)),
 			)(fields.rpc),
 		};
-	};
+	});
 
 export const buildFields = Effect.fn("buildFields")(function* <
 	Replicant extends Record<string, unknown>,
@@ -271,7 +261,8 @@ export const buildFields = Effect.fn("buildFields")(function* <
 			}
 			return ownComputedAccessors;
 		},
-		use: makeComputeUse(runtime),
+		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
+			Runtime.runSync(runtime, makeComputeUse(implemented)),
 	};
 
 	const computed = yield* zipEffectValues<
@@ -316,7 +307,8 @@ export const buildFields = Effect.fn("buildFields")(function* <
 
 	const rpcContext: RpcContext<Replicant, Computed, Topic> = {
 		...fieldAccessors(runtime)({ replicant, computed, topic }),
-		use: makeUseCross(runtime),
+		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
+			Runtime.runSync(runtime, makeUseCross(implemented)),
 	};
 
 	const rpc = yield* zipEffectValues<

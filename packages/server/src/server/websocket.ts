@@ -127,13 +127,35 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 							);
 							return list;
 						}
+						const rejectUnavailable = (error: { readonly message: string }) =>
+							send(
+								SubscribeRejectedMessage.make({
+									field,
+									reason: "unavailable",
+									message: error.message,
+								}),
+							);
 						const fiber = yield* Effect.forkScoped(
 							Effect.gen(function* () {
 								const stream = yield* internal.subscribeEncoded();
 								yield* Stream.runForEach(stream, (value) =>
 									publish(field, value),
 								);
-							}).pipe(Effect.scoped),
+							}).pipe(
+								Effect.scoped,
+								Effect.catchTags({
+									ComputedComputeError: rejectUnavailable,
+									ReplicantNotFound: rejectUnavailable,
+									FieldEncodeError: rejectUnavailable,
+									ComputedNotFound: () =>
+										send(
+											SubscribeRejectedMessage.make({
+												field,
+												reason: "not-found",
+											}),
+										),
+								}),
+							),
 						);
 						return [...list, { field, fiber }];
 					}),
