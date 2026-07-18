@@ -214,6 +214,56 @@ describe("refreshApiKey", () => {
 	);
 });
 
+describe("setRoles", () => {
+	test(
+		"replaces the whole set and surfaces it on the client",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				yield* machines.grantRole(created.id, RoleName("viewer"));
+				const result = yield* machines.setRoles(
+					created.id,
+					new Set([RoleName("judge")]),
+				);
+				assert(Option.isSome(result));
+				expect(result.value).toEqual(new Set([RoleName("judge")]));
+				const resolved = yield* machines.validateApiKey(
+					Redacted.value(created.token),
+				);
+				assert(Option.isSome(resolved));
+				expect(resolved.value.roles).toEqual(new Set([RoleName("judge")]));
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"an empty set clears every role",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				const created = yield* machines.createApiKey({ displayName: "Bot" });
+				yield* machines.grantRole(created.id, RoleName("viewer"));
+				const result = yield* machines.setRoles(created.id, new Set());
+				assert(Option.isSome(result));
+				expect(result.value).toEqual(new Set());
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+
+	test(
+		"returns None for an unknown id",
+		testEffect(
+			Effect.gen(function* () {
+				const machines = yield* MachineClientStoreService;
+				expect(
+					yield* machines.setRoles("ghost", new Set([RoleName("viewer")])),
+				).toEqual(Option.none());
+			}).pipe(Effect.provide(InMemoryMachineClientStore)),
+		),
+	);
+});
+
 describe("grantRole / revokeRole", () => {
 	test(
 		"accumulates granted roles and surfaces them on the client",

@@ -2,13 +2,22 @@ import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg/core";
 import {
 	HumanAuthenticationMiddleware,
+	AnonymousIdentitySchema,
 	CurrentIdentity,
 	HumanIdentitySchema,
 	type Identity,
 	ADMIN_ROLE,
 	RoleName,
 } from "@nodecg/internal";
-import { Effect, HashMap, Layer, Schema, Stream } from "effect";
+import {
+	ConfigProvider,
+	Effect,
+	HashMap,
+	Layer,
+	Redacted,
+	Schema,
+	Stream,
+} from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -40,10 +49,8 @@ type ReplicantStub = BuiltNamespace["replicant"][string];
 type Internal = ReplicantStub[typeof fieldInternal];
 
 const openPermission: ResolvedPermission = {
-	read: new Set(),
-	write: new Set(),
-	readDenied: new Set(),
-	writeDenied: new Set(),
+	read: { roles: new Set(), rolesDenied: new Set() },
+	write: { roles: new Set(), rolesDenied: new Set() },
 	canRead: () => true,
 	canWrite: () => true,
 };
@@ -131,7 +138,7 @@ function registeredNamespace(
 	topic: BuiltNamespace["topic"] = {},
 	rpc: BuiltNamespace["rpc"] = {},
 ): RegisteredNamespace {
-	return { namespace, fields: { namespace, replicant, computed, topic, rpc } };
+	return { namespace, fields: { replicant, computed, topic, rpc } };
 }
 
 const asIdentity = (identity: Identity) =>
@@ -142,6 +149,7 @@ const asIdentity = (identity: Identity) =>
 function webHandler(
 	namespaces: ReadonlyArray<RegisteredNamespace>,
 	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
+	environment: Layer.Layer<never> = Layer.empty,
 ) {
 	const { handler } = HttpApiBuilder.toWebHandler(
 		Layer.mergeAll(RootApiLive, HttpServer.layerContext).pipe(
@@ -160,6 +168,7 @@ function webHandler(
 					HashMap.empty<string, AuthProvider>(),
 				),
 			),
+			Layer.provide(environment),
 		),
 	);
 	return handler;
@@ -252,6 +261,449 @@ describe("roles", () => {
 		);
 		expect((await handler(rolesRequest("grant", "admin"))).status).toBe(403);
 		expect((await handler(rolesRequest("grant", "server"))).status).toBe(403);
+	});
+});
+
+describe("claim superadmin", () => {
+	const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
+	const claimRequest = (token: string) => postRequest(claimUrl, { token });
+
+	const human = asIdentity(
+		HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "founder", displayName: "Founder" },
+			roles: new Set(),
+		}),
+	);
+
+	const withClaimToken = Layer.setConfigProvider(
+		ConfigProvider.fromMap(
+			new Map([["SUPERADMIN_CLAIM_TOKEN", "super-secret-claim-token"]]),
+		),
+	);
+
+	test("grants superadmin to the logged-in human presenting the token", async () => {
+		const handler = webHandler([], human, withClaimToken);
+		const res = await handler(claimRequest("super-secret-claim-token"));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ roles: ["superadmin"] });
+	});
+
+	test("403 for a wrong token, without closing the window", async () => {
+		const handler = webHandler([], human, withClaimToken);
+		expect(
+			(await handler(claimRequest("wrong-token-of-real-length"))).status,
+		).toBe(403);
+		expect(
+			(await handler(claimRequest("super-secret-claim-token"))).status,
+		).toBe(200);
+	});
+
+	test("403 for an anonymous caller", async () => {
+		const handler = webHandler([], undefined, withClaimToken);
+		expect(
+			(await handler(claimRequest("super-secret-claim-token"))).status,
+		).toBe(403);
+	});
+
+	test("403 when no claim token is configured", async () => {
+		const handler = webHandler([], human);
+		expect(
+			(await handler(claimRequest("super-secret-claim-token"))).status,
+		).toBe(403);
+	});
+
+	test("the first successful claim closes the window", async () => {
+		const handler = webHandler([], human, withClaimToken);
+		expect(
+			(await handler(claimRequest("super-secret-claim-token"))).status,
+		).toBe(200);
+		expect(
+			(await handler(claimRequest("super-secret-claim-token"))).status,
+		).toBe(403);
+	});
+
+	test("429 after too many attempts in the window", async () => {
+		const handler = webHandler([], human, withClaimToken);
+		for (let attempt = 0; attempt < 5; attempt++) {
+			expect(
+				(await handler(claimRequest("wrong-token-of-real-length"))).status,
+			).toBe(403);
+		}
+		expect(
+			(await handler(claimRequest("super-secret-claim-token"))).status,
+		).toBe(429);
+	});
+
+	test("an anonymous flood does not consume the claim budget", async () => {
+		const bySid = Layer.succeed(HumanAuthenticationMiddleware, {
+			cookie: (sid: Redacted.Redacted<string>) =>
+				Effect.succeed(
+					Redacted.value(sid) === "founder"
+						? HumanIdentitySchema.make({
+								account: {
+									issuer: "dev",
+									subject: "founder",
+									displayName: "Founder",
+								},
+								roles: new Set(),
+							})
+						: AnonymousIdentitySchema.make(),
+				),
+		});
+		const handler = webHandler([], bySid, withClaimToken);
+		const withSid = (request: Request, sid: string) => {
+			request.headers.set("cookie", `nodecg.sid=${sid}`);
+			return request;
+		};
+		for (let attempt = 0; attempt < 10; attempt++) {
+			expect(
+				(await handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(403);
+		}
+		expect(
+			(
+				await handler(
+					withSid(claimRequest("super-secret-claim-token"), "founder"),
+				)
+			).status,
+		).toBe(200);
+	});
+});
+
+describe("roles export/import", () => {
+	const founderIdentity = HumanIdentitySchema.make({
+		account: { issuer: "dev", subject: "founder", displayName: "Founder" },
+		roles: new Set(),
+	});
+	const adminIdentity = HumanIdentitySchema.make({
+		account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+		roles: new Set([ADMIN_ROLE.admin]),
+	});
+	const admin = asIdentity(adminIdentity);
+
+	const identityBySubject = (identities: Record<string, Identity>) =>
+		Layer.succeed(HumanAuthenticationMiddleware, {
+			cookie: (sid: Redacted.Redacted<string>) =>
+				Effect.succeed(
+					identities[Redacted.value(sid)] ?? AnonymousIdentitySchema.make(),
+				),
+		});
+
+	// The admin tier can only enter the store by claim or seed — grant and import both refuse it.
+	const tiered = identityBySubject({
+		founder: founderIdentity,
+		boss: adminIdentity,
+	});
+
+	const withClaimToken = Layer.setConfigProvider(
+		ConfigProvider.fromMap(
+			new Map([["SUPERADMIN_CLAIM_TOKEN", "super-secret-claim-token"]]),
+		),
+	);
+
+	const claimRequest = () =>
+		postRequest("http://x/api/internal/authentication/claim-superadmin", {
+			token: "super-secret-claim-token",
+		});
+
+	const withSid = (request: Request, sid: string) => {
+		request.headers.set("cookie", `nodecg.sid=${sid}`);
+		return request;
+	};
+
+	const exportRequest = () => new Request("http://x/api/internal/roles/export");
+
+	const importRequest = (
+		mode: "replace" | "merge",
+		assignments: ReadonlyArray<unknown>,
+	) =>
+		postRequest("http://x/api/internal/roles/import", {
+			mode,
+			document: { version: 0, assignments },
+		});
+
+	const grantRequest = (subject: string, role: string) =>
+		postRequest("http://x/api/internal/roles/grant", {
+			issuer: "dev",
+			subject,
+			role,
+		});
+
+	const createMachineRequest = (displayName: string) =>
+		postRequest("http://x/api/internal/machines", { displayName });
+
+	const machineRoleRequest = (id: string, role: string) =>
+		postRequest(`http://x/api/internal/machines/${id}/roles`, { role });
+
+	const listMachinesRequest = () =>
+		new Request("http://x/api/internal/machines");
+
+	const decodeId = Schema.decodeUnknownSync(
+		Schema.Struct({ id: Schema.String }),
+	);
+
+	const decodeRoles = Schema.decodeUnknownSync(
+		Schema.Struct({ roles: Schema.Array(Schema.String) }),
+	);
+
+	test("403 for an anonymous caller", async () => {
+		const handler = webHandler([]);
+		expect((await handler(exportRequest())).status).toBe(403);
+		expect((await handler(importRequest("merge", []))).status).toBe(403);
+	});
+
+	test("exports human and machine assignments for an admin", async () => {
+		const handler = webHandler([], admin);
+		await handler(grantRequest("operator", "producer"));
+		const { id } = decodeId(
+			await (await handler(createMachineRequest("scoreboard"))).json(),
+		);
+		await handler(machineRoleRequest(id, "viewer"));
+		await handler(createMachineRequest("idle"));
+		const res = await handler(exportRequest());
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			version: 0,
+			assignments: [
+				{
+					_tag: "human",
+					issuer: "dev",
+					subject: "operator",
+					roles: ["producer"],
+				},
+				{ _tag: "machine", id, roles: ["viewer"] },
+			],
+		});
+	});
+
+	test("merge adds roles to the named identities and leaves others alone", async () => {
+		const handler = webHandler([], admin);
+		await handler(grantRequest("operator", "producer"));
+		await handler(grantRequest("other", "judge"));
+		const res = await handler(
+			importRequest("merge", [
+				{
+					_tag: "human",
+					issuer: "dev",
+					subject: "operator",
+					roles: ["viewer"],
+				},
+			]),
+		);
+		expect(res.status).toBe(204);
+		const doc = Schema.decodeUnknownSync(
+			Schema.Struct({
+				assignments: Schema.Array(
+					Schema.Struct({
+						issuer: Schema.String,
+						subject: Schema.String,
+						roles: Schema.Array(Schema.String),
+					}),
+				),
+			}),
+		)(await (await handler(exportRequest())).json());
+		expect(doc.assignments).toHaveLength(2);
+		const operator = doc.assignments.find((a) => a.subject === "operator");
+		const other = doc.assignments.find((a) => a.subject === "other");
+		expect(operator?.roles).toHaveLength(2);
+		expect(operator?.roles).toEqual(
+			expect.arrayContaining(["producer", "viewer"]),
+		);
+		expect(other?.roles).toEqual(["judge"]);
+	});
+
+	test("replace overwrites the whole store", async () => {
+		const handler = webHandler([], admin);
+		await handler(grantRequest("operator", "producer"));
+		await handler(grantRequest("other", "judge"));
+		const res = await handler(
+			importRequest("replace", [
+				{
+					_tag: "human",
+					issuer: "dev",
+					subject: "operator",
+					roles: ["viewer"],
+				},
+			]),
+		);
+		expect(res.status).toBe(204);
+		expect(await (await handler(exportRequest())).json()).toEqual({
+			version: 0,
+			assignments: [
+				{
+					_tag: "human",
+					issuer: "dev",
+					subject: "operator",
+					roles: ["viewer"],
+				},
+			],
+		});
+	});
+
+	test("replace clears roles of machines absent from the document", async () => {
+		const handler = webHandler([], admin);
+		const { id } = decodeId(
+			await (await handler(createMachineRequest("scoreboard"))).json(),
+		);
+		await handler(machineRoleRequest(id, "viewer"));
+		expect((await handler(importRequest("replace", []))).status).toBe(204);
+		expect(await (await handler(listMachinesRequest())).json()).toEqual({
+			machines: [{ id, displayName: "scoreboard", roles: [] }],
+		});
+	});
+
+	test("excludes the admin tier from the export", async () => {
+		const handler = webHandler([], tiered, withClaimToken);
+		expect((await handler(withSid(claimRequest(), "founder"))).status).toBe(
+			200,
+		);
+		await handler(withSid(grantRequest("founder", "producer"), "boss"));
+		expect(
+			await (await handler(withSid(exportRequest(), "boss"))).json(),
+		).toEqual({
+			version: 0,
+			assignments: [
+				{
+					_tag: "human",
+					issuer: "dev",
+					subject: "founder",
+					roles: ["producer"],
+				},
+			],
+		});
+	});
+
+	test("merge keeps an admin tier the document does not mention", async () => {
+		const handler = webHandler([], tiered, withClaimToken);
+		await handler(withSid(claimRequest(), "founder"));
+		expect(
+			(
+				await handler(
+					withSid(
+						importRequest("merge", [
+							{
+								_tag: "human",
+								issuer: "dev",
+								subject: "founder",
+								roles: ["viewer"],
+							},
+						]),
+						"boss",
+					),
+				)
+			).status,
+		).toBe(204);
+		const { roles } = decodeRoles(
+			await (
+				await handler(withSid(grantRequest("founder", "judge"), "boss"))
+			).json(),
+		);
+		expect(roles).toHaveLength(3);
+		expect(roles).toEqual(
+			expect.arrayContaining(["superadmin", "viewer", "judge"]),
+		);
+	});
+
+	test("replace keeps the admin tier of an identity absent from the document", async () => {
+		const handler = webHandler([], tiered, withClaimToken);
+		await handler(withSid(claimRequest(), "founder"));
+		await handler(withSid(grantRequest("founder", "producer"), "boss"));
+		expect(
+			(await handler(withSid(importRequest("replace", []), "boss"))).status,
+		).toBe(204);
+		const { roles } = decodeRoles(
+			await (
+				await handler(withSid(grantRequest("founder", "judge"), "boss"))
+			).json(),
+		);
+		expect(roles).toEqual(["superadmin", "judge"]);
+	});
+
+	test("400 for an admin-tier role on a human entry", async () => {
+		const handler = webHandler([], admin);
+		expect(
+			(
+				await handler(
+					importRequest("merge", [
+						{
+							_tag: "human",
+							issuer: "dev",
+							subject: "operator",
+							roles: ["admin"],
+						},
+					]),
+				)
+			).status,
+		).toBe(400);
+	});
+
+	test("400 for a principal role on a human entry", async () => {
+		const handler = webHandler([], admin);
+		expect(
+			(
+				await handler(
+					importRequest("merge", [
+						{
+							_tag: "human",
+							issuer: "dev",
+							subject: "operator",
+							roles: ["server"],
+						},
+					]),
+				)
+			).status,
+		).toBe(400);
+	});
+
+	test("400 for a reserved role on a machine entry", async () => {
+		const handler = webHandler([], admin);
+		expect(
+			(
+				await handler(
+					importRequest("merge", [
+						{ _tag: "machine", id: "anything", roles: ["admin"] },
+					]),
+				)
+			).status,
+		).toBe(400);
+	});
+
+	test("400 with a detail message for an unknown machine id", async () => {
+		const handler = webHandler([], admin);
+		const res = await handler(
+			importRequest("merge", [
+				{ _tag: "machine", id: "ghost", roles: ["viewer"] },
+			]),
+		);
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			_tag: "RoleImportError",
+			message: 'unknown machine id "ghost"',
+		});
+	});
+
+	test("400 for duplicate entries for one identity", async () => {
+		const handler = webHandler([], admin);
+		expect(
+			(
+				await handler(
+					importRequest("merge", [
+						{
+							_tag: "human",
+							issuer: "dev",
+							subject: "operator",
+							roles: ["viewer"],
+						},
+						{
+							_tag: "human",
+							issuer: "dev",
+							subject: "operator",
+							roles: ["judge"],
+						},
+					]),
+				)
+			).status,
+		).toBe(400);
 	});
 });
 

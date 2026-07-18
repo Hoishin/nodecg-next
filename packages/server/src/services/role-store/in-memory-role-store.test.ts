@@ -22,6 +22,83 @@ describe("get", () => {
 	);
 });
 
+describe("list", () => {
+	test(
+		"returns every assignment with its identity key",
+		testEffect(
+			Effect.gen(function* () {
+				const roles = yield* RoleStoreService;
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				yield* roles.grant(alice, ADMIN_ROLE.admin);
+				yield* roles.grant(bob, ADMIN_ROLE.admin);
+				const assignments = yield* roles.list();
+				expect(assignments).toHaveLength(2);
+				expect(assignments).toEqual(
+					expect.arrayContaining([
+						{
+							key: alice,
+							roles: new Set([ADMIN_ROLE.superadmin, ADMIN_ROLE.admin]),
+						},
+						{ key: bob, roles: new Set([ADMIN_ROLE.admin]) },
+					]),
+				);
+			}).pipe(Effect.provide(InMemoryRoleStore)),
+		),
+	);
+
+	test(
+		"is empty initially and after the last role is revoked",
+		testEffect(
+			Effect.gen(function* () {
+				const roles = yield* RoleStoreService;
+				expect(yield* roles.list()).toEqual([]);
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				yield* roles.revoke(alice, ADMIN_ROLE.superadmin);
+				expect(yield* roles.list()).toEqual([]);
+			}).pipe(Effect.provide(InMemoryRoleStore)),
+		),
+	);
+});
+
+describe("set", () => {
+	test(
+		"replaces the identity's whole role set",
+		testEffect(
+			Effect.gen(function* () {
+				const roles = yield* RoleStoreService;
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				yield* roles.set(alice, new Set([ADMIN_ROLE.admin]));
+				expect(yield* roles.get(alice)).toEqual(new Set([ADMIN_ROLE.admin]));
+			}).pipe(Effect.provide(InMemoryRoleStore)),
+		),
+	);
+
+	test(
+		"an empty set clears the identity from the listing",
+		testEffect(
+			Effect.gen(function* () {
+				const roles = yield* RoleStoreService;
+				yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+				yield* roles.set(alice, new Set());
+				expect(yield* roles.get(alice)).toEqual(new Set());
+				expect(yield* roles.list()).toEqual([]);
+			}).pipe(Effect.provide(InMemoryRoleStore)),
+		),
+	);
+
+	test(
+		"leaves other identities alone",
+		testEffect(
+			Effect.gen(function* () {
+				const roles = yield* RoleStoreService;
+				yield* roles.grant(bob, ADMIN_ROLE.admin);
+				yield* roles.set(alice, new Set([ADMIN_ROLE.superadmin]));
+				expect(yield* roles.get(bob)).toEqual(new Set([ADMIN_ROLE.admin]));
+			}).pipe(Effect.provide(InMemoryRoleStore)),
+		),
+	);
+});
+
 describe("grant", () => {
 	test(
 		"adds a role and returns the resulting set",

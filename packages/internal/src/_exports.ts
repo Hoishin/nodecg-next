@@ -1,5 +1,13 @@
 export { RpcCallError } from "./api/shared.ts";
-export { InternalApi } from "./api/api-internal.ts";
+export {
+	HumanAssignmentSchema,
+	InternalApi,
+	MachineAssignmentSchema,
+	type RoleAssignmentsDocument,
+	RoleAssignmentsDocumentSchema,
+	RoleImportError,
+	TooManyRequests,
+} from "./api/api-internal.ts";
 export { PublicApi } from "./api/api-v0.ts";
 export {
 	HumanAuthenticationMiddleware,
@@ -30,6 +38,7 @@ export {
 	Principal,
 	PRINCIPAL,
 	PRINCIPAL_BY_NAME,
+	PrincipalNameSchema,
 	type PrincipalName,
 } from "./principal.ts";
 export {

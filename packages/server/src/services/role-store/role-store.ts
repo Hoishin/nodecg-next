@@ -6,8 +6,20 @@ export interface IdentityKey {
 	readonly subject: string;
 }
 
+export interface RoleAssignment {
+	readonly key: IdentityKey;
+	readonly roles: ReadonlySet<RoleName>;
+}
+
 export interface RoleStore {
 	readonly get: (key: IdentityKey) => Effect.Effect<ReadonlySet<RoleName>>;
+
+	readonly list: () => Effect.Effect<ReadonlyArray<RoleAssignment>>;
+
+	readonly set: (
+		key: IdentityKey,
+		roles: ReadonlySet<RoleName>,
+	) => Effect.Effect<void>;
 
 	readonly grant: (
 		key: IdentityKey,

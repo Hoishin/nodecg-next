@@ -1,21 +1,45 @@
 import { ADMIN_ROLE } from "@nodecg/internal";
-import { Effect, Layer } from "effect";
+import { Effect, HashMap, Layer, Option } from "effect";
 
+import { AuthProviderRegistry } from "./auth/auth-provider.ts";
+import { config } from "./server-config.ts";
 import { InMemoryRoleStore } from "./services/role-store/in-memory-role-store.ts";
 import { RoleStoreService } from "./services/role-store/role-store.ts";
 
-// TODO: remove this once we have superadmin seeding
-export const seededRoleStore = (
-	superadmins: ReadonlyArray<{
-		readonly issuer: string;
-		readonly subject: string;
-	}>,
-) =>
-	Layer.effectDiscard(
-		Effect.gen(function* () {
-			const roleStore = yield* RoleStoreService;
-			yield* Effect.forEach(superadmins, ({ issuer, subject }) =>
-				roleStore.grant({ issuer, subject }, ADMIN_ROLE.superadmin),
+export const seedSuperadmins = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const superadmins = yield* config.superadmins;
+		if (Option.isNone(superadmins)) {
+			return;
+		}
+		const roleStore = yield* RoleStoreService;
+		const assignments = yield* roleStore.list();
+		if (assignments.some(({ roles }) => roles.has(ADMIN_ROLE.superadmin))) {
+			yield* Effect.logInfo(
+				"Skipping SUPERADMINS seeding: a superadmin already exists",
 			);
-		}),
-	).pipe(Layer.provideMerge(InMemoryRoleStore));
+			return;
+		}
+		const registry = yield* AuthProviderRegistry;
+		yield* Effect.forEach(superadmins.value, ({ provider: name, subject }) =>
+			Effect.gen(function* () {
+				const provider = HashMap.get(registry, name);
+				if (Option.isNone(provider)) {
+					return yield* Effect.die(
+						new Error(
+							`SUPERADMINS entry "${name}:${subject}" names an unknown authentication provider`,
+						),
+					);
+				}
+				yield* roleStore.grant(
+					{ issuer: provider.value.issuer, subject },
+					ADMIN_ROLE.superadmin,
+				);
+			}),
+		);
+	}),
+);
+
+export const seededRoleStore = seedSuperadmins.pipe(
+	Layer.provideMerge(InMemoryRoleStore),
+);

@@ -30,6 +30,11 @@ export interface MachineClientStore {
 		id: string,
 	) => Effect.Effect<Option.Option<CreatedApiKey>>;
 
+	readonly setRoles: (
+		id: string,
+		roles: ReadonlySet<RoleName>,
+	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
+
 	readonly grantRole: (
 		id: string,
 		role: RoleName,

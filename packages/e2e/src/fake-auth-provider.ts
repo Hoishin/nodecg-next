@@ -16,6 +16,7 @@ export const makeFakeAuthProvider = (
 	const identities = new Map(seeded.map((identity) => [identity.id, identity]));
 	return {
 		name,
+		issuer: name,
 		authorize: (input) =>
 			Effect.sync(() => {
 				const id = input.searchParams.get("as") ?? seeded[0]?.id ?? "";

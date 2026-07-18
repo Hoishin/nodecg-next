@@ -68,6 +68,8 @@ const cross = implementNamespace(crossManifest, {
 	},
 });
 
+process.env["SUPERADMINS"] = "dev:root";
+
 const nodecg = await loadNodeCG({
 	// `cross` listed before the namespace its computed reads, so build order must not matter
 	namespaces: [cross, fixture, extended],

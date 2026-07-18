@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import {
 	Cookies,
 	HttpApiBuilder,
@@ -7,12 +9,20 @@ import {
 } from "@effect/platform";
 import { isAdminTier } from "@nodecg/core";
 import {
+	ADMIN_ROLE,
 	CurrentIdentity,
+	HumanAssignmentSchema,
 	isUndeclarableRole,
+	MachineAssignmentSchema,
+	type RoleAssignmentsDocument,
+	RoleImportError,
+	type RoleName,
 	sessionCookieName,
 	sessionCookieSecurity,
+	TooManyRequests,
 } from "@nodecg/internal";
 import {
+	Clock,
 	type Duration,
 	Effect,
 	Either,
@@ -20,6 +30,8 @@ import {
 	Layer,
 	Match,
 	Option,
+	Redacted,
+	Ref,
 } from "effect";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
@@ -72,6 +84,20 @@ const setSessionCookie = (value: string, maxAge: Duration.DurationInput) =>
 const callbackUri = (origin: string, provider: string) =>
 	`${origin}/api/internal/authentication/callback/${provider}`;
 
+const digest = (value: string) => createHash("sha256").update(value).digest();
+
+const tokenEquals = (
+	expected: Redacted.Redacted<string>,
+	provided: Redacted.Redacted<string>,
+) =>
+	timingSafeEqual(
+		digest(Redacted.value(expected)),
+		digest(Redacted.value(provided)),
+	);
+
+const CLAIM_ATTEMPT_LIMIT = 5;
+const CLAIM_ATTEMPT_WINDOW_MILLIS = 60_000;
+
 const AuthenticationGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"Authentication",
@@ -82,6 +108,13 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 			const registry = yield* AuthProviderRegistry;
 			const sessions = yield* SessionStoreService;
 			const stashes = yield* StashStoreService;
+			const roleStore = yield* RoleStoreService;
+
+			// superadmin claim resources
+			const claimToken = yield* config.superadminClaimToken;
+			const claimLock = yield* Effect.makeSemaphore(1);
+			// Rate limiting is global on purpose to avoid attacker to abuse IdP issued tokens
+			const claimAttempts = yield* Ref.make<ReadonlyArray<number>>([]);
 
 			return handlers
 				.handle("me", () =>
@@ -206,6 +239,43 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						yield* setSessionCookie("", 0);
 						return HttpServerResponse.empty({ status: 204 });
 					}),
+				)
+				.handle("claimSuperadmin", ({ payload: { token } }) =>
+					Effect.gen(function* () {
+						const identity = yield* CurrentIdentity;
+						// Gate unauthenticated users to consume rate limit
+						if (identity._tag !== "human") {
+							return yield* new HttpApiError.Forbidden();
+						}
+
+						const now = yield* Clock.currentTimeMillis;
+						const recent = (yield* Ref.get(claimAttempts)).filter(
+							(at) => now - at < CLAIM_ATTEMPT_WINDOW_MILLIS,
+						);
+						if (recent.length >= CLAIM_ATTEMPT_LIMIT) {
+							return yield* new TooManyRequests();
+						}
+						yield* Ref.set(claimAttempts, [...recent, now]);
+
+						if (Option.isNone(claimToken)) {
+							return yield* new HttpApiError.Forbidden();
+						}
+						const assignments = yield* roleStore.list();
+						const claimed = assignments.some(({ roles }) =>
+							roles.has(ADMIN_ROLE.superadmin),
+						);
+						if (claimed || !tokenEquals(claimToken.value, token)) {
+							return yield* new HttpApiError.Forbidden();
+						}
+						const roles = yield* roleStore.grant(
+							{
+								issuer: identity.account.issuer,
+								subject: identity.account.subject,
+							},
+							ADMIN_ROLE.superadmin,
+						);
+						return { roles };
+					}).pipe(claimLock.withPermits(1)),
 				);
 		}),
 );
@@ -216,6 +286,13 @@ const requireAdminTier = Effect.gen(function* () {
 		return yield* new HttpApiError.Forbidden();
 	}
 });
+
+const ADMIN_TIER_ROLES = new Set(Object.values(ADMIN_ROLE));
+
+const assignmentKey = (entry: RoleAssignmentsDocument["assignments"][number]) =>
+	entry._tag === "human"
+		? JSON.stringify(["human", entry.issuer, entry.subject])
+		: JSON.stringify(["machine", entry.id]);
 
 const MachinesGroupLive = HttpApiBuilder.group(
 	RootApi,
@@ -289,6 +366,7 @@ const MachinesGroupLive = HttpApiBuilder.group(
 const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	Effect.gen(function* () {
 		const roleStore = yield* RoleStoreService;
+		const machines = yield* MachineClientStoreService;
 
 		return handlers
 			.handle("grant", ({ payload: { issuer, subject, role } }) =>
@@ -306,6 +384,139 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					yield* requireAdminTier;
 					const roles = yield* roleStore.revoke({ issuer, subject }, role);
 					return { roles };
+				}),
+			)
+			.handle("export", () =>
+				Effect.gen(function* () {
+					yield* requireAdminTier;
+					const humans = yield* roleStore.list();
+					const machineClients = yield* machines.list();
+					return {
+						version: 0,
+						assignments: [
+							...humans
+								.map(({ key, roles }) => ({
+									key,
+									roles: roles.difference(ADMIN_TIER_ROLES),
+								}))
+								.filter(({ roles }) => roles.size > 0)
+								.map(({ key, roles }) =>
+									HumanAssignmentSchema.make({
+										issuer: key.issuer,
+										subject: key.subject,
+										roles,
+									}),
+								),
+							...machineClients
+								.filter((client) => client.roles.size > 0)
+								.map((client) =>
+									MachineAssignmentSchema.make({
+										id: client.id,
+										roles: client.roles,
+									}),
+								),
+						],
+					};
+				}),
+			)
+			.handle("import", ({ payload: { mode, document } }) =>
+				// TODO: role store needs to support abstracted transaction interface (platform agnostic)
+				Effect.gen(function* () {
+					yield* requireAdminTier;
+
+					const seen = new Set<string>();
+					for (const entry of document.assignments) {
+						const key = assignmentKey(entry);
+						if (seen.has(key)) {
+							return yield* new RoleImportError({
+								message: `duplicate assignment entry for ${key}`,
+							});
+						}
+						seen.add(key);
+						for (const role of entry.roles) {
+							if (isUndeclarableRole(role)) {
+								return yield* new RoleImportError({
+									message: `role "${role}" cannot be assigned via import (entry ${key})`,
+								});
+							}
+						}
+					}
+					const humanEntries = document.assignments.filter(
+						(entry) => entry._tag === "human",
+					);
+					const machineEntries = document.assignments.filter(
+						(entry) => entry._tag === "machine",
+					);
+					const machineClients = yield* machines.list();
+					const machineIds = new Set(machineClients.map((client) => client.id));
+					for (const entry of machineEntries) {
+						if (!machineIds.has(entry.id)) {
+							return yield* new RoleImportError({
+								message: `unknown machine id "${entry.id}"`,
+							});
+						}
+					}
+
+					// Admin roles are outside of import and export
+					// Export excludes admin roles, and import preserves them
+					const current = yield* roleStore.list();
+					const currentByKey = new Map(
+						current.map((assignment) => [
+							JSON.stringify([assignment.key.issuer, assignment.key.subject]),
+							assignment,
+						]),
+					);
+					const humanTarget = new Set(
+						humanEntries.map((entry) =>
+							JSON.stringify([entry.issuer, entry.subject]),
+						),
+					);
+
+					// Clear roles of users that are not in the import
+					if (mode === "replace") {
+						for (const assignment of current) {
+							const key = JSON.stringify([
+								assignment.key.issuer,
+								assignment.key.subject,
+							]);
+							if (!humanTarget.has(key)) {
+								yield* roleStore.set(
+									assignment.key,
+									assignment.roles.intersection(ADMIN_TIER_ROLES), // Keep already assigned admin roles
+								);
+							}
+						}
+					}
+
+					// Replace or add roles on top of existing roles
+					for (const entry of humanEntries) {
+						const existing =
+							currentByKey.get(JSON.stringify([entry.issuer, entry.subject]))
+								?.roles ?? new Set<RoleName>();
+						yield* roleStore.set(
+							{ issuer: entry.issuer, subject: entry.subject },
+							mode === "merge"
+								? existing.union(entry.roles)
+								: entry.roles.union(existing.intersection(ADMIN_TIER_ROLES)), // Keep already assigned admin roles
+						);
+					}
+
+					const machineTarget = new Map(
+						machineEntries.map((entry) => [entry.id, entry]),
+					);
+					for (const client of machineClients) {
+						const entry = machineTarget.get(client.id);
+						if (typeof entry === "undefined") {
+							if (mode === "replace" && client.roles.size > 0) {
+								yield* machines.setRoles(client.id, new Set());
+							}
+							continue;
+						}
+						yield* machines.setRoles(
+							client.id,
+							mode === "merge" ? client.roles.union(entry.roles) : entry.roles,
+						);
+					}
 				}),
 			);
 	}),

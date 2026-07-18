@@ -83,6 +83,7 @@ export const makeOAuth2Provider = (
 
 	return {
 		name: config.name,
+		issuer: config.issuer,
 		authorize: Effect.fn("OAuth2Provider.authorize")((input) =>
 			Effect.sync(() => {
 				const codeVerifier = randomPKCECodeVerifier();

@@ -39,6 +39,8 @@ const localProvider = await makeOidcProvider({
 	allowInsecure: true,
 });
 
+process.env["SUPERADMINS"] = "local:johndoe";
+
 const nodecg = await loadNodeCG({
 	namespaces: [extendedCounter, settings],
 	authProviders: [localProvider],

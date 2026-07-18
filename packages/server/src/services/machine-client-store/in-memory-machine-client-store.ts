@@ -90,6 +90,22 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
+		const setRoles = Effect.fn("MachineClientStore.setRoles")(
+			(id: string, roles: ReadonlySet<RoleName>) =>
+				Ref.modify(clients, (map) => {
+					const entry = findById(map, id);
+					if (Option.isNone(entry)) {
+						return [Option.none(), map];
+					}
+					const [key, client] = entry.value;
+					const next = new Set(roles);
+					return [
+						Option.some(next),
+						HashMap.set(map, key, { ...client, roles: next }),
+					];
+				}),
+		);
+
 		const grantRole = Effect.fn("MachineClientStore.grantRole")(
 			(id: string, role: RoleName) =>
 				Ref.modify(clients, (map) => {
@@ -129,6 +145,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 			list,
 			revoke,
 			refreshApiKey,
+			setRoles,
 			grantRole,
 			revokeRole,
 		};

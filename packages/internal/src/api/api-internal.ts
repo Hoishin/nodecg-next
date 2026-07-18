@@ -11,6 +11,27 @@ import { HumanAuthenticationMiddleware, IdentitySchema } from "../auth.ts";
 import { RoleNameSchema } from "../role.ts";
 import { fieldGroup } from "./shared.ts";
 
+export class TooManyRequests extends HttpApiSchema.EmptyError<TooManyRequests>()(
+	{
+		tag: "TooManyRequests",
+		status: 429,
+	},
+) {}
+
+export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
+	"RoleImportError",
+	{ message: Schema.String },
+	HttpApiSchema.annotations({ status: 400 }),
+) {}
+
+const RoleAssignmentResultSchema = Schema.Struct({
+	roles: Schema.ReadonlySet(RoleNameSchema),
+});
+
+const ClaimSuperadminRequestSchema = Schema.Struct({
+	token: Schema.Redacted(Schema.String),
+});
+
 const AuthenticationGroup = HttpApiGroup.make("Authentication")
 	.add(
 		HttpApiEndpoint.get("me", "/me").addSuccess(
@@ -37,6 +58,13 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 		HttpApiEndpoint.post("logout", "/authentication/logout")
 			.addSuccess(HttpApiSchema.Empty(204))
 			.addError(HttpApiError.InternalServerError),
+	)
+	.add(
+		HttpApiEndpoint.post("claimSuperadmin", "/authentication/claim-superadmin")
+			.setPayload(ClaimSuperadminRequestSchema)
+			.addSuccess(RoleAssignmentResultSchema)
+			.addError(HttpApiError.Forbidden)
+			.addError(TooManyRequests),
 	);
 
 const RoleAssignmentSchema = Schema.Struct({
@@ -45,8 +73,28 @@ const RoleAssignmentSchema = Schema.Struct({
 	role: RoleNameSchema,
 });
 
-const RoleAssignmentResultSchema = Schema.Struct({
+export const HumanAssignmentSchema = Schema.TaggedStruct("human", {
+	issuer: Schema.String,
+	subject: Schema.String,
 	roles: Schema.ReadonlySet(RoleNameSchema),
+});
+
+export const MachineAssignmentSchema = Schema.TaggedStruct("machine", {
+	id: Schema.String,
+	roles: Schema.ReadonlySet(RoleNameSchema),
+});
+
+export const RoleAssignmentsDocumentSchema = Schema.Struct({
+	version: Schema.Literal(0),
+	assignments: Schema.Array(
+		Schema.Union(HumanAssignmentSchema, MachineAssignmentSchema),
+	),
+});
+export type RoleAssignmentsDocument = typeof RoleAssignmentsDocumentSchema.Type;
+
+const ImportAssignmentsRequestSchema = Schema.Struct({
+	mode: Schema.Literal("replace", "merge"),
+	document: RoleAssignmentsDocumentSchema,
 });
 
 const CreateApiKeyRequestSchema = Schema.Struct({
@@ -132,6 +180,18 @@ const RolesGroup = HttpApiGroup.make("Roles")
 			.setPayload(RoleAssignmentSchema)
 			.addSuccess(RoleAssignmentResultSchema)
 			.addError(HttpApiError.Forbidden),
+	)
+	.add(
+		HttpApiEndpoint.get("export", "/roles/export")
+			.addSuccess(RoleAssignmentsDocumentSchema)
+			.addError(HttpApiError.Forbidden),
+	)
+	.add(
+		HttpApiEndpoint.post("import", "/roles/import")
+			.setPayload(ImportAssignmentsRequestSchema)
+			.addSuccess(HttpApiSchema.Empty(204))
+			.addError(HttpApiError.Forbidden)
+			.addError(RoleImportError),
 	);
 
 export const InternalApi = HttpApi.make("InternalApi")

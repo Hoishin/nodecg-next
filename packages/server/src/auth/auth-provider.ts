@@ -54,6 +54,7 @@ export type CallbackError =
 
 export interface AuthProvider {
 	readonly name: string;
+	readonly issuer: string;
 	readonly authorize: (input: {
 		readonly redirectUri: string;
 		readonly searchParams: URLSearchParams;

@@ -113,6 +113,7 @@ export const makeOidcProvider = async (
 
 	return {
 		name: config.name,
+		issuer: configuration.serverMetadata().issuer,
 		authorize: Effect.fn("OidcProvider.authorize")((input) =>
 			Effect.sync(() => {
 				const codeVerifier = randomPKCECodeVerifier();
