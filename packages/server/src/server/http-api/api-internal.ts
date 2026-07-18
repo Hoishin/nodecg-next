@@ -36,6 +36,7 @@ import {
 } from "effect";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
+import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
 import {
 	type MachineClientStore,
@@ -127,10 +128,20 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 				.handle("me", () =>
 					Effect.gen(function* () {
 						const identity = yield* CurrentIdentity;
-						return { identity };
+						return { identity, namespaces: yield* listPermissions(identity) };
 					}),
 				)
-				.handle("login", ({ path: { provider: name } }) =>
+				.handle("providers", () =>
+					Effect.succeed(
+						Array.from(HashMap.keys(registry))
+							.toSorted()
+							.map((name) => ({
+								name,
+								url: `/api/internal/authentication/login/${name}`,
+							})),
+					),
+				)
+				.handle("login", ({ path: { provider: name }, urlParams }) =>
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest;
 						const provider = HashMap.get(registry, name);
@@ -153,7 +164,10 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								{ status: 502 },
 							);
 						}
-						const stashId = yield* stashes.create(redirect.right.stash);
+						const stashId = yield* stashes.create({
+							...redirect.right.stash,
+							returnTo: urlParams.returnTo,
+						});
 						return yield* HttpServerResponse.redirect(redirect.right.url, {
 							status: 302,
 						}).pipe(setStash(stashId, "10 minutes")); // TODO: avoid hard-coded duration
@@ -233,7 +247,12 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						const sessionId = yield* sessions.create(account.right);
 						yield* setSessionCookie(sessionId, ttl);
-						return yield* HttpServerResponse.text("Success").pipe(clearStash);
+						const returnTo = stash.value.returnTo;
+						return yield* (
+							typeof returnTo === "undefined"
+								? HttpServerResponse.text("Success")
+								: HttpServerResponse.redirect(returnTo, { status: 302 })
+						).pipe(clearStash);
 					}),
 				)
 				.handle("logout", () =>

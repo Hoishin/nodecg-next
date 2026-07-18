@@ -360,9 +360,16 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 - ✅ Data persistence is abstracted and can be implemented for any storage backend
 - 🚧 Default data persistence is SQLite for system data, and JSON files for Replicant
 
-### 🚧 Authentication
+### Authentication
 
-### 🚧 Authorization
+- ✅ User login via pluggable OAuth/OIDC providers with session cookies
+- ✅ External integrations authenticate with per-client API keys
+- 🚧 OAuth client-credentials token exchange for integrations
+
+### Authorization
+
+- ✅ Per-field permission enforcement at every transport from the baked role/principal rules
+- ✅ Role reporting: `me()` returns the caller's held roles per namespace. Per-field access is evaluated client-side from the shared manifest's baked rules
 
 ### ✅ Frontend serving
 

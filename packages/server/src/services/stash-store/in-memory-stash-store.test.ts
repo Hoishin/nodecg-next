@@ -8,6 +8,7 @@ import { type AuthStash, StashStoreService } from "./stash-store.ts";
 const stash: AuthStash = {
 	provider: "dev",
 	state: "abc123",
+	returnTo: "/dashboard",
 };
 
 const layer = InMemoryStashStore.pipe(Layer.merge(TestContext.TestContext));

@@ -1,28 +1,35 @@
-export const login = (subject: string) =>
-	fetch(`/api/internal/authentication/login/dev?as=${subject}`, {
-		method: "POST",
-	});
+import { authSession } from "@nodecg/browser";
+import { loadAuthClient } from "@nodecg/client";
 
-export const logout = () =>
-	fetch("/api/internal/authentication/logout", { method: "POST" });
+const client = loadAuthClient();
+const session = authSession(client);
 
-export const assignRole = (
-	action: "grant" | "revoke",
-	subject: string,
-	role: string,
-) =>
-	fetch(`/api/internal/roles/${action}`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ issuer: "dev", subject, role }),
-	});
+export const login = async (subject: string) => {
+	await client.logout();
+	const providers = await client.providers();
+	const dev = providers.find((provider) => provider.name === "dev");
+	if (typeof dev === "undefined") {
+		throw new Error("dev provider is not registered");
+	}
+	return session.popupLogin({ ...dev, url: `${dev.url}?as=${subject}` });
+};
+
+export const logout = () => client.logout();
+
+export const me = () => client.me();
+
+export const grantRole = (subject: string, role: string) =>
+	client.grantRole({ issuer: "dev", subject, role });
+
+export const revokeRole = (subject: string, role: string) =>
+	client.revokeRole({ issuer: "dev", subject, role });
 
 export const grantAsAdmin = async (subject: string, role: string) => {
 	await login("root");
-	await assignRole("grant", subject, role);
+	await grantRole(subject, role);
 };
 
 export const revokeAsAdmin = async (subject: string, role: string) => {
 	await login("root");
-	await assignRole("revoke", subject, role);
+	await revokeRole(subject, role);
 };

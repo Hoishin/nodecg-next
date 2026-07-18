@@ -1,5 +1,7 @@
 import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
+import { declaredRoleNames } from "@nodecg/core";
+import type { RoleName } from "@nodecg/internal";
 import { mapEffectValues, mapValues, toError } from "@nodecg/internal/utils";
 import {
 	Data,
@@ -126,6 +128,7 @@ interface PreparedNamespace<S extends BaseNamespaceShape> {
 		S["topic"],
 		S["rpc"]
 	>;
+	readonly declaredRoles: ReadonlySet<RoleName>;
 	readonly runOnLoad: Effect.Effect<void, OnLoadFailed, Scope.Scope>;
 }
 
@@ -232,7 +235,12 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				never,
 				never,
 				Target
-			> = { built, loaded: handle, runOnLoad };
+			> = {
+				built,
+				loaded: handle,
+				declaredRoles: declaredRoleNames(implemented.manifest),
+				runOnLoad,
+			};
 			return prepared;
 		});
 
@@ -245,8 +253,9 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			Record<string, PreparedNamespace<NamespaceShapeTarget>>
 		> = prepared;
 		const registered = Object.values(preparedRecord).map(
-			({ built }): RegisteredNamespace => ({
+			({ built, declaredRoles }): RegisteredNamespace => ({
 				namespace: built.namespace,
+				declaredRoles,
 				fields: built,
 			}),
 		);

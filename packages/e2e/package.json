@@ -5,6 +5,7 @@
 		"type-check": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@nodecg/browser": "workspace:*",
 		"@nodecg/client": "workspace:*",
 		"@nodecg/core": "workspace:*",
 		"@nodecg/internal": "workspace:*",

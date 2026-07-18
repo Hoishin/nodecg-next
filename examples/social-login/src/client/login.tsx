@@ -1,107 +1,54 @@
-import { useEffect, useState } from "react";
+import { authSession } from "@nodecg/browser";
+import { type LoginProvider } from "@nodecg/client";
+import { Suspense, use, useState, useSyncExternalStore } from "react";
 
-interface HumanAccount {
-	readonly issuer: string;
-	readonly subject: string;
-	readonly displayName: string;
+const session = authSession();
+const providersPromise = session.client.providers();
+
+const useIdentity = () =>
+	useSyncExternalStore(session.identity.subscribe, session.identity.get);
+
+function LoginButtons({ onError }: { onError: (message: string) => void }) {
+	const providers = use(providersPromise);
+	const logIn = (provider: LoginProvider) => {
+		void session.popupLogin(provider).catch((cause: unknown) => {
+			onError(
+				cause instanceof Error && cause.message.includes("blocked")
+					? "Popups are blocked — allow them for this page and try again"
+					: String(cause),
+			);
+		});
+	};
+	return (
+		<>
+			{providers.map((provider) => (
+				<button
+					key={provider.name}
+					type="button"
+					onClick={() => logIn(provider)}
+				>
+					Log in with {provider.name}
+				</button>
+			))}
+		</>
+	);
 }
 
-type Identity =
-	| { readonly _tag: "anonymous" }
-	| { readonly _tag: "human"; readonly account: HumanAccount }
-	| {
-			readonly _tag: "machine";
-			readonly id: string;
-			readonly displayName: string;
-	  };
-
-type State =
-	| { readonly status: "loading" }
-	| { readonly status: "error"; readonly message: string }
-	| { readonly status: "ready"; readonly identity: Identity };
-
-// TODO: use effect platform http client
-const fetchIdentity = async (): Promise<Identity> => {
-	const response = await fetch("/api/internal/me");
-	if (!response.ok) {
-		throw new Error(`GET /api/internal/me responded ${response.status}`);
-	}
-	const body: { identity: Identity } = await response.json();
-	return body.identity;
-};
-
-const popupName = "nodecg-login";
-
-const loginProviders = [
-	{ name: "discord", label: "Discord" },
-	{ name: "twitch", label: "Twitch" },
-	{ name: "google", label: "Google" },
-];
-
 export function Login() {
-	const [state, setState] = useState<State>({ status: "loading" });
+	const identity = useIdentity();
+	const [error, setError] = useState<string | undefined>(undefined);
 
-	const ready = (identity: Identity) => {
-		setState({ status: "ready", identity });
-	};
-
-	useEffect(() => {
-		void fetchIdentity().then(ready, (error: unknown) =>
-			setState({
-				status: "error",
-				message: error instanceof Error ? error.message : String(error),
-			}),
-		);
-	}, []);
-
-	const logIn = () => {
-		const popup = window.open(
-			"about:blank",
-			popupName,
-			"popup,width=520,height=700",
-		);
-
-		// TODO: use postMessage
-		let ticks = 0;
-		const timer = window.setInterval(() => {
-			ticks += 1;
-			void fetchIdentity()
-				.catch(() => undefined)
-				.then((identity) => {
-					if (identity?._tag === "human") {
-						window.clearInterval(timer);
-						popup?.close();
-						ready(identity);
-					} else if (popup?.closed === true || ticks >= 120) {
-						window.clearInterval(timer);
-					}
-				});
-		}, 1000);
-	};
-
-	const logOut = () => {
-		void fetch("/api/internal/authentication/logout", { method: "POST" }).then(
-			() => {
-				setState({ status: "ready", identity: { _tag: "anonymous" } });
-			},
-		);
-	};
-
-	if (state.status === "loading") {
+	if (typeof identity === "undefined") {
 		return <p>Checking session…</p>;
 	}
 
-	if (state.status === "error") {
-		return <p>Could not load session: {state.message}</p>;
-	}
-
-	if (state.identity._tag === "human") {
-		const account = state.identity.account;
+	if (identity._tag === "human") {
+		const account = identity.account;
 		return (
 			<div>
 				<p>
 					Logged in as <strong>{account.displayName}</strong>{" "}
-					<button type="button" onClick={logOut}>
+					<button type="button" onClick={() => void session.logout()}>
 						Log out
 					</button>
 				</p>
@@ -118,17 +65,10 @@ export function Login() {
 	return (
 		<div>
 			<p>Not logged in.</p>
-			{loginProviders.map((provider) => (
-				<form
-					key={provider.name}
-					method="post"
-					action={`/api/internal/authentication/login/${provider.name}`}
-					target={popupName}
-					onSubmit={logIn}
-				>
-					<button type="submit">Log in with {provider.label}</button>
-				</form>
-			))}
+			<Suspense fallback={null}>
+				<LoginButtons onError={setError} />
+			</Suspense>
+			{typeof error === "undefined" ? null : <p>{error}</p>}
 		</div>
 	);
 }

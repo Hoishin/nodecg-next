@@ -1,10 +1,9 @@
-import { FetchHttpClient, HttpApiClient } from "@effect/platform";
+import { FetchHttpClient } from "@effect/platform";
 import type {
 	NamespaceManifest,
 	FieldManifest,
 	RpcFieldManifest,
 } from "@nodecg/core";
-import { InternalApi } from "@nodecg/internal";
 import {
 	mapEffectValues,
 	mapValues,
@@ -334,28 +333,18 @@ const buildNamespace = <
 		),
 	);
 
-const buildHttpClient = Effect.fn("buildHttpClient")(function* () {
-	const httpClient = yield* HttpApiClient.make(InternalApi);
-	return {
-		me: httpClient.Authentication.me,
-		logout: httpClient.Authentication.logout,
-	};
-});
-
 export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},
 	Topic extends Record<string, unknown> = {},
 	Rpc extends RpcShape = {},
 >(manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>) {
-	const httpClient = yield* buildHttpClient();
 	return yield* buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields, topicFields, rpcFields }) => ({
 			replicant: fields,
 			computed: computedFields,
 			topic: topicFields,
 			rpc: rpcFields,
-			httpClient,
 		})),
 	);
 });
@@ -381,9 +370,6 @@ export interface LoadedNamespace<
 			Rpc[K]["response"]
 		>;
 	};
-	httpClient: Effect.Effect.Success<
-		ReturnType<typeof loadNamespaceEffect>
-	>["httpClient"];
 	readonly dispose: () => void;
 	readonly [Symbol.dispose]: () => void;
 }
@@ -503,7 +489,6 @@ export async function loadNamespace<
 		computed,
 		topic,
 		rpc,
-		httpClient: runtime.runSync(buildHttpClient()),
 		dispose: runtime.dispose,
 		[Symbol.dispose]: () => runtime.dispose(),
 	};

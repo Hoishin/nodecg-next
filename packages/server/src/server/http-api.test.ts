@@ -144,8 +144,13 @@ function registeredNamespace(
 	computed: BuiltNamespace["computed"] = {},
 	topic: BuiltNamespace["topic"] = {},
 	rpc: BuiltNamespace["rpc"] = {},
+	declaredRoles: ReadonlySet<RoleName> = new Set(),
 ): RegisteredNamespace {
-	return { namespace, fields: { replicant, computed, topic, rpc } };
+	return {
+		namespace,
+		declaredRoles,
+		fields: { replicant, computed, topic, rpc },
+	};
 }
 
 const asIdentity = (identity: Identity) =>
@@ -157,6 +162,9 @@ function webHandler(
 	namespaces: ReadonlyArray<RegisteredNamespace>,
 	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
 	environment: Layer.Layer<never> = Layer.empty,
+	options?: {
+		providers?: HashMap.HashMap<string, AuthProvider>;
+	},
 ) {
 	const { handler } = HttpApiBuilder.toWebHandler(
 		Layer.mergeAll(RootApiLive, HttpServer.layerContext).pipe(
@@ -173,7 +181,7 @@ function webHandler(
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,
-					HashMap.empty<string, AuthProvider>(),
+					options?.providers ?? HashMap.empty<string, AuthProvider>(),
 				),
 			),
 			Layer.provide(environment),
@@ -206,7 +214,130 @@ describe("me", () => {
 		const handler = webHandler([]);
 		const res = await handler(new Request("http://x/api/internal/me"));
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ identity: { _tag: "anonymous" } });
+		expect(await res.json()).toEqual({
+			identity: { _tag: "anonymous" },
+			namespaces: {},
+		});
+	});
+
+	test("reports the held declared roles per namespace", async () => {
+		const handler = webHandler(
+			[
+				registeredNamespace(
+					"perms",
+					{},
+					{},
+					{},
+					{},
+					new Set([RoleName("producer"), RoleName("viewer")]),
+				),
+			],
+			asIdentity(
+				HumanIdentitySchema.make({
+					account: { issuer: "dev", subject: "op", displayName: "Op" },
+					roles: new Set([RoleName("producer")]),
+				}),
+			),
+		);
+		const res = await handler(new Request("http://x/api/internal/me"));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			identity: {
+				_tag: "human",
+				account: { issuer: "dev", subject: "op", displayName: "Op" },
+				roles: ["producer"],
+			},
+			namespaces: {
+				perms: { roles: ["producer"] },
+			},
+		});
+	});
+});
+
+describe("login and callback", () => {
+	const devProvider: AuthProvider = {
+		name: "dev",
+		issuer: "dev",
+		authorize: () =>
+			Effect.succeed({
+				url: "/api/internal/authentication/callback/dev?state=s",
+				stash: { provider: "dev", state: "s" },
+			}),
+		callback: () =>
+			Effect.succeed({ issuer: "dev", subject: "alice", displayName: "Alice" }),
+	};
+	const providers = HashMap.make(["dev", devProvider] as const);
+
+	const loginHandler = () =>
+		webHandler([], undefined, Layer.empty, { providers });
+
+	const stashCookieOf = (res: Response) => {
+		const match = (res.headers.get("set-cookie") ?? "").match(
+			/nodecg\.login=([^;]+)/,
+		);
+		if (match === null) {
+			throw new Error("login did not set the stash cookie");
+		}
+		return match[1];
+	};
+
+	test("providers lists each registered provider with its login URL", async () => {
+		const res = await loginHandler()(
+			new Request("http://x/api/internal/authentication/providers"),
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual([
+			{ name: "dev", url: "/api/internal/authentication/login/dev" },
+		]);
+	});
+
+	test("a callback with a stashed returnTo redirects there", async () => {
+		const handler = loginHandler();
+		const login = await handler(
+			new Request(
+				"http://x/api/internal/authentication/login/dev?returnTo=%2Fdashboard",
+			),
+		);
+		expect(login.status).toBe(302);
+		const callback = await handler(
+			new Request("http://x/api/internal/authentication/callback/dev?state=s", {
+				headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
+			}),
+		);
+		expect(callback.status).toBe(302);
+		expect(callback.headers.get("location")).toBe("/dashboard");
+		expect(callback.headers.get("set-cookie")).toContain("nodecg.sid=");
+	});
+
+	test("a callback without a returnTo still renders the success page", async () => {
+		const handler = loginHandler();
+		const login = await handler(
+			new Request("http://x/api/internal/authentication/login/dev"),
+		);
+		expect(login.status).toBe(302);
+		const callback = await handler(
+			new Request("http://x/api/internal/authentication/callback/dev?state=s", {
+				headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
+			}),
+		);
+		expect(callback.status).toBe(200);
+		expect(await callback.text()).toBe("Success");
+	});
+
+	test("400 at request decode for a non-relative returnTo", async () => {
+		const handler = loginHandler();
+		for (const returnTo of [
+			"https://evil.example",
+			"//evil.example",
+			"/\\evil.example",
+		]) {
+			const res = await handler(
+				new Request(
+					`http://x/api/internal/authentication/login/dev?returnTo=${encodeURIComponent(returnTo)}`,
+				),
+			);
+			expect(res.status).toBe(400);
+		}
 	});
 });
 

@@ -10,6 +10,7 @@
 	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:",
+		"@nodecg/browser": "workspace:*",
 		"@nodecg/client": "workspace:*",
 		"@nodecg/core": "workspace:*",
 		"@nodecg/server": "workspace:*",

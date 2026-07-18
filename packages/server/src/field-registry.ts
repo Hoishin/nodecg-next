@@ -1,3 +1,4 @@
+import type { RoleName } from "@nodecg/internal";
 import { Effect } from "effect";
 
 import { type BuiltNamespace } from "./build-fields.ts";
@@ -29,10 +30,12 @@ export interface FieldRegistry {
 	>;
 	readonly topic: ReadonlyMap<string, ReadonlyMap<string, TopicFieldInternal>>;
 	readonly rpc: ReadonlyMap<string, ReadonlyMap<string, RpcFieldInternal>>;
+	readonly declaredRoles: ReadonlyMap<string, ReadonlySet<RoleName>>;
 }
 
 export interface RegisteredNamespace {
 	readonly namespace: string;
+	readonly declaredRoles: ReadonlySet<RoleName>;
 	readonly fields: {
 		readonly replicant: Record<
 			string,
@@ -66,7 +69,10 @@ export class FieldRegistryService extends Effect.Service<FieldRegistryService>()
 				const computed = new Map<string, Map<string, ComputedFieldInternal>>();
 				const topic = new Map<string, Map<string, TopicFieldInternal>>();
 				const rpc = new Map<string, Map<string, RpcFieldInternal>>();
-				for (const { namespace, fields } of namespaces) {
+				const declaredRoles = new Map<string, ReadonlySet<RoleName>>();
+				for (const registered of namespaces) {
+					const { namespace, fields } = registered;
+					declaredRoles.set(namespace, registered.declaredRoles);
 					const replicantFields = new Map<string, ReplicantFieldInternal>();
 					for (const [name, field] of Object.entries(fields.replicant)) {
 						replicantFields.set(name, field[fieldInternal]);
@@ -88,7 +94,7 @@ export class FieldRegistryService extends Effect.Service<FieldRegistryService>()
 					}
 					rpc.set(namespace, rpcFields);
 				}
-				return { replicant, computed, topic, rpc };
+				return { replicant, computed, topic, rpc, declaredRoles };
 			}),
 	},
 ) {}

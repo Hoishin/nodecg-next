@@ -21,12 +21,6 @@
 		"skipLibCheck": true,
 		"noEmit": true,
 
-		"plugins": [
-			{
-				"name": "@effect/language-service"
-			}
-		],
-
 		"noErrorTruncation": true
 	}
 }

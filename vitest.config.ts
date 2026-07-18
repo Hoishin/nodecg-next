@@ -4,7 +4,12 @@ import { defineConfig } from "vitest/config";
 import { projects as e2eProjects } from "./packages/e2e/vitest-projects.ts";
 
 const NODE_TESTS = ["packages/internal", "packages/core", "packages/server"];
-const BROWSER_TESTS = ["packages/internal", "packages/core", "packages/client"];
+const BROWSER_TESTS = [
+	"packages/internal",
+	"packages/core",
+	"packages/client",
+	"packages/browser",
+];
 
 export default defineConfig({
 	test: {

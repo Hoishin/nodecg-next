@@ -2,6 +2,7 @@ import { playwright } from "@vitest/browser-playwright";
 import getPort from "get-port";
 import { defineProject } from "vitest/config";
 
+import { closeLoginPopup, countPages } from "./src/server/browser-commands.ts";
 import { scanSuites } from "./tests/suites.ts";
 
 const BROWSERS = ["chromium", "firefox", "webkit"] as const;
@@ -56,6 +57,7 @@ export const projects = await Promise.all(
 									{ browser, globalSetup: "./src/server/global-setup.ts" },
 								],
 								screenshotFailures: false,
+								commands: { closeLoginPopup, countPages },
 							},
 			},
 		});

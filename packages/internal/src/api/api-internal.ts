@@ -28,22 +28,48 @@ const RoleAssignmentResultSchema = Schema.Struct({
 	roles: Schema.ReadonlySet(RoleNameSchema),
 });
 
+const NamespacePermissionsSchema = Schema.Struct({
+	roles: Schema.ReadonlySet(RoleNameSchema),
+});
+export const MePayloadSchema = Schema.Struct({
+	identity: IdentitySchema,
+	namespaces: Schema.Record({
+		key: Schema.String,
+		value: NamespacePermissionsSchema,
+	}),
+});
+export type MePayload = typeof MePayloadSchema.Type;
+
+export const LoginProviderSchema = Schema.Struct({
+	name: Schema.String,
+	url: Schema.String,
+});
+export type LoginProvider = typeof LoginProviderSchema.Type;
+
 const ClaimSuperadminRequestSchema = Schema.Struct({
 	token: Schema.Redacted(Schema.String),
 });
 
+const ReturnToSchema = Schema.String.pipe(
+	Schema.pattern(/^\/(?![/\\])/, {
+		description: "a same-origin relative path",
+	}),
+);
+
 const AuthenticationGroup = HttpApiGroup.make("Authentication")
+	.add(HttpApiEndpoint.get("me", "/me").addSuccess(MePayloadSchema))
 	.add(
-		HttpApiEndpoint.get("me", "/me").addSuccess(
-			Schema.Struct({
-				identity: IdentitySchema,
-			}),
+		HttpApiEndpoint.get("providers", "/authentication/providers").addSuccess(
+			Schema.Array(LoginProviderSchema),
 		),
 	)
 	.add(
-		HttpApiEndpoint.post(
+		HttpApiEndpoint.get(
 			"login",
 		)`/authentication/login/${HttpApiSchema.param("provider", Schema.String)}`
+			.setUrlParams(
+				Schema.Struct({ returnTo: Schema.optional(ReturnToSchema) }),
+			)
 			.addSuccess(HttpApiSchema.Empty(302))
 			.addError(HttpApiError.InternalServerError),
 	)

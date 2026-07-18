@@ -5,6 +5,7 @@ export interface AuthStash {
 	readonly state: string;
 	readonly codeVerifier?: string;
 	readonly nonce?: string;
+	readonly returnTo?: string;
 }
 
 export interface StashStore {
