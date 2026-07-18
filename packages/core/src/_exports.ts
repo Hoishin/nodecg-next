@@ -10,6 +10,7 @@ export {
 } from "./define-namespace.ts";
 export {
 	isAdminTier,
+	isSuperadmin,
 	type Access,
 	type Grant,
 	type RoleArg,

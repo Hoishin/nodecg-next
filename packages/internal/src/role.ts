@@ -6,7 +6,7 @@ export const RoleNameSchema = Schema.String.pipe(Schema.brand("Role"));
 export type RoleName = typeof RoleNameSchema.Type;
 export const RoleName = Brand.nominal<RoleName>();
 
-const AdminRoleNameSchema = Schema.Literal("admin", "superadmin");
+export const AdminRoleNameSchema = Schema.Literal("admin", "superadmin");
 
 export const ADMIN_ROLE: Record<typeof AdminRoleNameSchema.Type, RoleName> = {
 	admin: RoleName("admin"),

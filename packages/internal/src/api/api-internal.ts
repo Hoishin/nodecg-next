@@ -8,7 +8,7 @@ import {
 import { Schema } from "effect";
 
 import { HumanAuthenticationMiddleware, IdentitySchema } from "../auth.ts";
-import { RoleNameSchema } from "../role.ts";
+import { AdminRoleNameSchema, RoleNameSchema } from "../role.ts";
 import { fieldGroup } from "./shared.ts";
 
 export class TooManyRequests extends HttpApiSchema.EmptyError<TooManyRequests>()(
@@ -150,7 +150,6 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 			.addError(HttpApiError.NotFound),
 	)
 	.add(
-		// TODO: make a separate "grantAdminRole"
 		HttpApiEndpoint.post(
 			"grantRole",
 		)`/machines/${HttpApiSchema.param("id", Schema.String)}/roles`
@@ -194,10 +193,42 @@ const RolesGroup = HttpApiGroup.make("Roles")
 			.addError(RoleImportError),
 	);
 
+export const AdminSubjectSchema = Schema.Union(
+	Schema.TaggedStruct("human", {
+		issuer: Schema.String,
+		subject: Schema.String,
+	}),
+	Schema.TaggedStruct("machine", { id: Schema.String }),
+);
+export type AdminSubject = typeof AdminSubjectSchema.Type;
+
+export const AdminRoleAssignmentSchema = Schema.Struct({
+	subject: AdminSubjectSchema,
+	role: AdminRoleNameSchema,
+});
+export type AdminRoleAssignment = typeof AdminRoleAssignmentSchema.Type;
+
+const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
+	.add(
+		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant")
+			.setPayload(AdminRoleAssignmentSchema)
+			.addSuccess(RoleAssignmentResultSchema)
+			.addError(HttpApiError.Forbidden)
+			.addError(HttpApiError.NotFound),
+	)
+	.add(
+		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke")
+			.setPayload(AdminRoleAssignmentSchema)
+			.addSuccess(RoleAssignmentResultSchema)
+			.addError(HttpApiError.Forbidden)
+			.addError(HttpApiError.NotFound),
+	);
+
 export const InternalApi = HttpApi.make("InternalApi")
 	.add(fieldGroup("Field"))
 	.add(AuthenticationGroup)
 	.add(MachinesGroup)
 	.add(RolesGroup)
+	.add(AdminRolesGroup)
 	.middleware(HumanAuthenticationMiddleware)
 	.prefix("/api/internal");

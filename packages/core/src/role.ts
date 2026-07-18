@@ -86,6 +86,9 @@ const ADMIN_ROLES = new Set(Object.values(ADMIN_ROLE));
 export const isAdminTier = (caller: Identity): boolean =>
 	!getRoles(caller).isDisjointFrom(ADMIN_ROLES);
 
+export const isSuperadmin = (caller: Identity): boolean =>
+	getRoles(caller).has(ADMIN_ROLE.superadmin);
+
 // Deny wins at every level, so every applicable deny is checked before any allow.
 const can = (
 	access: Access,

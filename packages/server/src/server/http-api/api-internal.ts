@@ -7,8 +7,9 @@ import {
 	HttpServerRequest,
 	HttpServerResponse,
 } from "@effect/platform";
-import { isAdminTier } from "@nodecg/core";
+import { isAdminTier, isSuperadmin } from "@nodecg/core";
 import {
+	type AdminRoleAssignment,
 	ADMIN_ROLE,
 	CurrentIdentity,
 	HumanAssignmentSchema,
@@ -36,8 +37,14 @@ import {
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
 import { config } from "../../server-config.ts";
-import { MachineClientStoreService } from "../../services/machine-client-store/machine-client-store.ts";
-import { RoleStoreService } from "../../services/role-store/role-store.ts";
+import {
+	type MachineClientStore,
+	MachineClientStoreService,
+} from "../../services/machine-client-store/machine-client-store.ts";
+import {
+	type RoleStore,
+	RoleStoreService,
+} from "../../services/role-store/role-store.ts";
 import { SessionStoreService } from "../../services/session-store/session-store.ts";
 import { StashStoreService } from "../../services/stash-store/stash-store.ts";
 import { RootApi } from "../root-api.ts";
@@ -286,6 +293,52 @@ const requireAdminTier = Effect.gen(function* () {
 		return yield* new HttpApiError.Forbidden();
 	}
 });
+
+const requireSuperadmin = Effect.gen(function* () {
+	const identity = yield* CurrentIdentity;
+	if (!isSuperadmin(identity)) {
+		return yield* new HttpApiError.Forbidden();
+	}
+});
+
+const mutateAdminRole = (
+	{ subject, role }: AdminRoleAssignment,
+	humanOp: RoleStore["grant"] | RoleStore["revoke"],
+	machineOp: MachineClientStore["grantRole"] | MachineClientStore["revokeRole"],
+) =>
+	Effect.gen(function* () {
+		yield* requireSuperadmin;
+		const tierRole = ADMIN_ROLE[role];
+		if (subject._tag === "human") {
+			const roles = yield* humanOp(
+				{ issuer: subject.issuer, subject: subject.subject },
+				tierRole,
+			);
+			return { roles };
+		}
+		const roles = yield* machineOp(subject.id, tierRole);
+		if (Option.isNone(roles)) {
+			return yield* new HttpApiError.NotFound();
+		}
+		return { roles: roles.value };
+	});
+
+const AdminRolesGroupLive = HttpApiBuilder.group(
+	RootApi,
+	"AdminRoles",
+	(handlers) =>
+		Effect.gen(function* () {
+			const roleStore = yield* RoleStoreService;
+			const machines = yield* MachineClientStoreService;
+			return handlers
+				.handle("grantAdmin", ({ payload }) =>
+					mutateAdminRole(payload, roleStore.grant, machines.grantRole),
+				)
+				.handle("revokeAdmin", ({ payload }) =>
+					mutateAdminRole(payload, roleStore.revoke, machines.revokeRole),
+				);
+		}),
+);
 
 const ADMIN_TIER_ROLES = new Set(Object.values(ADMIN_ROLE));
 
@@ -546,4 +599,5 @@ export const InternalGroupsLive = Layer.mergeAll(
 	AuthenticationGroupLive,
 	MachinesGroupLive,
 	RolesGroupLive,
+	AdminRolesGroupLive,
 );

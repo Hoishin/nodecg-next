@@ -272,6 +272,108 @@ describe("roles", () => {
 	});
 });
 
+describe("admin roles", () => {
+	const adminRoleRequest = (
+		action: "grant" | "revoke",
+		subject: unknown,
+		role: string,
+	) =>
+		postRequest(`http://x/api/internal/admin-roles/${action}`, {
+			subject,
+			role,
+		});
+
+	const human = { _tag: "human", issuer: "dev", subject: "operator" };
+
+	const superadmin = asIdentity(
+		HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "root", displayName: "Root" },
+			roles: new Set([ADMIN_ROLE.superadmin]),
+		}),
+	);
+
+	const admin = asIdentity(
+		HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			roles: new Set([ADMIN_ROLE.admin]),
+		}),
+	);
+
+	const decodeId = Schema.decodeUnknownSync(
+		Schema.Struct({ id: Schema.String }),
+	);
+
+	const createMachine = (handler: ReturnType<typeof webHandler>) =>
+		handler(
+			postRequest("http://x/api/internal/machines", { displayName: "bot" }),
+		)
+			.then((res) => res.json())
+			.then(decodeId);
+
+	test("403 for an anonymous caller", async () => {
+		const handler = webHandler([]);
+		expect(
+			(await handler(adminRoleRequest("grant", human, "admin"))).status,
+		).toBe(403);
+		expect(
+			(await handler(adminRoleRequest("revoke", human, "admin"))).status,
+		).toBe(403);
+	});
+
+	test("403 for an admin-tier caller who is not a superadmin", async () => {
+		const handler = webHandler([], admin);
+		expect(
+			(await handler(adminRoleRequest("grant", human, "admin"))).status,
+		).toBe(403);
+	});
+
+	test("superadmin grants and revokes the admin tier for a human", async () => {
+		const handler = webHandler([], superadmin);
+		const grant = await handler(adminRoleRequest("grant", human, "admin"));
+		expect(grant.status).toBe(200);
+		expect(await grant.json()).toEqual({ roles: ["admin"] });
+
+		const revoke = await handler(adminRoleRequest("revoke", human, "admin"));
+		expect(revoke.status).toBe(200);
+		expect(await revoke.json()).toEqual({ roles: [] });
+	});
+
+	test("superadmin grants superadmin to a human", async () => {
+		const handler = webHandler([], superadmin);
+		const res = await handler(adminRoleRequest("grant", human, "superadmin"));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ roles: ["superadmin"] });
+	});
+
+	test("400 for a payload role outside the admin tier", async () => {
+		const handler = webHandler([], superadmin);
+		expect(
+			(await handler(adminRoleRequest("grant", human, "producer"))).status,
+		).toBe(400);
+	});
+
+	test("superadmin grants the admin tier to a machine", async () => {
+		const handler = webHandler([], superadmin);
+		const { id } = await createMachine(handler);
+		const res = await handler(
+			adminRoleRequest("grant", { _tag: "machine", id }, "admin"),
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ roles: ["admin"] });
+	});
+
+	test("404 when granting the admin tier to an unknown machine", async () => {
+		const handler = webHandler([], superadmin);
+		expect(
+			(
+				await handler(
+					adminRoleRequest("grant", { _tag: "machine", id: "ghost" }, "admin"),
+				)
+			).status,
+		).toBe(404);
+	});
+});
+
 describe("claim superadmin", () => {
 	const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
 	const claimRequest = (token: string) => postRequest(claimUrl, { token });
