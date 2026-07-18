@@ -3,11 +3,16 @@ import { Brand, Schema } from "effect";
 export type Principal = string & Brand.Brand<"Principal">;
 export const Principal = Brand.nominal<Principal>();
 
-export const PrincipalNameSchema = Schema.Literal(
+export const DeclarablePrincipalNameSchema = Schema.Literal(
 	"everyone",
 	"client",
-	"server",
-	"admin",
+);
+
+export const UndeniablePrincipalNameSchema = Schema.Literal("server", "admin");
+
+export const PrincipalNameSchema = Schema.Literal(
+	...DeclarablePrincipalNameSchema.literals,
+	...UndeniablePrincipalNameSchema.literals,
 );
 
 export const PRINCIPAL: Record<typeof PrincipalNameSchema.Type, Principal> = {
@@ -17,10 +22,9 @@ export const PRINCIPAL: Record<typeof PrincipalNameSchema.Type, Principal> = {
 	client: Principal("client"),
 	// Exclusive to server-side calls
 	server: Principal("server"),
-	// Holds every capability by default
+	// Holds every capability
 	admin: Principal("admin"),
 } as const;
 
 export type PrincipalName = typeof PrincipalNameSchema.Type;
-
-export const PRINCIPAL_BY_NAME = new Map(Object.entries(PRINCIPAL));
+export type DeclarablePrincipalName = typeof DeclarablePrincipalNameSchema.Type;

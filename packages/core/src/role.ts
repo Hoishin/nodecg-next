@@ -1,9 +1,9 @@
 import {
 	ADMIN_ROLE,
-	PrincipalNameSchema,
+	DeclarablePrincipalNameSchema,
+	type DeclarablePrincipalName,
 	type Identity,
 	type Principal,
-	type PrincipalName,
 	type RoleName,
 } from "@nodecg/internal";
 import { Match } from "effect";
@@ -31,11 +31,11 @@ export interface RoleArg {
 }
 
 export type PrincipalsArg = {
-	readonly [K in PrincipalName]?: PrincipalArg;
+	readonly [K in DeclarablePrincipalName]?: PrincipalArg;
 };
 
 export type PrincipalGrants = {
-	readonly [K in PrincipalName]?: Grant;
+	readonly [K in DeclarablePrincipalName]?: Grant;
 };
 
 export type PermissionRuleArg<InputRole extends string> = PrincipalGrants & {
@@ -71,7 +71,7 @@ export interface ResolvedPermission {
 	readonly canWrite: (caller: Identity) => boolean;
 }
 
-const getRoles = (caller: Identity): ReadonlySet<RoleName> =>
+export const getRolesFromIdentity = (caller: Identity): ReadonlySet<RoleName> =>
 	Match.value(caller).pipe(
 		Match.withReturnType<ReadonlySet<RoleName>>(),
 		Match.tag("human", (human) => human.roles),
@@ -84,25 +84,22 @@ const getRoles = (caller: Identity): ReadonlySet<RoleName> =>
 const ADMIN_ROLES = new Set(Object.values(ADMIN_ROLE));
 
 export const isAdminTier = (caller: Identity): boolean =>
-	!getRoles(caller).isDisjointFrom(ADMIN_ROLES);
+	!getRolesFromIdentity(caller).isDisjointFrom(ADMIN_ROLES);
 
 export const isSuperadmin = (caller: Identity): boolean =>
-	getRoles(caller).has(ADMIN_ROLE.superadmin);
+	getRolesFromIdentity(caller).has(ADMIN_ROLE.superadmin);
 
-// Deny wins at every level, so every applicable deny is checked before any allow.
 const can = (
 	access: Access,
 	caller: Identity,
 	namedRoles: ReadonlySet<RoleName>,
 ): boolean => {
 	if (caller._tag === "server") {
-		return access.server === "allow";
+		return true;
 	}
-	const roles = getRoles(caller);
-
-	const isAdmin = !roles.isDisjointFrom(ADMIN_ROLES);
-	if (isAdmin && access.admin === "deny") {
-		return false;
+	const roles = getRolesFromIdentity(caller);
+	if (!roles.isDisjointFrom(ADMIN_ROLES)) {
+		return true;
 	}
 
 	const isClient = !roles.isDisjointFrom(namedRoles);
@@ -118,7 +115,6 @@ const can = (
 	}
 
 	return (
-		(isAdmin && access.admin === "allow") ||
 		(isClient && access.client === "allow") ||
 		access.everyone === "allow" ||
 		!roles.isDisjointFrom(access.roles)
@@ -160,8 +156,8 @@ const foldSlots = (
 	read: Access,
 	write: Access,
 ): PrincipalGrants => {
-	const slots: { [K in PrincipalName]?: Grant } = {};
-	for (const name of PrincipalNameSchema.literals) {
+	const slots: { [K in DeclarablePrincipalName]?: Grant } = {};
+	for (const name of DeclarablePrincipalNameSchema.literals) {
 		slots[name] = fold(read[name], write[name]);
 	}
 	return slots;
@@ -188,15 +184,27 @@ export const replicantPermission = (
 	);
 };
 
+const absentOperation = () => false;
+
 export const computedPermission = (
 	read: Access,
 	namedRoles: ReadonlySet<RoleName>,
-): ResolvedPermission => buildPermission(read, EMPTY_ACCESS, namedRoles);
+): ResolvedPermission => ({
+	read,
+	write: EMPTY_ACCESS,
+	canRead: (caller: Identity): boolean => can(read, caller, namedRoles),
+	canWrite: absentOperation,
+});
 
 export const rpcPermission = (
 	call: Access,
 	namedRoles: ReadonlySet<RoleName>,
-): ResolvedPermission => buildPermission(EMPTY_ACCESS, call, namedRoles);
+): ResolvedPermission => ({
+	read: EMPTY_ACCESS,
+	write: call,
+	canRead: absentOperation,
+	canWrite: (caller: Identity): boolean => can(call, caller, namedRoles),
+});
 
 export const topicPermission = (
 	subscribe: Access,

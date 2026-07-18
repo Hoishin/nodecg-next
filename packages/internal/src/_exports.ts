@@ -39,10 +39,12 @@ export {
 	fieldIdentifierEquivalence,
 } from "./messages.ts";
 export {
+	DeclarablePrincipalNameSchema,
 	Principal,
 	PRINCIPAL,
-	PRINCIPAL_BY_NAME,
 	PrincipalNameSchema,
+	UndeniablePrincipalNameSchema,
+	type DeclarablePrincipalName,
 	type PrincipalName,
 } from "./principal.ts";
 export {

@@ -2,6 +2,9 @@ import { defineNamespace } from "@nodecg/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
+	HumanAccountSchema,
+	HumanIdentitySchema,
+	RoleName,
 	ServerIdentitySchema,
 } from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
@@ -42,15 +45,28 @@ const testInMemory = makeTestEffect(
 
 // Different encoded and decoded
 const manifest = defineNamespace("ns", {
+	roles: { scorer: { permission: ["replicant-read", "replicant-write"] } },
 	replicant: {
 		count: { schema: Schema.NumberFromString },
 		other: { schema: Schema.NumberFromString },
 		locked: {
 			schema: Schema.NumberFromString,
-			permission: { write: { server: "deny" } },
+			permission: { write: { deny: ["scorer"] } },
 		},
 	},
 });
+
+const scorer = Layer.succeed(
+	CurrentIdentity,
+	HumanIdentitySchema.make({
+		account: HumanAccountSchema.make({
+			issuer: "test",
+			subject: "subject",
+			displayName: "Scorer",
+		}),
+		roles: new Set([RoleName("scorer")]),
+	}),
+);
 
 describe("get", () => {
 	test(
@@ -127,7 +143,7 @@ describe("set", () => {
 	);
 
 	test(
-		"fails FieldPermissionDenied when the field's write denies the server",
+		"fails FieldPermissionDenied for a caller whose role the write denies",
 		testStubbed(
 			Effect.gen(function* () {
 				const field = yield* buildReplicant(
@@ -136,7 +152,9 @@ describe("set", () => {
 					manifest.replicant.locked,
 					0,
 				);
-				const error = yield* field.set(1).pipe(Effect.flip);
+				const error = yield* field
+					.set(1)
+					.pipe(Effect.provide(scorer), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
 				expect(storage.update).not.toHaveBeenCalled();
 			}),
@@ -317,7 +335,7 @@ describe("derivation engine write-through", () => {
 					manifest.replicant.locked,
 					0,
 				);
-				yield* field.set(1).pipe(Effect.flip);
+				yield* field.set(1).pipe(Effect.provide(scorer), Effect.flip);
 				expect(yield* engine.readReplicant("ns", "locked")).toEqual("0");
 			}),
 		),

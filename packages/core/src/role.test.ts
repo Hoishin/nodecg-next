@@ -10,8 +10,12 @@ import {
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { defineNamespace, extendNamespace } from "./define-namespace.ts";
-import { isAdminTier } from "./role.ts";
+import {
+	declaredRoleNames,
+	defineNamespace,
+	extendNamespace,
+} from "./define-namespace.ts";
+import { getRolesFromIdentity, isAdminTier } from "./role.ts";
 
 const human = (...roles: RoleName[]) =>
 	HumanIdentitySchema.make({
@@ -114,9 +118,12 @@ describe("canRead / canWrite", () => {
 		expect(manifest.computed.total.permission.canRead(server)).toBe(true);
 	});
 
-	test("an allow narrows the named roles without revoking the server", () => {
+	test("an allow narrows the named roles without revoking the server or the admin", () => {
 		expect(manifest.replicant.score.permission.canWrite(server)).toBe(true);
 		expect(manifest.replicant.config.permission.canWrite(server)).toBe(true);
+		expect(
+			manifest.replicant.config.permission.canWrite(human(ADMIN_ROLE.admin)),
+		).toBe(true);
 		expect(
 			manifest.replicant.config.permission.canWrite(human(RoleName("judge"))),
 		).toBe(false);
@@ -145,27 +152,11 @@ describe("canRead / canWrite", () => {
 			extended.replicant.lounge.permission.canRead(human(RoleName("auditor"))),
 		).toBe(true);
 	});
-
-	test("deny revokes the server from a single field", () => {
-		const sealed = defineNamespace("match", {
-			replicant: {
-				audit: {
-					schema: Schema.Number,
-					permission: { write: { server: "deny" } },
-				},
-			},
-		});
-
-		expect(sealed.replicant.audit.permission.canWrite(server)).toBe(false);
-	});
 });
 
 describe("principals as capability bases", () => {
 	const based = defineNamespace("match", {
-		principals: {
-			everyone: { permission: ["computed-read"] },
-			server: { permission: ["replicant-write"] },
-		},
+		principals: { everyone: { permission: ["computed-read"] } },
 		roles: { judge: { permission: ["replicant-read"] } },
 		replicant: { score: { schema: Schema.Number } },
 		computed: { total: { schema: Schema.Number } },
@@ -178,77 +169,35 @@ describe("principals as capability bases", () => {
 		).toBe(true);
 	});
 
-	test("a server base admits the server identity but not a named role", () => {
-		expect(based.replicant.score.permission.canWrite(server)).toBe(true);
-		expect(
-			based.replicant.score.permission.canWrite(human(RoleName("judge"))),
-		).toBe(false);
-	});
-
 	test("an everyone base on one capability does not leak into another", () => {
 		expect(based.replicant.score.permission.canRead(anonymous)).toBe(false);
 	});
 });
 
-describe("overriding the admin principal", () => {
-	const narrowed = defineNamespace("match", {
-		principals: { admin: { permission: ["replicant-read"] } },
-		roles: { judge: { permission: ["replicant-read", "replicant-write"] } },
-		replicant: { score: { schema: Schema.Number } },
+describe("admin and server are undeniable", () => {
+	test("a permission rule cannot target them", () => {
+		for (const principal of ["admin", "server"]) {
+			const permission = { write: { [principal]: "deny" } };
+			expect(() =>
+				defineNamespace("match", {
+					replicant: { audit: { schema: Schema.Number, permission } },
+				}),
+			).toThrow(
+				new RegExp(`Undeniable principal "${principal}" in replicant "audit"`),
+			);
+		}
 	});
 
-	test("narrows the admin to the declared capabilities", () => {
-		expect(
-			narrowed.replicant.score.permission.canRead(human(ADMIN_ROLE.admin)),
-		).toBe(true);
-		expect(
-			narrowed.replicant.score.permission.canWrite(human(ADMIN_ROLE.admin)),
-		).toBe(false);
-	});
-
-	test("narrows a superadmin with it — holding superadmin means having the admin principal", () => {
-		expect(
-			narrowed.replicant.score.permission.canRead(human(ADMIN_ROLE.superadmin)),
-		).toBe(true);
-		expect(
-			narrowed.replicant.score.permission.canWrite(
-				human(ADMIN_ROLE.superadmin),
-			),
-		).toBe(false);
-	});
-
-	test("deny locks a single field against the admin, superadmin included", () => {
-		const sealed = defineNamespace("match", {
-			replicant: {
-				audit: {
-					schema: Schema.Number,
-					permission: { read: { admin: "deny" } },
-				},
-			},
-		});
-
-		expect(
-			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
-		).toBe(false);
-		expect(
-			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.superadmin)),
-		).toBe(false);
-	});
-
-	test("an explicit allow still grants an admin whose base was emptied", () => {
-		const pinned = defineNamespace("match", {
-			principals: { admin: { permission: [] } },
-			replicant: {
-				audit: {
-					schema: Schema.Number,
-					permission: { write: { admin: "allow" } },
-				},
-			},
-		});
-
-		expect(
-			pinned.replicant.audit.permission.canWrite(human(ADMIN_ROLE.admin)),
-		).toBe(true);
+	test("their capability bases cannot be overridden", () => {
+		for (const principal of ["admin", "server"]) {
+			const principals = { [principal]: { permission: [] } };
+			expect(() =>
+				defineNamespace("match", {
+					principals,
+					replicant: { score: { schema: Schema.Number } },
+				}),
+			).toThrow(new RegExp(`Principal "${principal}" is undeniable`));
+		}
 	});
 });
 
@@ -277,8 +226,9 @@ describe("deny beats a wildcard grant", () => {
 		expect(wildcard.replicant.hidden.permission.canRead(anonymous)).toBe(true);
 	});
 
-	test("denying everyone seals the field against every wire caller, admin included", () => {
+	test("denying everyone seals the field against every wire caller except the admin", () => {
 		const sealed = defineNamespace("match", {
+			roles: { viewer: { permission: ["replicant-read"] } },
 			replicant: {
 				audit: {
 					schema: Schema.Number,
@@ -289,25 +239,12 @@ describe("deny beats a wildcard grant", () => {
 
 		expect(sealed.replicant.audit.permission.canRead(anonymous)).toBe(false);
 		expect(
-			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
+			sealed.replicant.audit.permission.canRead(human(RoleName("viewer"))),
 		).toBe(false);
+		expect(
+			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
+		).toBe(true);
 		expect(sealed.replicant.audit.permission.canRead(server)).toBe(true);
-	});
-});
-
-describe("the server is not a member of the public", () => {
-	test("a world-open namespace can still be sealed against the server", () => {
-		const sealed = defineNamespace("match", {
-			principals: {
-				everyone: { permission: ["replicant-read", "replicant-write"] },
-				server: { permission: [] },
-			},
-			replicant: { score: { schema: Schema.Number } },
-		});
-
-		expect(sealed.replicant.score.permission.canWrite(anonymous)).toBe(true);
-		expect(sealed.replicant.score.permission.canWrite(server)).toBe(false);
-		expect(sealed.replicant.score.permission.canRead(server)).toBe(false);
 	});
 });
 
@@ -321,5 +258,47 @@ describe("isAdminTier", () => {
 		expect(isAdminTier(human(RoleName("judge")))).toBe(false);
 		expect(isAdminTier(anonymous)).toBe(false);
 		expect(isAdminTier(server)).toBe(false);
+	});
+});
+
+describe("getRolesFromIdentity", () => {
+	test("projects the held roles of a human and a machine", () => {
+		expect(getRolesFromIdentity(human(RoleName("judge")))).toEqual(
+			new Set([RoleName("judge")]),
+		);
+		expect(getRolesFromIdentity(machine(RoleName("viewer")))).toEqual(
+			new Set([RoleName("viewer")]),
+		);
+	});
+
+	test("is empty for anonymous and server", () => {
+		expect(getRolesFromIdentity(anonymous)).toEqual(new Set());
+		expect(getRolesFromIdentity(server)).toEqual(new Set());
+	});
+});
+
+describe("declaredRoleNames", () => {
+	test("returns every declared role, capability-less ones included", () => {
+		const declared = defineNamespace("declared", {
+			roles: {
+				producer: { permission: ["replicant-write"] },
+				idle: { permission: [] },
+			},
+		});
+		expect(declaredRoleNames(declared)).toEqual(
+			new Set([RoleName("producer"), RoleName("idle")]),
+		);
+	});
+
+	test("includes roles a later extend adds", () => {
+		const base = defineNamespace("base", {
+			roles: { producer: { permission: ["replicant-write"] } },
+		});
+		const extended = extendNamespace(base, {
+			roles: { moderator: { permission: [] } },
+		});
+		expect(declaredRoleNames(extended)).toEqual(
+			new Set([RoleName("producer"), RoleName("moderator")]),
+		);
 	});
 });

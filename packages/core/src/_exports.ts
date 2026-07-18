@@ -1,4 +1,5 @@
 export {
+	declaredRoleNames,
 	defineNamespace,
 	extendNamespace,
 	FieldDecodeError,
@@ -9,6 +10,7 @@ export {
 	type NamespaceManifest,
 } from "./define-namespace.ts";
 export {
+	getRolesFromIdentity,
 	isAdminTier,
 	isSuperadmin,
 	type Access,

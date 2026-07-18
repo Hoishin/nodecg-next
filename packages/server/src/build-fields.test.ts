@@ -1,5 +1,11 @@
 import { defineNamespace } from "@nodecg/core";
-import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
+import {
+	CurrentIdentity,
+	HumanAccountSchema,
+	HumanIdentitySchema,
+	RoleName,
+	ServerIdentitySchema,
+} from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
@@ -308,82 +314,68 @@ describe("rpc ctx", () => {
 });
 
 describe("rpc ctx runs as the server identity", () => {
+	const operator = Layer.succeed(
+		CurrentIdentity,
+		HumanIdentitySchema.make({
+			account: HumanAccountSchema.make({
+				issuer: "test",
+				subject: "subject",
+				displayName: "Operator",
+			}),
+			roles: new Set([RoleName("operator")]),
+		}),
+	);
+
 	const manifest = defineNamespace("guarded", {
+		roles: { operator: { permission: ["rpc-call"] } },
 		replicant: {
-			open: { schema: Schema.NumberFromString },
-			sealed: {
-				schema: Schema.NumberFromString,
-				permission: { write: { server: "deny" } },
-			},
+			hidden: { schema: Schema.NumberFromString },
 		},
 		rpc: {
-			writeOpen: {
+			writeHidden: {
 				schema: { request: Schema.Number, response: Schema.Null },
-				permission: { write: { everyone: "allow" } },
 			},
-			writeSealed: {
-				schema: { request: Schema.Number, response: Schema.Null },
-				permission: { write: { everyone: "allow" } },
-			},
-			readSealed: {
+			readHidden: {
 				schema: { request: Schema.Null, response: Schema.Number },
-				permission: { write: { everyone: "allow" } },
 			},
 		},
 	});
 
 	const load = buildNamespace(
 		implementNamespace(manifest, {
-			seedReplicant: { open: () => 0, sealed: () => 3 },
+			seedReplicant: { hidden: () => 3 },
 			implementRpc: {
-				writeOpen: (value, ctx) => {
-					ctx.replicant.open.set(value);
+				writeHidden: (value, ctx) => {
+					ctx.replicant.hidden.set(value);
 					return null;
 				},
-				writeSealed: (value, ctx) => {
-					ctx.replicant.sealed.set(value);
-					return null;
-				},
-				readSealed: (_, ctx) => ctx.replicant.sealed.get(),
+				readHidden: (_, ctx) => ctx.replicant.hidden.get(),
 			},
 		}),
 	);
 
 	test(
-		"writes a field the server may write",
+		"writes a private replicant through ctx even when the calling role could not",
 		testInMemory(
 			Effect.gen(function* () {
 				const built = yield* load;
 
-				yield* built.rpc.writeOpen.call(7);
+				yield* built.rpc.writeHidden.call(7).pipe(Effect.provide(operator));
 
-				expect(yield* built.replicant.open.get()).toBe(7);
+				expect(yield* built.replicant.hidden.get()).toBe(7);
 			}),
 		),
 	);
 
 	test(
-		"a write to a field sealed against the server fails without mutating it",
+		"reads a private replicant through ctx for a role-holding caller",
 		testInMemory(
 			Effect.gen(function* () {
 				const built = yield* load;
 
-				const error = yield* built.rpc.writeSealed.call(7).pipe(Effect.flip);
-
-				expect(error._tag).toBe("RpcCallFailed");
-				expect(error.message).toContain("Permission denied to write");
-				expect(yield* built.replicant.sealed.get()).toBe(3);
-			}),
-		),
-	);
-
-	test(
-		"still reads a field whose write is sealed against the server",
-		testInMemory(
-			Effect.gen(function* () {
-				const built = yield* load;
-
-				expect(yield* built.rpc.readSealed.call(null)).toBe(3);
+				expect(
+					yield* built.rpc.readHidden.call(null).pipe(Effect.provide(operator)),
+				).toBe(3);
 			}),
 		),
 	);

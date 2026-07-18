@@ -1,11 +1,11 @@
 import {
+	DeclarablePrincipalNameSchema,
 	isUndeclarableRole,
 	PRINCIPAL,
-	PRINCIPAL_BY_NAME,
-	PrincipalNameSchema,
 	RoleName,
+	UndeniablePrincipalNameSchema,
+	type DeclarablePrincipalName,
 	type Principal,
-	type PrincipalName,
 	type UndeclarableRoleName,
 } from "@nodecg/internal";
 import {
@@ -22,7 +22,6 @@ import type { JsonValue } from "type-fest";
 import {
 	computedPermission,
 	replicantPermission,
-	ROLE_CAPABILITY,
 	rpcPermission,
 	topicPermission,
 	type Access,
@@ -101,6 +100,10 @@ export interface NamespaceManifest<
 		>;
 	};
 }
+
+export const declaredRoleNames = (
+	manifest: NamespaceManifest<{}, {}, {}, {}>,
+): ReadonlySet<RoleName> => new Set(manifest[manifestRolesKey].roles.keys());
 
 interface FieldOption<
 	S extends Schema.Schema<any, any, never>,
@@ -190,11 +193,11 @@ interface RoleRegistry {
 
 interface DeclaredTokens {
 	readonly roles: ReadonlySet<RoleName>;
-	readonly principals: ReadonlySet<PrincipalName>;
+	readonly principals: ReadonlySet<DeclarablePrincipalName>;
 }
 
 type AccessBuilder = {
-	[K in PrincipalName]?: Grant;
+	[K in DeclarablePrincipalName]?: Grant;
 } & {
 	roles: Set<RoleName>;
 	rolesDenied: Set<RoleName>;
@@ -228,7 +231,7 @@ const writeRule = (
 		access.roles = access.roles.difference(denied);
 		access.rolesDenied = access.rolesDenied.union(denied);
 	}
-	for (const principal of PrincipalNameSchema.literals) {
+	for (const principal of DeclarablePrincipalNameSchema.literals) {
 		const grant = rule[principal];
 		if (typeof grant !== "undefined") {
 			access[principal] = grant;
@@ -262,7 +265,7 @@ const resolveAccess = (
 	}
 	const principals = precedent
 		? declared.principals
-		: PrincipalNameSchema.literals;
+		: DeclarablePrincipalNameSchema.literals;
 	for (const name of principals) {
 		if (access[name] === "deny") {
 			continue;
@@ -294,8 +297,18 @@ const validatePermissionTokens = (
 	for (const [name, field] of Object.entries(fields ?? {})) {
 		for (const operation of ["read", "write"] as const) {
 			const rule = field.permission?.[operation];
+			if (typeof rule === "undefined") {
+				continue;
+			}
+			for (const principal of UndeniablePrincipalNameSchema.literals) {
+				if (principal in rule) {
+					throw new Error(
+						`Undeniable principal "${principal}" in ${group} "${name}" ${operation}`,
+					);
+				}
+			}
 			for (const kind of ["allow", "deny"] as const) {
-				for (const token of rule?.[kind] ?? []) {
+				for (const token of rule[kind] ?? []) {
 					if (!roles.has(RoleName(token))) {
 						throw new Error(
 							`Unknown role "${token}" in ${group} "${name}" ${operation}.${kind}`,
@@ -307,20 +320,8 @@ const validatePermissionTokens = (
 	}
 };
 
-const seedPrincipals = (): Map<Principal, RoleManifest> => {
-	const principals = new Map<Principal, RoleManifest>();
-	for (const name of PrincipalNameSchema.literals) {
-		principals.set(PRINCIPAL[name], {
-			name: PRINCIPAL[name],
-			capabilities: new Set(
-				name === "admin" || name === "server" ? ROLE_CAPABILITY : [],
-			),
-		});
-	}
-	return principals;
-};
-
-const isPrincipalName = Schema.is(PrincipalNameSchema);
+const isDeclarablePrincipalName = Schema.is(DeclarablePrincipalNameSchema);
+const isUndeniablePrincipalName = Schema.is(UndeniablePrincipalNameSchema);
 
 const declareRoles = (
 	precedent: RoleRegistry,
@@ -333,11 +334,17 @@ const declareRoles = (
 	const roles = new Map(precedent.roles);
 	const principals = new Map(precedent.principals);
 	const declaredRoles = new Set<RoleName>();
-	const declaredPrincipals = new Set<PrincipalName>();
+	const declaredPrincipals = new Set<DeclarablePrincipalName>();
 
 	// Resolve principals
 	for (const [key, arg] of Object.entries(overrides ?? {})) {
-		if (typeof arg === "undefined" || !isPrincipalName(key)) {
+		if (typeof arg === "undefined") {
+			continue;
+		}
+		if (isUndeniablePrincipalName(key)) {
+			throw new Error(`Principal "${key}" is undeniable`);
+		}
+		if (!isDeclarablePrincipalName(key)) {
 			continue;
 		}
 		principals.set(PRINCIPAL[key], {
@@ -352,7 +359,7 @@ const declareRoles = (
 		if (typeof arg === "undefined") {
 			continue;
 		}
-		if (PRINCIPAL_BY_NAME.has(key)) {
+		if (isDeclarablePrincipalName(key)) {
 			throw new Error(
 				`Role "${key}" is a principal — declare it under "principals"`,
 			);
@@ -418,7 +425,7 @@ export function defineNamespace<
 	AddedRpcDecoded<Rpc>
 > {
 	const { registry, declared } = declareRoles(
-		{ roles: new Map(), principals: seedPrincipals() },
+		{ roles: new Map(), principals: new Map() },
 		defineOption.roles,
 		defineOption.principals,
 	);
