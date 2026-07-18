@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, PubSub, Stream } from "effect";
+import { Effect, Layer, PubSub, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
@@ -17,13 +17,13 @@ export const InMemoryReplicantStorage = Layer.effect(
 		const read = (
 			namespace: string,
 			name: string,
-		): Option.Option<JsonValue> => {
+		): Effect.Effect<JsonValue, ReplicantNotFound> => {
 			const value = map.get(namespace)?.get(name);
 			// JavaScript `undefined` is not a valid JSON value, thus means value not defined
 			if (typeof value === "undefined") {
-				return Option.none();
+				return new ReplicantNotFound({ namespace, name });
 			}
-			return Option.some(value);
+			return Effect.succeed(value);
 		};
 
 		const create = Effect.fn("ReplicantStorage.create")(function* (

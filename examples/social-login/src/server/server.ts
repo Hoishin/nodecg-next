@@ -89,13 +89,15 @@ if (providers.length === 0) {
 
 const showcase = implementNamespace(defineNamespace("social-login", {}), {
 	frontend: {
-		dir: import.meta.resolve("../../dist"),
+		dir: [import.meta.resolve("../../dist")],
 		vite: { root: import.meta.resolve("../..") },
 	},
 });
 
-loadNodeCG({
+const nodecg = await loadNodeCG({
 	namespaces: [showcase],
 	authProviders: providers,
 	dev: process.env["NODE_ENV"] !== "production",
 });
+
+nodecg.start();

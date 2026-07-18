@@ -19,21 +19,21 @@ import {
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
+import { type BuiltNamespace } from "../build-fields.ts";
+import { RpcCallFailed } from "../field-builders/build-rpc.ts";
+import { fieldInternal } from "../field-builders/field-internal-key.ts";
+import { FieldPermissionDenied } from "../field-builders/permission.ts";
 import {
-	type BuiltNamespace,
-	FieldPermissionDenied,
-	RpcCallFailed,
-	fieldInternal,
-} from "../build-namespace.ts";
-import {
-	fieldRegistryLayer,
+	FieldRegistryService,
 	type RegisteredNamespace,
 } from "../field-registry.ts";
 import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
+import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
 import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
+import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 
 type ReplicantStub = BuiltNamespace["replicant"][string];
@@ -116,6 +116,7 @@ function stubRpc(
 	callEncoded: RpcInternal["callEncoded"],
 ): BuiltNamespace["rpc"][string] {
 	return {
+		call: vi.fn(),
 		[fieldInternal]: {
 			callEncoded,
 			permission: openPermission,
@@ -130,7 +131,7 @@ function registeredNamespace(
 	topic: BuiltNamespace["topic"] = {},
 	rpc: BuiltNamespace["rpc"] = {},
 ): RegisteredNamespace {
-	return { namespace, fields: { replicant, computed, topic, rpc } };
+	return { namespace, fields: { namespace, replicant, computed, topic, rpc } };
 }
 
 const asIdentity = (identity: Identity) =>
@@ -145,12 +146,14 @@ function webHandler(
 	const { handler } = HttpApiBuilder.toWebHandler(
 		Layer.mergeAll(RootApiLive, HttpServer.layerContext).pipe(
 			Layer.provide(middleware),
-			Layer.provide(fieldRegistryLayer(namespaces)),
+			Layer.provide(FieldRegistryService.Default(namespaces)),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryMachineClientStore),
+			Layer.provide(InMemoryReplicantStorage),
+			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,

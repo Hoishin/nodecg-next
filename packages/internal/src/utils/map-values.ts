@@ -72,17 +72,19 @@ export const zipEffectValues =
 			value: HKT.Kind<F, unknown, never, never, Target[K]>,
 			context: HKT.Kind<C, In, never, never, Target[K]>,
 			key: keyof Target & string,
-		) => Effect.Effect<HKT.Kind<G, unknown, never, never, Target[K]>, E, R>,
+		) => Effect.Effect<HKT.Kind<G, In, never, never, Target[K]>, E, R>,
 	) =>
 		Effect.gen(function* () {
-			const result: Partial<ApplyLambdaToObjectValues<G, Target>> = {};
+			const result: Partial<
+				ApplyLambdaToObjectValues<G, Target, never, never, In>
+			> = {};
 			if (typeof ctx === "undefined") {
-				return result as ApplyLambdaToObjectValues<G, Target>;
+				return result as ApplyLambdaToObjectValues<G, Target, never, never, In>;
 			}
 			for (const key of Object.keys(obj) as (keyof Target & string)[]) {
 				result[key] = yield* transform(obj[key], ctx[key], key);
 			}
-			return result as ApplyLambdaToObjectValues<G, Target>;
+			return result as ApplyLambdaToObjectValues<G, Target, never, never, In>;
 		});
 
 type SchemaKeys<In> = {

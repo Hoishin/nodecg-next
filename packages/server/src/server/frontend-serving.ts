@@ -21,6 +21,16 @@ const coerceToPath = (url: string | URL) => {
 	return url;
 };
 
+const staticApp = (dirPath: string | URL, single: boolean) =>
+	connectToHttpApp(
+		sirv(coerceToPath(dirPath), {
+			etag: true,
+			single,
+			// Don't cache files in memory
+			dev: true,
+		}),
+	);
+
 export const frontendRoutes = (options: {
 	namespaces: ReadonlyArray<ImplementedNamespace<{}, {}, {}, {}>>;
 	dev: boolean;
@@ -33,7 +43,7 @@ export const frontendRoutes = (options: {
 				if (typeof frontend === "undefined") {
 					continue;
 				}
-				const spa = frontend.vite?.spa ?? false;
+				const spa = frontend.spa ?? false;
 				if (options.dev && typeof frontend.vite !== "undefined") {
 					const devServer = yield* buildViteServer({
 						root: coerceToPath(frontend.vite.root),
@@ -46,15 +56,22 @@ export const frontendRoutes = (options: {
 						{ includePrefix: true },
 					);
 				} else {
-					const app = connectToHttpApp(
-						sirv(coerceToPath(frontend.dir), {
-							etag: true,
-							single: spa,
-							// Don't cache files in memory
-							dev: true,
-						}),
+					const exact = frontend.dir.map((dirPath) =>
+						staticApp(dirPath, false),
 					);
-					yield* router.mountApp(frontendPrefix(name), app);
+					// Fallback pass runs only after every dir missed the exact path, so an exact match in any dir wins and the first dir with an index.html serves the fallback
+					const apps = spa
+						? [
+								...exact,
+								...frontend.dir.map((dirPath) => staticApp(dirPath, true)),
+							]
+						: exact;
+					yield* router.mountApp(
+						frontendPrefix(name),
+						apps.reduce((acc, next) =>
+							acc.pipe(Effect.catchTag("RouteNotFound", () => next)),
+						),
+					);
 				}
 				yield* Effect.logInfo(
 					`Serving frontend for "${name}" at ${frontendPrefix(name)}/`,

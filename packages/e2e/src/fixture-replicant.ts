@@ -62,3 +62,18 @@ export const extendedManifest = extendNamespace(baseManifest, {
 		total: { schema: Schema.Number, permission: everyoneRead },
 	},
 });
+
+export const crossManifest = defineNamespace("e2e-cross", {
+	replicant: {
+		factor: { schema: Schema.Number, permission: everyoneRead },
+	},
+	computed: {
+		scaledScore: { schema: Schema.Number, permission: everyoneRead },
+	},
+	rpc: {
+		addScore: {
+			schema: { request: Schema.Number, response: Schema.Number },
+			permission: everyoneWrite,
+		},
+	},
+});

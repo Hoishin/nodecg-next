@@ -36,6 +36,17 @@ const revokeMachine = async (id: string) => {
 	return response;
 };
 
+const grantMachineRole = async (id: string, role: string) => {
+	await login("root");
+	const response = await fetch(`/api/internal/machines/${id}/roles`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ role }),
+	});
+	await logout();
+	return response;
+};
+
 const readV0 = (fieldName: string, token?: string) =>
 	fetch(`/api/v0/namespaces/e2e/replicant/${fieldName}`, {
 		headers: token ? { authorization: `Bearer ${token}` } : {},
@@ -59,6 +70,21 @@ describe("public /api/v0 bearer authentication", () => {
 
 	test("an authenticated machine without roles is forbidden from a restricted field", async () => {
 		const { token } = await provisionMachine("nosy-bot");
+		expect((await readV0("secret", token)).status).toBe(403);
+	});
+
+	test("a granted role opens the fields it gates, and only those", async () => {
+		const { id, token } = await provisionMachine("promoted-bot");
+		expect((await readV0("producerOnly", token)).status).toBe(403);
+
+		const grant = await grantMachineRole(id, "producer");
+		expect(grant.status).toBe(200);
+		expect(await grant.json()).toEqual({ roles: ["producer"] });
+
+		const read = await readV0("producerOnly", token);
+		expect(read.status).toBe(200);
+		expect(await read.json()).toBe("producers-only");
+
 		expect((await readV0("secret", token)).status).toBe(403);
 	});
 

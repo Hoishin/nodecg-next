@@ -1,5 +1,6 @@
 import {
 	HttpApiBuilder,
+	HttpRouter,
 	HttpServerRequest,
 	HttpServerResponse,
 	type Socket,
@@ -34,9 +35,13 @@ import {
 import { FieldRegistryService } from "../field-registry.ts";
 import { config } from "../server-config.ts";
 import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
-import type { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
+import {
+	type ReplicantNotFound,
+	ReplicantStorageService,
+} from "../services/replicant-storage/replicant-storage.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
+import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
 
 const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
 const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
@@ -179,6 +184,8 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 		const sessions = yield* SessionStoreService;
 		const roleStore = yield* RoleStoreService;
 		const machines = yield* MachineClientStoreService;
+		const storage = yield* ReplicantStorageService;
+		const broker = yield* TopicBrokerService;
 
 		// TODO: keep contexts contexts, pass it to handler if needed
 		const resolveSession = resolveSessionIdentity({ sessions, roleStore });
@@ -188,37 +195,44 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 			Effect.succeed(HttpServerResponse.empty({ status: 500 })),
 		);
 
-		yield* router.get(
-			"/ws/internal",
-			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest;
-				const cookie = Option.fromNullable(request.cookies[sessionCookieName]);
-				const resolved = Option.isSome(cookie)
-					? yield* resolveSession(cookie.value)
-					: Option.none();
-				if (Option.isNone(resolved) && requireAuth) {
-					return HttpServerResponse.empty({ status: 401 });
-				}
-				const identity = Option.getOrElse(resolved, () => anonymousIdentity);
-				return yield* wsHandler(identity);
-			}).pipe(catchUnexpectedError),
+		const ws = HttpRouter.empty.pipe(
+			HttpRouter.get(
+				"/ws/internal",
+				Effect.gen(function* () {
+					const request = yield* HttpServerRequest.HttpServerRequest;
+					const cookie = Option.fromNullable(
+						request.cookies[sessionCookieName],
+					);
+					const resolved = Option.isSome(cookie)
+						? yield* resolveSession(cookie.value)
+						: Option.none();
+					if (Option.isNone(resolved) && requireAuth) {
+						return HttpServerResponse.empty({ status: 401 });
+					}
+					const identity = Option.getOrElse(resolved, () => anonymousIdentity);
+					return yield* wsHandler(identity);
+				}).pipe(catchUnexpectedError),
+			),
+			HttpRouter.get(
+				"/ws/v0",
+				Effect.gen(function* () {
+					const request = yield* HttpServerRequest.HttpServerRequest;
+					const bearer = Option.fromNullable(
+						request.headers["authorization"],
+					).pipe(Option.flatMap(decodeBearerToken));
+					const resolved = Option.isSome(bearer)
+						? yield* resolveMachine(bearer.value)
+						: Option.none();
+					if (Option.isNone(resolved)) {
+						return HttpServerResponse.empty({ status: 401 });
+					}
+					return yield* wsHandler(resolved.value);
+				}).pipe(catchUnexpectedError),
+			),
+			HttpRouter.provideService(ReplicantStorageService, storage),
+			HttpRouter.provideService(TopicBrokerService, broker),
 		);
 
-		yield* router.get(
-			"/ws/v0",
-			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest;
-				const bearer = Option.fromNullable(
-					request.headers["authorization"],
-				).pipe(Option.flatMap(decodeBearerToken));
-				const resolved = Option.isSome(bearer)
-					? yield* resolveMachine(bearer.value)
-					: Option.none();
-				if (Option.isNone(resolved)) {
-					return HttpServerResponse.empty({ status: 401 });
-				}
-				return yield* wsHandler(resolved.value);
-			}).pipe(catchUnexpectedError),
-		);
+		yield* router.concat(ws);
 	}),
 );

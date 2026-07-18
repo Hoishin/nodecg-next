@@ -1,5 +1,6 @@
 import { defineNamespace, extendNamespace } from "@nodecg/core";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
+import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
@@ -12,6 +13,10 @@ import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
 const storage = Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker);
+
+const testEffect = makeTestEffect(
+	Layer.succeed(CurrentIdentity, ServerIdentitySchema.make()),
+);
 
 describe("implementNamespace", () => {
 	test("bundles the manifest with its impl", () => {
@@ -32,6 +37,29 @@ describe("implementNamespace", () => {
 		});
 
 		expect(implementNamespace(manifest).impl).toBeUndefined();
+	});
+
+	test("bundles onLoad alongside the field impls", () => {
+		const manifest = defineNamespace("ns", {
+			replicant: { count: { schema: Schema.Number } },
+		});
+		const onLoad = () => {};
+
+		const implemented = implementNamespace(manifest, {
+			seedReplicant: { count: () => 0 },
+			onLoad,
+		});
+
+		expect(implemented.impl?.onLoad).toBe(onLoad);
+	});
+
+	test("takes onLoad on a fieldless namespace", () => {
+		const manifest = defineNamespace("ns", {
+			topic: { goal: { schema: Schema.String } },
+		});
+		const onLoad = () => {};
+
+		expect(implementNamespace(manifest, { onLoad }).impl?.onLoad).toBe(onLoad);
 	});
 });
 
@@ -78,27 +106,52 @@ describe("implementExtendedNamespace", () => {
 		),
 	);
 
-	test("carries the base frontend config over unless overridden", () => {
+	test("merges the base and extension frontend dirs, deduplicated", () => {
 		const extended = extendNamespace(base, {
 			replicant: { round: { schema: Schema.Number } },
 		});
 		const withFrontend = implementNamespace(base, {
 			seedReplicant: { score: () => 0, label: () => "" },
-			frontend: { dir: "/base" },
+			frontend: { dir: ["/base", "/shared"] },
 		});
 
 		const inherited = implementExtendedNamespace(extended, withFrontend, {
 			seedReplicant: { round: () => 0 },
 		});
-		const overridden = implementExtendedNamespace(
-			extended,
-			withFrontend,
-			{ seedReplicant: { round: () => 0 } },
-			{ frontend: { dir: "/extended" } },
-		);
+		const merged = implementExtendedNamespace(extended, withFrontend, {
+			seedReplicant: { round: () => 0 },
+			frontend: { dir: ["/shared", "/extended"] },
+		});
 
-		expect(inherited.impl?.frontend).toEqual({ dir: "/base" });
-		expect(overridden.impl?.frontend).toEqual({ dir: "/extended" });
+		expect(inherited.impl?.frontend).toEqual({ dir: ["/base", "/shared"] });
+		expect(merged.impl?.frontend).toEqual({
+			dir: ["/base", "/shared", "/extended"],
+		});
+	});
+
+	test("carries the base onLoad, and composes both when the supplement adds one", () => {
+		const extended = extendNamespace(base, {
+			replicant: { round: { schema: Schema.Number } },
+		});
+		const baseOnLoad = () => {};
+		const extensionOnLoad = () => {};
+		const withOnLoad = implementNamespace(base, {
+			seedReplicant: { score: () => 0, label: () => "" },
+			onLoad: baseOnLoad,
+		});
+
+		const inherited = implementExtendedNamespace(extended, withOnLoad, {
+			seedReplicant: { round: () => 0 },
+		});
+		const composed = implementExtendedNamespace(extended, withOnLoad, {
+			seedReplicant: { round: () => 0 },
+			onLoad: extensionOnLoad,
+		});
+
+		expect(inherited.impl?.onLoad).toBe(baseOnLoad);
+		expect(composed.impl?.onLoad).not.toBe(baseOnLoad);
+		expect(composed.impl?.onLoad).not.toBe(extensionOnLoad);
+		expect(composed.impl?.onLoad).toBeTypeOf("function");
 	});
 
 	test("omitting impl for a newly-added field is a type error", async () => {

@@ -1,11 +1,4 @@
-import {
-	Context,
-	Data,
-	type Effect,
-	type Option,
-	type Scope,
-	type Stream,
-} from "effect";
+import { Context, Data, type Effect, type Scope, type Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 export interface ReplicantChange {
@@ -54,7 +47,10 @@ export interface ReplicantStorage {
 	/**
 	 * Read the current in-memory value synchronously.
 	 */
-	read: (namespace: string, name: string) => Option.Option<JsonValue>;
+	read: (
+		namespace: string,
+		name: string,
+	) => Effect.Effect<JsonValue, ReplicantNotFound>;
 
 	/**
 	 * Update the already-existing replicant value with a new value

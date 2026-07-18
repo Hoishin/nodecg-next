@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-
 import {
 	implementExtendedNamespace,
 	implementNamespace,
@@ -9,6 +7,7 @@ import {
 import { makeFakeAuthProvider } from "./fake-auth-provider.ts";
 import {
 	baseManifest,
+	crossManifest,
 	extendedManifest,
 	fixtureManifest,
 } from "./fixture-replicant.ts";
@@ -34,22 +33,44 @@ const fixture = implementNamespace(fixtureManifest, {
 		},
 	},
 	frontend: {
-		dir: fileURLToPath(new URL("./fixture-frontend", import.meta.url)),
+		dir: [import.meta.resolve("./fixture-frontend")],
 	},
 });
 
 const baseImplemented = implementNamespace(baseManifest, {
 	seedReplicant: { score: () => 0 },
+	frontend: {
+		dir: [import.meta.resolve("./fixture-frontend-spa")],
+		spa: true,
+	},
 });
 const extended = implementExtendedNamespace(extendedManifest, baseImplemented, {
 	seedReplicant: { bonus: () => 0 },
 	implementComputed: {
 		total: (sources) => sources.score + sources.bonus,
 	},
+	frontend: {
+		dir: [import.meta.resolve("./fixture-frontend-extra")],
+	},
 });
 
-loadNodeCG({
-	namespaces: [fixture, extended],
+const cross = implementNamespace(crossManifest, {
+	seedReplicant: { factor: () => 2 },
+	implementComputed: {
+		scaledScore: (sources, ctx) =>
+			sources.factor * ctx.use(extended).replicant.score.get(),
+	},
+	implementRpc: {
+		addScore: (points, ctx) => {
+			ctx.use(extended).replicant.score.update((score) => score + points);
+			return ctx.use(extended).replicant.score.get();
+		},
+	},
+});
+
+const nodecg = await loadNodeCG({
+	// `cross` listed before the namespace its computed reads, so build order must not matter
+	namespaces: [cross, fixture, extended],
 	authProviders: [
 		makeFakeAuthProvider("dev", [{ id: "alice", displayName: "Alice" }]),
 	],
@@ -61,3 +82,5 @@ loadNodeCG({
 		process.send("ready");
 	},
 });
+
+nodecg.start();

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
 	type HttpApp,
+	HttpServerError,
 	HttpServerRequest,
 	HttpServerResponse,
 } from "@effect/platform";
@@ -16,7 +17,7 @@ export type ConnectMiddleware = (
 
 export const connectToHttpApp = (
 	middleware: ConnectMiddleware,
-): HttpApp.Default =>
+): HttpApp.Default<HttpServerError.RouteNotFound> =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest;
 		const req = NodeHttpServerRequest.toIncomingMessage(request);
@@ -24,23 +25,24 @@ export const connectToHttpApp = (
 
 		req.url = request.url;
 
-		return yield* Effect.async<HttpServerResponse.HttpServerResponse>(
-			(resume) => {
-				let settled = false;
-				const finish = () => {
-					if (!settled) {
-						settled = true;
-						resume(Effect.succeed(HttpServerResponse.empty()));
-					}
-				};
-				res.once("finish", finish);
-				res.once("close", finish);
-				middleware(req, res, () => {
-					if (!settled) {
-						settled = true;
-						resume(Effect.succeed(HttpServerResponse.empty({ status: 404 })));
-					}
-				});
-			},
-		);
+		return yield* Effect.async<
+			HttpServerResponse.HttpServerResponse,
+			HttpServerError.RouteNotFound
+		>((resume) => {
+			let settled = false;
+			const finish = () => {
+				if (!settled) {
+					settled = true;
+					resume(Effect.succeed(HttpServerResponse.empty()));
+				}
+			};
+			res.once("finish", finish);
+			res.once("close", finish);
+			middleware(req, res, () => {
+				if (!settled) {
+					settled = true;
+					resume(Effect.fail(new HttpServerError.RouteNotFound({ request })));
+				}
+			});
+		});
 	});

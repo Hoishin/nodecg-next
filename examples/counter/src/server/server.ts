@@ -16,10 +16,8 @@ const extendedCounter = implementExtendedNamespace(
 		implementComputed: {
 			parity: (sources) => (sources.count % 2 === 0 ? "even" : "odd"),
 		},
-	},
-	{
 		frontend: {
-			dir: import.meta.resolve("../../dist"),
+			dir: [import.meta.resolve("../../dist")],
 			vite: { root: import.meta.resolve("../..") },
 		},
 	},
@@ -41,9 +39,11 @@ const localProvider = await makeOidcProvider({
 	allowInsecure: true,
 });
 
-loadNodeCG({
+const nodecg = await loadNodeCG({
 	namespaces: [extendedCounter, settings],
 	authProviders: [localProvider],
 	dev: process.env["NODE_ENV"] !== "production",
 	superadmins: [{ issuer, subject: "johndoe" }],
 });
+
+nodecg.start();

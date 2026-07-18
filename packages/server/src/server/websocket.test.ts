@@ -10,11 +10,13 @@ import {
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
-import { fieldRegistryLayer } from "../field-registry.ts";
+import { FieldRegistryService } from "../field-registry.ts";
 import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
+import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
+import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 import { websocketRoute } from "./websocket.ts";
 
@@ -23,7 +25,9 @@ const handler = () => {
 		Layer.mergeAll(RootApiLive, websocketRoute, HttpServer.layerContext).pipe(
 			Layer.provide(HumanAuthenticationMiddlewareLive),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
-			Layer.provide(fieldRegistryLayer([])),
+			Layer.provide(FieldRegistryService.Default([])),
+			Layer.provide(InMemoryReplicantStorage),
+			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),

@@ -150,6 +150,31 @@ describe("namespace frontend serving", () => {
 	});
 });
 
+describe("extended namespace frontend serving (spa)", () => {
+	test("serves the index from the base dir", async () => {
+		const response = await fetch("/frontend/namespaces/e2e-extend/");
+		expect(response.ok).toBe(true);
+		expect(await response.text()).toContain("spa shell");
+	});
+
+	test("serves a file from the extension's appended dir", async () => {
+		const response = await fetch("/frontend/namespaces/e2e-extend/widget.js");
+		expect(response.ok).toBe(true);
+		expect(await response.text()).toContain("extension widget loaded");
+	});
+
+	test("falls back to the base index for a client-side route", async () => {
+		const response = await fetch("/frontend/namespaces/e2e-extend/some/route");
+		expect(response.ok).toBe(true);
+		expect(await response.text()).toContain("spa shell");
+	});
+
+	test("404s for a missing file despite the fallback", async () => {
+		const response = await fetch("/frontend/namespaces/e2e-extend/missing.js");
+		expect(response.status).toBe(404);
+	});
+});
+
 describe("extended namespace sync (as producer)", () => {
 	beforeAll(async () => {
 		await login("prod");

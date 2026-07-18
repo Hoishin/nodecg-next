@@ -7,11 +7,12 @@ import { ReplicantStorageService } from "./replicant-storage.ts";
 
 describe("read", () => {
 	test(
-		"returns None on a missing key",
+		"fails with ReplicantNotFound on a missing key",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				expect(storage.read("ns", "missing")).toStrictEqual(Option.none());
+				const error = yield* storage.read("ns", "missing").pipe(Effect.flip);
+				expect(error._tag).toBe("ReplicantNotFound");
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
@@ -25,8 +26,8 @@ describe("create", () => {
 				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 1);
 				yield* storage.create("ns", "b", "two");
-				expect(storage.read("ns", "a")).toStrictEqual(Option.some(1));
-				expect(storage.read("ns", "b")).toStrictEqual(Option.some("two"));
+				expect(yield* storage.read("ns", "a")).toBe(1);
+				expect(yield* storage.read("ns", "b")).toBe("two");
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
@@ -39,7 +40,7 @@ describe("create", () => {
 				yield* storage.create("ns", "a", 1);
 				const error = yield* storage.create("ns", "a", 2).pipe(Effect.flip);
 				expect(error._tag).toBe("ReplicantAlreadyExists");
-				expect(storage.read("ns", "a")).toStrictEqual(Option.some(1));
+				expect(yield* storage.read("ns", "a")).toBe(1);
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
@@ -53,7 +54,7 @@ describe("update", () => {
 				const storage = yield* ReplicantStorageService;
 				yield* storage.create("ns", "a", 1);
 				yield* storage.update("ns", "a", 2);
-				expect(storage.read("ns", "a")).toStrictEqual(Option.some(2));
+				expect(yield* storage.read("ns", "a")).toBe(2);
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
