@@ -6,7 +6,7 @@
 	"scripts": {
 		"build": "vite build",
 		"start": "node src/server/server.ts",
-		"type-check": "tsc -b src/client src/server"
+		"type-check": "tsc -b --noEmit src/client src/server"
 	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:",

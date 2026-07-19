@@ -10,6 +10,7 @@
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effect/platform": "catalog:",
 		"@nodecg/client": "workspace:*",
 		"@nodecg/internal": "workspace:*",
 		"effect": "catalog:"

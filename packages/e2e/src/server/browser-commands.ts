@@ -9,10 +9,3 @@ export const closeLoginPopup: BrowserCommand<[]> = async (ctx) => {
 
 export const countPages: BrowserCommand<[]> = (ctx) =>
 	ctx.context.pages().length;
-
-declare module "vitest/internal/browser" {
-	interface BrowserCommands {
-		closeLoginPopup: () => ReturnType<typeof closeLoginPopup>;
-		countPages: () => ReturnType<typeof countPages>;
-	}
-}

@@ -63,34 +63,16 @@ const cookieOptions: NonNullable<Cookies.Cookie["options"]> = {
 	httpOnly: true,
 	sameSite: "lax",
 	secure: false,
-	path: "/",
 };
 
-const setStash =
-	(value: string, maxAge: Duration.DurationInput) =>
-	(response: HttpServerResponse.HttpServerResponse) =>
-		response.pipe(
-			HttpServerResponse.setCookie(stashCookieName, value, {
-				...cookieOptions,
-				maxAge,
-			}),
-			// TODO: is this a correct silencing?
-			Effect.catchTag(
-				"CookieError",
-				() => new HttpApiError.InternalServerError(),
-			),
-		);
-
-const clearStash = setStash("", 0);
-
-const setSessionCookie = (value: string, maxAge: Duration.DurationInput) =>
-	HttpApiBuilder.securitySetCookie(sessionCookieSecurity, value, {
-		...cookieOptions,
-		maxAge,
-	});
-
-const callbackUri = (origin: string, provider: string) =>
-	`${origin}/api/internal/authentication/callback/${provider}`;
+// TODO: get this path from Effect HttpApi
+const callbackUri = (baseUrl: string, provider: string) => {
+	const url = new URL(
+		`api/internal/authentication/callback/${encodeURIComponent(provider)}`,
+		baseUrl,
+	);
+	return url.href;
+};
 
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
@@ -112,7 +94,34 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 	(handlers) =>
 		Effect.gen(function* () {
 			const ttl = yield* config.sessionTtl;
-			const origin = yield* config.origin;
+			const baseUrl = yield* config.baseUrl;
+
+			const setStash =
+				(value: string, maxAge: Duration.DurationInput) =>
+				(response: HttpServerResponse.HttpServerResponse) =>
+					response.pipe(
+						HttpServerResponse.setCookie(stashCookieName, value, {
+							...cookieOptions,
+							path: baseUrl.pathname,
+							maxAge,
+						}),
+						// TODO: is this a correct silencing?
+						Effect.catchTag(
+							"CookieError",
+							() => new HttpApiError.InternalServerError(),
+						),
+					);
+			const clearStash = setStash("", 0);
+			const setSessionCookie = (
+				value: string,
+				maxAge: Duration.DurationInput,
+			) =>
+				HttpApiBuilder.securitySetCookie(sessionCookieSecurity, value, {
+					...cookieOptions,
+					path: baseUrl.pathname,
+					maxAge,
+				});
+
 			const registry = yield* AuthProviderRegistry;
 			const sessions = yield* SessionStoreService;
 			const stashes = yield* StashStoreService;
@@ -153,7 +162,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						const redirect = yield* provider.value
 							.authorize({
-								redirectUri: callbackUri(origin, name),
+								redirectUri: callbackUri(baseUrl.href, name),
 								searchParams: new URL(request.url, "http://example.com")
 									.searchParams,
 							})
@@ -200,7 +209,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						yield* stashes.revoke(stashId);
 						const account = yield* provider.value
 							.callback({
-								redirectUri: callbackUri(origin, name),
+								redirectUri: callbackUri(baseUrl.href, name),
 								searchParams: new URL(request.url, "http://example.com")
 									.searchParams,
 								stash: stash.value,

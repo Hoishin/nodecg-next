@@ -46,8 +46,13 @@ export const loginUrl = (
 	return url.pathname + url.search;
 };
 
-export const makeAuthClient = Effect.fn("makeAuthClient")(function* () {
-	const api = yield* HttpApiClient.make(InternalApi);
+export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
+	baseUrl?: string,
+) {
+	const api = yield* HttpApiClient.make(
+		InternalApi,
+		baseUrl ? { baseUrl } : undefined,
+	);
 
 	const requestFailed = (cause: unknown) => new AuthRequestFailed({ cause });
 
@@ -86,9 +91,9 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* () {
 	return { providers, me, logout, grantRole, revokeRole };
 });
 
-export function loadAuthClient(): AuthClient {
+export function loadAuthClient(baseUrl?: string): AuthClient {
 	const runtime = ManagedRuntime.make(FetchHttpClient.layer);
-	const client = runtime.runSync(makeAuthClient());
+	const client = runtime.runSync(makeAuthClient(baseUrl));
 
 	return {
 		providers: () => runtime.runPromise(client.providers()),

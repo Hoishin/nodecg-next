@@ -1,4 +1,4 @@
-import { Config, Duration, Redacted, Schema } from "effect";
+import { Config, Duration, Redacted, Schema, Option } from "effect";
 
 const SuperadminEntrySchema = Schema.TemplateLiteralParser(
 	Schema.Trim.pipe(Schema.compose(Schema.NonEmptyString)),
@@ -27,11 +27,43 @@ const SuperadminsSchema = Schema.Union(
 	Schema.split(",").pipe(Schema.compose(Schema.Array(SuperadminEntrySchema))),
 );
 
-export const config = {
-	port: Config.integer("PORT").pipe(Config.withDefault(3000)),
-	origin: Config.string("ORIGIN").pipe(
-		Config.withDefault("http://localhost:3000"),
+const port = Config.integer("PORT").pipe(Config.withDefault(3000));
+
+const Pathname = Schema.transform(Schema.String, Schema.String, {
+	strict: true,
+	decode: (path) => (path === "/" ? "/" : path.replace(/\/+$/, "")),
+	encode: (path) => path,
+}).pipe(
+	Schema.compose(Schema.TemplateLiteral("/", Schema.String), { strict: false }),
+);
+
+const BaseUrlSchema = Schema.transform(
+	Schema.URL,
+	Schema.Struct({ href: Schema.String, pathname: Pathname }),
+	{
+		strict: true,
+		decode: (url) => ({ href: url.href, pathname: url.pathname }),
+		encode: ({ href }) => new URL(href),
+	},
+);
+
+const baseUrl = Config.all([
+	port,
+	Config.option(Schema.Config("NODECG_BASE_URL", BaseUrlSchema)),
+]).pipe(
+	Config.map(([port, baseUrl]) =>
+		baseUrl.pipe(
+			Option.getOrElse<typeof BaseUrlSchema.Type>(() => ({
+				href: `http://localhost:${port}`,
+				pathname: "/",
+			})),
+		),
 	),
+);
+
+export const config = {
+	port,
+	baseUrl,
 	requireAuth: Config.boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
 	sessionTtl: Config.duration("SESSION_TTL").pipe(
 		Config.withDefault(Duration.decode("7 days")),

@@ -43,6 +43,7 @@ import {
 	type BaseNamespaceShape,
 	type WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
+import { basePathMiddleware } from "./server/base-path.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
 import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
@@ -281,7 +282,8 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			const httpServer = yield* makeNodeHttpServer({
 				onReady: options.onReady,
 			});
-			const ServerLive = HttpApiBuilder.serve().pipe(
+			const serveUnderBasePath = yield* basePathMiddleware;
+			const ServerLive = HttpApiBuilder.serve(serveUnderBasePath).pipe(
 				Layer.provide(websocketRoute),
 				Layer.provide(
 					frontendRoutes({

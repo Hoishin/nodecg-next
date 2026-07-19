@@ -4,7 +4,9 @@ import { Effect } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import { FieldTransportService } from "../field-transport/field-transport.ts";
-import { HttpFieldTransport } from "../field-transport/http-field-transport.ts";
+import { httpFieldTransport } from "../field-transport/http-field-transport.ts";
+
+const HttpFieldTransport = httpFieldTransport();
 
 const mockFetch = (respond: () => Response) =>
 	vi.fn<typeof globalThis.fetch>(async () => respond());
@@ -211,6 +213,41 @@ describe("callRpc", () => {
 
 				expect(error._tag).toBe("RpcCallFailed");
 			}).pipe(Effect.provide(HttpFieldTransport)),
+		),
+	);
+});
+
+describe("base URL", () => {
+	const requestUrl = (baseUrl?: string) =>
+		Effect.gen(function* () {
+			const transport = yield* FieldTransportService;
+			const fetch = mockFetch(() => new Response(JSON.stringify(42)));
+			yield* transport
+				.readReplicant("root", "count")
+				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			return requestOf(fetch).url;
+		}).pipe(Effect.provide(httpFieldTransport(baseUrl)));
+
+	test(
+		"builds request URL correctly for various base URLs",
+		testEffect(
+			Effect.gen(function* () {
+				expect(yield* requestUrl()).toBe(
+					`${new URL(import.meta.url).origin}/api/internal/namespaces/root/replicant/count`,
+				);
+				expect(yield* requestUrl("https://host")).toBe(
+					"https://host/api/internal/namespaces/root/replicant/count",
+				);
+				expect(yield* requestUrl("https://host/")).toBe(
+					"https://host/api/internal/namespaces/root/replicant/count",
+				);
+				expect(yield* requestUrl("https://host/prefix/")).toBe(
+					"https://host/prefix/api/internal/namespaces/root/replicant/count",
+				);
+				expect(yield* requestUrl("https://host/prefix")).toBe(
+					"https://host/prefix/api/internal/namespaces/root/replicant/count",
+				);
+			}),
 		),
 	);
 });

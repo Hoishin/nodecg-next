@@ -187,6 +187,9 @@ importers:
 
   packages/browser:
     dependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.96.2(effect@3.21.4)
       '@nodecg/client':
         specifier: workspace:*
         version: link:../client

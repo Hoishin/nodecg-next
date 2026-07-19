@@ -14,58 +14,95 @@ import {
 	TopicPublishFailed,
 } from "../field-transport/field-transport.ts";
 
-export const HttpFieldTransport = Layer.effect(
-	FieldTransportService,
-	Effect.gen(function* () {
-		const client = yield* HttpApiClient.make(InternalApi);
+export const httpFieldTransport = (baseUrl?: string) =>
+	Layer.effect(
+		FieldTransportService,
+		Effect.gen(function* () {
+			const client = yield* HttpApiClient.make(InternalApi, { baseUrl });
 
-		const readReplicant = Effect.fn("FieldTransport.readReplicant")(function* (
-			namespace: string,
-			name: string,
-		) {
-			return yield* client.Field.replicantGet({
-				path: { namespace, fieldName: name },
-			}).pipe(
-				Effect.mapError((error) =>
-					Match.value(error).pipe(
-						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
-						Match.tag(
-							"Forbidden",
-							() => new FieldPermissionDenied({ namespace, name }),
+			const readReplicant = Effect.fn("FieldTransport.readReplicant")(
+				function* (namespace: string, name: string) {
+					return yield* client.Field.replicantGet({
+						path: { namespace, fieldName: name },
+					}).pipe(
+						Effect.mapError((error) =>
+							Match.value(error).pipe(
+								Match.tag(
+									"NotFound",
+									() => new FieldNotFound({ namespace, name }),
+								),
+								Match.tag(
+									"Forbidden",
+									() => new FieldPermissionDenied({ namespace, name }),
+								),
+								Match.orElse(
+									(e) =>
+										new FieldGetFailed({ namespace, name, cause: toError(e) }),
+								),
+							),
 						),
-						Match.orElse(
-							(e) => new FieldGetFailed({ namespace, name, cause: toError(e) }),
+					);
+				},
+			);
+
+			const readComputed = Effect.fn("FieldTransport.readComputed")(function* (
+				namespace: string,
+				name: string,
+			) {
+				return yield* client.Field.computedGet({
+					path: { namespace, fieldName: name },
+				}).pipe(
+					Effect.mapError((error) =>
+						Match.value(error).pipe(
+							Match.tag(
+								"NotFound",
+								() => new FieldNotFound({ namespace, name }),
+							),
+							Match.tag(
+								"Forbidden",
+								() => new FieldPermissionDenied({ namespace, name }),
+							),
+							Match.orElse(
+								(e) =>
+									new FieldGetFailed({ namespace, name, cause: toError(e) }),
+							),
 						),
 					),
-				),
-			);
-		});
+				);
+			});
 
-		const readComputed = Effect.fn("FieldTransport.readComputed")(function* (
-			namespace: string,
-			name: string,
-		) {
-			return yield* client.Field.computedGet({
-				path: { namespace, fieldName: name },
-			}).pipe(
-				Effect.mapError((error) =>
-					Match.value(error).pipe(
-						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
-						Match.tag(
-							"Forbidden",
-							() => new FieldPermissionDenied({ namespace, name }),
+			const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
+				function* (namespace: string, name: string, value: JsonValue) {
+					yield* client.Field.replicantUpdate({
+						path: { namespace, fieldName: name },
+						payload: value,
+					}).pipe(
+						Effect.mapError((error) =>
+							Match.value(error).pipe(
+								Match.tag(
+									"NotFound",
+									() => new FieldNotFound({ namespace, name }),
+								),
+								Match.tag(
+									"Forbidden",
+									() => new FieldPermissionDenied({ namespace, name }),
+								),
+								Match.orElse(
+									(e) =>
+										new FieldSaveFailed({ namespace, name, cause: toError(e) }),
+								),
+							),
 						),
-						Match.orElse(
-							(e) => new FieldGetFailed({ namespace, name, cause: toError(e) }),
-						),
-					),
-				),
+					);
+				},
 			);
-		});
 
-		const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
-			function* (namespace: string, name: string, value: JsonValue) {
-				yield* client.Field.replicantUpdate({
+			const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
+				namespace: string,
+				name: string,
+				value: JsonValue,
+			) {
+				yield* client.Field.topicPublish({
 					path: { namespace, fieldName: name },
 					payload: value,
 				}).pipe(
@@ -81,69 +118,51 @@ export const HttpFieldTransport = Layer.effect(
 							),
 							Match.orElse(
 								(e) =>
-									new FieldSaveFailed({ namespace, name, cause: toError(e) }),
+									new TopicPublishFailed({
+										namespace,
+										name,
+										cause: toError(e),
+									}),
 							),
 						),
 					),
 				);
-			},
-		);
+			});
 
-		const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
-			namespace: string,
-			name: string,
-			value: JsonValue,
-		) {
-			yield* client.Field.topicPublish({
-				path: { namespace, fieldName: name },
-				payload: value,
-			}).pipe(
-				Effect.mapError((error) =>
-					Match.value(error).pipe(
-						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
-						Match.tag(
-							"Forbidden",
-							() => new FieldPermissionDenied({ namespace, name }),
-						),
-						Match.orElse(
-							(e) =>
-								new TopicPublishFailed({ namespace, name, cause: toError(e) }),
+			const callRpc = Effect.fn("FieldTransport.callRpc")(function* (
+				namespace: string,
+				name: string,
+				request: JsonValue,
+			) {
+				return yield* client.Field.rpcCall({
+					path: { namespace, fieldName: name },
+					payload: request,
+				}).pipe(
+					Effect.mapError((error) =>
+						Match.value(error).pipe(
+							Match.tag(
+								"NotFound",
+								() => new FieldNotFound({ namespace, name }),
+							),
+							Match.tag(
+								"Forbidden",
+								() => new FieldPermissionDenied({ namespace, name }),
+							),
+							Match.orElse(
+								(e) =>
+									new RpcCallFailed({ namespace, name, cause: toError(e) }),
+							),
 						),
 					),
-				),
-			);
-		});
+				);
+			});
 
-		const callRpc = Effect.fn("FieldTransport.callRpc")(function* (
-			namespace: string,
-			name: string,
-			request: JsonValue,
-		) {
-			return yield* client.Field.rpcCall({
-				path: { namespace, fieldName: name },
-				payload: request,
-			}).pipe(
-				Effect.mapError((error) =>
-					Match.value(error).pipe(
-						Match.tag("NotFound", () => new FieldNotFound({ namespace, name })),
-						Match.tag(
-							"Forbidden",
-							() => new FieldPermissionDenied({ namespace, name }),
-						),
-						Match.orElse(
-							(e) => new RpcCallFailed({ namespace, name, cause: toError(e) }),
-						),
-					),
-				),
-			);
-		});
-
-		return {
-			readReplicant,
-			readComputed,
-			updateReplicant,
-			publishTopic,
-			callRpc,
-		};
-	}).pipe(Effect.provide(FetchHttpClient.layer)),
-);
+			return {
+				readReplicant,
+				readComputed,
+				updateReplicant,
+				publishTopic,
+				callRpc,
+			};
+		}).pipe(Effect.provide(FetchHttpClient.layer)),
+	);

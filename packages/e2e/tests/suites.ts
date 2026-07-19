@@ -24,19 +24,12 @@ export const scanSuites = async (): Promise<ReadonlyArray<Suite>> => {
 	return Promise.all(
 		names.map(async (name) => {
 			const dir = path.join(base, name);
-			const module: { default?: Partial<SuiteConfig> } = await import(
-				pathToFileURL(path.join(dir, "config.ts")).href
-			).catch((error) => {
-				// Treat as empty config if suite.config.ts is missing
-				if (
-					error instanceof Error &&
-					"code" in error &&
-					error.code === "ERR_MODULE_NOT_FOUND"
-				) {
-					return {};
-				}
-				throw error;
-			});
+			const configPath = path.join(dir, "config.ts");
+			const module: { default?: Partial<SuiteConfig> } = fs.existsSync(
+				configPath,
+			)
+				? await import(pathToFileURL(configPath).href)
+				: {};
 			return {
 				name,
 				dir,

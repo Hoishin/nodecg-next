@@ -135,3 +135,38 @@ describe("logout", () => {
 		),
 	);
 });
+
+describe("base URL", () => {
+	const requestUrl = (baseUrl?: string) =>
+		Effect.gen(function* () {
+			const client = yield* makeAuthClient(baseUrl);
+			const fetch = mockFetch(() => jsonResponse([]));
+			yield* client
+				.providers()
+				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			return requestOf(fetch).url;
+		}).pipe(Effect.provide(FetchHttpClient.layer));
+
+	test(
+		"prefixes requests with the base URL, with or without a trailing slash",
+		testEffect(
+			Effect.gen(function* () {
+				expect(yield* requestUrl()).toBe(
+					`${new URL(import.meta.url).origin}/api/internal/authentication/providers`,
+				);
+				expect(yield* requestUrl("https://host")).toBe(
+					"https://host/api/internal/authentication/providers",
+				);
+				expect(yield* requestUrl("https://host/")).toBe(
+					"https://host/api/internal/authentication/providers",
+				);
+				expect(yield* requestUrl("https://host/prefix/")).toBe(
+					"https://host/prefix/api/internal/authentication/providers",
+				);
+				expect(yield* requestUrl("https://host/prefix")).toBe(
+					"https://host/prefix/api/internal/authentication/providers",
+				);
+			}),
+		),
+	);
+});

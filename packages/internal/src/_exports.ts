@@ -35,6 +35,7 @@ export {
 	sessionCookieName,
 	sessionCookieSecurity,
 } from "./auth.ts";
+export { baseUrlCookieName, baseUrlGlobalName } from "./base-url.ts";
 export {
 	ClientMessage,
 	ServerMessage,

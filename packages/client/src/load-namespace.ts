@@ -1,4 +1,4 @@
-import { FetchHttpClient } from "@effect/platform";
+import { FetchHttpClient, Path } from "@effect/platform";
 import type {
 	NamespaceManifest,
 	FieldManifest,
@@ -36,12 +36,12 @@ import {
 	FieldTransportService,
 	type FieldTransport,
 } from "./services/field-transport/field-transport.ts";
-import { HttpFieldTransport } from "./services/field-transport/http-field-transport.ts";
+import { httpFieldTransport } from "./services/field-transport/http-field-transport.ts";
 import {
 	type MessageChannel,
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
-import { WebSocketMessageChannel } from "./services/message-channel/websocket-message-channel.ts";
+import { webSocketMessageChannel } from "./services/message-channel/websocket-message-channel.ts";
 
 type RpcShape = Record<
 	string,
@@ -381,7 +381,8 @@ export async function loadNamespace<
 	Rpc extends RpcShape = {},
 >(
 	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
-	adapter?: {
+	options?: {
+		baseUrl?: string;
 		fieldTransport?:
 			| (() => FieldTransport)
 			| Effect.Effect<FieldTransport, never, never>;
@@ -390,20 +391,21 @@ export async function loadNamespace<
 			| Effect.Effect<MessageChannel, never, never>;
 	},
 ): Promise<LoadedNamespace<Replicant, Computed, Topic, Rpc>> {
-	const fieldTransport = adapter?.fieldTransport;
-	const messageChannel = adapter?.messageChannel;
+	const baseUrl = options?.baseUrl;
+	const fieldTransport = options?.fieldTransport;
+	const messageChannel = options?.messageChannel;
 
 	const transportLayer = fieldTransport
 		? Effect.isEffect(fieldTransport)
 			? Layer.effect(FieldTransportService, fieldTransport)
 			: Layer.sync(FieldTransportService, fieldTransport)
-		: HttpFieldTransport;
+		: httpFieldTransport(baseUrl);
 
 	const messageChannelLayer = messageChannel
 		? Effect.isEffect(messageChannel)
 			? Layer.effect(MessageChannelService, messageChannel)
 			: Layer.sync(MessageChannelService, messageChannel)
-		: WebSocketMessageChannel;
+		: webSocketMessageChannel(baseUrl);
 
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
@@ -411,7 +413,7 @@ export async function loadNamespace<
 			messageChannelLayer,
 			FetchHttpClient.layer,
 			Layer.scope,
-		),
+		).pipe(Layer.provide(Path.layer)),
 	);
 
 	const {

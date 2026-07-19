@@ -9,6 +9,8 @@ import {
 import { AnonymousIdentitySchema } from "@nodecg/internal";
 import { Schema } from "effect";
 
+import { nodecgBase } from "./base.ts";
+
 export class LoginWindowBlocked extends Schema.TaggedError<LoginWindowBlocked>()(
 	"LoginWindowBlocked",
 	{},
@@ -27,11 +29,6 @@ interface LoginPopup {
 	readonly closed: boolean;
 	readonly close: () => void;
 }
-
-// TODO: remove this
-declare const window: {
-	readonly open: (url: string, target: string) => LoginPopup | null;
-};
 
 export interface AuthSession {
 	readonly client: AuthClient;
@@ -70,7 +67,7 @@ const watchLoginSession = async (
 };
 
 export const authSession = (
-	client: AuthClient = loadAuthClient(),
+	client: AuthClient = loadAuthClient(nodecgBase()),
 ): AuthSession => {
 	const listeners = new Set<() => void>();
 	let current: Identity | undefined;

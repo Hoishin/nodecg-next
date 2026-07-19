@@ -4,7 +4,7 @@
 	"author": "Keiichiro Amemiya",
 	"type": "module",
 	"scripts": {
-		"type-check": "pnpm -r run type-check"
+		"type-check": "pnpm -r --stream run type-check"
 	},
 	"devDependencies": {
 		"@effect/language-service": "^0.86.6",
