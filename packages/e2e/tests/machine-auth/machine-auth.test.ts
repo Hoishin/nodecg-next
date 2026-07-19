@@ -1,7 +1,11 @@
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { login, logout } from "../../src/client/auth.ts";
+import { makeAuthHelpers } from "../../src/client/auth.ts";
+import { suiteBase } from "../../src/client/suite-base.ts";
+
+const base = suiteBase("machine-auth");
+const { login, logout } = makeAuthHelpers(base);
 
 const CreatedMachineSchema = Schema.Struct({
 	id: Schema.String,
@@ -12,7 +16,7 @@ const decodeCreatedMachine = Schema.decodeUnknownSync(CreatedMachineSchema);
 
 const provisionMachine = async (displayName: string) => {
 	await login("root");
-	const response = await fetch("/api/internal/machines", {
+	const response = await fetch(`${base}/api/internal/machines`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ displayName }),
@@ -24,7 +28,7 @@ const provisionMachine = async (displayName: string) => {
 
 const revokeMachine = async (id: string) => {
 	await login("root");
-	const response = await fetch(`/api/internal/machines/${id}`, {
+	const response = await fetch(`${base}/api/internal/machines/${id}`, {
 		method: "DELETE",
 	});
 	await logout();
@@ -33,7 +37,7 @@ const revokeMachine = async (id: string) => {
 
 const grantMachineRole = async (id: string, role: string) => {
 	await login("root");
-	const response = await fetch(`/api/internal/machines/${id}/roles`, {
+	const response = await fetch(`${base}/api/internal/machines/${id}/roles`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ role }),
@@ -43,7 +47,7 @@ const grantMachineRole = async (id: string, role: string) => {
 };
 
 const readV0 = (fieldName: string, token?: string) =>
-	fetch(`/api/v0/namespaces/e2e/replicant/${fieldName}`, {
+	fetch(`${base}/api/v0/namespaces/e2e/replicant/${fieldName}`, {
 		headers: token ? { authorization: `Bearer ${token}` } : {},
 	});
 

@@ -281,6 +281,12 @@ describe("login and callback", () => {
 		return match[1];
 	};
 
+	const subPathEnv = Layer.setConfigProvider(
+		ConfigProvider.fromMap(
+			new Map([["NODECG_BASE_URL", "http://x/s/nodecg"]]),
+		).pipe(ConfigProvider.orElse(() => ConfigProvider.fromEnv())),
+	);
+
 	test("providers lists each registered provider with its login URL", async () => {
 		const res = await loginHandler()(
 			new Request("http://x/api/internal/authentication/providers"),
@@ -338,6 +344,39 @@ describe("login and callback", () => {
 			);
 			expect(res.status).toBe(400);
 		}
+	});
+
+	test("providers prefixes each login URL with the base path", async () => {
+		const res = await webHandler([], undefined, subPathEnv, { providers })(
+			new Request("http://x/api/internal/authentication/providers"),
+		);
+		expect(await res.json()).toEqual([
+			{ name: "dev", url: "/s/nodecg/api/internal/authentication/login/dev" },
+		]);
+	});
+
+	test("login builds the callback redirect_uri under the base path", async () => {
+		let captured: string | undefined;
+		const capturing: AuthProvider = {
+			name: "dev",
+			issuer: "dev",
+			authorize: ({ redirectUri }) => {
+				captured = redirectUri;
+				return Effect.succeed({
+					url: "/done",
+					stash: { provider: "dev", state: "s" },
+				});
+			},
+			callback: () =>
+				Effect.succeed({ issuer: "dev", subject: "a", displayName: "A" }),
+		};
+		const res = await webHandler([], undefined, subPathEnv, {
+			providers: HashMap.make(["dev", capturing] as const),
+		})(new Request("http://x/api/internal/authentication/login/dev"));
+		expect(res.status).toBe(302);
+		expect(captured).toBe(
+			"http://x/s/nodecg/api/internal/authentication/callback/dev",
+		);
 	});
 });
 

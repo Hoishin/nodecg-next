@@ -6,6 +6,7 @@ import {
 	HttpApiError,
 	HttpServerRequest,
 	HttpServerResponse,
+	Path,
 } from "@effect/platform";
 import { isAdminTier, isSuperadmin } from "@nodecg/core";
 import {
@@ -66,13 +67,27 @@ const cookieOptions: NonNullable<Cookies.Cookie["options"]> = {
 };
 
 // TODO: get this path from Effect HttpApi
-const callbackUri = (baseUrl: string, provider: string) => {
-	const url = new URL(
-		`api/internal/authentication/callback/${encodeURIComponent(provider)}`,
-		baseUrl,
+const callbackUrl = Effect.fn("callbackUrl")(function* (
+	baseUrl: string,
+	provider: string,
+) {
+	const path = yield* Path.Path;
+	const url = new URL(baseUrl);
+	url.pathname = path.join(
+		url.pathname,
+		"api/internal/authentication/callback",
+		provider,
 	);
 	return url.href;
-};
+});
+
+const loginPath = Effect.fn("loginUrl")(function* (
+	basePath: string,
+	provider: string,
+) {
+	const path = yield* Path.Path;
+	return path.join(basePath, "api/internal/authentication/login", provider);
+});
 
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
@@ -141,13 +156,12 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 					}),
 				)
 				.handle("providers", () =>
-					Effect.succeed(
-						Array.from(HashMap.keys(registry))
-							.toSorted()
-							.map((name) => ({
-								name,
-								url: `/api/internal/authentication/login/${name}`,
-							})),
+					Effect.forEach(
+						Array.from(HashMap.keys(registry)).toSorted(),
+						(name) =>
+							loginPath(baseUrl.pathname, name).pipe(
+								Effect.map((url) => ({ name, url })),
+							),
 					),
 				)
 				.handle("login", ({ path: { provider: name }, urlParams }) =>
@@ -162,7 +176,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						const redirect = yield* provider.value
 							.authorize({
-								redirectUri: callbackUri(baseUrl.href, name),
+								redirectUri: yield* callbackUrl(baseUrl.href, name),
 								searchParams: new URL(request.url, "http://example.com")
 									.searchParams,
 							})
@@ -209,7 +223,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						yield* stashes.revoke(stashId);
 						const account = yield* provider.value
 							.callback({
-								redirectUri: callbackUri(baseUrl.href, name),
+								redirectUri: yield* callbackUrl(baseUrl.href, name),
 								searchParams: new URL(request.url, "http://example.com")
 									.searchParams,
 								stash: stash.value,

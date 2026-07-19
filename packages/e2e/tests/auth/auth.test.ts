@@ -3,14 +3,12 @@ import { loadAuthClient, type LoginProvider } from "@nodecg/client";
 import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
 import { commands } from "vitest/browser";
 
-import {
-	grantAsAdmin,
-	grantRole,
-	login,
-	logout,
-	me,
-	revokeAsAdmin,
-} from "../../src/client/auth.ts";
+import { makeAuthHelpers } from "../../src/client/auth.ts";
+import { suiteBase } from "../../src/client/suite-base.ts";
+
+const base = suiteBase("auth");
+const { grantAsAdmin, grantRole, login, logout, me, revokeAsAdmin } =
+	makeAuthHelpers(base);
 
 describe("anonymous identity", () => {
 	test("a request without a session resolves to the anonymous identity", async () => {
@@ -55,7 +53,7 @@ describe("role reporting", () => {
 describe("loadAuthClient", () => {
 	test("passes providers, me, and logout through to the live server", async () => {
 		await logout();
-		const client = loadAuthClient();
+		const client = loadAuthClient(base);
 		onTestFinished(() => {
 			client.dispose();
 		});
@@ -64,7 +62,10 @@ describe("loadAuthClient", () => {
 		});
 
 		expect(await client.providers()).toEqual([
-			{ name: "dev", url: "/api/internal/authentication/login/dev" },
+			{
+				name: "dev",
+				url: "/s/auth/api/internal/authentication/login/dev",
+			},
 		]);
 
 		await login("alice");
@@ -79,7 +80,7 @@ describe("loadAuthClient", () => {
 
 describe("authSession", () => {
 	test("popupLogin resolves the human identity, updates the store, and closes the popup", async () => {
-		const session = authSession();
+		const session = authSession(loadAuthClient(base));
 		onTestFinished(() => {
 			session.client.dispose();
 		});
@@ -106,7 +107,7 @@ describe("authSession", () => {
 
 	test("closing the popup mid-flow rejects with LoginAbandoned and leaves the store unchanged", async () => {
 		await logout();
-		const session = authSession();
+		const session = authSession(loadAuthClient(base));
 		onTestFinished(() => {
 			session.client.dispose();
 		});
@@ -116,7 +117,7 @@ describe("authSession", () => {
 
 		const missing: LoginProvider = {
 			name: "missing",
-			url: "/api/internal/authentication/login/missing",
+			url: "/s/auth/api/internal/authentication/login/missing",
 		};
 		const pending = session.popupLogin(missing);
 		await commands.closeLoginPopup();

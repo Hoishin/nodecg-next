@@ -1,11 +1,14 @@
 import { derive, loadNamespace } from "@nodecg/client";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 
+import { suiteBase } from "../../src/client/suite-base.ts";
 import { chainManifest, crossManifest } from "../../src/shared/manifests.ts";
+
+const base = suiteBase("computed-chain");
 
 describe("chained computed over the wire", () => {
 	test("reads through the chain", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.points.set(12);
 		await chain.replicant.target.set(10);
 
@@ -14,7 +17,7 @@ describe("chained computed over the wire", () => {
 	});
 
 	test("a replicant write streams through both computed levels and dedupes", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.points.set(0);
 		await chain.replicant.target.set(0);
 
@@ -37,7 +40,7 @@ describe("chained computed over the wire", () => {
 	});
 
 	test("subscribing to a currently-failing computed rejects instead of hanging", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.denominator.set(0); // makes reciprocal throw
 
 		await expect(chain.computed.reciprocal.subscribe(() => {})).rejects.toThrow(
@@ -55,7 +58,7 @@ describe("chained computed over the wire", () => {
 	});
 
 	test("the intermediate computed streams its own values", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.points.set(4);
 		await chain.replicant.target.set(1);
 
@@ -73,7 +76,7 @@ describe("chained computed over the wire", () => {
 
 describe("client derive over the wire", () => {
 	test("derives locally off server-pushed replicants", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.points.set(1);
 		await chain.replicant.target.set(1);
 
@@ -96,7 +99,7 @@ describe("client derive over the wire", () => {
 	});
 
 	test("a derive can read a server computed too", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.points.set(7);
 		await chain.replicant.target.set(3);
 
@@ -106,7 +109,7 @@ describe("client derive over the wire", () => {
 	});
 
 	test("dedupes an object result through the equals option", async () => {
-		const chain = await loadNamespace(chainManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
 		await chain.replicant.points.set(5);
 		await chain.replicant.target.set(0);
 
@@ -131,8 +134,8 @@ describe("client derive over the wire", () => {
 	});
 
 	test("derives across two namespaces off a computed and a replicant", async () => {
-		const chain = await loadNamespace(chainManifest);
-		const cross = await loadNamespace(crossManifest);
+		const chain = await loadNamespace(chainManifest, { baseUrl: base });
+		const cross = await loadNamespace(crossManifest, { baseUrl: base });
 		await chain.replicant.points.set(6);
 		await chain.replicant.target.set(2);
 
