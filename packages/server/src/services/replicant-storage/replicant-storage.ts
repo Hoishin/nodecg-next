@@ -1,4 +1,4 @@
-import { Context, Data, type Effect, type Scope, type Stream } from "effect";
+import { Context, type Effect, Schema, type Scope, type Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 export interface ReplicantChange {
@@ -7,27 +7,17 @@ export interface ReplicantChange {
 	readonly value: JsonValue;
 }
 
-export class ReplicantNotFound extends Data.TaggedError("ReplicantNotFound")<{
-	namespace: string;
-	name: string;
-}> {
+export class ReplicantNotFound extends Schema.TaggedError<ReplicantNotFound>()(
+	"ReplicantNotFound",
+	{ namespace: Schema.String, name: Schema.String },
+) {
 	override readonly message = `Replicant "${this.name}" in "${this.namespace}" does not exist`;
 }
 
-export class ReplicantAlreadyExists extends Data.TaggedError(
-	"ReplicantAlreadyExists",
-)<{
-	namespace: string;
-	name: string;
-}> {
-	override readonly message = `Replicant "${this.name}" in "${this.namespace}" already exists`;
-}
-
-export class ReplicantPersistError extends Data.TaggedError(
+export class ReplicantPersistError extends Schema.TaggedError<ReplicantPersistError>()(
 	"ReplicantPersistError",
-)<{
-	cause: Error;
-}> {
+	{ cause: Schema.instanceOf(Error) },
+) {
 	override readonly message = `Failed to persist replicant: ${this.cause.message}`;
 }
 
@@ -35,44 +25,24 @@ export class ReplicantPersistError extends Data.TaggedError(
  * ReplicantStorage is platform-agnostic layer to persist replicant values.
  */
 export interface ReplicantStorage {
-	/**
-	 * Create a new replicant entry in storage. Must supply valid initial value.
-	 */
-	create: (
-		namespace: string,
-		name: string,
-		value: JsonValue,
-	) => Effect.Effect<void, ReplicantAlreadyExists>;
-
-	/**
-	 * Read the current in-memory value synchronously.
-	 */
 	read: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<JsonValue, ReplicantNotFound>;
 
-	/**
-	 * Update the already-existing replicant value with a new value
-	 */
-	update: (
+	write: (
 		namespace: string,
 		name: string,
 		value: JsonValue,
+		createIfNotFound?: boolean,
 	) => Effect.Effect<void, ReplicantNotFound>;
 
-	/**
-	 * Subscribe to changes. Returns one stream that contains all changes.
-	 */
 	subscribe: () => Effect.Effect<
 		Stream.Stream<ReplicantChange>,
 		never,
 		Scope.Scope
 	>;
 
-	/**
-	 * Force a durable write of all pending in-memory replicant and confirm it.
-	 */
 	flush: () => Effect.Effect<void, ReplicantPersistError>;
 }
 

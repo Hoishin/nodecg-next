@@ -1,6 +1,10 @@
 import { FetchHttpClient } from "@effect/platform";
 import { defineNamespace } from "@nodecg/core";
-import type { ServerMessage } from "@nodecg/internal";
+import {
+	PublishMessage,
+	type ServerMessage,
+	SubscribeRejectedMessage,
+} from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import {
 	Effect,
@@ -13,7 +17,7 @@ import {
 	Scope,
 	Stream,
 } from "effect";
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { derive } from "./derive.ts";
 import { loadNamespace, loadNamespaceEffect } from "./load-namespace.ts";
@@ -30,11 +34,9 @@ import {
 
 const createTransportStub = () =>
 	({
-		readReplicant: vi.fn<FieldTransport["readReplicant"]>(),
-		readComputed: vi.fn<FieldTransport["readComputed"]>(),
-		updateReplicant: vi.fn<FieldTransport["updateReplicant"]>(
-			() => Effect.void,
-		),
+		getReplicant: vi.fn<FieldTransport["getReplicant"]>(),
+		getComputed: vi.fn<FieldTransport["getComputed"]>(),
+		setReplicant: vi.fn<FieldTransport["setReplicant"]>(() => Effect.void),
 		publishTopic: vi.fn<FieldTransport["publishTopic"]>(() => Effect.void),
 		callRpc: vi.fn<FieldTransport["callRpc"]>(),
 	}) satisfies FieldTransport;
@@ -53,7 +55,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.readReplicant.mockReturnValue(Effect.succeed(42));
+				transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
 				});
@@ -80,7 +82,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.readReplicant.mockReturnValue(
+				transportStub.getReplicant.mockReturnValue(
 					Effect.succeed("not a number"),
 				);
 				const manifest = defineNamespace("root", {
@@ -111,7 +113,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.readReplicant.mockReturnValue(
+				transportStub.getReplicant.mockReturnValue(
 					Effect.fail(new FieldNotFound({ namespace: "root", name: "count" })),
 				);
 				const manifest = defineNamespace("root", {
@@ -142,7 +144,7 @@ describe("get", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.readReplicant.mockReturnValue(
+				transportStub.getReplicant.mockReturnValue(
 					Effect.succeed("2030-01-01T00:00:00.000Z"),
 				);
 				const manifest = defineNamespace("root", {
@@ -188,7 +190,7 @@ describe("set", () => {
 				yield* loaded.replicant.count
 					.set(7)
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenCalledWith(
+				expect(transportStub.setReplicant).toHaveBeenCalledWith(
 					"root",
 					"count",
 					7,
@@ -245,7 +247,7 @@ describe("set", () => {
 				yield* loaded.replicant.when
 					.set(new Date("2030-01-01T00:00:00.000Z"))
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"when",
 					"2030-01-01T00:00:00.000Z",
@@ -261,7 +263,7 @@ describe("update", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.readReplicant.mockReturnValue(Effect.succeed(10));
+				transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
 				});
@@ -277,7 +279,7 @@ describe("update", () => {
 				yield* loaded.replicant.count
 					.update((v) => v + 5)
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"count",
 					15,
@@ -296,11 +298,11 @@ describe("subscribe", () => {
 		_tag: "unsubscribe",
 		field: { type: "replicant", namespace: "root", name: "count" },
 	};
-	const publishFrame = (value: number): ServerMessage => ({
-		_tag: "publish",
-		field: { type: "replicant", namespace: "root", name: "count" },
-		value,
-	});
+	const publishFrame = (value: number): ServerMessage =>
+		PublishMessage.make({
+			field: { type: "replicant", namespace: "root", name: "count" },
+			value,
+		});
 
 	test(
 		"sends server subscribe and emits decoded matching publishes",
@@ -372,11 +374,12 @@ describe("subscribe", () => {
 					}),
 				);
 
-				yield* mailbox.offer({
-					_tag: "publish",
-					field: { type: "replicant", namespace: "root", name: "other" },
-					value: 99,
-				});
+				yield* mailbox.offer(
+					PublishMessage.make({
+						field: { type: "replicant", namespace: "root", name: "other" },
+						value: 99,
+					}),
+				);
 				yield* mailbox.offer(publishFrame(7));
 
 				const result = yield* Fiber.join(head);
@@ -595,11 +598,11 @@ describe("subscribe", () => {
 		),
 	);
 
-	const rejectedFrame = (reason: "forbidden" | "not-found"): ServerMessage => ({
-		_tag: "subscribe-rejected",
-		field: { type: "replicant", namespace: "root", name: "count" },
-		reason,
-	});
+	const rejectedFrame = (reason: "forbidden" | "not-found"): ServerMessage =>
+		SubscribeRejectedMessage.make({
+			field: { type: "replicant", namespace: "root", name: "count" },
+			reason,
+		});
 
 	test(
 		"rejects with FieldPermissionDenied on a forbidden frame",
@@ -746,7 +749,7 @@ describe("computed", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				transportStub.readComputed.mockReturnValue(Effect.succeed("a"));
+				transportStub.getComputed.mockReturnValue(Effect.succeed("a"));
 
 				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
 					Effect.provideService(FieldTransportService, transportStub),
@@ -815,11 +818,12 @@ describe("computed", () => {
 					}),
 				);
 
-				yield* pubsub.publish({
-					_tag: "publish",
-					field: { type: "computed", namespace: "root", name: "firstGameId" },
-					value: "z",
-				});
+				yield* pubsub.publish(
+					PublishMessage.make({
+						field: { type: "computed", namespace: "root", name: "firstGameId" },
+						value: "z",
+					}),
+				);
 
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
@@ -841,11 +845,11 @@ describe("topic", () => {
 		_tag: "unsubscribe",
 		field: { type: "topic", namespace: "root", name: "chat" },
 	};
-	const publishFrame = (value: number): ServerMessage => ({
-		_tag: "publish",
-		field: { type: "topic", namespace: "root", name: "chat" },
-		value,
-	});
+	const publishFrame = (value: number): ServerMessage =>
+		PublishMessage.make({
+			field: { type: "topic", namespace: "root", name: "chat" },
+			value,
+		});
 
 	test(
 		"publish encodes the value and forwards it to the transport",
@@ -921,11 +925,13 @@ describe("topic", () => {
 					}),
 				);
 
-				yield* PubSub.publish(pubsub, {
-					_tag: "publish",
-					field: { type: "topic", namespace: "root", name: "other" },
-					value: 99,
-				});
+				yield* PubSub.publish(
+					pubsub,
+					PublishMessage.make({
+						field: { type: "topic", namespace: "root", name: "other" },
+						value: 99,
+					}),
+				);
 				yield* PubSub.publish(pubsub, publishFrame(42));
 
 				const result = yield* Fiber.join(head);
@@ -1159,7 +1165,7 @@ describe("rpc", () => {
 describe("loadNamespace (Promise wrapper)", () => {
 	test("forwards to the injected transport", async () => {
 		const transportStub = createTransportStub();
-		transportStub.readReplicant.mockReturnValue(Effect.succeed(42));
+		transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
 		const manifest = defineNamespace("root", {
 			replicant: { count: { schema: Schema.Number } },
 		});
@@ -1172,11 +1178,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 		expect(await loaded.replicant.count.get()).toBe(42);
 		await loaded.replicant.count.set(9);
-		expect(transportStub.updateReplicant).toHaveBeenCalledWith(
-			"root",
-			"count",
-			9,
-		);
+		expect(transportStub.setReplicant).toHaveBeenCalledWith("root", "count", 9);
 	});
 
 	test("publishes a topic and calls an rpc through the Promise API", async () => {
@@ -1219,11 +1221,11 @@ describe("derivation over loaded fields", () => {
 		return { channel, pubsub, send };
 	});
 
-	const publish = (name: string, value: number): ServerMessage => ({
-		_tag: "publish",
-		field: { type: "replicant", namespace: "match", name },
-		value: String(value),
-	});
+	const publish = (name: string, value: number): ServerMessage =>
+		PublishMessage.make({
+			field: { type: "replicant", namespace: "match", name },
+			value: String(value),
+		});
 
 	test(
 		"derive spans loaded fields and updates as publishes arrive",
@@ -1248,6 +1250,7 @@ describe("derivation over loaded fields", () => {
 				const unsubscribe = leader.subscribe((value) => {
 					seen.push(value);
 				});
+				onTestFinished(() => unsubscribe());
 
 				// Synchronous get() suspensions
 				yield* Effect.promise(() =>
@@ -1281,8 +1284,6 @@ describe("derivation over loaded fields", () => {
 
 				// get() runs the compute directly off the sources' own get()
 				expect(yield* Effect.promise(() => leader.get())).toBe("left");
-
-				unsubscribe();
 			}),
 		),
 	);
@@ -1329,7 +1330,7 @@ describe("derivation over loaded fields", () => {
 						).toBe(7);
 					}),
 				);
-				expect(transportStub.readReplicant).not.toHaveBeenCalled();
+				expect(transportStub.getReplicant).not.toHaveBeenCalled();
 
 				yield* Scope.close(scope, Exit.void);
 			}),
@@ -1380,7 +1381,7 @@ describe("derivation over loaded fields", () => {
 					.update((v) => v + 1)
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
 
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
 					"match",
 					"scoreLeft",
 					"11",

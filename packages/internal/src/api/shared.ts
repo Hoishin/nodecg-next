@@ -19,8 +19,8 @@ const replicantGet = HttpApiEndpoint.get(
 	.addError(HttpApiError.Forbidden)
 	.addError(HttpApiError.InternalServerError);
 
-const replicantUpdate = HttpApiEndpoint.put(
-	"replicantUpdate",
+const replicantSet = HttpApiEndpoint.put(
+	"replicantSet",
 )`/namespaces/${namespaceParam}/replicant/${fieldNameParam}`
 	.setPayload(JsonValueSchema)
 	.addError(HttpApiError.NotFound)
@@ -63,7 +63,7 @@ const rpcCall = HttpApiEndpoint.post(
 export const fieldGroup = <const Id extends string>(id: Id) =>
 	HttpApiGroup.make(id)
 		.add(replicantGet)
-		.add(replicantUpdate)
+		.add(replicantSet)
 		.add(computedGet)
 		.add(topicPublish)
 		.add(rpcCall);

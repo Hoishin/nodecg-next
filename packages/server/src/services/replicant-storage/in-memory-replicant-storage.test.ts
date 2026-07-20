@@ -18,14 +18,14 @@ describe("read", () => {
 	);
 });
 
-describe("create", () => {
+describe("write", () => {
 	test(
-		"stores new values that read returns (creating the namespace)",
+		"createIfNotFound stores new values that read returns",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "a", 1);
-				yield* storage.create("ns", "b", "two");
+				yield* storage.write("ns", "a", 1, true);
+				yield* storage.write("ns", "b", "two", true);
 				expect(yield* storage.read("ns", "a")).toBe(1);
 				expect(yield* storage.read("ns", "b")).toBe("two");
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
@@ -33,39 +33,24 @@ describe("create", () => {
 	);
 
 	test(
-		"fails with ReplicantAlreadyExists when the key already exists",
+		"fails with ReplicantNotFound on a missing key without createIfNotFound",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "a", 1);
-				const error = yield* storage.create("ns", "a", 2).pipe(Effect.flip);
-				expect(error._tag).toBe("ReplicantAlreadyExists");
-				expect(yield* storage.read("ns", "a")).toBe(1);
+				const error = yield* storage.write("ns", "x", 1).pipe(Effect.flip);
+				expect(error._tag).toBe("ReplicantNotFound");
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
-});
 
-describe("update", () => {
 	test(
 		"overwrites an existing value",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "a", 1);
-				yield* storage.update("ns", "a", 2);
+				yield* storage.write("ns", "a", 1, true);
+				yield* storage.write("ns", "a", 2);
 				expect(yield* storage.read("ns", "a")).toBe(2);
-			}).pipe(Effect.provide(InMemoryReplicantStorage)),
-		),
-	);
-
-	test(
-		"fails with ReplicantNotFound on a missing key",
-		testEffect(
-			Effect.gen(function* () {
-				const storage = yield* ReplicantStorageService;
-				const error = yield* storage.update("ns", "x", 1).pipe(Effect.flip);
-				expect(error._tag).toBe("ReplicantNotFound");
 			}).pipe(Effect.provide(InMemoryReplicantStorage)),
 		),
 	);
@@ -73,14 +58,14 @@ describe("update", () => {
 
 describe("subscribe", () => {
 	test(
-		"emits a ReplicantChange when update succeeds",
+		"emits a ReplicantChange when a write succeeds",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "a", 1);
+				yield* storage.write("ns", "a", 1, true);
 				const stream = yield* storage.subscribe();
 
-				yield* storage.update("ns", "a", 2);
+				yield* storage.write("ns", "a", 2);
 
 				const head = yield* Stream.runHead(stream).pipe(Effect.flatten);
 				expect(head).toEqual({
@@ -93,15 +78,15 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"emits on create but not on a failed update",
+		"emits on a write but not on a failed write",
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
 				const stream = yield* storage.subscribe();
 
-				yield* storage.create("ns", "a", 1);
-				yield* storage.update("missing-ns", "x", 99).pipe(Effect.flip);
-				yield* storage.update("ns", "a", 2);
+				yield* storage.write("ns", "a", 1, true);
+				yield* storage.write("missing-ns", "x", 99).pipe(Effect.flip);
+				yield* storage.write("ns", "a", 2);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([
@@ -117,11 +102,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "a", 0);
+				yield* storage.write("ns", "a", 0, true);
 				const a = yield* storage.subscribe();
 				const b = yield* storage.subscribe();
 
-				yield* storage.update("ns", "a", 7);
+				yield* storage.write("ns", "a", 7);
 
 				const expected = { namespace: "ns", name: "a", value: 7 };
 				const headA = yield* Stream.runHead(a).pipe(Effect.flatten);
@@ -137,7 +122,7 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "a", 0);
+				yield* storage.write("ns", "a", 0, true);
 				const scope = yield* Scope.make();
 				const scopedPull = yield* storage
 					.subscribe()
@@ -146,14 +131,14 @@ describe("subscribe", () => {
 					.subscribe()
 					.pipe(Effect.flatMap(Stream.toPull));
 
-				yield* storage.update("ns", "a", 1);
+				yield* storage.write("ns", "a", 1);
 				const expected1 = { namespace: "ns", name: "a", value: 1 };
 				expect(Chunk.toArray(yield* scopedPull)).toEqual([expected1]);
 				expect(Chunk.toArray(yield* otherPull)).toEqual([expected1]);
 
 				yield* Scope.close(scope, Exit.void);
 
-				yield* storage.update("ns", "a", 2);
+				yield* storage.write("ns", "a", 2);
 				expect(Chunk.toArray(yield* otherPull)).toEqual([
 					{ namespace: "ns", name: "a", value: 2 },
 				]);

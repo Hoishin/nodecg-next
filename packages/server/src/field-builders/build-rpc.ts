@@ -1,16 +1,19 @@
 import type { RpcFieldManifest } from "@nodecg/core";
 import { toError } from "@nodecg/internal/utils";
-import { Data, Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { JsonValue, Promisable } from "type-fest";
 
 import { fieldInternal } from "./field-internal-key.ts";
 import { requirePermission } from "./permission.ts";
 
-export class RpcCallFailed extends Data.TaggedError("RpcCallFailed")<{
-	namespace: string;
-	name: string;
-	cause: Error;
-}> {
+export class RpcHandlerError extends Schema.TaggedError<RpcHandlerError>()(
+	"RpcHandlerError",
+	{
+		namespace: Schema.String,
+		name: Schema.String,
+		cause: Schema.instanceOf(Error),
+	},
+) {
 	override readonly message = `RPC handler for "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
@@ -27,7 +30,7 @@ export const buildRpc = Effect.fn("buildRpc")(
 				Effect.tryPromise({
 					try: async () => handler(request, ctx),
 					catch: (error) =>
-						new RpcCallFailed({ namespace, name, cause: toError(error) }),
+						new RpcHandlerError({ namespace, name, cause: toError(error) }),
 				});
 
 			const call = Effect.fn("call")(function* (request: Request) {

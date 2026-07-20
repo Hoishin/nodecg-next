@@ -1,5 +1,5 @@
 import { mapValues } from "@nodecg/internal/utils";
-import { Data, Effect, Exit, Runtime, Scope, Stream } from "effect";
+import { Effect, Exit, Runtime, Schema, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
 import {
@@ -28,12 +28,10 @@ import type {
 import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
-export class MissingReplicantSeedError extends Data.TaggedError(
-	"MissingReplicantSeedError",
-)<{
-	namespace: string;
-	name: string;
-}> {
+export class MissingReplicantSeed extends Schema.TaggedError<MissingReplicantSeed>()(
+	"MissingReplicantSeed",
+	{ namespace: Schema.String, name: Schema.String },
+) {
 	override readonly message = `Missing seed value for replicant "${this.name}" in "${this.namespace}"`;
 }
 
@@ -47,7 +45,7 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 
 	for (const name of Object.keys(manifest.replicant)) {
 		if (typeof seedReplicant?.[name] === "undefined") {
-			return yield* new MissingReplicantSeedError({
+			return yield* new MissingReplicantSeed({
 				namespace: manifest.namespace,
 				name,
 			});
@@ -62,14 +60,14 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 		Object.keys(manifest.replicant).map((name) =>
 			storage.read(manifest.namespace, name).pipe(
 				Effect.flatMap((persisted) =>
-					engine.setReplicant(manifest.namespace, name, persisted),
+					engine.writeReplicant(manifest.namespace, name, persisted),
 				),
 				Effect.catchTag("ReplicantNotFound", () =>
 					engine
 						.readReplicant(manifest.namespace, name)
 						.pipe(
 							Effect.flatMap((seeded) =>
-								storage.create(manifest.namespace, name, seeded),
+								storage.write(manifest.namespace, name, seeded, true),
 							),
 						),
 				),

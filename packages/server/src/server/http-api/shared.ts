@@ -15,12 +15,12 @@ export const getReplicant = (namespace: string, name: string) =>
 		return yield* field.getEncoded().pipe(
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-				ReplicantNotFound2: () => new HttpApiError.NotFound(),
+				UnknownReplicant: () => new HttpApiError.NotFound(),
 			}),
 		);
 	});
 
-export const updateReplicant = (
+export const setReplicant = (
 	namespace: string,
 	name: string,
 	payload: JsonValue,
@@ -40,7 +40,7 @@ export const updateReplicant = (
 					),
 					Match.tag("FieldDecodeError", () => new HttpApiError.BadRequest()),
 					Match.tag("ReplicantNotFound", () => new HttpApiError.NotFound()),
-					Match.tag("ReplicantNotFound2", () => new HttpApiError.NotFound()),
+					Match.tag("UnknownReplicant", () => new HttpApiError.NotFound()),
 					Match.exhaustive,
 				),
 			),
@@ -95,7 +95,8 @@ export const callRpc = (namespace: string, name: string, payload: JsonValue) =>
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
 				FieldDecodeError: () => new HttpApiError.BadRequest(),
-				RpcCallFailed: (error) => new RpcCallError({ message: error.message }),
+				RpcHandlerError: (error) =>
+					new RpcCallError({ message: error.message }),
 				FieldEncodeError: (error) =>
 					new RpcCallError({ message: error.message }),
 			}),

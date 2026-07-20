@@ -31,9 +31,9 @@ import {
 import { type BuiltNamespace } from "../build-fields.ts";
 import {
 	DerivationEngineService,
-	ReplicantNotFound2,
+	UnknownReplicant,
 } from "../derivation-graph.ts";
-import { RpcCallFailed } from "../field-builders/build-rpc.ts";
+import { RpcHandlerError } from "../field-builders/build-rpc.ts";
 import { fieldInternal } from "../field-builders/field-internal-key.ts";
 import { FieldPermissionDenied } from "../field-builders/permission.ts";
 import {
@@ -1194,7 +1194,7 @@ describe("get", () => {
 				count: stubField({
 					getEncoded: () =>
 						Effect.fail(
-							new ReplicantNotFound2({ namespace: "root", name: "count" }),
+							new UnknownReplicant({ namespace: "root", name: "count" }),
 						),
 					setEncoded: () => Effect.void,
 				}),
@@ -1475,7 +1475,7 @@ describe("rpc call", () => {
 				{
 					echo: stubRpc(() =>
 						Effect.fail(
-							new RpcCallFailed({
+							new RpcHandlerError({
 								namespace: "root",
 								name: "echo",
 								cause: new Error("boom"),

@@ -2,7 +2,7 @@ import { defineNamespace } from "@nodecg/core";
 import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
@@ -61,8 +61,8 @@ describe("seeding", () => {
 					}),
 				);
 
-				expect(storage.create).toHaveBeenCalledWith("ns", "count", "42");
-				expect(storage.create).toHaveBeenCalledTimes(1);
+				expect(storage.write).toHaveBeenCalledWith("ns", "count", "42", true);
+				expect(storage.write).toHaveBeenCalledTimes(1);
 			}),
 		),
 	);
@@ -93,7 +93,7 @@ describe("seeding", () => {
 						seedReplicant: { count: () => 42 },
 					}),
 				);
-				expect(storage.create).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 				expect(yield* engine.readReplicant("ns", "count")).toEqual("7");
 			}),
 		),
@@ -110,13 +110,13 @@ describe("seeding", () => {
 					}),
 				);
 
-				expect(storage.create).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
 
 	test(
-		"fails MissingReplicantSeedError when a replicant has no seed",
+		"fails MissingReplicantSeed when a replicant has no seed",
 		testStubbed(
 			Effect.gen(function* () {
 				const error = yield* buildNamespace(
@@ -126,9 +126,9 @@ describe("seeding", () => {
 					}),
 				).pipe(Effect.flip);
 
-				expect(error._tag).toBe("MissingReplicantSeedError");
+				expect(error._tag).toBe("MissingReplicantSeed");
 				expect(error.message).toContain('"count"');
-				expect(storage.create).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -144,7 +144,7 @@ describe("seeding", () => {
 				).pipe(Effect.flip);
 
 				expect(error._tag).toBe("FieldEncodeError");
-				expect(storage.create).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -202,6 +202,7 @@ describe("adaptNamespace", () => {
 						received.push(value);
 					}),
 				);
+				onTestFinished(() => cancel());
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([3])),
 				);
@@ -209,7 +210,6 @@ describe("adaptNamespace", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([3, 8])),
 				);
-				yield* Effect.promise(() => cancel());
 			}),
 		),
 	);

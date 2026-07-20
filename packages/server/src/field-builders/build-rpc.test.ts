@@ -113,7 +113,7 @@ describe("callEncoded", () => {
 	);
 
 	test(
-		"surfaces a throwing handler as RpcCallFailed",
+		"surfaces a throwing handler as RpcHandlerError",
 		testEffect(
 			Effect.gen(function* () {
 				const field = yield* buildRpc(
@@ -130,7 +130,7 @@ describe("callEncoded", () => {
 					.callEncoded("1")
 					.pipe(Effect.provide(anonymousIdentity), Effect.flip);
 
-				expect(error._tag).toBe("RpcCallFailed");
+				expect(error._tag).toBe("RpcHandlerError");
 				expect(error.message).toContain("boom");
 			}),
 		),
@@ -183,7 +183,7 @@ describe("call", () => {
 	);
 
 	test(
-		"surfaces a throwing handler as RpcCallFailed",
+		"surfaces a throwing handler as RpcHandlerError",
 		testEffect(
 			Effect.gen(function* () {
 				const field = yield* buildRpc(
@@ -198,7 +198,7 @@ describe("call", () => {
 
 				const error = yield* field.call(1).pipe(Effect.flip);
 
-				expect(error._tag).toBe("RpcCallFailed");
+				expect(error._tag).toBe("RpcHandlerError");
 			}),
 		),
 	);

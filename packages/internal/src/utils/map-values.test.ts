@@ -1,5 +1,5 @@
 import { testEffect } from "@nodecg/internal/test-utils";
-import { Context, Data, Effect, Schema, type HKT } from "effect";
+import { Context, Effect, Schema, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 import {
@@ -53,9 +53,10 @@ interface SharedContextLambda extends HKT.TypeLambda {
 	readonly type: SharedContext<this["In"], this["Target"]>;
 }
 
-class TransformError extends Data.TaggedError("TransformError")<{
-	key: string;
-}> {}
+class TransformError extends Schema.TaggedError<TransformError>()(
+	"TransformError",
+	{ key: Schema.String },
+) {}
 
 class BoxService extends Context.Tag("BoxService")<
 	BoxService,

@@ -28,7 +28,7 @@ describe("get", () => {
 				const fetch = mockFetch(() => new Response(JSON.stringify(42)));
 
 				const value = yield* transport
-					.readReplicant("root", "count")
+					.getReplicant("root", "count")
 					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 				expect(value).toBe(42);
@@ -47,7 +47,7 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.readReplicant("root", "count").pipe(
+				const error = yield* transport.getReplicant("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(() => new Response(null, { status: 404 })),
@@ -66,7 +66,7 @@ describe("get", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.readReplicant("root", "count").pipe(
+				const error = yield* transport.getReplicant("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(() => new Response(null, { status: 403 })),
@@ -89,7 +89,7 @@ describe("update", () => {
 				const fetch = mockFetch(() => new Response(null, { status: 204 }));
 
 				yield* transport
-					.updateReplicant("root", "count", 7)
+					.setReplicant("root", "count", 7)
 					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 				const request = requestOf(fetch);
@@ -109,7 +109,7 @@ describe("update", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.updateReplicant("root", "count", 7).pipe(
+				const error = yield* transport.setReplicant("root", "count", 7).pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
 						mockFetch(() => new Response(null, { status: 403 })),
@@ -189,7 +189,7 @@ describe("callRpc", () => {
 	);
 
 	test(
-		"fails with RpcCallFailed when the handler errors (500)",
+		"fails with RpcCallError when the handler errors (500)",
 		testEffect(
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
@@ -211,7 +211,7 @@ describe("callRpc", () => {
 					Effect.flip,
 				);
 
-				expect(error._tag).toBe("RpcCallFailed");
+				expect(error._tag).toBe("RpcCallError");
 			}).pipe(Effect.provide(HttpFieldTransport)),
 		),
 	);
@@ -223,7 +223,7 @@ describe("base URL", () => {
 			const transport = yield* FieldTransportService;
 			const fetch = mockFetch(() => new Response(JSON.stringify(42)));
 			yield* transport
-				.readReplicant("root", "count")
+				.getReplicant("root", "count")
 				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 			return requestOf(fetch).url;
 		}).pipe(Effect.provide(httpFieldTransport(baseUrl)));

@@ -75,10 +75,10 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		const cancel = await ns.replicant.count.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received).toEqual([5]));
 		await ns.replicant.count.set(7);
 		await vi.waitFor(() => expect(received).toEqual([5, 7]));
-		await cancel();
 	});
 
 	test("reads a server-computed value over HTTP", async () => {
@@ -94,10 +94,10 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		const cancel = await ns.computed.doubledCount.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received.at(-1)).toBe(6));
 		await ns.replicant.count.set(4);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(8));
-		await cancel();
 	});
 
 	test("a branching computed dedupes source changes it doesn't depend on", async () => {
@@ -108,11 +108,11 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		const cancel = await ns.computed.summary.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received).toEqual(["idle"]));
 		await ns.replicant.label.set("second");
 		await ns.replicant.count.set(3);
 		await vi.waitFor(() => expect(received).toEqual(["idle", "second x3"]));
-		await cancel();
 	});
 });
 
@@ -195,10 +195,10 @@ describe("extended namespace sync (as producer)", () => {
 		const cancel = await ns.computed.total.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received.at(-1)).toBe(1));
 		await ns.replicant.score.set(10);
 		await vi.waitFor(() => expect(received.at(-1)).toBe(10));
-		await cancel();
 	});
 });
 
@@ -239,8 +239,8 @@ describe("WS handshake honors the session cookie", () => {
 		const cancel = await ns.replicant.producerOnly.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received).toEqual(["producers-only"]));
-		await cancel();
 	});
 });
 
@@ -256,6 +256,7 @@ describe("messaging (topic + rpc)", () => {
 		const cancel = await subscriber.topic.chat.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(
 			async () => {
 				await publisher.topic.chat.publish("hello");
@@ -263,7 +264,6 @@ describe("messaging (topic + rpc)", () => {
 			},
 			{ timeout: 5000, interval: 100 },
 		);
-		await cancel();
 	});
 
 	test("a second subscriber on the same client joins live without replaying the last event", async () => {
@@ -313,9 +313,9 @@ describe("messaging (topic + rpc)", () => {
 		const cancel = await ns.replicant.count.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received.length).toBeGreaterThan(0));
 		const returned = await ns.rpc.bump.call(5);
 		await vi.waitFor(() => expect(received).toContain(returned));
-		await cancel();
 	});
 });

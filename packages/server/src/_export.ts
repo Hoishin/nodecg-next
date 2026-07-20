@@ -1,7 +1,7 @@
 export {
 	loadNodeCGEffect,
 	loadNodeCG,
-	OnLoadFailed,
+	OnLoadError,
 	type LoadedNamespaces,
 	type LoadedNodeCG,
 	type LoadNodeCGOptions,
@@ -10,8 +10,9 @@ export {
 export { NamespaceNotLoaded } from "./build-fields.ts";
 export {
 	type AuthProvider,
-	OAuthStateMismatchError,
+	ProviderStateMismatch,
 } from "./auth/auth-provider.ts";
+export { type HumanAccount, HumanAccountSchema } from "@nodecg/internal";
 export {
 	makeOidcProvider,
 	type OidcProviderConfig,

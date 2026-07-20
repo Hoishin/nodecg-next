@@ -1,14 +1,15 @@
 import type { ResolvedPermission } from "@nodecg/core";
 import { CurrentIdentity } from "@nodecg/internal";
-import { Data, Effect } from "effect";
+import { Effect, Schema } from "effect";
 
-export class FieldPermissionDenied extends Data.TaggedError(
+export class FieldPermissionDenied extends Schema.TaggedError<FieldPermissionDenied>()(
 	"FieldPermissionDenied",
-)<{
-	namespace: string;
-	name: string;
-	operation: "read" | "write";
-}> {
+	{
+		namespace: Schema.String,
+		name: Schema.String,
+		operation: Schema.Literal("read", "write"),
+	},
+) {
 	override readonly message = `Permission denied to ${this.operation} "${this.name}" in "${this.namespace}"`;
 }
 

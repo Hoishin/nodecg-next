@@ -1,5 +1,9 @@
 import { defineNamespace } from "@nodecg/core";
-import type { ServerMessage } from "@nodecg/internal";
+import {
+	PublishMessage,
+	type ServerMessage,
+	SubscribeRejectedMessage,
+} from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { effect } from "@preact/signals-core";
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect";
@@ -40,11 +44,11 @@ const makeFakeChannel = Effect.gen(function* () {
 	return { channel, pubsub, sent };
 });
 
-const publish = (name: string, value: number): ServerMessage => ({
-	_tag: "publish",
-	field: { type: "replicant", namespace: "match", name },
-	value: String(value),
-});
+const publish = (name: string, value: number): ServerMessage =>
+	PublishMessage.make({
+		field: { type: "replicant", namespace: "match", name },
+		value: String(value),
+	});
 
 const waitFor = (assertion: () => void) =>
 	Effect.promise(() => vi.waitFor(assertion));
@@ -69,6 +73,7 @@ describe("FieldCellsService", () => {
 				);
 
 				const dispose = effect(() => void cell.signal.value);
+				onTestFinished(() => dispose());
 				yield* waitFor(() => {
 					expect(
 						sent.some(
@@ -81,7 +86,6 @@ describe("FieldCellsService", () => {
 				yield* waitFor(() => {
 					expect(cell.peek()).toEqual(Ready({ value: 5 }));
 				});
-				dispose();
 			}),
 		),
 	);
@@ -167,15 +171,18 @@ describe("FieldCellsService", () => {
 				);
 
 				const dispose = effect(() => void cell.signal.value);
+				onTestFinished(() => dispose());
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* PubSub.publish(pubsub, {
-					_tag: "subscribe-rejected",
-					field: { type: "replicant", namespace: "match", name: "scoreLeft" },
-					reason: "forbidden",
-				});
+				yield* PubSub.publish(
+					pubsub,
+					SubscribeRejectedMessage.make({
+						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
+						reason: "forbidden",
+					}),
+				);
 
 				yield* waitFor(() => {
 					expect(isFailure(cell.peek())).toBe(true);
@@ -183,7 +190,6 @@ describe("FieldCellsService", () => {
 				const value = cell.peek();
 				assert(isFailure(value));
 				expect(value.error).toBeInstanceOf(FieldPermissionDenied);
-				dispose();
 			}),
 		),
 	);
@@ -203,15 +209,18 @@ describe("FieldCellsService", () => {
 				);
 
 				const dispose = effect(() => void cell.signal.value);
+				onTestFinished(() => dispose());
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* PubSub.publish(pubsub, {
-					_tag: "subscribe-rejected",
-					field: { type: "replicant", namespace: "match", name: "scoreLeft" },
-					reason: "not-found",
-				});
+				yield* PubSub.publish(
+					pubsub,
+					SubscribeRejectedMessage.make({
+						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
+						reason: "not-found",
+					}),
+				);
 
 				yield* waitFor(() => {
 					expect(isFailure(cell.peek())).toBe(true);
@@ -219,7 +228,6 @@ describe("FieldCellsService", () => {
 				const value = cell.peek();
 				assert(isFailure(value));
 				expect(value.error).toBeInstanceOf(FieldNotFound);
-				dispose();
 			}),
 		),
 	);
@@ -241,12 +249,14 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* PubSub.publish(pubsub, {
-					_tag: "subscribe-rejected",
-					field: { type: "computed", namespace: "match", name: "total" },
-					reason: "unavailable",
-					message: "compute boom",
-				});
+				yield* PubSub.publish(
+					pubsub,
+					SubscribeRejectedMessage.make({
+						field: { type: "computed", namespace: "match", name: "total" },
+						reason: "unavailable",
+						message: "compute boom",
+					}),
+				);
 
 				yield* waitFor(() => {
 					expect(isFailure(cell.peek())).toBe(true);
@@ -277,23 +287,25 @@ describe("FieldCellsService", () => {
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
-				yield* PubSub.publish(pubsub, {
-					_tag: "subscribe-rejected",
-					field: { type: "replicant", namespace: "match", name: "scoreLeft" },
-					reason: "forbidden",
-				});
+				yield* PubSub.publish(
+					pubsub,
+					SubscribeRejectedMessage.make({
+						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
+						reason: "forbidden",
+					}),
+				);
 				yield* waitFor(() => {
 					expect(isFailure(cell.peek())).toBe(true);
 				});
 				dispose1();
 
 				const dispose2 = effect(() => void cell.signal.value);
+				onTestFinished(() => dispose2());
 				expect(isPending(cell.peek())).toBe(true);
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 5));
 				yield* waitFor(() => {
 					expect(cell.peek()).toEqual(Ready({ value: 5 }));
 				});
-				dispose2();
 			}),
 		),
 	);
@@ -313,6 +325,7 @@ describe("FieldCellsService", () => {
 				);
 
 				const dispose = effect(() => void cell.signal.value);
+				onTestFinished(() => dispose());
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
@@ -322,16 +335,17 @@ describe("FieldCellsService", () => {
 					expect(isReady(cell.peek())).toBe(true);
 				});
 
-				yield* PubSub.publish(pubsub, {
-					_tag: "publish",
-					field: { type: "replicant", namespace: "match", name: "scoreLeft" },
-					value: "not a number",
-				});
+				yield* PubSub.publish(
+					pubsub,
+					PublishMessage.make({
+						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
+						value: "not a number",
+					}),
+				);
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 7));
 				yield* waitFor(() => {
 					expect(cell.peek()).toEqual(Ready({ value: 7 }));
 				});
-				dispose();
 			}),
 		),
 	);
@@ -357,6 +371,7 @@ describe("FieldCellsService", () => {
 
 				const disposeLeft = effect(() => void left.signal.value);
 				const disposeRight = effect(() => void right.signal.value);
+				onTestFinished(() => disposeRight());
 				yield* waitFor(() => {
 					expect(sent.filter((m) => m._tag === "subscribe")).toHaveLength(2);
 				});
@@ -368,8 +383,6 @@ describe("FieldCellsService", () => {
 					expect(right.peek()).toEqual(Ready({ value: 9 }));
 				});
 				expect(isPending(left.peek())).toBe(true);
-
-				disposeRight();
 			}),
 		),
 	);

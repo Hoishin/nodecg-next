@@ -1,16 +1,17 @@
 import type { ClientMessage, ServerMessage } from "@nodecg/internal";
 import {
 	Context,
-	Data,
 	type Effect,
-	type ParseResult,
+	ParseResult,
+	Schema,
 	type Scope,
 	type Stream,
 } from "effect";
 
-export class MessageEncodeError extends Data.TaggedError("MessageEncodeError")<{
-	cause: ParseResult.ParseError;
-}> {
+export class MessageEncodeError extends Schema.TaggedError<MessageEncodeError>()(
+	"MessageEncodeError",
+	{ cause: Schema.instanceOf(ParseResult.ParseError) },
+) {
 	override readonly message = `Could not encode message: ${this.cause.message}`;
 }
 

@@ -55,7 +55,7 @@ import {
 	getComputed,
 	getReplicant,
 	publishTopic,
-	updateReplicant,
+	setReplicant,
 } from "./shared.ts";
 
 const stashCookieName = "nodecg.login";
@@ -238,29 +238,29 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							);
 						if (Either.isLeft(account)) {
 							return yield* Match.value(account.left).pipe(
-								Match.tag("OAuthStateMismatchError", () =>
+								Match.tag("ProviderStateMismatch", () =>
 									HttpServerResponse.text("OAuth state mismatch", {
 										status: 400,
 									}).pipe(clearStash),
 								),
-								Match.tag("ProviderDiscoveryError", () =>
+								Match.tag("ProviderUnavailableError", () =>
 									HttpServerResponse.text(
 										"Authentication provider unavailable",
 										{ status: 502 },
 									).pipe(clearStash),
 								),
-								Match.tag("TokenExchangeError", () =>
+								Match.tag("CredentialExchangeError", () =>
 									HttpServerResponse.text("Authentication failed", {
 										status: 400,
 									}).pipe(clearStash),
 								),
-								Match.tag("UserinfoError", () =>
+								Match.tag("ProviderResponseError", () =>
 									HttpServerResponse.text(
 										"Authentication provider unavailable",
 										{ status: 502 },
 									).pipe(clearStash),
 								),
-								Match.tag("IdentityClaimsError", () =>
+								Match.tag("NoIdentity", () =>
 									HttpServerResponse.text("Authentication failed", {
 										status: 400,
 									}).pipe(clearStash),
@@ -623,10 +623,8 @@ export const InternalGroupsLive = Layer.mergeAll(
 			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
 				getReplicant(namespace, fieldName),
 			)
-			.handle(
-				"replicantUpdate",
-				({ path: { namespace, fieldName }, payload }) =>
-					updateReplicant(namespace, fieldName, payload),
+			.handle("replicantSet", ({ path: { namespace, fieldName }, payload }) =>
+				setReplicant(namespace, fieldName, payload),
 			)
 			.handle("computedGet", ({ path: { namespace, fieldName } }) =>
 				getComputed(namespace, fieldName),

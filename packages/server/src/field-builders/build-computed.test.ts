@@ -49,7 +49,7 @@ const doubledCount = Effect.gen(function* () {
 		.readReplicant("ns", "count")
 		.pipe(
 			Effect.catchTag(
-				"ReplicantNotFound2",
+				"UnknownReplicant",
 				() => new ReplicantNotFound({ namespace: "ns", name: "count" }),
 			),
 		);
@@ -71,7 +71,7 @@ const initCount = (value: string) =>
 
 const setCount = (value: string) =>
 	Effect.flatMap(DerivationEngineService, (engine) =>
-		engine.setReplicant("ns", "count", value),
+		engine.writeReplicant("ns", "count", value),
 	);
 
 const build = buildComputed(

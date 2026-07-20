@@ -6,7 +6,7 @@ import {
 	toError,
 	zipEffectValues,
 } from "@nodecg/internal/utils";
-import { Context, Data, Effect, Option, Runtime } from "effect";
+import { Context, Effect, Option, Runtime, Schema } from "effect";
 
 import {
 	ComputedComputeError,
@@ -59,9 +59,10 @@ export const asServer = Effect.provideService(
 	ServerIdentitySchema.make(),
 );
 
-export class NamespaceNotLoaded extends Data.TaggedError("NamespaceNotLoaded")<{
-	namespace: string;
-}> {
+export class NamespaceNotLoaded extends Schema.TaggedError<NamespaceNotLoaded>()(
+	"NamespaceNotLoaded",
+	{ namespace: Schema.String },
+) {
 	override readonly message = `Namespace "${this.namespace}" was not loaded — pass it to loadNodeCG's namespaces`;
 }
 

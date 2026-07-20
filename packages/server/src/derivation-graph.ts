@@ -105,8 +105,8 @@ const setSignal = <T>(
 			}),
 	}).pipe(Effect.orDie);
 
-export class ReplicantNotFound2 extends Schema.TaggedError<ReplicantNotFound2>()(
-	"ReplicantNotFound2",
+export class UnknownReplicant extends Schema.TaggedError<UnknownReplicant>()(
+	"UnknownReplicant",
 	{
 		namespace: Schema.String,
 		name: Schema.String,
@@ -180,7 +180,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					const key = fieldKey(namespace, name);
 					const existing = HashMap.get(map, key);
 					if (Option.isNone(existing)) {
-						return yield* new ReplicantNotFound2({ namespace, name });
+						return yield* new UnknownReplicant({ namespace, name });
 					}
 					const replicant = yield* readSignal(existing.value).pipe(
 						Effect.orDieWith(
@@ -196,13 +196,13 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				},
 			);
 
-			const setReplicant = Effect.fn("DerivationEngine.setReplicant")(
+			const writeReplicant = Effect.fn("DerivationEngine.writeReplicant")(
 				function* (namespace: string, name: string, value: JsonValue) {
 					const map = yield* Ref.get(replicants);
 					const key = fieldKey(namespace, name);
 					const existing = HashMap.get(map, key);
 					if (Option.isNone(existing)) {
-						return yield* new ReplicantNotFound2({ namespace, name });
+						return yield* new UnknownReplicant({ namespace, name });
 					}
 					const current = yield* readSignal(existing.value).pipe(
 						Effect.orDieWith(
@@ -344,7 +344,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			return {
 				initializeReplicant,
 				readReplicant,
-				setReplicant,
+				writeReplicant,
 				initializeComputed,
 				readComputed,
 				subscribeComputed,

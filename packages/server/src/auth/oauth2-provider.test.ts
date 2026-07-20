@@ -129,7 +129,7 @@ test("falls back to preferred_username when the name claim is absent", async () 
 	});
 });
 
-test("rejects a state mismatch with OAuthStateMismatchError", async () => {
+test("rejects a state mismatch with ProviderStateMismatch", async () => {
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 
@@ -146,10 +146,10 @@ test("rejects a state mismatch with OAuthStateMismatchError", async () => {
 			.pipe(Effect.flip),
 	);
 
-	expect(error._tag).toBe("OAuthStateMismatchError");
+	expect(error._tag).toBe("ProviderStateMismatch");
 });
 
-test("rejects a failed token exchange with TokenExchangeError", async () => {
+test("rejects a failed token exchange with CredentialExchangeError", async () => {
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 
@@ -169,10 +169,10 @@ test("rejects a failed token exchange with TokenExchangeError", async () => {
 			.pipe(Effect.flip),
 	);
 
-	expect(error._tag).toBe("TokenExchangeError");
+	expect(error._tag).toBe("CredentialExchangeError");
 });
 
-test("rejects a failed userinfo request with UserinfoError", async () => {
+test("rejects a failed userinfo request with ProviderResponseError", async () => {
 	const serverUrl = await startIdp((response) => {
 		response.statusCode = 500;
 	});
@@ -188,10 +188,10 @@ test("rejects a failed userinfo request with UserinfoError", async () => {
 			.pipe(Effect.flip),
 	);
 
-	expect(error._tag).toBe("UserinfoError");
+	expect(error._tag).toBe("ProviderResponseError");
 });
 
-test("rejects a userinfo response without a subject with IdentityClaimsError", async () => {
+test("rejects a userinfo response without a subject with NoIdentity", async () => {
 	const serverUrl = await startIdp((response) => {
 		response.body = { name: "No Subject" };
 	});
@@ -207,10 +207,10 @@ test("rejects a userinfo response without a subject with IdentityClaimsError", a
 			.pipe(Effect.flip),
 	);
 
-	expect(error._tag).toBe("IdentityClaimsError");
+	expect(error._tag).toBe("NoIdentity");
 });
 
-test("rejects a non-object userinfo response with IdentityClaimsError", async () => {
+test("rejects a non-object userinfo response with NoIdentity", async () => {
 	const serverUrl = await startIdp((response) => {
 		response.body = "";
 	});
@@ -226,7 +226,7 @@ test("rejects a non-object userinfo response with IdentityClaimsError", async ()
 			.pipe(Effect.flip),
 	);
 
-	expect(error._tag).toBe("IdentityClaimsError");
+	expect(error._tag).toBe("NoIdentity");
 });
 
 test("maps a provider-specific userinfo shape through identityFromUserinfo", async () => {

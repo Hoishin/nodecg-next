@@ -1,5 +1,5 @@
 import { loadNamespace } from "@nodecg/client";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { suiteBase } from "../../src/client/suite-base.ts";
 import { crossManifest, extendedManifest } from "../../src/shared/manifests.ts";
@@ -31,11 +31,11 @@ describe("cross-namespace computed via ctx.use", () => {
 		const cancel = await cross.computed.scaledScore.subscribe((value) => {
 			received.push(value);
 		});
+		onTestFinished(() => cancel());
 		await vi.waitFor(() => expect(received.at(-1)).toBe(score * 2));
 
 		await cross.rpc.addScore.call(3);
 
 		await vi.waitFor(() => expect(received.at(-1)).toBe((score + 3) * 2));
-		await cancel();
 	});
 });

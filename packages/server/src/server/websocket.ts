@@ -11,6 +11,8 @@ import {
 	type FieldIdentifier,
 	fieldIdentifierEquivalence,
 	type Identity,
+	PingMessage,
+	PublishMessage,
 	ServerMessage,
 	sessionCookieName,
 	SubscribeRejectedMessage,
@@ -34,7 +36,7 @@ import {
 } from "../auth/resolve-session-identity.ts";
 import {
 	DerivationEngineService,
-	ReplicantNotFound2,
+	UnknownReplicant,
 } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
 import { config } from "../server-config.ts";
@@ -67,7 +69,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					readonly field: FieldIdentifier;
 					readonly fiber: Fiber.RuntimeFiber<
 						void,
-						ParseResult.ParseError | Socket.SocketError | ReplicantNotFound2
+						ParseResult.ParseError | Socket.SocketError | UnknownReplicant
 					>;
 				}>
 			>([]);
@@ -78,7 +80,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 				);
 
 			const publish = (field: FieldIdentifier, value: JsonValue) =>
-				send({ _tag: "publish", field, value });
+				send(PublishMessage.make({ field, value }));
 
 			const startSubscription = (field: FieldIdentifier) =>
 				SynchronizedRef.updateEffect(subscriptions, (list) =>
@@ -182,7 +184,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					Match.when({ _tag: "ping", kind: "ping" }, () =>
 						Effect.gen(function* () {
 							yield* Effect.logDebug("Received ping");
-							yield* send({ _tag: "ping", kind: "pong" });
+							yield* send(PingMessage.make({ kind: "pong" }));
 						}),
 					),
 					Match.when({ _tag: "ping", kind: "pong" }, () =>

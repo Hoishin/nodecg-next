@@ -16,9 +16,9 @@ import {
 
 import {
 	type AuthProvider,
-	IdentityClaimsError,
-	OAuthStateMismatchError,
-	TokenExchangeError,
+	NoIdentity,
+	ProviderStateMismatch,
+	CredentialExchangeError,
 } from "./auth-provider.ts";
 
 export interface OidcProviderConfig {
@@ -142,7 +142,7 @@ export const makeOidcProvider = async (
 		),
 		callback: Effect.fn("OidcProvider.callback")(function* (input) {
 			if (input.searchParams.get("state") !== input.stash.state) {
-				return yield* new OAuthStateMismatchError();
+				return yield* new ProviderStateMismatch();
 			}
 			const tokens = yield* Effect.tryPromise({
 				try: () =>
@@ -156,13 +156,13 @@ export const makeOidcProvider = async (
 						},
 					),
 				catch: (cause) =>
-					new TokenExchangeError({ provider: config.name, cause }),
+					new CredentialExchangeError({ provider: config.name, cause }),
 			});
 			const claims = tokens.claims();
 			const identity =
 				typeof claims === "undefined" ? undefined : identityFromClaims(claims);
 			if (typeof identity === "undefined") {
-				return yield* new IdentityClaimsError({ provider: config.name });
+				return yield* new NoIdentity({ provider: config.name });
 			}
 			return identity;
 		}),

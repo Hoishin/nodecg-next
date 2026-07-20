@@ -25,11 +25,6 @@ export class LoginAbandoned extends Schema.TaggedError<LoginAbandoned>()(
 	override readonly message = `Login was abandoned before completing (popup ${this.reason})`;
 }
 
-interface LoginPopup {
-	readonly closed: boolean;
-	readonly close: () => void;
-}
-
 export interface AuthSession {
 	readonly client: AuthClient;
 	readonly identity: {
@@ -47,7 +42,7 @@ const sleep = (millis: number) =>
 // TODO: use postMessage instead
 const watchLoginSession = async (
 	client: AuthClient,
-	popup: LoginPopup,
+	popup: Window,
 ): Promise<HumanIdentity> => {
 	const pollInterval = 500;
 	const giveUpAfter = 5 * 60_000;

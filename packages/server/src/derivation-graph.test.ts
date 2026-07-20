@@ -25,7 +25,7 @@ describe("replicant", () => {
 				assert(Exit.isFailure(missing));
 				yield* engine.initializeReplicant("ns", "a", 1);
 				expect(yield* engine.readReplicant("ns", "a")).toEqual(1);
-				yield* engine.setReplicant("ns", "a", 2);
+				yield* engine.writeReplicant("ns", "a", 2);
 				expect(yield* engine.readReplicant("ns", "a")).toEqual(2);
 			}),
 		),
@@ -46,9 +46,9 @@ describe("replicant", () => {
 				});
 				yield* engine.subscribeComputed("ns", "c");
 				expect(evaluations).toBe(1);
-				yield* engine.setReplicant("ns", "a", { x: 1 });
+				yield* engine.writeReplicant("ns", "a", { x: 1 });
 				expect(evaluations).toBe(1);
-				yield* engine.setReplicant("ns", "a", { x: 2 });
+				yield* engine.writeReplicant("ns", "a", { x: 2 });
 				expect(evaluations).toBe(2);
 			}),
 		),
@@ -144,8 +144,8 @@ describe("subscribeComputed", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
-				yield* engine.setReplicant("ns", "a", 15);
-				yield* engine.setReplicant("ns", "a", 27);
+				yield* engine.writeReplicant("ns", "a", 15);
+				yield* engine.writeReplicant("ns", "a", 27);
 				yield* waitFor(() => expect(received).toEqual([1, 2]));
 			}),
 		),
@@ -181,8 +181,8 @@ describe("subscribeComputed", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
-				yield* engine.setReplicant("ns", "a", 2);
-				yield* engine.setReplicant("ns", "a", 3);
+				yield* engine.writeReplicant("ns", "a", 2);
+				yield* engine.writeReplicant("ns", "a", 3);
 				yield* waitFor(() => expect(received).toEqual([1, 3]));
 			}),
 		),
@@ -235,7 +235,7 @@ describe("subscribeComputed", () => {
 				});
 				yield* Effect.scoped(engine.subscribeComputed("ns", "c"));
 				expect(evaluations).toBe(1);
-				yield* engine.setReplicant("ns", "a", 2);
+				yield* engine.writeReplicant("ns", "a", 2);
 				expect(evaluations).toBe(1);
 			}),
 		),

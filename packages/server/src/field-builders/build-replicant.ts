@@ -1,6 +1,6 @@
 import type { FieldManifest } from "@nodecg/core";
 import { toError } from "@nodecg/internal/utils";
-import { Data, Effect, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { DerivationEngineService } from "../derivation-graph.ts";
@@ -9,13 +9,14 @@ import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
 import { requirePermission } from "./permission.ts";
 
-export class ReplicantUpdateFnError extends Data.TaggedError(
+export class ReplicantUpdateFnError extends Schema.TaggedError<ReplicantUpdateFnError>()(
 	"ReplicantUpdateFnError",
-)<{
-	namespace: string;
-	name: string;
-	cause: Error;
-}> {
+	{
+		namespace: Schema.String,
+		name: Schema.String,
+		cause: Schema.instanceOf(Error),
+	},
+) {
 	override readonly message = `Update function for replicant "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
 }
 
@@ -53,16 +54,16 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		const storage = yield* ReplicantStorageService;
 		const encoded = yield* manifest.encode(value);
-		yield* storage.update(namespace, name, encoded);
-		yield* engine.setReplicant(namespace, name, encoded);
+		yield* storage.write(namespace, name, encoded);
+		yield* engine.writeReplicant(namespace, name, encoded);
 	});
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		const storage = yield* ReplicantStorageService;
 		yield* manifest.decode(value); // Only for validation
-		yield* storage.update(namespace, name, value);
-		yield* engine.setReplicant(namespace, name, value);
+		yield* storage.write(namespace, name, value);
+		yield* engine.writeReplicant(namespace, name, value);
 	});
 
 	const update = Effect.fn("update")(function* (
@@ -81,8 +82,8 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		});
 		const encoded = yield* manifest.encode(next);
 		const storage = yield* ReplicantStorageService;
-		yield* storage.update(namespace, name, encoded);
-		yield* engine.setReplicant(namespace, name, encoded);
+		yield* storage.write(namespace, name, encoded);
+		yield* engine.writeReplicant(namespace, name, encoded);
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {

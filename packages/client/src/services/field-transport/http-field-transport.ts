@@ -5,13 +5,13 @@ import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
-	RpcCallFailed,
-	FieldGetFailed,
+	RpcCallError,
+	FieldGetError,
 	FieldNotFound,
 	FieldPermissionDenied,
-	FieldSaveFailed,
+	FieldSetError,
 	FieldTransportService,
-	TopicPublishFailed,
+	TopicPublishError,
 } from "../field-transport/field-transport.ts";
 
 export const httpFieldTransport = (baseUrl?: string) =>
@@ -20,32 +20,33 @@ export const httpFieldTransport = (baseUrl?: string) =>
 		Effect.gen(function* () {
 			const client = yield* HttpApiClient.make(InternalApi, { baseUrl });
 
-			const readReplicant = Effect.fn("FieldTransport.readReplicant")(
-				function* (namespace: string, name: string) {
-					return yield* client.Field.replicantGet({
-						path: { namespace, fieldName: name },
-					}).pipe(
-						Effect.mapError((error) =>
-							Match.value(error).pipe(
-								Match.tag(
-									"NotFound",
-									() => new FieldNotFound({ namespace, name }),
-								),
-								Match.tag(
-									"Forbidden",
-									() => new FieldPermissionDenied({ namespace, name }),
-								),
-								Match.orElse(
-									(e) =>
-										new FieldGetFailed({ namespace, name, cause: toError(e) }),
-								),
+			const getReplicant = Effect.fn("FieldTransport.getReplicant")(function* (
+				namespace: string,
+				name: string,
+			) {
+				return yield* client.Field.replicantGet({
+					path: { namespace, fieldName: name },
+				}).pipe(
+					Effect.mapError((error) =>
+						Match.value(error).pipe(
+							Match.tag(
+								"NotFound",
+								() => new FieldNotFound({ namespace, name }),
+							),
+							Match.tag(
+								"Forbidden",
+								() => new FieldPermissionDenied({ namespace, name }),
+							),
+							Match.orElse(
+								(e) =>
+									new FieldGetError({ namespace, name, cause: toError(e) }),
 							),
 						),
-					);
-				},
-			);
+					),
+				);
+			});
 
-			const readComputed = Effect.fn("FieldTransport.readComputed")(function* (
+			const getComputed = Effect.fn("FieldTransport.getComputed")(function* (
 				namespace: string,
 				name: string,
 			) {
@@ -64,38 +65,40 @@ export const httpFieldTransport = (baseUrl?: string) =>
 							),
 							Match.orElse(
 								(e) =>
-									new FieldGetFailed({ namespace, name, cause: toError(e) }),
+									new FieldGetError({ namespace, name, cause: toError(e) }),
 							),
 						),
 					),
 				);
 			});
 
-			const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
-				function* (namespace: string, name: string, value: JsonValue) {
-					yield* client.Field.replicantUpdate({
-						path: { namespace, fieldName: name },
-						payload: value,
-					}).pipe(
-						Effect.mapError((error) =>
-							Match.value(error).pipe(
-								Match.tag(
-									"NotFound",
-									() => new FieldNotFound({ namespace, name }),
-								),
-								Match.tag(
-									"Forbidden",
-									() => new FieldPermissionDenied({ namespace, name }),
-								),
-								Match.orElse(
-									(e) =>
-										new FieldSaveFailed({ namespace, name, cause: toError(e) }),
-								),
+			const setReplicant = Effect.fn("FieldTransport.setReplicant")(function* (
+				namespace: string,
+				name: string,
+				value: JsonValue,
+			) {
+				yield* client.Field.replicantSet({
+					path: { namespace, fieldName: name },
+					payload: value,
+				}).pipe(
+					Effect.mapError((error) =>
+						Match.value(error).pipe(
+							Match.tag(
+								"NotFound",
+								() => new FieldNotFound({ namespace, name }),
+							),
+							Match.tag(
+								"Forbidden",
+								() => new FieldPermissionDenied({ namespace, name }),
+							),
+							Match.orElse(
+								(e) =>
+									new FieldSetError({ namespace, name, cause: toError(e) }),
 							),
 						),
-					);
-				},
-			);
+					),
+				);
+			});
 
 			const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
 				namespace: string,
@@ -118,7 +121,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 							),
 							Match.orElse(
 								(e) =>
-									new TopicPublishFailed({
+									new TopicPublishError({
 										namespace,
 										name,
 										cause: toError(e),
@@ -149,8 +152,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 								() => new FieldPermissionDenied({ namespace, name }),
 							),
 							Match.orElse(
-								(e) =>
-									new RpcCallFailed({ namespace, name, cause: toError(e) }),
+								(e) => new RpcCallError({ namespace, name, cause: toError(e) }),
 							),
 						),
 					),
@@ -158,9 +160,9 @@ export const httpFieldTransport = (baseUrl?: string) =>
 			});
 
 			return {
-				readReplicant,
-				readComputed,
-				updateReplicant,
+				getReplicant,
+				getComputed,
+				setReplicant,
 				publishTopic,
 				callRpc,
 			};

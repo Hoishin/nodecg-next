@@ -286,9 +286,6 @@ importers:
       '@nodecg/core':
         specifier: workspace:*
         version: link:../core
-      '@nodecg/internal':
-        specifier: workspace:*
-        version: link:../internal
       '@nodecg/server':
         specifier: workspace:*
         version: link:../server

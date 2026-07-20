@@ -1,4 +1,5 @@
 import { Socket } from "@effect/platform";
+import { PublishMessage, SubscribeMessage } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Mailbox, Option, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
@@ -54,10 +55,11 @@ describe("send", () => {
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
-					yield* channel.send({
-						_tag: "subscribe",
-						field: { type: "replicant", namespace: "root", name: "count" },
-					});
+					yield* channel.send(
+						SubscribeMessage.make({
+							field: { type: "replicant", namespace: "root", name: "count" },
+						}),
+					);
 				}).pipe(Effect.provide(layerFor(socket)));
 
 				expect(write).toHaveBeenCalledTimes(1);
@@ -81,11 +83,12 @@ describe("receive", () => {
 					const channel = yield* MessageChannelService;
 					const stream = yield* channel.receive();
 					yield* deliver(
-						JSON.stringify({
-							_tag: "publish",
-							field: { type: "replicant", namespace: "root", name: "count" },
-							value: 42,
-						}),
+						JSON.stringify(
+							PublishMessage.make({
+								field: { type: "replicant", namespace: "root", name: "count" },
+								value: 42,
+							}),
+						),
 					);
 
 					const first = yield* Stream.runHead(stream);
@@ -160,11 +163,12 @@ describe("receive", () => {
 					const stream = yield* channel.receive();
 					yield* deliver("not valid json");
 					yield* deliver(
-						JSON.stringify({
-							_tag: "publish",
-							field: { type: "replicant", namespace: "root", name: "count" },
-							value: 7,
-						}),
+						JSON.stringify(
+							PublishMessage.make({
+								field: { type: "replicant", namespace: "root", name: "count" },
+								value: 7,
+							}),
+						),
 					);
 
 					const first = yield* Stream.runHead(stream);
@@ -189,11 +193,12 @@ describe("receive", () => {
 					const stream = yield* channel.receive();
 					yield* deliver(new Uint8Array([1, 2, 3]));
 					yield* deliver(
-						JSON.stringify({
-							_tag: "publish",
-							field: { type: "replicant", namespace: "root", name: "ok" },
-							value: 1,
-						}),
+						JSON.stringify(
+							PublishMessage.make({
+								field: { type: "replicant", namespace: "root", name: "ok" },
+								value: 1,
+							}),
+						),
 					);
 
 					const first = yield* Stream.runHead(stream);

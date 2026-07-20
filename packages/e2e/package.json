@@ -8,7 +8,6 @@
 		"@nodecg/browser": "workspace:*",
 		"@nodecg/client": "workspace:*",
 		"@nodecg/core": "workspace:*",
-		"@nodecg/internal": "workspace:*",
 		"@nodecg/server": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/browser": "catalog:",

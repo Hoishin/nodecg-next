@@ -95,7 +95,7 @@ describe("get", () => {
 					manifest.replicant.count,
 					0,
 				);
-				yield* engine.setReplicant("ns", "count", "not a number");
+				yield* engine.writeReplicant("ns", "count", "not a number");
 				const cause = yield* field.get().pipe(Effect.sandbox, Effect.flip);
 				const defect = Cause.dieOption(cause);
 				assert(Option.isSome(defect));
@@ -118,7 +118,7 @@ describe("set", () => {
 					0,
 				);
 				yield* field.set(7);
-				expect(storage.update).toHaveBeenCalledWith("ns", "count", "7");
+				expect(storage.write).toHaveBeenCalledWith("ns", "count", "7");
 			}),
 		),
 	);
@@ -137,7 +137,7 @@ describe("set", () => {
 					.set("not a number" as unknown as number)
 					.pipe(Effect.flip);
 				expect(error._tag).toBe("FieldEncodeError");
-				expect(storage.update).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -156,7 +156,7 @@ describe("set", () => {
 					.set(1)
 					.pipe(Effect.provide(scorer), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(storage.update).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -174,7 +174,7 @@ describe("update", () => {
 					10,
 				);
 				yield* field.update((v) => v + 3);
-				expect(storage.update).toHaveBeenLastCalledWith("ns", "count", "13");
+				expect(storage.write).toHaveBeenLastCalledWith("ns", "count", "13");
 			}),
 		),
 	);
@@ -196,7 +196,7 @@ describe("update", () => {
 					.pipe(Effect.flip);
 				expect(error._tag).toBe("ReplicantUpdateFnError");
 				expect(error.message).toContain("boom");
-				expect(storage.update).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -229,7 +229,7 @@ describe("subscribe", () => {
 		testInMemory(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "count", "0");
+				yield* storage.write("ns", "count", "0", true);
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
@@ -251,8 +251,8 @@ describe("subscribe", () => {
 		testInMemory(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "count", "0");
-				yield* storage.create("ns", "other", "0");
+				yield* storage.write("ns", "count", "0", true);
+				yield* storage.write("ns", "other", "0", true);
 				const count = yield* buildReplicant(
 					"ns",
 					"count",
@@ -281,7 +281,7 @@ describe("subscribe", () => {
 		testInMemory(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
-				yield* storage.create("ns", "count", "0");
+				yield* storage.write("ns", "count", "0", true);
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
@@ -406,7 +406,7 @@ describe("encoded read/write enforce permission", () => {
 				yield* field[fieldInternal]
 					.setEncoded(7)
 					.pipe(Effect.provide(anonymous));
-				expect(storage.update).toHaveBeenCalledWith("ns", "open", 7);
+				expect(storage.write).toHaveBeenCalledWith("ns", "open", 7);
 			}),
 		),
 	);
@@ -425,7 +425,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded("not a number")
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldDecodeError");
-				expect(storage.update).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -444,7 +444,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded(7)
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(storage.update).not.toHaveBeenCalled();
+				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);

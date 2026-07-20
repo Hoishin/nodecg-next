@@ -16,7 +16,7 @@ import {
 	mapValues,
 	mergeRecords,
 } from "@nodecg/internal/utils";
-import { Data, Effect, type HKT, Schema } from "effect";
+import { Effect, type HKT, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
@@ -37,19 +37,25 @@ import {
 	type WriteOnlyPermissionArg,
 } from "./role.ts";
 
-export class FieldEncodeError extends Data.TaggedError("FieldEncodeError")<{
-	readonly fieldName: string;
-	readonly value: unknown;
-	readonly cause: Error;
-}> {
+export class FieldEncodeError extends Schema.TaggedError<FieldEncodeError>()(
+	"FieldEncodeError",
+	{
+		fieldName: Schema.String,
+		value: Schema.Unknown,
+		cause: Schema.instanceOf(Error),
+	},
+) {
 	override readonly message = `Failed to encode replicant "${this.fieldName}": ${this.cause.message}`;
 }
 
-export class FieldDecodeError extends Data.TaggedError("FieldDecodeError")<{
-	readonly fieldName: string;
-	readonly value: JsonValue;
-	readonly cause: Error;
-}> {
+export class FieldDecodeError extends Schema.TaggedError<FieldDecodeError>()(
+	"FieldDecodeError",
+	{
+		fieldName: Schema.String,
+		value: Schema.Unknown,
+		cause: Schema.instanceOf(Error),
+	},
+) {
 	override readonly message = `Failed to decode replicant "${this.fieldName}": ${this.cause.message}`;
 }
 

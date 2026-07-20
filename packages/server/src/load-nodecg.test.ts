@@ -291,7 +291,7 @@ describe("onLoad", () => {
 	);
 
 	test(
-		"a rejecting onLoad fails the whole load as OnLoadFailed",
+		"a rejecting onLoad fails the whole load as OnLoadError",
 		testEffect(
 			Effect.gen(function* () {
 				const stats = implementNamespace(
@@ -310,7 +310,7 @@ describe("onLoad", () => {
 					Effect.flip,
 				);
 
-				expect(error._tag).toBe("OnLoadFailed");
+				expect(error._tag).toBe("OnLoadError");
 				expect(error.message).toContain('"stats"');
 				expect(error.message).toContain("no connection");
 			}),
@@ -342,8 +342,7 @@ describe("loadNodeCG", () => {
 			read: vi.fn<ReplicantStorage["read"]>(
 				(namespace, name) => new ReplicantNotFound({ namespace, name }),
 			),
-			create: vi.fn<ReplicantStorage["create"]>(() => Effect.void),
-			update: vi.fn<ReplicantStorage["update"]>(() => Effect.void),
+			write: vi.fn<ReplicantStorage["write"]>(() => Effect.void),
 			subscribe: vi.fn<ReplicantStorage["subscribe"]>(() =>
 				Queue.unbounded<ReplicantChange>(),
 			),
@@ -352,7 +351,12 @@ describe("loadNodeCG", () => {
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
 
-		expect(storage.create).toHaveBeenCalledWith("settings", "multiplier", "3");
+		expect(storage.write).toHaveBeenCalledWith(
+			"settings",
+			"multiplier",
+			"3",
+			true,
+		);
 		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(3);
 	});
 });

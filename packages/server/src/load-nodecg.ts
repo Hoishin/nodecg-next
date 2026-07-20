@@ -4,7 +4,6 @@ import { declaredRoleNames } from "@nodecg/core";
 import type { RoleName } from "@nodecg/internal";
 import { mapEffectValues, mapValues, toError } from "@nodecg/internal/utils";
 import {
-	Data,
 	Effect,
 	Exit,
 	HashMap,
@@ -13,6 +12,7 @@ import {
 	Logger,
 	ManagedRuntime,
 	Runtime,
+	Schema,
 	type Scope,
 } from "effect";
 
@@ -88,10 +88,10 @@ export type LoadedNamespaces<
 	>;
 };
 
-export class OnLoadFailed extends Data.TaggedError("OnLoadFailed")<{
-	namespace: string;
-	cause: Error;
-}> {
+export class OnLoadError extends Schema.TaggedError<OnLoadError>()(
+	"OnLoadError",
+	{ namespace: Schema.String, cause: Schema.instanceOf(Error) },
+) {
 	override readonly message = `onLoad for namespace "${this.namespace}" failed: ${this.cause.message}`;
 }
 
@@ -130,7 +130,7 @@ interface PreparedNamespace<S extends BaseNamespaceShape> {
 		S["rpc"]
 	>;
 	readonly declaredRoles: ReadonlySet<RoleName>;
-	readonly runOnLoad: Effect.Effect<void, OnLoadFailed, Scope.Scope>;
+	readonly runOnLoad: Effect.Effect<void, OnLoadError, Scope.Scope>;
 }
 
 interface PreparedNamespaceLambda extends HKT.TypeLambda {
@@ -210,7 +210,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 							const cleanup = yield* Effect.tryPromise({
 								try: async () => onLoad({ ...handle, use: useCross }),
 								catch: (error) =>
-									new OnLoadFailed({
+									new OnLoadError({
 										namespace: implemented.manifest.namespace,
 										cause: toError(error),
 									}),

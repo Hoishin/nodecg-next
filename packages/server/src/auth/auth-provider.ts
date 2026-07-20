@@ -1,56 +1,49 @@
 import type { HumanAccount } from "@nodecg/internal";
-import { Context, Data, type Effect, HashMap } from "effect";
+import { Context, type Effect, HashMap, Schema } from "effect";
 
 import type { AuthStash } from "../services/stash-store/stash-store.ts";
 
-export class OAuthStateMismatchError extends Data.TaggedError(
-	"OAuthStateMismatchError",
+export class ProviderStateMismatch extends Schema.TaggedError<ProviderStateMismatch>()(
+	"ProviderStateMismatch",
+	{},
 ) {
 	override readonly message = `OAuth state mismatch`;
 }
 
-// TODO: don't leak OIDC details in service definition
-export class ProviderDiscoveryError extends Data.TaggedError(
-	"ProviderDiscoveryError",
-)<{
-	readonly provider: string;
-	readonly cause: unknown;
-}> {
+export class ProviderUnavailableError extends Schema.TaggedError<ProviderUnavailableError>()(
+	"ProviderUnavailableError",
+	{ provider: Schema.String, cause: Schema.Unknown },
+) {
 	override readonly message = `Discovery failed for authentication provider "${this.provider}"`;
 }
 
-// TODO: don't leak OIDC details in service definition
-export class TokenExchangeError extends Data.TaggedError("TokenExchangeError")<{
-	readonly provider: string;
-	readonly cause: unknown;
-}> {
+export class CredentialExchangeError extends Schema.TaggedError<CredentialExchangeError>()(
+	"CredentialExchangeError",
+	{ provider: Schema.String, cause: Schema.Unknown },
+) {
 	override readonly message = `Token exchange failed for authentication provider "${this.provider}"`;
 }
 
-// TODO: don't leak OIDC details in service definition
-export class IdentityClaimsError extends Data.TaggedError(
-	"IdentityClaimsError",
-)<{
-	readonly provider: string;
-}> {
+export class NoIdentity extends Schema.TaggedError<NoIdentity>()("NoIdentity", {
+	provider: Schema.String,
+}) {
 	override readonly message = `Authentication provider "${this.provider}" returned no usable identity claims`;
 }
 
-// TODO: don't leak OIDC details in service definition
-export class UserinfoError extends Data.TaggedError("UserinfoError")<{
-	readonly provider: string;
-	readonly cause: unknown;
-}> {
+export class ProviderResponseError extends Schema.TaggedError<ProviderResponseError>()(
+	"ProviderResponseError",
+	{ provider: Schema.String, cause: Schema.Unknown },
+) {
 	override readonly message = `Userinfo request failed for authentication provider "${this.provider}"`;
 }
 
-export type AuthorizeError = ProviderDiscoveryError;
+export type AuthorizeError = ProviderUnavailableError;
 export type CallbackError =
-	| OAuthStateMismatchError
-	| ProviderDiscoveryError
-	| TokenExchangeError
-	| UserinfoError
-	| IdentityClaimsError;
+	| ProviderStateMismatch
+	| ProviderUnavailableError
+	| CredentialExchangeError
+	| ProviderResponseError
+	| NoIdentity;
 
 export interface AuthProvider {
 	readonly name: string;

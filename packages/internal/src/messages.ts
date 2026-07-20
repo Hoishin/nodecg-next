@@ -16,16 +16,29 @@ export const fieldIdentifierEquivalence = Schema.equivalence(
 	FieldIdentifierSchema,
 );
 
-const PingMessage = Schema.TaggedStruct("ping", {
+export const SubscribeMessage = Schema.TaggedStruct("subscribe", {
+	field: FieldIdentifierSchema,
+});
+
+export const UnsubscribeMessage = Schema.TaggedStruct("unsubscribe", {
+	field: FieldIdentifierSchema,
+});
+
+export const PingMessage = Schema.TaggedStruct("ping", {
 	kind: Schema.Union(Schema.Literal("ping"), Schema.Literal("pong")),
 });
 
 export const ClientMessage = Schema.Union(
-	Schema.TaggedStruct("subscribe", { field: FieldIdentifierSchema }),
-	Schema.TaggedStruct("unsubscribe", { field: FieldIdentifierSchema }),
+	SubscribeMessage,
+	UnsubscribeMessage,
 	PingMessage,
 );
 export type ClientMessage = typeof ClientMessage.Type;
+
+export const PublishMessage = Schema.TaggedStruct("publish", {
+	field: FieldIdentifierSchema,
+	value: JsonValueSchema,
+});
 
 export const SubscribeRejectedMessage = Schema.TaggedStruct(
 	"subscribe-rejected",
@@ -38,10 +51,7 @@ export const SubscribeRejectedMessage = Schema.TaggedStruct(
 export type SubscribeRejectedMessage = typeof SubscribeRejectedMessage.Type;
 
 export const ServerMessage = Schema.Union(
-	Schema.TaggedStruct("publish", {
-		field: FieldIdentifierSchema,
-		value: JsonValueSchema,
-	}),
+	PublishMessage,
 	SubscribeRejectedMessage,
 	PingMessage,
 );

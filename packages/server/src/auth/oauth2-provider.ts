@@ -14,10 +14,10 @@ import {
 
 import {
 	type AuthProvider,
-	IdentityClaimsError,
-	OAuthStateMismatchError,
-	TokenExchangeError,
-	UserinfoError,
+	NoIdentity,
+	ProviderStateMismatch,
+	CredentialExchangeError,
+	ProviderResponseError,
 } from "./auth-provider.ts";
 
 export interface OAuth2ProviderConfig {
@@ -112,7 +112,7 @@ export const makeOAuth2Provider = (
 		),
 		callback: Effect.fn("OAuth2Provider.callback")(function* (input) {
 			if (input.searchParams.get("state") !== input.stash.state) {
-				return yield* new OAuthStateMismatchError();
+				return yield* new ProviderStateMismatch();
 			}
 			const tokens = yield* Effect.tryPromise({
 				try: () =>
@@ -125,7 +125,7 @@ export const makeOAuth2Provider = (
 						},
 					),
 				catch: (cause) =>
-					new TokenExchangeError({ provider: config.name, cause }),
+					new CredentialExchangeError({ provider: config.name, cause }),
 			});
 			const response = yield* Effect.tryPromise({
 				try: () =>
@@ -135,22 +135,24 @@ export const makeOAuth2Provider = (
 						new URL(config.userinfoEndpoint),
 						"GET",
 					),
-				catch: (cause) => new UserinfoError({ provider: config.name, cause }),
+				catch: (cause) =>
+					new ProviderResponseError({ provider: config.name, cause }),
 			});
 			if (!response.ok) {
-				return yield* new UserinfoError({
+				return yield* new ProviderResponseError({
 					provider: config.name,
 					cause: { status: response.status },
 				});
 			}
 			const body = yield* Effect.tryPromise({
 				try: (): Promise<unknown> => response.json(),
-				catch: (cause) => new UserinfoError({ provider: config.name, cause }),
+				catch: (cause) =>
+					new ProviderResponseError({ provider: config.name, cause }),
 			});
 			const identity = isRecord(body) ? identityFromUserinfo(body) : undefined;
 			const subject = pickString(identity?.subject);
 			if (typeof subject === "undefined") {
-				return yield* new IdentityClaimsError({ provider: config.name });
+				return yield* new NoIdentity({ provider: config.name });
 			}
 			return HumanAccountSchema.make({
 				issuer: config.issuer,

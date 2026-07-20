@@ -1,5 +1,10 @@
 import type { FieldManifest } from "@nodecg/core";
-import type { ClientMessage, FieldIdentifier } from "@nodecg/internal";
+import {
+	type ClientMessage,
+	type FieldIdentifier,
+	SubscribeMessage,
+	UnsubscribeMessage,
+} from "@nodecg/internal";
 import { type Signal, signal } from "@preact/signals-core";
 import {
 	Data,
@@ -92,13 +97,13 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				const cell = signal<Loadable<Decoded, FieldFailure>>(Pending, {
 					watched: () => {
 						hot = true;
-						outbound.unsafeOffer({ _tag: "subscribe", field });
+						outbound.unsafeOffer(SubscribeMessage.make({ field }));
 					},
 					unwatched: () => {
 						// Immediately reject incoming updates to prevent overwriting Pending with live data
 						hot = false;
 						cell.value = Pending;
-						outbound.unsafeOffer({ _tag: "unsubscribe", field });
+						outbound.unsafeOffer(UnsubscribeMessage.make({ field }));
 					},
 				});
 
@@ -134,7 +139,8 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 								),
 								Match.when(
 									"unavailable",
-									() => new FieldUnavailable({ namespace, name, detail: message }),
+									() =>
+										new FieldUnavailable({ namespace, name, detail: message }),
 								),
 								Match.exhaustive,
 							);

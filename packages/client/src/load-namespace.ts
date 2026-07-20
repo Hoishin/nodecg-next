@@ -108,14 +108,14 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 			Failure: ({ error }) => Effect.fail(error),
 			Pending: () =>
 				transport
-					.readReplicant(namespace, name)
+					.getReplicant(namespace, name)
 					.pipe(Effect.flatMap(manifest.decode)),
 		});
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
-		yield* transport.updateReplicant(namespace, name, encoded);
+		yield* transport.setReplicant(namespace, name, encoded);
 		cell.reflect(value);
 	});
 
@@ -125,7 +125,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		const current = yield* get();
 		const next = yield* Effect.try(() => fn(current));
 		const encoded = yield* manifest.encode(next);
-		yield* transport.updateReplicant(namespace, name, encoded);
+		yield* transport.setReplicant(namespace, name, encoded);
 		cell.reflect(next);
 	});
 
@@ -163,7 +163,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 			Failure: ({ error }) => Effect.fail(error),
 			Pending: () =>
 				transport
-					.readComputed(namespace, name)
+					.getComputed(namespace, name)
 					.pipe(Effect.flatMap(manifest.decode)),
 		});
 	});
