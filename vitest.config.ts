@@ -42,6 +42,7 @@ export default defineConfig({
 							{ browser: "webkit" },
 							{ browser: "chromium" },
 						],
+						headless: true,
 						screenshotFailures: false,
 					},
 				},
