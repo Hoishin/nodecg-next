@@ -1,4 +1,5 @@
 import type { NamespaceManifest } from "@nodecg/core";
+import type { Updater } from "@nodecg/internal";
 import { mergeRecords } from "@nodecg/internal/utils";
 import type { JsonValue, Promisable } from "type-fest";
 
@@ -77,7 +78,7 @@ export type Subscribe<out Decoded> = (
 export type ReplicantField<in out Decoded> = {
 	readonly get: () => Decoded;
 	readonly set: (value: Decoded) => void;
-	readonly update: (fn: (value: Decoded) => Decoded) => void;
+	readonly update: (updater: Updater<Decoded>) => void;
 	readonly validate: (value: Decoded) => Promise<JsonValue>;
 	readonly subscribe: Subscribe<Decoded>;
 };
@@ -140,7 +141,7 @@ export type OnLoad<
 export type RpcReplicantAccessor<in out Decoded> = {
 	readonly get: () => Decoded;
 	readonly set: (value: Decoded) => void;
-	readonly update: (fn: (value: Decoded) => Decoded) => void;
+	readonly update: (updater: Updater<Decoded>) => void;
 };
 
 export type RpcComputedAccessor<out Decoded> = {

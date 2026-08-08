@@ -209,6 +209,27 @@ describe("update", () => {
 			}),
 		),
 	);
+
+	test(
+		"mutating the draft in place writes the encoded mutated value",
+		testStubbed(
+			Effect.gen(function* () {
+				const box = defineNamespace("ns", {
+					replicant: {
+						box: { schema: Schema.Struct({ n: Schema.NumberFromString }) },
+					},
+				});
+				const engine = yield* DerivationEngineService;
+				const field = yield* buildReplicant("ns", "box", box.replicant.box, {
+					n: 1,
+				});
+				yield* field.update((draft) => {
+					draft.n = 5;
+				});
+				expect(yield* engine.readReplicant("ns", "box")).toEqual({ n: "5" });
+			}),
+		),
+	);
 });
 
 describe("validate", () => {

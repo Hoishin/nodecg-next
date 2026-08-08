@@ -1,4 +1,5 @@
 import type { FieldManifest } from "@nodecg/core";
+import type { Updater } from "@nodecg/internal";
 import { toError } from "@nodecg/internal/utils";
 import { Effect, Schema, Stream } from "effect";
 import type { JsonValue } from "type-fest";
@@ -57,13 +58,18 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* engine.writeReplicant(namespace, name, value);
 	});
 
-	const update = Effect.fn("update")(function* (
-		fn: (value: Decoded) => Decoded,
-	) {
+	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		const current = yield* get();
+		const encoded = yield* engine.readReplicant(namespace, name);
+		const current = yield* manifest.mutableDecode(encoded).pipe(migrationDie);
 		const next = yield* Effect.try({
-			try: () => fn(current),
+			try: () => {
+				const result = updater(current);
+				if (typeof result === "undefined") {
+					return current;
+				}
+				return result;
+			},
 			catch: (error) =>
 				new ReplicantUpdateFnError({
 					namespace,
@@ -71,8 +77,8 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 					cause: toError(error),
 				}),
 		});
-		const encoded = yield* manifest.encode(next);
-		yield* engine.writeReplicant(namespace, name, encoded);
+		const nextEncoded = yield* manifest.encode(next);
+		yield* engine.writeReplicant(namespace, name, nextEncoded);
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {

@@ -287,6 +287,73 @@ describe("update", () => {
 			}),
 		),
 	);
+
+	test(
+		"mutating the draft in place writes the encoded mutated value",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
+				const manifest = defineNamespace("root", {
+					replicant: {
+						box: { schema: Schema.Struct({ n: Schema.NumberFromString }) },
+					},
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				yield* loaded.replicant.box
+					.update((draft) => {
+						draft.n = 5;
+					})
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
+				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
+					"root",
+					"box",
+					{ n: "5" },
+				);
+			}),
+		),
+	);
+
+	test(
+		"surfaces a throwing updater as FieldSetError without writing, preserving the message",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
+				const manifest = defineNamespace("root", {
+					replicant: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const error = yield* loaded.replicant.count
+					.update(() => {
+						throw new Error("boom");
+					})
+					.pipe(
+						Effect.provideService(FieldTransportService, transportStub),
+						Effect.flip,
+					);
+				expect(error._tag).toBe("FieldSetError");
+				expect(error.message).toContain("boom");
+				expect(transportStub.setReplicant).not.toHaveBeenCalled();
+			}),
+		),
+	);
 });
 
 describe("subscribe", () => {

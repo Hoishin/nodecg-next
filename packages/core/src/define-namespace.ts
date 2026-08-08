@@ -17,7 +17,7 @@ import {
 	mergeRecords,
 } from "@nodecg/internal/utils";
 import { Effect, type HKT, Schema } from "effect";
-import type { JsonValue } from "type-fest";
+import type { JsonValue, WritableDeep } from "type-fest";
 
 import {
 	computedPermission,
@@ -60,8 +60,13 @@ export class FieldDecodeError extends Schema.TaggedError<FieldDecodeError>()(
 }
 
 export interface FieldCodec<D> {
-	readonly encode: (value: D) => Effect.Effect<JsonValue, FieldEncodeError>;
+	readonly encode: (
+		value: D | WritableDeep<D>,
+	) => Effect.Effect<JsonValue, FieldEncodeError>;
 	readonly decode: (value: JsonValue) => Effect.Effect<D, FieldDecodeError>;
+	readonly mutableDecode: (
+		value: JsonValue,
+	) => Effect.Effect<WritableDeep<D>, FieldDecodeError>;
 }
 
 export interface FieldManifest<D> extends FieldCodec<D> {
@@ -163,6 +168,15 @@ function makeCodec<D, E extends JsonValue>(
 	name: string,
 	schema: Schema.Schema<D, E>,
 ) {
+	const decode = Effect.fn("decode")(function* (value: E) {
+		return yield* Schema.decode(schema)(value).pipe(
+			Effect.catchTag(
+				"ParseError",
+				(error) =>
+					new FieldDecodeError({ fieldName: name, value, cause: error }),
+			),
+		);
+	});
 	return {
 		encode: Effect.fn("encode")(function* (value: D) {
 			return yield* Schema.encode(schema)(value).pipe(
@@ -173,14 +187,10 @@ function makeCodec<D, E extends JsonValue>(
 				),
 			);
 		}),
-		decode: Effect.fn("decode")(function* (value: E) {
-			return yield* Schema.decode(schema)(value).pipe(
-				Effect.catchTag(
-					"ParseError",
-					(error) =>
-						new FieldDecodeError({ fieldName: name, value, cause: error }),
-				),
-			);
+		decode,
+		mutableDecode: Effect.fn("mutableDecode")(function* (value: E) {
+			const decoded = yield* decode(value);
+			return decoded as WritableDeep<D>;
 		}),
 	};
 }
@@ -620,6 +630,7 @@ export function extendNamespace<
 				name: field.name,
 				decode: field.decode,
 				encode: field.encode,
+				mutableDecode: field.mutableDecode,
 				permission: replicantPermission(
 					remap(
 						"replicant-read",
@@ -663,6 +674,7 @@ export function extendNamespace<
 				name: field.name,
 				decode: field.decode,
 				encode: field.encode,
+				mutableDecode: field.mutableDecode,
 				permission: computedPermission(
 					remap(
 						"computed-read",
@@ -699,6 +711,7 @@ export function extendNamespace<
 				name: field.name,
 				encode: field.encode,
 				decode: field.decode,
+				mutableDecode: field.mutableDecode,
 				permission: topicPermission(
 					remap(
 						"topic-subscribe",

@@ -4,9 +4,11 @@ import type {
 	FieldManifest,
 	RpcFieldManifest,
 } from "@nodecg/core";
+import type { Updater } from "@nodecg/internal";
 import {
 	mapEffectValues,
 	mapValues,
+	toError,
 	type EffectToPromiseLambda,
 	type StreamToSubscribeLambda,
 	type ApplyLambdaToObject,
@@ -33,6 +35,7 @@ import {
 } from "./field-cells.ts";
 import { isFailure, isReady, matchLoadable } from "./loadable.ts";
 import {
+	FieldSetError,
 	FieldTransportService,
 	type FieldTransport,
 } from "./services/field-transport/field-transport.ts";
@@ -119,14 +122,23 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		cell.reflect(value);
 	});
 
-	const update = Effect.fn("update")(function* (
-		fn: (value: Decoded) => Decoded,
-	) {
-		const current = yield* get();
-		const next = yield* Effect.try(() => fn(current));
+	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
+		const base = yield* manifest.encode(yield* get());
+		const current = yield* manifest.mutableDecode(base);
+		const next = yield* Effect.try({
+			try: () => {
+				const result = updater(current);
+				if (typeof result === "undefined") {
+					return current;
+				}
+				return result;
+			},
+			catch: (error) =>
+				new FieldSetError({ namespace, name, cause: toError(error) }),
+		});
 		const encoded = yield* manifest.encode(next);
 		yield* transport.setReplicant(namespace, name, encoded);
-		cell.reflect(next);
+		cell.reflect(yield* manifest.decode(encoded));
 	});
 
 	const subscribe = () => subscribeCell(cell);

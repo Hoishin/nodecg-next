@@ -473,7 +473,7 @@ describe("defineNamespace", () => {
 				.toEqualTypeOf<boolean>();
 			expectTypeOf(manifest.rpc.setScore.request.encode)
 				.parameter(0)
-				.toEqualTypeOf<{ readonly home: number }>();
+				.toEqualTypeOf<{ readonly home: number } | { home: number }>();
 			expectTypeOf(manifest.rpc.setScore.response.decode).returns.toEqualTypeOf<
 				Effect.Effect<boolean, FieldDecodeError>
 			>();
@@ -1024,7 +1024,7 @@ describe("extendNamespace", () => {
 
 			expectTypeOf(extended.rpc.setScore.request.encode)
 				.parameter(0)
-				.toEqualTypeOf<{ readonly home: number }>();
+				.toEqualTypeOf<{ readonly home: number } | { home: number }>();
 			expectTypeOf(extended.rpc.setScore.response.decode).returns.toEqualTypeOf<
 				Effect.Effect<boolean, FieldDecodeError>
 			>();
