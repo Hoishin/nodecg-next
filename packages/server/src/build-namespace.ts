@@ -25,7 +25,6 @@ import type {
 	LoadedNamespace,
 	RpcShape,
 } from "./implement-namespace.ts";
-import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 export class MissingReplicantSeed extends Schema.TaggedError<MissingReplicantSeed>()(
@@ -40,8 +39,6 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 >(implemented: ImplementedNamespace<S>) {
 	const { manifest, impl } = implemented;
 	const seedReplicant = impl?.seedReplicant;
-	const storage = yield* ReplicantStorageService;
-	const engine = yield* DerivationEngineService;
 
 	for (const name of Object.keys(manifest.replicant)) {
 		if (typeof seedReplicant?.[name] === "undefined") {
@@ -56,26 +53,6 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 	const registry = yield* BuiltNamespaceRegistry;
 	yield* registry.register(implemented, built);
 
-	yield* Effect.all(
-		Object.keys(manifest.replicant).map((name) =>
-			storage.read(manifest.namespace, name).pipe(
-				Effect.flatMap((persisted) =>
-					engine.writeReplicant(manifest.namespace, name, persisted),
-				),
-				Effect.catchTag("ReplicantNotFound", () =>
-					engine
-						.readReplicant(manifest.namespace, name)
-						.pipe(
-							Effect.flatMap((seeded) =>
-								storage.write(manifest.namespace, name, seeded, true),
-							),
-						),
-				),
-			),
-		),
-		{ concurrency: "unbounded" },
-	);
-
 	return built;
 });
 
@@ -86,7 +63,7 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	Rpc extends RpcShape,
 >(built: BuiltNamespace<Replicant, Computed, Topic, Rpc>) {
 	const runtime = yield* Effect.runtime<
-		ReplicantStorageService | TopicBrokerService | DerivationEngineService
+		TopicBrokerService | DerivationEngineService
 	>();
 
 	const subscribeAdapter =
@@ -95,13 +72,10 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 				Stream.Stream<
 					Decoded,
 					never,
-					ReplicantStorageService | TopicBrokerService | DerivationEngineService
+					TopicBrokerService | DerivationEngineService
 				>,
 				E,
-				| ReplicantStorageService
-				| TopicBrokerService
-				| DerivationEngineService
-				| Scope.Scope
+				TopicBrokerService | DerivationEngineService | Scope.Scope
 			>,
 			name: string,
 		) =>

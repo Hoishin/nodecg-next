@@ -32,7 +32,9 @@ const testInMemory = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default,
+		DerivationEngineService.Default.pipe(
+			Layer.provide(InMemoryReplicantStorage),
+		),
 		BuiltNamespaceRegistry.Default,
 		identity,
 	),

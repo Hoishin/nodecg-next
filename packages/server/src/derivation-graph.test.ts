@@ -1,17 +1,47 @@
 import { makeTestEffect } from "@nodecg/internal/test-utils";
-import { Cause, Effect, Exit, Schema, Stream } from "effect";
+import {
+	Cause,
+	Context,
+	Effect,
+	Exit,
+	Layer,
+	Schema,
+	Scope,
+	Stream,
+} from "effect";
 import type { JsonValue } from "type-fest";
-import { assert, describe, expect, test, vi } from "vitest";
+import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
 import {
 	ComputedComputeError,
 	DerivationEngineService,
 } from "./derivation-graph.ts";
+import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
+import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
+import {
+	ReplicantNotFound,
+	ReplicantStorageService,
+} from "./services/replicant-storage/replicant-storage.ts";
 
-const testEngine = makeTestEffect(DerivationEngineService.Default);
+const testEngine = makeTestEffect(
+	DerivationEngineService.Default.pipe(Layer.provide(InMemoryReplicantStorage)),
+);
+
+const { stub: storage, reset } = createStorageStub();
+afterEach(reset);
+
+const stubbedStorage = Layer.succeed(ReplicantStorageService, storage);
+
+const testPersistence = makeTestEffect(stubbedStorage);
 
 const waitFor = (assertion: () => void) =>
 	Effect.promise(() => vi.waitFor(assertion));
+
+const engineIn = (scope: Scope.Scope) =>
+	Layer.build(DerivationEngineService.Default).pipe(
+		Effect.map((context) => Context.get(context, DerivationEngineService)),
+		Scope.extend(scope),
+	);
 
 describe("replicant", () => {
 	test(
@@ -50,6 +80,201 @@ describe("replicant", () => {
 				expect(evaluations).toBe(1);
 				yield* engine.writeReplicant("ns", "a", { x: 2 });
 				expect(evaluations).toBe(2);
+			}),
+		),
+	);
+});
+
+describe("persistence", () => {
+	test(
+		"persists each written value, in write order",
+		testPersistence(
+			Effect.gen(function* () {
+				const scope = yield* Scope.make();
+				const engine = yield* engineIn(scope);
+				yield* engine.initializeReplicant("ns", "a", 0);
+				storage.write.mockClear();
+
+				yield* engine.writeReplicant("ns", "a", 1);
+				yield* engine.writeReplicant("ns", "a", 2);
+				yield* engine.writeReplicant("ns", "a", 3);
+
+				yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(3));
+				expect(storage.write.mock.calls).toEqual([
+					["ns", "a", 1],
+					["ns", "a", 2],
+					["ns", "a", 3],
+				]);
+			}),
+		),
+	);
+
+	test(
+		"closing the scope writes every replicant, so an unreached write is not lost",
+		testPersistence(
+			Effect.gen(function* () {
+				const scope = yield* Scope.make();
+				const engine = yield* engineIn(scope);
+				yield* engine.initializeReplicant("ns", "a", 0);
+				yield* engine.initializeReplicant("ns", "b", 0);
+				storage.write.mockClear();
+
+				yield* engine.writeReplicant("ns", "a", 9);
+				yield* engine.writeReplicant("ns", "b", 8);
+				yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(2));
+				storage.write.mockClear();
+
+				yield* Scope.close(scope, Exit.void);
+				expect(storage.write.mock.calls).toEqual([
+					["ns", "a", 9],
+					["ns", "b", 8],
+				]);
+			}),
+		),
+	);
+
+	test(
+		"a failed write is logged, not surfaced to the writer",
+		testPersistence(
+			Effect.gen(function* () {
+				const scope = yield* Scope.make();
+				const engine = yield* engineIn(scope);
+				yield* engine.initializeReplicant("ns", "a", 0);
+				storage.write.mockClear();
+				storage.write.mockReturnValue(
+					new ReplicantNotFound({ namespace: "ns", name: "a" }),
+				);
+
+				yield* engine.writeReplicant("ns", "a", 1);
+
+				yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
+				expect(yield* engine.readReplicant("ns", "a")).toBe(1);
+			}),
+		),
+	);
+});
+
+describe("initializeReplicant", () => {
+	test(
+		"persists the seed when nothing is stored",
+		testPersistence(
+			Effect.gen(function* () {
+				const scope = yield* Scope.make();
+				const engine = yield* engineIn(scope);
+				yield* engine.initializeReplicant("ns", "a", 0);
+
+				expect(storage.read).toHaveBeenCalledWith("ns", "a");
+				expect(storage.write).toHaveBeenCalledWith("ns", "a", 0, true);
+				expect(yield* engine.readReplicant("ns", "a")).toBe(0);
+			}),
+		),
+	);
+
+	test(
+		"adopts the stored value and does not write it back",
+		testPersistence(
+			Effect.gen(function* () {
+				const scope = yield* Scope.make();
+				storage.read.mockReturnValue(Effect.succeed(42));
+				const engine = yield* engineIn(scope);
+				yield* engine.initializeReplicant("ns", "a", 0);
+
+				expect(yield* engine.readReplicant("ns", "a")).toBe(42);
+				expect(storage.write).not.toHaveBeenCalled();
+			}),
+		),
+	);
+
+	test(
+		"fails the load when the seed write fails",
+		testPersistence(
+			Effect.gen(function* () {
+				const scope = yield* Scope.make();
+				storage.write.mockReturnValue(
+					new ReplicantNotFound({ namespace: "ns", name: "a" }),
+				);
+				const engine = yield* engineIn(scope);
+				const error = yield* engine
+					.initializeReplicant("ns", "a", 0)
+					.pipe(Effect.flip);
+
+				expect(error._tag).toBe("ReplicantNotFound");
+			}),
+		),
+	);
+});
+
+describe("subscribeValues", () => {
+	test(
+		"seeds with the current value then emits each written value",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", 1);
+				yield* engine.writeReplicant("ns", "a", 2);
+				const stream = yield* engine.subscribeValues("ns", "a");
+				const received: JsonValue[] = [];
+				yield* Stream.runForEach(stream, (value) =>
+					Effect.sync(() => received.push(value)),
+				).pipe(Effect.fork);
+
+				yield* waitFor(() => expect(received).toEqual([2]));
+				yield* engine.writeReplicant("ns", "a", 3);
+				yield* waitFor(() => expect(received).toEqual([2, 3]));
+			}),
+		),
+	);
+
+	test(
+		"emits nothing for a write of the current value",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { x: 1 });
+				const stream = yield* engine.subscribeValues("ns", "a");
+				const received: JsonValue[] = [];
+				yield* Stream.runForEach(stream, (value) =>
+					Effect.sync(() => received.push(value)),
+				).pipe(Effect.fork);
+
+				yield* waitFor(() => expect(received).toEqual([{ x: 1 }]));
+				yield* engine.writeReplicant("ns", "a", { x: 1 });
+				yield* engine.writeReplicant("ns", "a", { x: 2 });
+				yield* waitFor(() => expect(received).toEqual([{ x: 1 }, { x: 2 }]));
+			}),
+		),
+	);
+
+	test(
+		"filters out writes to other replicants",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", 1);
+				yield* engine.initializeReplicant("ns", "b", 1);
+				const stream = yield* engine.subscribeValues("ns", "a");
+				const received: JsonValue[] = [];
+				yield* Stream.runForEach(stream, (value) =>
+					Effect.sync(() => received.push(value)),
+				).pipe(Effect.fork);
+
+				yield* waitFor(() => expect(received).toEqual([1]));
+				yield* engine.writeReplicant("ns", "b", 99);
+				yield* engine.writeReplicant("ns", "a", 2);
+				yield* waitFor(() => expect(received).toEqual([1, 2]));
+			}),
+		),
+	);
+
+	test(
+		"fails for an unregistered replicant",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const error = yield* engine
+					.subscribeValues("ns", "missing")
+					.pipe(Effect.flip);
+				expect(error._tag).toBe("UnknownReplicant");
 			}),
 		),
 	);

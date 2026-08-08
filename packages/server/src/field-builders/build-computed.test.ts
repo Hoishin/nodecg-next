@@ -12,6 +12,7 @@ import {
 	ComputedComputeError,
 	DerivationEngineService,
 } from "../derivation-graph.ts";
+import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
 import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { buildComputed } from "./build-computed.ts";
 import { fieldInternal } from "./field-internal-key.ts";
@@ -26,7 +27,12 @@ const anonymousIdentity = Layer.succeed(
 );
 
 const testGraph = makeTestEffect(
-	Layer.merge(DerivationEngineService.Default, serverIdentity),
+	Layer.merge(
+		DerivationEngineService.Default.pipe(
+			Layer.provide(InMemoryReplicantStorage),
+		),
+		serverIdentity,
+	),
 );
 
 const manifest = defineNamespace("ns", {

@@ -42,7 +42,6 @@ import {
 } from "../field-registry.ts";
 import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
-import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
@@ -177,7 +176,11 @@ function webHandler(
 			Layer.provide(InMemoryMachineClientStore),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(InMemoryTopicBroker),
-			Layer.provide(DerivationEngineService.Default),
+			Layer.provide(
+				DerivationEngineService.Default.pipe(
+					Layer.provide(InMemoryReplicantStorage),
+				),
+			),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,
@@ -1264,7 +1267,7 @@ describe("update", () => {
 					getEncoded: () => Effect.succeed(0),
 					setEncoded: () =>
 						Effect.fail(
-							new ReplicantNotFound({ namespace: "root", name: "count" }),
+							new UnknownReplicant({ namespace: "root", name: "count" }),
 						),
 				}),
 			}),

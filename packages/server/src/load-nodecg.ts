@@ -178,10 +178,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 
 	return yield* Effect.gen(function* () {
 		const runtime = yield* Effect.runtime<
-			| ReplicantStorageService
-			| TopicBrokerService
-			| DerivationEngineService
-			| BuiltNamespaceRegistry
+			TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
 		>();
 		const engine = yield* DerivationEngineService;
 		const useCross = <S extends BaseNamespaceShape>(
@@ -320,7 +317,6 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		return { namespaces, start };
 	}).pipe(
 		Effect.provideService(LoadedNamespacesService, loaded),
-		Effect.provide(DerivationEngineService.Default),
 		Effect.provide(BuiltNamespaceRegistry.Default),
 	);
 });
@@ -337,7 +333,9 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 ): Promise<LoadedNodeCG<Shapes>> => {
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
-			replicantStorage(options.storage),
+			DerivationEngineService.Default.pipe(
+				Layer.provide(replicantStorage(options.storage)),
+			),
 			InMemoryTopicBroker,
 			Layer.scope,
 			Logger.pretty,

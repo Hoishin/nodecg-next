@@ -15,15 +15,13 @@ export const createStorageStub = () => {
 	const subscribe = vi.fn<ReplicantStorage["subscribe"]>(() =>
 		Queue.unbounded<ReplicantChange>(),
 	);
-	const flush = vi.fn<ReplicantStorage["flush"]>(() => Effect.void);
 	const stub = {
 		read,
 		write,
 		subscribe,
-		flush,
 	} satisfies ReplicantStorage;
 	const reset = () => {
-		for (const mock of [read, write, subscribe, flush]) {
+		for (const mock of [read, write, subscribe]) {
 			mock.mockReset();
 		}
 	};

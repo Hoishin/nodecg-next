@@ -4,7 +4,6 @@ import { Effect, Schema, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { DerivationEngineService } from "../derivation-graph.ts";
-import { ReplicantStorageService } from "../services/replicant-storage/replicant-storage.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
 import { requirePermission } from "./permission.ts";
@@ -41,28 +40,20 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		return yield* manifest.decode(encoded).pipe(migrationDie);
 	});
 
-	const getEncodedNoAuth = Effect.fn("getEncodedNoAuth")(function* () {
-		return yield* engine.readReplicant(namespace, name);
-	});
-
 	const getEncoded = Effect.fn("getEncoded")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* getEncodedNoAuth();
+		return yield* engine.readReplicant(namespace, name);
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		const storage = yield* ReplicantStorageService;
 		const encoded = yield* manifest.encode(value);
-		yield* storage.write(namespace, name, encoded);
 		yield* engine.writeReplicant(namespace, name, encoded);
 	});
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		const storage = yield* ReplicantStorageService;
 		yield* manifest.decode(value); // Only for validation
-		yield* storage.write(namespace, name, value);
 		yield* engine.writeReplicant(namespace, name, value);
 	});
 
@@ -81,22 +72,11 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 				}),
 		});
 		const encoded = yield* manifest.encode(next);
-		const storage = yield* ReplicantStorageService;
-		yield* storage.write(namespace, name, encoded);
 		yield* engine.writeReplicant(namespace, name, encoded);
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
-		const storage = yield* ReplicantStorageService;
-		const changesStream = yield* storage.subscribe();
-		const replicantValueStream = changesStream.pipe(
-			Stream.filter(
-				(change) => change.namespace === namespace && change.name === name,
-			),
-			Stream.map((change) => change.value),
-		);
-		const initialValue = yield* getEncodedNoAuth();
-		return Stream.concat(Stream.succeed(initialValue), replicantValueStream);
+		return yield* engine.subscribeValues(namespace, name);
 	});
 
 	const subscribe = Effect.fn("subscribe")(function* () {

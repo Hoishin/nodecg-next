@@ -19,7 +19,9 @@ const testEffect = makeTestEffect(
 		Layer.succeed(CurrentIdentity, ServerIdentitySchema.make()),
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default,
+		DerivationEngineService.Default.pipe(
+			Layer.provide(InMemoryReplicantStorage),
+		),
 		BuiltNamespaceRegistry.Default,
 	),
 );

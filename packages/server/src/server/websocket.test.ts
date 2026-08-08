@@ -29,7 +29,11 @@ const handler = () => {
 			Layer.provide(FieldRegistryService.Default([])),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(InMemoryTopicBroker),
-			Layer.provide(DerivationEngineService.Default),
+			Layer.provide(
+				DerivationEngineService.Default.pipe(
+					Layer.provide(InMemoryReplicantStorage),
+				),
+			),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),

@@ -41,7 +41,6 @@ import {
 import { FieldRegistryService } from "../field-registry.ts";
 import { config } from "../server-config.ts";
 import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
-import { ReplicantStorageService } from "../services/replicant-storage/replicant-storage.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
@@ -211,7 +210,6 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 		const sessions = yield* SessionStoreService;
 		const roleStore = yield* RoleStoreService;
 		const machines = yield* MachineClientStoreService;
-		const storage = yield* ReplicantStorageService;
 		const broker = yield* TopicBrokerService;
 		const engine = yield* DerivationEngineService;
 
@@ -257,7 +255,6 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					return yield* wsHandler(resolved.value);
 				}).pipe(catchUnexpectedError),
 			),
-			HttpRouter.provideService(ReplicantStorageService, storage),
 			HttpRouter.provideService(TopicBrokerService, broker),
 			HttpRouter.provideService(DerivationEngineService, engine),
 		);

@@ -14,13 +14,6 @@ export class ReplicantNotFound extends Schema.TaggedError<ReplicantNotFound>()(
 	override readonly message = `Replicant "${this.name}" in "${this.namespace}" does not exist`;
 }
 
-export class ReplicantPersistError extends Schema.TaggedError<ReplicantPersistError>()(
-	"ReplicantPersistError",
-	{ cause: Schema.instanceOf(Error) },
-) {
-	override readonly message = `Failed to persist replicant: ${this.cause.message}`;
-}
-
 /**
  * ReplicantStorage is platform-agnostic layer to persist replicant values.
  */
@@ -42,8 +35,6 @@ export interface ReplicantStorage {
 		never,
 		Scope.Scope
 	>;
-
-	flush: () => Effect.Effect<void, ReplicantPersistError>;
 }
 
 export class ReplicantStorageService extends Context.Tag("ReplicantStorage")<

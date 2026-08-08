@@ -48,7 +48,6 @@ export const InMemoryReplicantStorage = Layer.effect(
 			read,
 			write,
 			subscribe: () => Stream.fromPubSub(changes, { scoped: true }),
-			flush: () => Effect.void,
 		};
 	}),
 );

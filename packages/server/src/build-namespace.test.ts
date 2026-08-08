@@ -2,44 +2,26 @@ import { defineNamespace } from "@nodecg/core";
 import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
-import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
 import { implementNamespace } from "./implement-namespace.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
-import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
-import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
-import { createBrokerStub } from "./services/topic-broker/topic-broker.stub.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 const server = ServerIdentitySchema.make();
 const identity = Layer.succeed(CurrentIdentity, server);
 
-const { stub: storage, reset: resetStorage } = createStorageStub();
-const { stub: broker, reset: resetBroker } = createBrokerStub();
-afterEach(() => {
-	resetStorage();
-	resetBroker();
-});
-
-const testStubbed = makeTestEffect(
-	Layer.mergeAll(
-		Layer.succeed(ReplicantStorageService, storage),
-		Layer.succeed(TopicBrokerService, broker),
-		DerivationEngineService.Default,
-		BuiltNamespaceRegistry.Default,
-		identity,
-	),
-);
-
 const testInMemory = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default,
+		DerivationEngineService.Default.pipe(
+			Layer.provide(InMemoryReplicantStorage),
+		),
 		BuiltNamespaceRegistry.Default,
 		identity,
 	),
@@ -52,24 +34,8 @@ const countManifest = defineNamespace("ns", {
 
 describe("seeding", () => {
 	test(
-		"encodes the seed value and creates it when storage has none",
-		testStubbed(
-			Effect.gen(function* () {
-				yield* buildNamespace(
-					implementNamespace(countManifest, {
-						seedReplicant: { count: () => 42 },
-					}),
-				);
-
-				expect(storage.write).toHaveBeenCalledWith("ns", "count", "42", true);
-				expect(storage.write).toHaveBeenCalledTimes(1);
-			}),
-		),
-	);
-
-	test(
-		"hydrates the engine replicant with the seeded value",
-		testStubbed(
+		"encodes the seed and seeds the engine",
+		testInMemory(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
 				yield* buildNamespace(
@@ -83,41 +49,8 @@ describe("seeding", () => {
 	);
 
 	test(
-		"hydrates the engine replicant with an already-persisted value",
-		testStubbed(
-			Effect.gen(function* () {
-				const engine = yield* DerivationEngineService;
-				storage.read.mockReturnValue(Effect.succeed("7"));
-				yield* buildNamespace(
-					implementNamespace(countManifest, {
-						seedReplicant: { count: () => 42 },
-					}),
-				);
-				expect(storage.write).not.toHaveBeenCalled();
-				expect(yield* engine.readReplicant("ns", "count")).toEqual("7");
-			}),
-		),
-	);
-
-	test(
-		"skips seeding when storage already has a value",
-		testStubbed(
-			Effect.gen(function* () {
-				storage.read.mockReturnValue(Effect.succeed("5"));
-				yield* buildNamespace(
-					implementNamespace(countManifest, {
-						seedReplicant: { count: () => 0 },
-					}),
-				);
-
-				expect(storage.write).not.toHaveBeenCalled();
-			}),
-		),
-	);
-
-	test(
 		"fails MissingReplicantSeed when a replicant has no seed",
-		testStubbed(
+		testInMemory(
 			Effect.gen(function* () {
 				const error = yield* buildNamespace(
 					implementNamespace(countManifest, {
@@ -128,14 +61,13 @@ describe("seeding", () => {
 
 				expect(error._tag).toBe("MissingReplicantSeed");
 				expect(error.message).toContain('"count"');
-				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);
 
 	test(
 		"fails if encode rejects the seed value",
-		testStubbed(
+		testInMemory(
 			Effect.gen(function* () {
 				const error = yield* buildNamespace(
 					implementNamespace(countManifest, {
@@ -144,7 +76,6 @@ describe("seeding", () => {
 				).pipe(Effect.flip);
 
 				expect(error._tag).toBe("FieldEncodeError");
-				expect(storage.write).not.toHaveBeenCalled();
 			}),
 		),
 	);

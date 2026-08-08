@@ -39,7 +39,6 @@ export const setReplicant = (
 						() => new HttpApiError.Forbidden(),
 					),
 					Match.tag("FieldDecodeError", () => new HttpApiError.BadRequest()),
-					Match.tag("ReplicantNotFound", () => new HttpApiError.NotFound()),
 					Match.tag("UnknownReplicant", () => new HttpApiError.NotFound()),
 					Match.exhaustive,
 				),

@@ -3,6 +3,7 @@ import { makeTestEffect } from "@nodecg/internal/test-utils";
 import { Cause, Effect, Layer, Option, Queue, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { DerivationEngineService } from "./derivation-graph.ts";
 import {
 	implementExtendedNamespace,
 	implementNamespace,
@@ -17,7 +18,13 @@ import {
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
 const testEffect = makeTestEffect(
-	Layer.merge(InMemoryReplicantStorage, InMemoryTopicBroker),
+	Layer.mergeAll(
+		InMemoryReplicantStorage,
+		InMemoryTopicBroker,
+		DerivationEngineService.Default.pipe(
+			Layer.provide(InMemoryReplicantStorage),
+		),
+	),
 );
 
 const counter = implementNamespace(
@@ -346,7 +353,6 @@ describe("loadNodeCG", () => {
 			subscribe: vi.fn<ReplicantStorage["subscribe"]>(() =>
 				Queue.unbounded<ReplicantChange>(),
 			),
-			flush: vi.fn<ReplicantStorage["flush"]>(() => Effect.void),
 		} satisfies ReplicantStorage;
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
@@ -358,5 +364,24 @@ describe("loadNodeCG", () => {
 			true,
 		);
 		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(3);
+	});
+
+	test("persists a write made after loading returns", async () => {
+		const storage = {
+			read: vi.fn<ReplicantStorage["read"]>(
+				(namespace, name) => new ReplicantNotFound({ namespace, name }),
+			),
+			write: vi.fn<ReplicantStorage["write"]>(() => Effect.void),
+			subscribe: vi.fn<ReplicantStorage["subscribe"]>(() =>
+				Queue.unbounded<ReplicantChange>(),
+			),
+		} satisfies ReplicantStorage;
+
+		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
+		nodecg.namespaces.settings.replicant.multiplier.set(9);
+
+		await vi.waitFor(() =>
+			expect(storage.write).toHaveBeenCalledWith("settings", "multiplier", "9"),
+		);
 	});
 });

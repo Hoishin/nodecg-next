@@ -16,14 +16,19 @@ import {
 	HashMap,
 	Mailbox,
 	Option,
+	Queue,
 	Ref,
 	Runtime,
 	Schema,
+	Stream,
 	SynchronizedRef,
 } from "effect";
 import type { JsonValue } from "type-fest";
 
-import type { ReplicantNotFound } from "./services/replicant-storage/replicant-storage.ts";
+import {
+	type ReplicantNotFound,
+	ReplicantStorageService,
+} from "./services/replicant-storage/replicant-storage.ts";
 
 export class ComputedComputeError extends Schema.TaggedError<ComputedComputeError>()(
 	"ComputedComputeError",
@@ -136,6 +141,16 @@ const makeStoredValue = (value: JsonValue): StoredValue => ({
 	value,
 });
 
+const sameValue = (current: StoredValue, value: JsonValue) => {
+	const serialized = JSON.stringify(value);
+	return (
+		current.hash === Hash.string(serialized) &&
+		JSON.stringify(current.value) === serialized
+	);
+};
+
+type ReplicantNode = Signal<StoredValue>;
+
 export type ComputedResult = Exit.Exit<
 	JsonValue,
 	ComputedComputeError | ReplicantNotFound | FieldEncodeError
@@ -147,80 +162,135 @@ export type ComputedResult = Exit.Exit<
 export class DerivationEngineService extends Effect.Service<DerivationEngineService>()(
 	"DerivationEngine",
 	{
-		effect: Effect.gen(function* () {
+		scoped: Effect.gen(function* () {
 			const runtime = yield* Effect.runtime<never>();
+			const storage = yield* ReplicantStorageService;
 			const replicants = yield* SynchronizedRef.make(
-				HashMap.empty<FieldKey, Signal<StoredValue>>(),
+				HashMap.empty<FieldKey, ReplicantNode>(),
 			);
 			const computedResults = yield* SynchronizedRef.make(
 				HashMap.empty<FieldKey, ReadonlySignal<ComputedResult>>(),
 			);
 
+			const pendingWrites = yield* Queue.unbounded<{
+				readonly namespace: string;
+				readonly name: string;
+				readonly value: JsonValue;
+			}>();
+
 			const initializeReplicant = Effect.fn(
 				"DerivationEngine.initializeReplicant",
-			)((namespace: string, name: string, value: JsonValue) =>
-				SynchronizedRef.updateEffect(
-					replicants,
-					Effect.fnUntraced(function* (map) {
+			)(function* (namespace: string, name: string, seed: JsonValue) {
+				const persisted = yield* storage.read(namespace, name).pipe(
+					Effect.asSome,
+					Effect.catchTag("ReplicantNotFound", () => Effect.succeedNone),
+				);
+				const initial = Option.getOrElse(persisted, () => seed);
+				yield* SynchronizedRef.updateEffect(replicants, (map) =>
+					Effect.gen(function* () {
 						const key = fieldKey(namespace, name);
 						if (HashMap.has(map, key)) {
 							return yield* new ReplicantAlreadyRegistered({ namespace, name });
 						}
-						const stored = makeStoredValue(value);
+						const stored = makeStoredValue(initial);
 						const replicant = signal(stored);
 						yield* setSignal(replicant, stored, { namespace, name });
 						return HashMap.set(map, key, replicant);
 					}),
+				);
+				if (Option.isNone(persisted)) {
+					yield* storage.write(namespace, name, seed, true);
+				}
+			});
+
+			const lookupNode = Effect.fn(function* (namespace: string, name: string) {
+				const map = yield* Ref.get(replicants);
+				const existing = HashMap.get(map, fieldKey(namespace, name));
+				if (Option.isNone(existing)) {
+					return yield* new UnknownReplicant({ namespace, name });
+				}
+				return existing.value;
+			});
+
+			const readLeaf = (node: ReplicantNode, namespace: string, name: string) =>
+				readSignal(node).pipe(
+					Effect.orDieWith(
+						(cause) =>
+							new DerivationReadValueError({
+								namespace,
+								name,
+								cause: toError(cause.error),
+							}),
+					),
+				);
+
+			const persist = (namespace: string, name: string, value: JsonValue) =>
+				storage
+					.write(namespace, name, value)
+					.pipe(
+						Effect.catchAll((error) =>
+							Effect.logError(
+								`Persisting replicant "${namespace}/${name}" failed`,
+								error,
+							),
+						),
+					);
+
+			yield* Effect.addFinalizer(() =>
+				Effect.gen(function* () {
+					const map = yield* Ref.get(replicants);
+					yield* Effect.forEach(HashMap.toEntries(map), ([key, node]) =>
+						readLeaf(node, key.namespace, key.name).pipe(
+							Effect.flatMap((stored) =>
+								persist(key.namespace, key.name, stored.value),
+							),
+						),
+					);
+				}),
+			);
+
+			yield* Effect.forkScoped(
+				Stream.runForEach(Stream.fromQueue(pendingWrites), (write) =>
+					persist(write.namespace, write.name, write.value),
 				),
 			);
 
 			const readReplicant = Effect.fn("DerivationEngine.readReplicant")(
 				function* (namespace: string, name: string) {
-					const map = yield* Ref.get(replicants);
-					const key = fieldKey(namespace, name);
-					const existing = HashMap.get(map, key);
-					if (Option.isNone(existing)) {
-						return yield* new UnknownReplicant({ namespace, name });
-					}
-					const replicant = yield* readSignal(existing.value).pipe(
-						Effect.orDieWith(
-							(cause) =>
-								new DerivationReadValueError({
-									namespace,
-									name,
-									cause: toError(cause.error),
-								}),
-						),
-					);
-					return replicant.value;
+					const node = yield* lookupNode(namespace, name);
+					const stored = yield* readLeaf(node, namespace, name);
+					return stored.value;
 				},
 			);
 
 			const writeReplicant = Effect.fn("DerivationEngine.writeReplicant")(
 				function* (namespace: string, name: string, value: JsonValue) {
-					const map = yield* Ref.get(replicants);
-					const key = fieldKey(namespace, name);
-					const existing = HashMap.get(map, key);
-					if (Option.isNone(existing)) {
-						return yield* new UnknownReplicant({ namespace, name });
+					const node = yield* lookupNode(namespace, name);
+					const current = yield* readLeaf(node, namespace, name);
+					if (sameValue(current, value)) {
+						return;
 					}
-					const current = yield* readSignal(existing.value).pipe(
-						Effect.orDieWith(
-							(cause) =>
-								new DerivationReadValueError({
-									namespace,
-									name,
-									cause: toError(cause.error),
-								}),
+					yield* setSignal(node, makeStoredValue(value), { namespace, name });
+					yield* Queue.offer(pendingWrites, { namespace, name, value });
+				},
+			);
+
+			const subscribeValues = Effect.fn("DerivationEngine.subscribeValues")(
+				function* (namespace: string, name: string) {
+					const node = yield* lookupNode(namespace, name);
+					const values = yield* Queue.unbounded<JsonValue>();
+					// The effect runs on arm, so the current value is the stream's first
+					// element and no write can slip between reading the seed and watching.
+					yield* Effect.acquireRelease(
+						Effect.sync(() =>
+							effect(() => {
+								const stored = node.value;
+								Queue.unsafeOffer(values, stored.value);
+							}),
 						),
+						(dispose) => Effect.sync(dispose),
 					);
-					const newReplicant = makeStoredValue(value);
-					if (
-						current.hash !== newReplicant.hash ||
-						JSON.stringify(current.value) !== JSON.stringify(newReplicant.value)
-					) {
-						yield* setSignal(existing.value, newReplicant, { namespace, name });
-					}
+					return Stream.fromQueue(values);
 				},
 			);
 
@@ -345,6 +415,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				initializeReplicant,
 				readReplicant,
 				writeReplicant,
+				subscribeValues,
 				initializeComputed,
 				readComputed,
 				subscribeComputed,

@@ -27,10 +27,12 @@ const identity = Layer.succeed(CurrentIdentity, ServerIdentitySchema.make());
 const { stub: storage, reset } = createStorageStub();
 afterEach(reset);
 
+const stubbedStorage = Layer.succeed(ReplicantStorageService, storage);
+
 const testStubbed = makeTestEffect(
 	Layer.mergeAll(
-		Layer.succeed(ReplicantStorageService, storage),
-		DerivationEngineService.Default,
+		stubbedStorage,
+		DerivationEngineService.Default.pipe(Layer.provide(stubbedStorage)),
 		identity,
 	),
 );
@@ -38,7 +40,9 @@ const testStubbed = makeTestEffect(
 const testInMemory = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
-		DerivationEngineService.Default,
+		DerivationEngineService.Default.pipe(
+			Layer.provide(InMemoryReplicantStorage),
+		),
 		identity,
 	),
 );
@@ -108,9 +112,10 @@ describe("get", () => {
 
 describe("set", () => {
 	test(
-		"encodes the value and writes it to storage",
+		"encodes the value and writes it to the engine",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
@@ -118,7 +123,7 @@ describe("set", () => {
 					0,
 				);
 				yield* field.set(7);
-				expect(storage.write).toHaveBeenCalledWith("ns", "count", "7");
+				expect(yield* engine.readReplicant("ns", "count")).toBe("7");
 			}),
 		),
 	);
@@ -127,6 +132,7 @@ describe("set", () => {
 		"fails when the value fails schema validation",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
@@ -137,7 +143,7 @@ describe("set", () => {
 					.set("not a number" as unknown as number)
 					.pipe(Effect.flip);
 				expect(error._tag).toBe("FieldEncodeError");
-				expect(storage.write).not.toHaveBeenCalled();
+				expect(yield* engine.readReplicant("ns", "count")).toBe("0");
 			}),
 		),
 	);
@@ -146,6 +152,7 @@ describe("set", () => {
 		"fails FieldPermissionDenied for a caller whose role the write denies",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"locked",
@@ -156,7 +163,7 @@ describe("set", () => {
 					.set(1)
 					.pipe(Effect.provide(scorer), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(storage.write).not.toHaveBeenCalled();
+				expect(yield* engine.readReplicant("ns", "locked")).toBe("0");
 			}),
 		),
 	);
@@ -173,8 +180,9 @@ describe("update", () => {
 					manifest.replicant.count,
 					10,
 				);
+				const engine = yield* DerivationEngineService;
 				yield* field.update((v) => v + 3);
-				expect(storage.write).toHaveBeenLastCalledWith("ns", "count", "13");
+				expect(yield* engine.readReplicant("ns", "count")).toBe("13");
 			}),
 		),
 	);
@@ -183,6 +191,7 @@ describe("update", () => {
 		"surfaces a throwing update fn as ReplicantUpdateFnError without writing",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
@@ -196,7 +205,7 @@ describe("update", () => {
 					.pipe(Effect.flip);
 				expect(error._tag).toBe("ReplicantUpdateFnError");
 				expect(error.message).toContain("boom");
-				expect(storage.write).not.toHaveBeenCalled();
+				expect(yield* engine.readReplicant("ns", "count")).toBe("10");
 			}),
 		),
 	);
@@ -403,10 +412,11 @@ describe("encoded read/write enforce permission", () => {
 					permissioned.replicant.open,
 					0,
 				);
+				const engine = yield* DerivationEngineService;
 				yield* field[fieldInternal]
 					.setEncoded(7)
 					.pipe(Effect.provide(anonymous));
-				expect(storage.write).toHaveBeenCalledWith("ns", "open", 7);
+				expect(yield* engine.readReplicant("ns", "open")).toBe(7);
 			}),
 		),
 	);
@@ -415,6 +425,7 @@ describe("encoded read/write enforce permission", () => {
 		"setEncoded fails FieldDecodeError and does not write for an invalid value",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"open",
@@ -425,7 +436,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded("not a number")
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldDecodeError");
-				expect(storage.write).not.toHaveBeenCalled();
+				expect(yield* engine.readReplicant("ns", "open")).toBe(0);
 			}),
 		),
 	);
@@ -434,6 +445,7 @@ describe("encoded read/write enforce permission", () => {
 		"setEncoded fails FieldPermissionDenied and does not write for a denied caller",
 		testStubbed(
 			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
 				const field = yield* buildReplicant(
 					"ns",
 					"locked",
@@ -444,7 +456,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded(7)
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(storage.write).not.toHaveBeenCalled();
+				expect(yield* engine.readReplicant("ns", "locked")).toBe(0);
 			}),
 		),
 	);

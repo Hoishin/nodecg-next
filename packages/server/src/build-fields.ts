@@ -51,7 +51,6 @@ import type {
 	RpcShape,
 	WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
-import { ReplicantStorageService } from "./services/replicant-storage/replicant-storage.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 export const asServer = Effect.provideService(
@@ -121,7 +120,6 @@ export const requireLoaded = (namespace: string) =>
 	});
 
 type FieldOps =
-	| ReplicantStorageService
 	| TopicBrokerService
 	| DerivationEngineService
 	| BuiltNamespaceRegistry;
@@ -228,10 +226,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const rpcHandlers = options?.implementRpc;
 
 	const runtime = yield* Effect.runtime<
-		| ReplicantStorageService
-		| TopicBrokerService
-		| DerivationEngineService
-		| BuiltNamespaceRegistry
+		TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
 	>();
 
 	const replicant = yield* zipEffectValues<
