@@ -130,10 +130,20 @@ export class ComputedNotFound extends Schema.TaggedError<ComputedNotFound>()(
 	override readonly message = `Computed "${this.name}" in "${this.namespace}" does not exist`;
 }
 
+export class CommitContended extends Schema.TaggedError<CommitContended>()(
+	"CommitContended",
+	{
+		namespace: Schema.String,
+		name: Schema.String,
+	},
+) {
+	override readonly message = `Committing "${this.name}" in "${this.namespace}" lost a compare-and-swap to a concurrent write`;
+}
+
 interface LeafValue {
-	hash: number;
-	value: JsonValue;
-	revision: number;
+	readonly hash: number;
+	readonly value: JsonValue;
+	readonly revision: number;
 }
 
 export type ReplicantFrame = {
@@ -267,37 +277,25 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				function* (namespace: string, name: string) {
 					const node = yield* lookupNode(namespace, name);
 					const stored = yield* readLeaf(node, namespace, name);
-					return stored.value;
-				},
-			);
-
-			const readRevisioned = Effect.fn("DerivationEngine.readRevisioned")(
-				function* (namespace: string, name: string) {
-					const node = yield* lookupNode(namespace, name);
-					const stored = yield* readLeaf(node, namespace, name);
 					return { value: stored.value, revision: stored.revision };
 				},
 			);
 
-			// Last write wins
-			const commitValue = Effect.fn("DerivationEngine.commitValue")(function* (
+			const commit = Effect.fn("DerivationEngine.commit")(function* <E>(
 				namespace: string,
 				name: string,
-				nextEncoded: JsonValue,
+				produce: (current: JsonValue) => Effect.Effect<JsonValue, E>,
 			) {
+				const node = yield* lookupNode(namespace, name);
+				const stored = node.peek();
+				const nextEncoded = yield* produce(stored.value);
+				if (sameValue(stored, nextEncoded)) {
+					return { value: stored.value, revision: stored.revision };
+				}
 				return yield* SynchronizedRef.modifyEffect(replicants, (map) =>
 					Effect.gen(function* () {
-						const existing = HashMap.get(map, fieldKey(namespace, name));
-						if (Option.isNone(existing)) {
-							return yield* new UnknownReplicant({ namespace, name });
-						}
-						const node = existing.value;
-						const stored = yield* readLeaf(node, namespace, name);
-						if (sameValue(stored, nextEncoded)) {
-							return [
-								{ value: stored.value, revision: stored.revision },
-								map,
-							] as const;
+						if (node.peek().revision !== stored.revision) {
+							return yield* new CommitContended({ namespace, name });
 						}
 						const revision = stored.revision + 1;
 						yield* setSignal(node, makeLeafValue(nextEncoded, revision), {
@@ -314,24 +312,26 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				);
 			});
 
-			const subscribeValues = Effect.fn("DerivationEngine.subscribeValues")(
-				function* (namespace: string, name: string) {
-					const node = yield* lookupNode(namespace, name);
-					const values = yield* Queue.unbounded<JsonValue>();
-					// The effect runs on arm, so the current value is the stream's first
-					// element and no write can slip between reading the seed and watching.
-					yield* Effect.acquireRelease(
-						Effect.sync(() =>
-							effect(() => {
-								const stored = node.value;
-								Queue.unsafeOffer(values, stored.value);
-							}),
-						),
-						(dispose) => Effect.sync(dispose),
-					);
-					return Stream.fromQueue(values);
-				},
-			);
+			const subscribeReplicant = Effect.fn(
+				"DerivationEngine.subscribeReplicant",
+			)(function* (namespace: string, name: string) {
+				const node = yield* lookupNode(namespace, name);
+				const frames = yield* Queue.unbounded<ReplicantFrame>();
+				yield* Effect.acquireRelease(
+					Effect.sync(() =>
+						effect(() => {
+							const stored = node.value;
+							Queue.unsafeOffer(frames, {
+								kind: "snapshot",
+								value: stored.value,
+								revision: stored.revision,
+							});
+						}),
+					),
+					(dispose) => Effect.sync(dispose),
+				);
+				return Stream.fromQueue(frames);
+			});
 
 			const initializeComputed = Effect.fn(
 				"DerivationEngine.initializeComputed",
@@ -453,9 +453,8 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			return {
 				initializeReplicant,
 				readReplicant,
-				readRevisioned,
-				commitValue,
-				subscribeValues,
+				commit,
+				subscribeReplicant,
 				initializeComputed,
 				readComputed,
 				subscribeComputed,

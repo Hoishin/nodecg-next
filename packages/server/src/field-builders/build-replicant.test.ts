@@ -8,7 +8,16 @@ import {
 	ServerIdentitySchema,
 } from "@nodecg/internal";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
-import { Cause, Chunk, Effect, Layer, Option, Schema, Stream } from "effect";
+import {
+	Cause,
+	Chunk,
+	Effect,
+	Layer,
+	Option,
+	Runtime,
+	Schema,
+	Stream,
+} from "effect";
 import { afterEach, assert, describe, expect, test } from "vitest";
 
 import { DerivationEngineService } from "../derivation-graph.ts";
@@ -99,7 +108,9 @@ describe("get", () => {
 					manifest.replicant.count,
 					0,
 				);
-				yield* engine.commitValue("ns", "count", "not a number");
+				yield* engine.commit("ns", "count", () =>
+					Effect.succeed("not a number"),
+				);
 				const cause = yield* field.get().pipe(Effect.sandbox, Effect.flip);
 				const defect = Cause.dieOption(cause);
 				assert(Option.isSome(defect));
@@ -123,7 +134,7 @@ describe("set", () => {
 					0,
 				);
 				yield* field.set(7);
-				expect(yield* engine.readReplicant("ns", "count")).toBe("7");
+				expect((yield* engine.readReplicant("ns", "count")).value).toBe("7");
 			}),
 		),
 	);
@@ -143,7 +154,7 @@ describe("set", () => {
 					.set("not a number" as unknown as number)
 					.pipe(Effect.flip);
 				expect(error._tag).toBe("FieldEncodeError");
-				expect(yield* engine.readReplicant("ns", "count")).toBe("0");
+				expect((yield* engine.readReplicant("ns", "count")).value).toBe("0");
 			}),
 		),
 	);
@@ -163,7 +174,7 @@ describe("set", () => {
 					.set(1)
 					.pipe(Effect.provide(scorer), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(yield* engine.readReplicant("ns", "locked")).toBe("0");
+				expect((yield* engine.readReplicant("ns", "locked")).value).toBe("0");
 			}),
 		),
 	);
@@ -182,7 +193,7 @@ describe("update", () => {
 				);
 				const engine = yield* DerivationEngineService;
 				yield* field.update((v) => v + 3);
-				expect(yield* engine.readReplicant("ns", "count")).toBe("13");
+				expect((yield* engine.readReplicant("ns", "count")).value).toBe("13");
 			}),
 		),
 	);
@@ -205,7 +216,7 @@ describe("update", () => {
 					.pipe(Effect.flip);
 				expect(error._tag).toBe("ReplicantUpdateFnError");
 				expect(error.message).toContain("boom");
-				expect(yield* engine.readReplicant("ns", "count")).toBe("10");
+				expect((yield* engine.readReplicant("ns", "count")).value).toBe("10");
 			}),
 		),
 	);
@@ -226,7 +237,38 @@ describe("update", () => {
 				yield* field.update((draft) => {
 					draft.n = 5;
 				});
-				expect(yield* engine.readReplicant("ns", "box")).toEqual({ n: "5" });
+				expect((yield* engine.readReplicant("ns", "box")).value).toEqual({
+					n: "5",
+				});
+			}),
+		),
+	);
+
+	test(
+		"retries against the fresh value when a concurrent commit lands mid-produce",
+		testStubbed(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const runtime = yield* Effect.runtime<never>();
+				const field = yield* buildReplicant(
+					"ns",
+					"count",
+					manifest.replicant.count,
+					10,
+				);
+				let raced = false;
+				yield* field.update((v) => {
+					if (!raced) {
+						raced = true;
+						Runtime.runSync(
+							runtime,
+							engine.commit("ns", "count", () => Effect.succeed("100")),
+						);
+					}
+					return v + 3;
+				});
+
+				expect((yield* engine.readReplicant("ns", "count")).value).toBe("103");
 			}),
 		),
 	);
@@ -307,7 +349,7 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"[fieldInternal].subscribeEncoded emits raw JsonValue on set",
+		"[fieldInternal].subscribeRevisioned emits a snapshot frame per commit",
 		testInMemory(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
@@ -319,11 +361,14 @@ describe("subscribe", () => {
 					0,
 				);
 
-				const stream = yield* field[fieldInternal].subscribeEncoded();
+				const stream = yield* field[fieldInternal].subscribeRevisioned();
 				yield* field.set(42);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
-				expect(Chunk.toArray(events)).toEqual(["0", "42"]);
+				expect(Chunk.toArray(events)).toEqual([
+					{ kind: "snapshot", value: "0", revision: 0 },
+					{ kind: "snapshot", value: "42", revision: 1 },
+				]);
 			}),
 		),
 	);
@@ -343,13 +388,15 @@ describe("derivation engine write-through", () => {
 				);
 
 				yield* field.set(7);
-				expect(yield* engine.readReplicant("ns", "count")).toEqual("7");
+				expect((yield* engine.readReplicant("ns", "count")).value).toEqual("7");
 
 				yield* field[fieldInternal].setEncoded("8");
-				expect(yield* engine.readReplicant("ns", "count")).toEqual("8");
+				expect((yield* engine.readReplicant("ns", "count")).value).toEqual("8");
 
 				yield* field.update((v) => v + 3);
-				expect(yield* engine.readReplicant("ns", "count")).toEqual("11");
+				expect((yield* engine.readReplicant("ns", "count")).value).toEqual(
+					"11",
+				);
 			}),
 		),
 	);
@@ -366,7 +413,9 @@ describe("derivation engine write-through", () => {
 					0,
 				);
 				yield* field.set(1).pipe(Effect.provide(scorer), Effect.flip);
-				expect(yield* engine.readReplicant("ns", "locked")).toEqual("0");
+				expect((yield* engine.readReplicant("ns", "locked")).value).toEqual(
+					"0",
+				);
 			}),
 		),
 	);
@@ -437,7 +486,7 @@ describe("encoded read/write enforce permission", () => {
 				yield* field[fieldInternal]
 					.setEncoded(7)
 					.pipe(Effect.provide(anonymous));
-				expect(yield* engine.readReplicant("ns", "open")).toBe(7);
+				expect((yield* engine.readReplicant("ns", "open")).value).toBe(7);
 			}),
 		),
 	);
@@ -457,7 +506,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded("not a number")
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldDecodeError");
-				expect(yield* engine.readReplicant("ns", "open")).toBe(0);
+				expect((yield* engine.readReplicant("ns", "open")).value).toBe(0);
 			}),
 		),
 	);
@@ -477,7 +526,7 @@ describe("encoded read/write enforce permission", () => {
 					.setEncoded(7)
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(yield* engine.readReplicant("ns", "locked")).toBe(0);
+				expect((yield* engine.readReplicant("ns", "locked")).value).toBe(0);
 			}),
 		),
 	);

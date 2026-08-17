@@ -43,7 +43,9 @@ describe("seeding", () => {
 						seedReplicant: { count: () => 42 },
 					}),
 				);
-				expect(yield* engine.readReplicant("ns", "count")).toEqual("42");
+				expect((yield* engine.readReplicant("ns", "count")).value).toEqual(
+					"42",
+				);
 			}),
 		),
 	);

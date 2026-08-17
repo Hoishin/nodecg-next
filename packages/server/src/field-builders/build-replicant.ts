@@ -4,7 +4,10 @@ import { toError } from "@nodecg/internal/utils";
 import { Effect, Schema, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 
-import { DerivationEngineService } from "../derivation-graph.ts";
+import {
+	CommitContended,
+	DerivationEngineService,
+} from "../derivation-graph.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
 import { requirePermission } from "./permission.ts";
@@ -34,61 +37,82 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* manifest.encode(initialValue),
 	);
 
+	const commit = <E>(
+		produce: (current: JsonValue) => Effect.Effect<JsonValue, E>,
+	) =>
+		engine.commit(namespace, name, produce).pipe(
+			Effect.retry({
+				while: (error) => error instanceof CommitContended,
+				times: 100,
+			}),
+			Effect.catchTag("CommitContended", () =>
+				Effect.dieMessage(
+					`Committing "${namespace}/${name}" lost 100 compare-and-swap attempts, is an updater writing its own field?`,
+				),
+			),
+		);
+
 	const get = Effect.fn("get")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
 		const engine = yield* DerivationEngineService;
-		const encoded = yield* engine.readReplicant(namespace, name);
-		return yield* manifest.decode(encoded).pipe(migrationDie);
+		const { value } = yield* engine.readReplicant(namespace, name);
+		return yield* manifest.decode(value).pipe(migrationDie);
 	});
 
 	const getRevisioned = Effect.fn("getRevisioned")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* engine.readRevisioned(namespace, name);
+		return yield* engine.readReplicant(namespace, name);
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		const encoded = yield* manifest.encode(value);
-		yield* engine.commitValue(namespace, name, encoded);
+		yield* commit(() => Effect.succeed(encoded));
 	});
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		yield* manifest.decode(value); // Only for validation
-		yield* engine.commitValue(namespace, name, value);
+		yield* commit(() => Effect.succeed(value));
 	});
 
 	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		const encoded = yield* engine.readReplicant(namespace, name);
-		const current = yield* manifest.mutableDecode(encoded).pipe(migrationDie);
-		const next = yield* Effect.try({
-			try: () => {
-				const result = updater(current);
-				if (typeof result === "undefined") {
-					return current;
-				}
-				return result;
-			},
-			catch: (error) =>
-				new ReplicantUpdateFnError({
-					namespace,
-					name,
-					cause: toError(error),
-				}),
-		});
-		const nextEncoded = yield* manifest.encode(next);
-		yield* engine.commitValue(namespace, name, nextEncoded);
+		yield* commit((encoded) =>
+			Effect.gen(function* () {
+				const current = yield* manifest
+					.mutableDecode(encoded)
+					.pipe(migrationDie);
+				const next = yield* Effect.try({
+					try: () => {
+						const result = updater(current);
+						if (typeof result === "undefined") {
+							return current;
+						}
+						return result;
+					},
+					catch: (error) =>
+						new ReplicantUpdateFnError({
+							namespace,
+							name,
+							cause: toError(error),
+						}),
+				});
+				return yield* manifest.encode(next);
+			}),
+		);
 	});
 
-	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
-		return yield* engine.subscribeValues(namespace, name);
+	const subscribeRevisioned = Effect.fn("subscribeRevisioned")(function* () {
+		return yield* engine.subscribeReplicant(namespace, name);
 	});
 
 	const subscribe = Effect.fn("subscribe")(function* () {
-		const stream = yield* subscribeEncoded();
+		const stream = yield* engine.subscribeReplicant(namespace, name);
 		return stream.pipe(
-			Stream.flatMap((value) => manifest.decode(value).pipe(migrationDie)),
+			Stream.flatMap((frame) =>
+				manifest.decode(frame.value).pipe(migrationDie),
+			),
 		);
 	});
 
@@ -106,7 +130,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 			subscribe,
 			getRevisioned,
 			setEncoded,
-			subscribeEncoded,
+			subscribeRevisioned,
 			permission: manifest.permission,
 		},
 	};

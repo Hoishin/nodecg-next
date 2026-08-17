@@ -62,7 +62,7 @@ function stubField(
 	internal: Pick<Internal, "getRevisioned" | "setEncoded">,
 ): ReplicantStub {
 	const unused = vi.fn();
-	const subscribeEncoded = () => Effect.succeed(Stream.empty);
+	const subscribeRevisioned = () => Effect.succeed(Stream.empty);
 	const subscribe = () => Effect.succeed(Stream.empty);
 	return {
 		get: unused,
@@ -78,7 +78,7 @@ function stubField(
 			subscribe,
 			getRevisioned: internal.getRevisioned,
 			setEncoded: internal.setEncoded,
-			subscribeEncoded,
+			subscribeRevisioned,
 			permission: openPermission,
 		},
 	};

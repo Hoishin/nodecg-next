@@ -140,10 +140,17 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 							);
 						const fiber = yield* Effect.forkScoped(
 							Effect.gen(function* () {
-								const stream = yield* internal.subscribeEncoded();
-								yield* Stream.runForEach(stream, (value) =>
-									publish(field, value),
-								);
+								if ("subscribeRevisioned" in internal) {
+									const stream = yield* internal.subscribeRevisioned();
+									yield* Stream.runForEach(stream, (frame) =>
+										publish(field, frame.value),
+									);
+								} else {
+									const stream = yield* internal.subscribeEncoded();
+									yield* Stream.runForEach(stream, (value) =>
+										publish(field, value),
+									);
+								}
 							}).pipe(
 								Effect.scoped,
 								Effect.catchTags({

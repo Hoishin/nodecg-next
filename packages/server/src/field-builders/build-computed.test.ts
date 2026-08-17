@@ -51,14 +51,13 @@ const manifest = defineNamespace("ns", {
 
 const doubledCount = Effect.gen(function* () {
 	const engine = yield* DerivationEngineService;
-	const encoded = yield* engine
-		.readReplicant("ns", "count")
-		.pipe(
-			Effect.catchTag(
-				"UnknownReplicant",
-				() => new ReplicantNotFound({ namespace: "ns", name: "count" }),
-			),
-		);
+	const encoded = yield* engine.readReplicant("ns", "count").pipe(
+		Effect.map((r) => r.value),
+		Effect.catchTag(
+			"UnknownReplicant",
+			() => new ReplicantNotFound({ namespace: "ns", name: "count" }),
+		),
+	);
 	const count = Number(encoded);
 	if (Number.isNaN(count)) {
 		return yield* new ComputedComputeError({
@@ -77,7 +76,7 @@ const initCount = (value: string) =>
 
 const setCount = (value: string) =>
 	Effect.flatMap(DerivationEngineService, (engine) =>
-		engine.commitValue("ns", "count", value),
+		engine.commit("ns", "count", () => Effect.succeed(value)),
 	);
 
 const build = buildComputed(
