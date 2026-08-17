@@ -12,7 +12,8 @@ export const getReplicant = (namespace: string, name: string) =>
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
 		}
-		return yield* field.getEncoded().pipe(
+		return yield* field.getRevisioned().pipe(
+			Effect.map((revisioned) => revisioned.value),
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
 				UnknownReplicant: () => new HttpApiError.NotFound(),

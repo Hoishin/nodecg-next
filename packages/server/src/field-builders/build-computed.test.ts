@@ -77,7 +77,7 @@ const initCount = (value: string) =>
 
 const setCount = (value: string) =>
 	Effect.flatMap(DerivationEngineService, (engine) =>
-		engine.writeReplicant("ns", "count", value),
+		engine.commitValue("ns", "count", value),
 	);
 
 const build = buildComputed(

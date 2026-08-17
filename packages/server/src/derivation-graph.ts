@@ -130,18 +130,26 @@ export class ComputedNotFound extends Schema.TaggedError<ComputedNotFound>()(
 	override readonly message = `Computed "${this.name}" in "${this.namespace}" does not exist`;
 }
 
-interface StoredValue {
+interface LeafValue {
 	hash: number;
 	value: JsonValue;
+	revision: number;
 }
 
+export type ReplicantFrame = {
+	readonly kind: "snapshot";
+	readonly value: JsonValue;
+	readonly revision: number;
+};
+
 // Cheap hash for quick deduplication, can collide
-const makeStoredValue = (value: JsonValue): StoredValue => ({
+const makeLeafValue = (value: JsonValue, revision: number): LeafValue => ({
 	hash: Hash.string(JSON.stringify(value)),
 	value,
+	revision,
 });
 
-const sameValue = (current: StoredValue, value: JsonValue) => {
+const sameValue = (current: LeafValue, value: JsonValue) => {
 	const serialized = JSON.stringify(value);
 	return (
 		current.hash === Hash.string(serialized) &&
@@ -149,7 +157,7 @@ const sameValue = (current: StoredValue, value: JsonValue) => {
 	);
 };
 
-type ReplicantNode = Signal<StoredValue>;
+type ReplicantNode = Signal<LeafValue>;
 
 export type ComputedResult = Exit.Exit<
 	JsonValue,
@@ -192,7 +200,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 						if (HashMap.has(map, key)) {
 							return yield* new ReplicantAlreadyRegistered({ namespace, name });
 						}
-						const stored = makeStoredValue(initial);
+						const stored = makeLeafValue(initial, 0);
 						const replicant = signal(stored);
 						yield* setSignal(replicant, stored, { namespace, name });
 						return HashMap.set(map, key, replicant);
@@ -263,17 +271,48 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				},
 			);
 
-			const writeReplicant = Effect.fn("DerivationEngine.writeReplicant")(
-				function* (namespace: string, name: string, value: JsonValue) {
+			const readRevisioned = Effect.fn("DerivationEngine.readRevisioned")(
+				function* (namespace: string, name: string) {
 					const node = yield* lookupNode(namespace, name);
-					const current = yield* readLeaf(node, namespace, name);
-					if (sameValue(current, value)) {
-						return;
-					}
-					yield* setSignal(node, makeStoredValue(value), { namespace, name });
-					yield* Queue.offer(pendingWrites, { namespace, name, value });
+					const stored = yield* readLeaf(node, namespace, name);
+					return { value: stored.value, revision: stored.revision };
 				},
 			);
+
+			// Last write wins
+			const commitValue = Effect.fn("DerivationEngine.commitValue")(function* (
+				namespace: string,
+				name: string,
+				nextEncoded: JsonValue,
+			) {
+				return yield* SynchronizedRef.modifyEffect(replicants, (map) =>
+					Effect.gen(function* () {
+						const existing = HashMap.get(map, fieldKey(namespace, name));
+						if (Option.isNone(existing)) {
+							return yield* new UnknownReplicant({ namespace, name });
+						}
+						const node = existing.value;
+						const stored = yield* readLeaf(node, namespace, name);
+						if (sameValue(stored, nextEncoded)) {
+							return [
+								{ value: stored.value, revision: stored.revision },
+								map,
+							] as const;
+						}
+						const revision = stored.revision + 1;
+						yield* setSignal(node, makeLeafValue(nextEncoded, revision), {
+							namespace,
+							name,
+						});
+						yield* Queue.offer(pendingWrites, {
+							namespace,
+							name,
+							value: nextEncoded,
+						});
+						return [{ value: nextEncoded, revision }, map] as const;
+					}),
+				);
+			});
 
 			const subscribeValues = Effect.fn("DerivationEngine.subscribeValues")(
 				function* (namespace: string, name: string) {
@@ -414,7 +453,8 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			return {
 				initializeReplicant,
 				readReplicant,
-				writeReplicant,
+				readRevisioned,
+				commitValue,
 				subscribeValues,
 				initializeComputed,
 				readComputed,

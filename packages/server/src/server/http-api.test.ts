@@ -59,7 +59,7 @@ const openPermission: ResolvedPermission = {
 };
 
 function stubField(
-	internal: Pick<Internal, "getEncoded" | "setEncoded">,
+	internal: Pick<Internal, "getRevisioned" | "setEncoded">,
 ): ReplicantStub {
 	const unused = vi.fn();
 	const subscribeEncoded = () => Effect.succeed(Stream.empty);
@@ -76,7 +76,7 @@ function stubField(
 			update: unused,
 			validate: unused,
 			subscribe,
-			getEncoded: internal.getEncoded,
+			getRevisioned: internal.getRevisioned,
 			setEncoded: internal.setEncoded,
 			subscribeEncoded,
 			permission: openPermission,
@@ -1175,7 +1175,7 @@ describe("get", () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
-					getEncoded: () => Effect.succeed(42),
+					getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
 					setEncoded: () => Effect.void,
 				}),
 			}),
@@ -1195,7 +1195,7 @@ describe("get", () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
-					getEncoded: () =>
+					getRevisioned: () =>
 						Effect.fail(
 							new UnknownReplicant({ namespace: "root", name: "count" }),
 						),
@@ -1226,7 +1226,10 @@ describe("update", () => {
 		const setEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
 			registeredNamespace("root", {
-				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
+				count: stubField({
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+					setEncoded,
+				}),
 			}),
 		]);
 		const res = await handler(putRequest(7));
@@ -1244,7 +1247,7 @@ describe("update", () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
-					getEncoded: () => Effect.succeed(0),
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
 					setEncoded: () =>
 						Effect.fail(
 							new FieldDecodeError({
@@ -1264,7 +1267,7 @@ describe("update", () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
-					getEncoded: () => Effect.succeed(0),
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
 					setEncoded: () =>
 						Effect.fail(
 							new UnknownReplicant({ namespace: "root", name: "count" }),
@@ -1295,11 +1298,11 @@ describe("permission enforcement", () => {
 			}),
 		);
 
-	test("403 when replicant getEncoded denies the caller", async () => {
+	test("403 when replicant getRevisioned denies the caller", async () => {
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
-					getEncoded: readDenied,
+					getRevisioned: readDenied,
 					setEncoded: () => Effect.void,
 				}),
 			}),
@@ -1312,7 +1315,10 @@ describe("permission enforcement", () => {
 		const setEncoded = vi.fn(writeDenied);
 		const handler = webHandler([
 			registeredNamespace("root", {
-				count: stubField({ getEncoded: () => Effect.succeed(0), setEncoded }),
+				count: stubField({
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+					setEncoded,
+				}),
 			}),
 		]);
 		const res = await handler(putRequest(7));
@@ -1328,11 +1334,13 @@ describe("permission enforcement", () => {
 	});
 
 	test("runs the encoded op with the resolved identity in context", async () => {
-		const getEncoded = () =>
-			CurrentIdentity.pipe(Effect.map((identity) => identity._tag));
+		const getRevisioned = () =>
+			CurrentIdentity.pipe(
+				Effect.map((identity) => ({ value: identity._tag, revision: 0 })),
+			);
 		const handler = webHandler([
 			registeredNamespace("root", {
-				count: stubField({ getEncoded, setEncoded: () => Effect.void }),
+				count: stubField({ getRevisioned, setEncoded: () => Effect.void }),
 			}),
 		]);
 		const res = await handler(new Request(getUrl));
@@ -1496,7 +1504,7 @@ describe("public surface (v0) with bearer token", () => {
 	const countNamespace = () =>
 		registeredNamespace("root", {
 			count: stubField({
-				getEncoded: () => Effect.succeed(42),
+				getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
 				setEncoded: () => Effect.void,
 			}),
 		});

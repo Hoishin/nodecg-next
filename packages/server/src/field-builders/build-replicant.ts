@@ -41,21 +41,21 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		return yield* manifest.decode(encoded).pipe(migrationDie);
 	});
 
-	const getEncoded = Effect.fn("getEncoded")(function* () {
+	const getRevisioned = Effect.fn("getRevisioned")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* engine.readReplicant(namespace, name);
+		return yield* engine.readRevisioned(namespace, name);
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		const encoded = yield* manifest.encode(value);
-		yield* engine.writeReplicant(namespace, name, encoded);
+		yield* engine.commitValue(namespace, name, encoded);
 	});
 
 	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		yield* manifest.decode(value); // Only for validation
-		yield* engine.writeReplicant(namespace, name, value);
+		yield* engine.commitValue(namespace, name, value);
 	});
 
 	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
@@ -78,7 +78,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 				}),
 		});
 		const nextEncoded = yield* manifest.encode(next);
-		yield* engine.writeReplicant(namespace, name, nextEncoded);
+		yield* engine.commitValue(namespace, name, nextEncoded);
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
@@ -104,7 +104,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 			update,
 			validate: manifest.encode,
 			subscribe,
-			getEncoded,
+			getRevisioned,
 			setEncoded,
 			subscribeEncoded,
 			permission: manifest.permission,

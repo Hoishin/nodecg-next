@@ -99,7 +99,7 @@ describe("get", () => {
 					manifest.replicant.count,
 					0,
 				);
-				yield* engine.writeReplicant("ns", "count", "not a number");
+				yield* engine.commitValue("ns", "count", "not a number");
 				const cause = yield* field.get().pipe(Effect.sandbox, Effect.flip);
 				const defect = Cause.dieOption(cause);
 				assert(Option.isSome(defect));
@@ -387,7 +387,7 @@ describe("encoded read/write enforce permission", () => {
 	});
 
 	test(
-		"getEncoded returns the raw stored value for an allowed caller",
+		"getRevisioned returns the raw stored value and revision for an allowed caller",
 		testStubbed(
 			Effect.gen(function* () {
 				const field = yield* buildReplicant(
@@ -398,15 +398,15 @@ describe("encoded read/write enforce permission", () => {
 				);
 				expect(
 					yield* field[fieldInternal]
-						.getEncoded()
+						.getRevisioned()
 						.pipe(Effect.provide(anonymous)),
-				).toBe(42);
+				).toEqual({ value: 42, revision: 0 });
 			}),
 		),
 	);
 
 	test(
-		"getEncoded fails FieldPermissionDenied for a denied caller",
+		"getRevisioned fails FieldPermissionDenied for a denied caller",
 		testStubbed(
 			Effect.gen(function* () {
 				const field = yield* buildReplicant(
@@ -416,7 +416,7 @@ describe("encoded read/write enforce permission", () => {
 					0,
 				);
 				const error = yield* field[fieldInternal]
-					.getEncoded()
+					.getRevisioned()
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
 			}),

@@ -43,26 +43,46 @@ const engineIn = (scope: Scope.Scope) =>
 		Scope.extend(scope),
 	);
 
-describe("replicant", () => {
+describe("commitValue", () => {
 	test(
-		"readReplicant fails for an unregistered replicant and returns its value once registered",
+		"commits a whole value, read back with the revision bumped",
 		testEngine(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
-				const missing = yield* engine
-					.readReplicant("ns", "a")
-					.pipe(Effect.exit);
-				assert(Exit.isFailure(missing));
 				yield* engine.initializeReplicant("ns", "a", 1);
 				expect(yield* engine.readReplicant("ns", "a")).toEqual(1);
-				yield* engine.writeReplicant("ns", "a", 2);
+				expect(yield* engine.readRevisioned("ns", "a")).toEqual({
+					value: 1,
+					revision: 0,
+				});
+				const committed = yield* engine.commitValue("ns", "a", 2);
+				expect(committed).toEqual({ value: 2, revision: 1 });
 				expect(yield* engine.readReplicant("ns", "a")).toEqual(2);
+				expect(yield* engine.readRevisioned("ns", "a")).toEqual({
+					value: 2,
+					revision: 1,
+				});
 			}),
 		),
 	);
 
 	test(
-		"a value-equal write does not re-evaluate dependents",
+		"a value-equal commit does not bump the revision",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { x: 1 });
+				yield* engine.commitValue("ns", "a", { x: 2 });
+				const before = yield* engine.readRevisioned("ns", "a");
+				const committed = yield* engine.commitValue("ns", "a", { x: 2 });
+				expect(committed).toEqual(before);
+				expect(yield* engine.readRevisioned("ns", "a")).toEqual(before);
+			}),
+		),
+	);
+
+	test(
+		"a value-equal commit does not re-evaluate dependents",
 		testEngine(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -76,10 +96,27 @@ describe("replicant", () => {
 				});
 				yield* engine.subscribeComputed("ns", "c");
 				expect(evaluations).toBe(1);
-				yield* engine.writeReplicant("ns", "a", { x: 1 });
+				yield* engine.commitValue("ns", "a", { x: 1 });
 				expect(evaluations).toBe(1);
-				yield* engine.writeReplicant("ns", "a", { x: 2 });
+				yield* engine.commitValue("ns", "a", { x: 2 });
 				expect(evaluations).toBe(2);
+			}),
+		),
+	);
+
+	test(
+		"fails for an unregistered replicant",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const read = yield* engine
+					.readReplicant("ns", "missing")
+					.pipe(Effect.flip);
+				expect(read._tag).toBe("UnknownReplicant");
+				const revisioned = yield* engine
+					.readRevisioned("ns", "missing")
+					.pipe(Effect.flip);
+				expect(revisioned._tag).toBe("UnknownReplicant");
 			}),
 		),
 	);
@@ -95,9 +132,9 @@ describe("persistence", () => {
 				yield* engine.initializeReplicant("ns", "a", 0);
 				storage.write.mockClear();
 
-				yield* engine.writeReplicant("ns", "a", 1);
-				yield* engine.writeReplicant("ns", "a", 2);
-				yield* engine.writeReplicant("ns", "a", 3);
+				yield* engine.commitValue("ns", "a", 1);
+				yield* engine.commitValue("ns", "a", 2);
+				yield* engine.commitValue("ns", "a", 3);
 
 				yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(3));
 				expect(storage.write.mock.calls).toEqual([
@@ -119,8 +156,8 @@ describe("persistence", () => {
 				yield* engine.initializeReplicant("ns", "b", 0);
 				storage.write.mockClear();
 
-				yield* engine.writeReplicant("ns", "a", 9);
-				yield* engine.writeReplicant("ns", "b", 8);
+				yield* engine.commitValue("ns", "a", 9);
+				yield* engine.commitValue("ns", "b", 8);
 				yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(2));
 				storage.write.mockClear();
 
@@ -145,7 +182,7 @@ describe("persistence", () => {
 					new ReplicantNotFound({ namespace: "ns", name: "a" }),
 				);
 
-				yield* engine.writeReplicant("ns", "a", 1);
+				yield* engine.commitValue("ns", "a", 1);
 
 				yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
 				expect(yield* engine.readReplicant("ns", "a")).toBe(1);
@@ -211,7 +248,7 @@ describe("subscribeValues", () => {
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
 				yield* engine.initializeReplicant("ns", "a", 1);
-				yield* engine.writeReplicant("ns", "a", 2);
+				yield* engine.commitValue("ns", "a", 2);
 				const stream = yield* engine.subscribeValues("ns", "a");
 				const received: JsonValue[] = [];
 				yield* Stream.runForEach(stream, (value) =>
@@ -219,7 +256,7 @@ describe("subscribeValues", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([2]));
-				yield* engine.writeReplicant("ns", "a", 3);
+				yield* engine.commitValue("ns", "a", 3);
 				yield* waitFor(() => expect(received).toEqual([2, 3]));
 			}),
 		),
@@ -238,8 +275,8 @@ describe("subscribeValues", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([{ x: 1 }]));
-				yield* engine.writeReplicant("ns", "a", { x: 1 });
-				yield* engine.writeReplicant("ns", "a", { x: 2 });
+				yield* engine.commitValue("ns", "a", { x: 1 });
+				yield* engine.commitValue("ns", "a", { x: 2 });
 				yield* waitFor(() => expect(received).toEqual([{ x: 1 }, { x: 2 }]));
 			}),
 		),
@@ -259,8 +296,8 @@ describe("subscribeValues", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
-				yield* engine.writeReplicant("ns", "b", 99);
-				yield* engine.writeReplicant("ns", "a", 2);
+				yield* engine.commitValue("ns", "b", 99);
+				yield* engine.commitValue("ns", "a", 2);
 				yield* waitFor(() => expect(received).toEqual([1, 2]));
 			}),
 		),
@@ -369,8 +406,8 @@ describe("subscribeComputed", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
-				yield* engine.writeReplicant("ns", "a", 15);
-				yield* engine.writeReplicant("ns", "a", 27);
+				yield* engine.commitValue("ns", "a", 15);
+				yield* engine.commitValue("ns", "a", 27);
 				yield* waitFor(() => expect(received).toEqual([1, 2]));
 			}),
 		),
@@ -406,8 +443,8 @@ describe("subscribeComputed", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
-				yield* engine.writeReplicant("ns", "a", 2);
-				yield* engine.writeReplicant("ns", "a", 3);
+				yield* engine.commitValue("ns", "a", 2);
+				yield* engine.commitValue("ns", "a", 3);
 				yield* waitFor(() => expect(received).toEqual([1, 3]));
 			}),
 		),
@@ -460,7 +497,7 @@ describe("subscribeComputed", () => {
 				});
 				yield* Effect.scoped(engine.subscribeComputed("ns", "c"));
 				expect(evaluations).toBe(1);
-				yield* engine.writeReplicant("ns", "a", 2);
+				yield* engine.commitValue("ns", "a", 2);
 				expect(evaluations).toBe(1);
 			}),
 		),

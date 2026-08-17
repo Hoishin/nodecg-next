@@ -103,23 +103,25 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 							return list;
 						}
 						if (list.some((s) => fieldIdentifierEquivalence(s.field, field))) {
-							// If there is stored value, send it immediately
-							if ("getEncoded" in internal) {
-								yield* Effect.gen(function* () {
+							yield* Effect.gen(function* () {
+								if ("getRevisioned" in internal) {
+									const { value } = yield* internal.getRevisioned();
+									yield* publish(field, value);
+								} else if ("getEncoded" in internal) {
 									const value = yield* internal.getEncoded();
 									yield* publish(field, value);
-								}).pipe(
-									Effect.provideService(CurrentIdentity, identity),
-									Effect.catchTag("FieldPermissionDenied", () =>
-										send(
-											SubscribeRejectedMessage.make({
-												field,
-												reason: "forbidden",
-											}),
-										),
+								}
+							}).pipe(
+								Effect.provideService(CurrentIdentity, identity),
+								Effect.catchTag("FieldPermissionDenied", () =>
+									send(
+										SubscribeRejectedMessage.make({
+											field,
+											reason: "forbidden",
+										}),
 									),
-								);
-							}
+								),
+							);
 							return list;
 						}
 						if (!internal.permission.canRead(identity)) {
