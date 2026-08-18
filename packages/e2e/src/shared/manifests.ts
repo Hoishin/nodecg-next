@@ -15,6 +15,10 @@ export const fixtureManifest = defineNamespace("e2e", {
 	},
 	replicant: {
 		count: { schema: Schema.Number, permission: everyoneRead },
+		scoreboard: {
+			schema: Schema.Struct({ home: Schema.Number, away: Schema.Number }),
+			permission: everyoneReadWrite,
+		},
 		mirrorSource: { schema: Schema.Number, permission: everyoneReadWrite },
 		mirror: { schema: Schema.Number, permission: everyoneRead },
 		label: { schema: Schema.String, permission: everyoneRead },

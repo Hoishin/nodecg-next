@@ -81,6 +81,30 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		await vi.waitFor(() => expect(received).toEqual([5, 7]));
 	});
 
+	test("concurrent writes to disjoint fields both land", async () => {
+		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
+		await writer.replicant.scoreboard.set({ home: 0, away: 0 });
+		// Subscribing holds the field hot, so both updaters read the same base and
+		// their patches genuinely race.
+		const cancel = await writer.replicant.scoreboard.subscribe(() => {});
+		onTestFinished(() => cancel());
+
+		await Promise.all([
+			writer.replicant.scoreboard.update((draft) => {
+				draft.home = 1;
+			}),
+			writer.replicant.scoreboard.update((draft) => {
+				draft.away = 2;
+			}),
+		]);
+
+		const reader = await loadNamespace(fixtureManifest, { baseUrl: base });
+		expect(await reader.replicant.scoreboard.get()).toEqual({
+			home: 1,
+			away: 2,
+		});
+	});
+
 	test("reads a server-computed value over HTTP", async () => {
 		const ns = await loadNamespace(fixtureManifest, { baseUrl: base });
 		await ns.replicant.count.set(10);

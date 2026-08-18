@@ -291,7 +291,48 @@ describe("update", () => {
 	);
 
 	test(
-		"mutating the draft in place writes the encoded mutated value",
+		"mutating a draft field ships one replace op for that field alone",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.getReplicant.mockReturnValue(
+					Effect.succeed({ n: "1", kept: "x" }),
+				);
+				const manifest = defineNamespace("root", {
+					replicant: {
+						box: {
+							schema: Schema.Struct({
+								n: Schema.NumberFromString,
+								kept: Schema.String,
+							}),
+						},
+					},
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				yield* loaded.replicant.box
+					.update((draft) => {
+						draft.n = 5;
+					})
+					.pipe(Effect.provideService(FieldTransportService, transportStub));
+				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+					"root",
+					"box",
+					[{ op: "replace", path: "/n", value: "5" }],
+				);
+			}),
+		),
+	);
+
+	test(
+		"an updater that changes nothing writes nothing",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
@@ -312,14 +353,10 @@ describe("update", () => {
 
 				yield* loaded.replicant.box
 					.update((draft) => {
-						draft.n = 5;
+						draft.n = 1;
 					})
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
-					"root",
-					"box",
-					[{ op: "replace", path: "", value: { n: "5" } }],
-				);
+				expect(transportStub.updateReplicant).not.toHaveBeenCalled();
 			}),
 		),
 	);

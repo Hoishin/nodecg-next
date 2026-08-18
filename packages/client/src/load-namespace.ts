@@ -5,6 +5,7 @@ import type {
 	RpcFieldManifest,
 } from "@nodecg/core";
 import type { Updater } from "@nodecg/internal";
+import { diffPatch } from "@nodecg/internal/occ";
 import {
 	mapEffectValues,
 	mapValues,
@@ -15,6 +16,7 @@ import {
 } from "@nodecg/internal/utils";
 import { effect } from "@preact/signals-core";
 import {
+	Array,
 	Deferred,
 	Effect,
 	Exit,
@@ -139,9 +141,11 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				new FieldSetError({ namespace, name, cause: toError(error) }),
 		});
 		const encoded = yield* manifest.encode(next);
-		yield* transport.updateReplicant(namespace, name, [
-			{ op: "replace", path: "", value: encoded },
-		]);
+		const patch = diffPatch(base, encoded);
+		if (!Array.isNonEmptyReadonlyArray(patch)) {
+			return;
+		}
+		yield* transport.updateReplicant(namespace, name, patch);
 		cell.reflect(yield* manifest.decode(encoded));
 	});
 

@@ -85,7 +85,9 @@ describe("seededRoleStore", () => {
 				expect(yield* roles.list()).toEqual([]);
 			}).pipe(
 				Effect.provide(
-					seeded({ SUPERADMINS: "" }, [stubProvider("dev", "https://idp.test")]),
+					seeded({ SUPERADMINS: "" }, [
+						stubProvider("dev", "https://idp.test"),
+					]),
 				),
 			),
 		),

@@ -11,6 +11,7 @@ import {
 export const fixture = implementNamespace(fixtureManifest, {
 	seedReplicant: {
 		count: () => 0,
+		scoreboard: () => ({ home: 0, away: 0 }),
 		mirrorSource: () => 0,
 		mirror: () => 0,
 		label: () => "hello",
