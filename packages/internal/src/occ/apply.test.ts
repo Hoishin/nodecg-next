@@ -64,14 +64,110 @@ describe("applyPatch", () => {
 		});
 	});
 
+	describe("add", () => {
+		test("new object key upserts", () => {
+			expect(applied({ a: 1 }, [{ op: "add", path: "/b", value: 2 }])).toEqual({
+				a: 1,
+				b: 2,
+			});
+		});
+
+		test("existing object key is overwritten", () => {
+			expect(applied({ a: 1 }, [{ op: "add", path: "/a", value: 2 }])).toEqual({
+				a: 2,
+			});
+		});
+
+		test("array insert shifts elements right", () => {
+			expect(applied([1, 3], [{ op: "add", path: "/1", value: 2 }])).toEqual([
+				1, 2, 3,
+			]);
+		});
+
+		test("append at length and via -", () => {
+			expect(applied([1], [{ op: "add", path: "/1", value: 2 }])).toEqual([
+				1, 2,
+			]);
+			expect(applied([1], [{ op: "add", path: "/-", value: 2 }])).toEqual([
+				1, 2,
+			]);
+		});
+
+		test("index past the end fails", () => {
+			expect(failure([1], [{ op: "add", path: "/5", value: 2 }]).cause).toEqual(
+				ApplyFailure.IndexOutOfBounds({ index: 5 }),
+			);
+		});
+
+		test("non-canonical array index fails", () => {
+			expect(
+				failure([1], [{ op: "add", path: "/01", value: 2 }]).cause,
+			).toEqual(ApplyFailure.InvalidIndex({ token: "01" }));
+		});
+
+		test("__proto__ is refused rather than written through the inherited setter", () => {
+			expect(
+				failure({ a: 1 }, [
+					{ op: "add", path: "/__proto__", value: { evil: true } },
+				]).cause,
+			).toEqual(ApplyFailure.ForbiddenKey({ key: "__proto__" }));
+		});
+
+		test("a nested __proto__ is refused too", () => {
+			expect(
+				failure({ a: { b: 1 } }, [
+					{ op: "add", path: "/a/__proto__", value: { evil: true } },
+				]).cause,
+			).toEqual(ApplyFailure.ForbiddenKey({ key: "__proto__" }));
+		});
+
+		test("constructor is an ordinary data key", () => {
+			const result = applied({ a: 1 }, [
+				{ op: "add", path: "/constructor", value: 2 },
+			]);
+			assert(result !== null && typeof result === "object");
+			expect(Object.hasOwn(result, "constructor")).toBe(true);
+			expect(Reflect.get(result, "constructor")).toBe(2);
+		});
+	});
+
+	describe("remove", () => {
+		test("object key and array element", () => {
+			expect(
+				applied({ a: 1, arr: [1, 2, 3] }, [
+					{ op: "remove", path: "/a" },
+					{ op: "remove", path: "/arr/1" },
+				]),
+			).toEqual({ arr: [1, 3] });
+		});
+
+		test("missing object key fails", () => {
+			expect(failure({ a: 1 }, [{ op: "remove", path: "/b" }]).cause).toEqual(
+				ApplyFailure.MissingKey({ key: "b" }),
+			);
+		});
+
+		test("array index past the end fails", () => {
+			expect(failure([1], [{ op: "remove", path: "/1" }]).cause).toEqual(
+				ApplyFailure.IndexOutOfBounds({ index: 1 }),
+			);
+		});
+
+		test("the root is not removable", () => {
+			expect(failure({ a: 1 }, [{ op: "remove", path: "" }]).cause).toEqual(
+				ApplyFailure.ImmovableRoot(),
+			);
+		});
+	});
+
 	describe("pointer escaping", () => {
 		test("~1 and ~0 address keys containing / and ~", () => {
 			expect(
 				applied({ "a/b": 1, "x~y": 2 }, [
 					{ op: "replace", path: "/a~1b", value: 3 },
-					{ op: "replace", path: "/x~0y", value: 4 },
+					{ op: "remove", path: "/x~0y" },
 				]),
-			).toEqual({ "a/b": 3, "x~y": 4 });
+			).toEqual({ "a/b": 3 });
 		});
 	});
 

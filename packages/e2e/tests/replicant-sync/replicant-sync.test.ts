@@ -105,6 +105,51 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		});
 	});
 
+	test("concurrent key adds both land", async () => {
+		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
+		await writer.replicant.tallies.set({});
+		const cancel = await writer.replicant.tallies.subscribe(() => {});
+		onTestFinished(() => cancel());
+
+		await Promise.all([
+			writer.replicant.tallies.update((draft) => {
+				draft["first"] = 1;
+			}),
+			writer.replicant.tallies.update((draft) => {
+				draft["second"] = 2;
+			}),
+		]);
+
+		const reader = await loadNamespace(fixtureManifest, { baseUrl: base });
+		expect(await reader.replicant.tallies.get()).toEqual({
+			first: 1,
+			second: 2,
+		});
+	});
+
+	test("concurrent array appends both land", async () => {
+		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
+		await writer.replicant.roster.set([]);
+		const cancel = await writer.replicant.roster.subscribe(() => {});
+		onTestFinished(() => cancel());
+
+		await Promise.all([
+			writer.replicant.roster.update((draft) => {
+				draft.push({ id: "alice", score: 1 });
+			}),
+			writer.replicant.roster.update((draft) => {
+				draft.push({ id: "bob", score: 2 });
+			}),
+		]);
+
+		const reader = await loadNamespace(fixtureManifest, { baseUrl: base });
+		const roster = await reader.replicant.roster.get();
+		expect([...roster].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+			{ id: "alice", score: 1 },
+			{ id: "bob", score: 2 },
+		]);
+	});
+
 	test("reads a server-computed value over HTTP", async () => {
 		const ns = await loadNamespace(fixtureManifest, { baseUrl: base });
 		await ns.replicant.count.set(10);

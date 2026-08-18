@@ -50,34 +50,49 @@ describe("diffPatch", () => {
 		roundTrip({ a: { b: 1 }, c: "x" }, { a: { b: 2 }, c: "x" });
 	});
 
-	describe("structural change falls back to a document replace", () => {
-		test("a new key", () => {
-			expect(diffPatch({ a: 1 }, { a: 1, b: 2 })).toEqual(
-				documentReplace({ a: 1, b: 2 }),
-			);
+	describe("structural change", () => {
+		test("a new key ships as an add", () => {
+			expect(diffPatch({ a: 1 }, { a: 1, b: 2 })).toEqual([
+				{ op: "add", path: "/b", value: 2 },
+			]);
 			roundTrip({ a: 1 }, { a: 1, b: 2 });
 		});
 
-		test("a removed key", () => {
-			expect(diffPatch({ a: 1, b: 2 }, { a: 1 })).toEqual(
-				documentReplace({ a: 1 }),
-			);
+		test("sibling adds ship one op each", () => {
+			expect(diffPatch({ a: 1 }, { a: 1, b: 2, c: 3 })).toEqual([
+				{ op: "add", path: "/b", value: 2 },
+				{ op: "add", path: "/c", value: 3 },
+			]);
+		});
+
+		test("a removed key ships as a remove", () => {
+			expect(diffPatch({ a: 1, b: 2 }, { a: 1 })).toEqual([
+				{ op: "remove", path: "/b" },
+			]);
 			roundTrip({ a: 1, b: 2 }, { a: 1 });
 		});
 
-		test("an array splice", () => {
-			expect(diffPatch([1, 2], [1, 2, 3])).toEqual(documentReplace([1, 2, 3]));
+		test("an array append ships as an add at the end", () => {
+			expect(diffPatch([1, 2], [1, 2, 3])).toEqual([
+				{ op: "add", path: "/2", value: 3 },
+			]);
 			roundTrip([1, 2], [1, 2, 3]);
 		});
 
-		test("an array reorder", () => {
-			const base = [{ id: "a" }, { id: "b" }, { id: "c" }];
-			const next = [{ id: "c" }, { id: "b" }, { id: "a" }];
-			expect(diffPatch(base, next)).toEqual(documentReplace(next));
-			roundTrip(base, next);
+		test("an array removal ships as one remove, not a positional cascade", () => {
+			expect(diffPatch([1, 2, 3], [1, 3])).toEqual([
+				{ op: "remove", path: "/1" },
+			]);
+			roundTrip([1, 2, 3], [1, 3]);
 		});
 
-		test("an edited array element, which the content hash ships whole", () => {
+		test("a nested append addresses the nested array", () => {
+			expect(
+				diffPatch({ p: { list: ["x"] } }, { p: { list: ["x", "y"] } }),
+			).toEqual([{ op: "add", path: "/p/list/1", value: "y" }]);
+		});
+
+		test("an edited array element ships whole, as the content hash matches by content", () => {
 			const base = [
 				{ id: "a", v: 1 },
 				{ id: "b", v: 2 },
@@ -86,13 +101,25 @@ describe("diffPatch", () => {
 				{ id: "a", v: 1 },
 				{ id: "b", v: 9 },
 			];
-			expect(diffPatch(base, next)).toEqual(documentReplace(next));
+			expect(diffPatch(base, next)).toEqual([
+				{ op: "remove", path: "/1" },
+				{ op: "add", path: "/1", value: { id: "b", v: 9 } },
+			]);
 			roundTrip(base, next);
 		});
 
-		test("a change of the document's own type", () => {
+		test("a change of the document's own type is a root replace", () => {
 			expect(diffPatch({ a: 1 }, [1])).toEqual(documentReplace([1]));
 			roundTrip(5, { a: 1 });
+		});
+	});
+
+	describe("a reorder falls back to a document replace, until moves reach the wire", () => {
+		test("an array reorder", () => {
+			const base = [{ id: "a" }, { id: "b" }, { id: "c" }];
+			const next = [{ id: "c" }, { id: "b" }, { id: "a" }];
+			expect(diffPatch(base, next)).toEqual(documentReplace(next));
+			roundTrip(base, next);
 		});
 	});
 });

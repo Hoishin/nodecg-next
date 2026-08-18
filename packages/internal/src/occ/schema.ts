@@ -14,6 +14,19 @@ export const Pointer = Schema.Union(
 export type Pointer = typeof Pointer.Type;
 
 // RFC 6902: JSON patch ops
+export const AddOp = Schema.Struct({
+	op: Schema.Literal("add"),
+	path: Pointer,
+	value: JsonValueSchema,
+});
+export type AddOp = typeof AddOp.Type;
+
+export const RemoveOp = Schema.Struct({
+	op: Schema.Literal("remove"),
+	path: Pointer,
+});
+export type RemoveOp = typeof RemoveOp.Type;
+
 export const ReplaceOp = Schema.Struct({
 	op: Schema.Literal("replace"),
 	path: Pointer,
@@ -21,8 +34,11 @@ export const ReplaceOp = Schema.Struct({
 });
 export type ReplaceOp = typeof ReplaceOp.Type;
 
+export const ChangeOp = Schema.Union(AddOp, RemoveOp, ReplaceOp);
+export type ChangeOp = typeof ChangeOp.Type;
+
 // Patch is a collection of ops
-export const Patch = Schema.NonEmptyArray(ReplaceOp);
+export const Patch = Schema.NonEmptyArray(ChangeOp);
 export type Patch = typeof Patch.Type;
 
 export class PatchNotApplicable extends Schema.TaggedError<PatchNotApplicable>()(

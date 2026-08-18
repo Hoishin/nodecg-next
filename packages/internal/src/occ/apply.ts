@@ -1,10 +1,10 @@
 // Apply patch produced from diff.ts
 
-import { Data, Either, Option } from "effect";
+import { Data, Either, Match, Option } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { cloneJson, type MutableJson } from "../utils/clone.ts";
-import type { Pointer, ReplaceOp } from "./schema.ts";
+import type { ChangeOp, Pointer } from "./schema.ts";
 
 const unescapeToken = (token: string) =>
 	token.replaceAll("~1", "/").replaceAll("~0", "~");
@@ -30,6 +30,8 @@ export type ApplyFailure = Data.TaggedEnum<{
 	InvalidIndex: { readonly token: string };
 	IndexOutOfBounds: { readonly index: number };
 	MissingKey: { readonly key: string };
+	ForbiddenKey: { readonly key: string };
+	ImmovableRoot: {};
 }>;
 export const ApplyFailure = Data.taggedEnum<ApplyFailure>();
 
@@ -71,6 +73,98 @@ const navigate = (root: MutableJson, tokens: ReadonlyArray<string>) =>
 			cur.pipe(Either.flatMap((currentValue) => getChild(currentValue, token))),
 		Either.right(root),
 	);
+
+/**
+ * RFC 6902 add: returns the new document
+ * - array: insert at the index, "-" appends at the end
+ * - object: upsert on the key
+ * - "" replaces the whole document
+ */
+const add = (
+	root: MutableJson,
+	pointer: Pointer,
+	value: MutableJson,
+): Either.Either<MutableJson, ApplyFailure> => {
+	const tokens = parsePointer(pointer);
+	const targetToken = tokens.pop();
+
+	// Replace the whole document for empty pointer
+	if (typeof targetToken === "undefined") {
+		return Either.right(value);
+	}
+
+	const parentNavigateResult = navigate(root, tokens);
+	if (Either.isLeft(parentNavigateResult)) {
+		return parentNavigateResult;
+	}
+	const parent = parentNavigateResult.right;
+	if (Array.isArray(parent)) {
+		if (targetToken === "-") {
+			parent.push(value);
+			return Either.right(root);
+		}
+		const idx = parseIndex(targetToken);
+		if (Option.isNone(idx)) {
+			return Either.left(ApplyFailure.InvalidIndex({ token: targetToken }));
+		}
+		if (idx.value > parent.length) {
+			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
+		}
+		parent.splice(idx.value, 0, value);
+		return Either.right(root);
+	}
+	if (parent !== null && typeof parent === "object") {
+		// Assigning __proto__ would fire the inherited setter instead of adding a key
+		if (targetToken === "__proto__") {
+			return Either.left(ApplyFailure.ForbiddenKey({ key: targetToken }));
+		}
+		parent[targetToken] = value;
+		return Either.right(root);
+	}
+	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
+};
+
+/**
+ * RFC 6902 remove: returns the new document
+ * - array: remove at the index
+ * - object: remove the key
+ */
+const remove = (
+	root: MutableJson,
+	pointer: Pointer,
+): Either.Either<MutableJson, ApplyFailure> => {
+	const tokens = parsePointer(pointer);
+	const targetToken = tokens.pop();
+
+	// Cannot remove the whole document
+	if (typeof targetToken === "undefined") {
+		return Either.left(ApplyFailure.ImmovableRoot());
+	}
+
+	const parentNavigateResult = navigate(root, tokens);
+	if (Either.isLeft(parentNavigateResult)) {
+		return parentNavigateResult;
+	}
+	const parent = parentNavigateResult.right;
+	if (Array.isArray(parent)) {
+		const idx = parseIndex(targetToken);
+		if (Option.isNone(idx)) {
+			return Either.left(ApplyFailure.InvalidIndex({ token: targetToken }));
+		}
+		if (parent.splice(idx.value, 1).length === 0) {
+			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
+		}
+		return Either.right(root);
+	}
+	if (parent !== null && typeof parent === "object") {
+		if (!Object.hasOwn(parent, targetToken)) {
+			return Either.left(ApplyFailure.MissingKey({ key: targetToken }));
+		}
+		delete parent[targetToken];
+		return Either.right(root);
+	}
+	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
+};
 
 /**
  * RFC 6902 replace: returns the new document
@@ -119,18 +213,27 @@ const replace = (
 
 const applyChangeOp = (
 	root: MutableJson,
-	op: ReplaceOp,
+	op: ChangeOp,
 ): Either.Either<MutableJson, ApplyFailure> =>
-	replace(root, op.path, cloneJson(op.value));
+	Match.value(op).pipe(
+		Match.when({ op: "add" }, ({ path, value }) =>
+			add(root, path, cloneJson(value)),
+		),
+		Match.when({ op: "remove" }, ({ path }) => remove(root, path)),
+		Match.when({ op: "replace" }, ({ path, value }) =>
+			replace(root, path, cloneJson(value)),
+		),
+		Match.exhaustive,
+	);
 
 export interface PatchFailure {
-	readonly op: ReplaceOp;
+	readonly op: ChangeOp;
 	readonly cause: ApplyFailure;
 }
 
 export const applyPatch = (
 	current: JsonValue,
-	patch: ReadonlyArray<ReplaceOp>,
+	patch: ReadonlyArray<ChangeOp>,
 ): Either.Either<MutableJson, PatchFailure> => {
 	let doc = cloneJson(current);
 	for (const op of patch) {

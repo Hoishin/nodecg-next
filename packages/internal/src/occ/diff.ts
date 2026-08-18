@@ -7,9 +7,9 @@ import { create } from "jsondiffpatch";
 import { format } from "jsondiffpatch/formatters/jsonpatch";
 import type { JsonValue } from "type-fest";
 
-import { ReplaceOp } from "./schema.ts";
+import { ChangeOp } from "./schema.ts";
 
-const isReplaceOnly = Schema.is(Schema.Array(ReplaceOp));
+const isChangeOnly = Schema.is(Schema.Array(ChangeOp));
 
 const differ = create({
 	objectHash: (item: object) => stringify(item),
@@ -19,12 +19,12 @@ const differ = create({
 export const diffPatch = (
 	base: JsonValue,
 	next: JsonValue,
-): ReadonlyArray<ReplaceOp> => {
+): ReadonlyArray<ChangeOp> => {
 	const delta = differ.diff(base, next);
 	if (typeof delta === "undefined") {
 		return [];
 	}
 	const ops = format(delta);
-	// Only supports replace ops for now
-	return isReplaceOnly(ops) ? ops : [{ op: "replace", path: "", value: next }];
+	// Moves are not supported yet
+	return isChangeOnly(ops) ? ops : [{ op: "replace", path: "", value: next }];
 };
