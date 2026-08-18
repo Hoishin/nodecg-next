@@ -82,14 +82,16 @@ describe("get", () => {
 
 describe("update", () => {
 	test(
-		"issues a PUT with the JSON-encoded body",
+		"issues a PUT with the JSON-encoded patch body",
 		testEffect(
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 				const fetch = mockFetch(() => new Response(null, { status: 204 }));
 
 				yield* transport
-					.setReplicant("root", "count", 7)
+					.updateReplicant("root", "count", [
+						{ op: "replace", path: "", value: 7 },
+					])
 					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 				const request = requestOf(fetch);
@@ -98,7 +100,9 @@ describe("update", () => {
 					"/api/internal/namespaces/root/replicant/count",
 				);
 				const body = yield* Effect.promise(() => request.text());
-				expect(JSON.parse(body)).toBe(7);
+				expect(JSON.parse(body)).toEqual([
+					{ op: "replace", path: "", value: 7 },
+				]);
 			}).pipe(Effect.provide(HttpFieldTransport)),
 		),
 	);
@@ -109,13 +113,17 @@ describe("update", () => {
 			Effect.gen(function* () {
 				const transport = yield* FieldTransportService;
 
-				const error = yield* transport.setReplicant("root", "count", 7).pipe(
-					Effect.provideService(
-						FetchHttpClient.Fetch,
-						mockFetch(() => new Response(null, { status: 403 })),
-					),
-					Effect.flip,
-				);
+				const error = yield* transport
+					.updateReplicant("root", "count", [
+						{ op: "replace", path: "", value: 7 },
+					])
+					.pipe(
+						Effect.provideService(
+							FetchHttpClient.Fetch,
+							mockFetch(() => new Response(null, { status: 403 })),
+						),
+						Effect.flip,
+					);
 
 				expect(error._tag).toBe("FieldPermissionDenied");
 			}).pipe(Effect.provide(HttpFieldTransport)),

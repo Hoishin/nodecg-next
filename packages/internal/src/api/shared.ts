@@ -6,6 +6,7 @@ import {
 } from "@effect/platform";
 import { Schema } from "effect";
 
+import { Patch } from "../occ/schema.ts";
 import { JsonValueSchema } from "../utils/json-value-schema.ts";
 
 const namespaceParam = HttpApiSchema.param("namespace", Schema.String);
@@ -19,10 +20,10 @@ const replicantGet = HttpApiEndpoint.get(
 	.addError(HttpApiError.Forbidden)
 	.addError(HttpApiError.InternalServerError);
 
-const replicantSet = HttpApiEndpoint.put(
-	"replicantSet",
+const replicantUpdate = HttpApiEndpoint.put(
+	"replicantUpdate",
 )`/namespaces/${namespaceParam}/replicant/${fieldNameParam}`
-	.setPayload(JsonValueSchema)
+	.setPayload(Patch)
 	.addError(HttpApiError.NotFound)
 	.addError(HttpApiError.Forbidden)
 	.addError(HttpApiError.BadRequest)
@@ -63,7 +64,7 @@ const rpcCall = HttpApiEndpoint.post(
 export const fieldGroup = <const Id extends string>(id: Id) =>
 	HttpApiGroup.make(id)
 		.add(replicantGet)
-		.add(replicantSet)
+		.add(replicantUpdate)
 		.add(computedGet)
 		.add(topicPublish)
 		.add(rpcCall);

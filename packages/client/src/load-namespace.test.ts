@@ -36,7 +36,9 @@ const createTransportStub = () =>
 	({
 		getReplicant: vi.fn<FieldTransport["getReplicant"]>(),
 		getComputed: vi.fn<FieldTransport["getComputed"]>(),
-		setReplicant: vi.fn<FieldTransport["setReplicant"]>(() => Effect.void),
+		updateReplicant: vi.fn<FieldTransport["updateReplicant"]>(
+			() => Effect.void,
+		),
 		publishTopic: vi.fn<FieldTransport["publishTopic"]>(() => Effect.void),
 		callRpc: vi.fn<FieldTransport["callRpc"]>(),
 	}) satisfies FieldTransport;
@@ -190,10 +192,10 @@ describe("set", () => {
 				yield* loaded.replicant.count
 					.set(7)
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.setReplicant).toHaveBeenCalledWith(
+				expect(transportStub.updateReplicant).toHaveBeenCalledWith(
 					"root",
 					"count",
-					7,
+					[{ op: "replace", path: "", value: 7 }],
 				);
 			}),
 		),
@@ -247,10 +249,10 @@ describe("set", () => {
 				yield* loaded.replicant.when
 					.set(new Date("2030-01-01T00:00:00.000Z"))
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"when",
-					"2030-01-01T00:00:00.000Z",
+					[{ op: "replace", path: "", value: "2030-01-01T00:00:00.000Z" }],
 				);
 			}),
 		),
@@ -279,10 +281,10 @@ describe("update", () => {
 				yield* loaded.replicant.count
 					.update((v) => v + 5)
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"count",
-					15,
+					[{ op: "replace", path: "", value: 15 }],
 				);
 			}),
 		),
@@ -313,10 +315,10 @@ describe("update", () => {
 						draft.n = 5;
 					})
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"box",
-					{ n: "5" },
+					[{ op: "replace", path: "", value: { n: "5" } }],
 				);
 			}),
 		),
@@ -350,7 +352,7 @@ describe("update", () => {
 					);
 				expect(error._tag).toBe("FieldSetError");
 				expect(error.message).toContain("boom");
-				expect(transportStub.setReplicant).not.toHaveBeenCalled();
+				expect(transportStub.updateReplicant).not.toHaveBeenCalled();
 			}),
 		),
 	);
@@ -1245,7 +1247,11 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 		expect(await loaded.replicant.count.get()).toBe(42);
 		await loaded.replicant.count.set(9);
-		expect(transportStub.setReplicant).toHaveBeenCalledWith("root", "count", 9);
+		expect(transportStub.updateReplicant).toHaveBeenCalledWith(
+			"root",
+			"count",
+			[{ op: "replace", path: "", value: 9 }],
+		);
 	});
 
 	test("publishes a topic and calls an rpc through the Promise API", async () => {
@@ -1448,10 +1454,10 @@ describe("derivation over loaded fields", () => {
 					.update((v) => v + 1)
 					.pipe(Effect.provideService(FieldTransportService, transportStub));
 
-				expect(transportStub.setReplicant).toHaveBeenLastCalledWith(
+				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"match",
 					"scoreLeft",
-					"11",
+					[{ op: "replace", path: "", value: "11" }],
 				);
 
 				yield* Scope.close(scope, Exit.void);

@@ -55,7 +55,7 @@ import {
 	getComputed,
 	getReplicant,
 	publishTopic,
-	setReplicant,
+	updateReplicant,
 } from "./shared.ts";
 
 const stashCookieName = "nodecg.login";
@@ -623,8 +623,10 @@ export const InternalGroupsLive = Layer.mergeAll(
 			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
 				getReplicant(namespace, fieldName),
 			)
-			.handle("replicantSet", ({ path: { namespace, fieldName }, payload }) =>
-				setReplicant(namespace, fieldName, payload),
+			.handle(
+				"replicantUpdate",
+				({ path: { namespace, fieldName }, payload }) =>
+					updateReplicant(namespace, fieldName, payload),
 			)
 			.handle("computedGet", ({ path: { namespace, fieldName } }) =>
 				getComputed(namespace, fieldName),

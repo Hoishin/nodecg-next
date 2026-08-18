@@ -6,7 +6,7 @@ import {
 	getComputed,
 	getReplicant,
 	publishTopic,
-	setReplicant,
+	updateReplicant,
 } from "./shared.ts";
 
 export const PublicGroupsLive = HttpApiBuilder.group(
@@ -17,8 +17,10 @@ export const PublicGroupsLive = HttpApiBuilder.group(
 			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
 				getReplicant(namespace, fieldName),
 			)
-			.handle("replicantSet", ({ path: { namespace, fieldName }, payload }) =>
-				setReplicant(namespace, fieldName, payload),
+			.handle(
+				"replicantUpdate",
+				({ path: { namespace, fieldName }, payload }) =>
+					updateReplicant(namespace, fieldName, payload),
 			)
 			.handle("computedGet", ({ path: { namespace, fieldName } }) =>
 				getComputed(namespace, fieldName),

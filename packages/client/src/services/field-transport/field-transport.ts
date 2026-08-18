@@ -1,3 +1,4 @@
+import type { Patch } from "@nodecg/internal/occ";
 import { Context, type Effect, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 
@@ -87,10 +88,10 @@ export interface FieldTransport {
 		JsonValue,
 		FieldNotFound | FieldPermissionDenied | FieldGetError
 	>;
-	setReplicant: (
+	updateReplicant: (
 		namespace: string,
 		name: string,
-		value: JsonValue,
+		patch: Patch,
 	) => Effect.Effect<
 		void,
 		FieldNotFound | FieldPermissionDenied | FieldSetError

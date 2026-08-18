@@ -118,7 +118,9 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
-		yield* transport.setReplicant(namespace, name, encoded);
+		yield* transport.updateReplicant(namespace, name, [
+			{ op: "replace", path: "", value: encoded },
+		]);
 		cell.reflect(value);
 	});
 
@@ -137,7 +139,9 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				new FieldSetError({ namespace, name, cause: toError(error) }),
 		});
 		const encoded = yield* manifest.encode(next);
-		yield* transport.setReplicant(namespace, name, encoded);
+		yield* transport.updateReplicant(namespace, name, [
+			{ op: "replace", path: "", value: encoded },
+		]);
 		cell.reflect(yield* manifest.decode(encoded));
 	});
 

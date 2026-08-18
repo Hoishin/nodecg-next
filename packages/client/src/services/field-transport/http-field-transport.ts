@@ -1,5 +1,6 @@
 import { FetchHttpClient, HttpApiClient } from "@effect/platform";
 import { InternalApi } from "@nodecg/internal";
+import type { Patch } from "@nodecg/internal/occ";
 import { toError } from "@nodecg/internal/utils";
 import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
@@ -72,33 +73,31 @@ export const httpFieldTransport = (baseUrl?: string) =>
 				);
 			});
 
-			const setReplicant = Effect.fn("FieldTransport.setReplicant")(function* (
-				namespace: string,
-				name: string,
-				value: JsonValue,
-			) {
-				yield* client.Field.replicantSet({
-					path: { namespace, fieldName: name },
-					payload: value,
-				}).pipe(
-					Effect.mapError((error) =>
-						Match.value(error).pipe(
-							Match.tag(
-								"NotFound",
-								() => new FieldNotFound({ namespace, name }),
-							),
-							Match.tag(
-								"Forbidden",
-								() => new FieldPermissionDenied({ namespace, name }),
-							),
-							Match.orElse(
-								(e) =>
-									new FieldSetError({ namespace, name, cause: toError(e) }),
+			const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
+				function* (namespace: string, name: string, patch: Patch) {
+					yield* client.Field.replicantUpdate({
+						path: { namespace, fieldName: name },
+						payload: patch,
+					}).pipe(
+						Effect.mapError((error) =>
+							Match.value(error).pipe(
+								Match.tag(
+									"NotFound",
+									() => new FieldNotFound({ namespace, name }),
+								),
+								Match.tag(
+									"Forbidden",
+									() => new FieldPermissionDenied({ namespace, name }),
+								),
+								Match.orElse(
+									(e) =>
+										new FieldSetError({ namespace, name, cause: toError(e) }),
+								),
 							),
 						),
-					),
-				);
-			});
+					);
+				},
+			);
 
 			const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
 				namespace: string,
@@ -162,7 +161,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 			return {
 				getReplicant,
 				getComputed,
-				setReplicant,
+				updateReplicant,
 				publishTopic,
 				callRpc,
 			};

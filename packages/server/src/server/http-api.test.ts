@@ -198,10 +198,10 @@ const computedUrl = "http://x/api/internal/namespaces/root/computed/count";
 const topicUrl = "http://x/api/internal/namespaces/root/topic/chat";
 const rpcUrl = "http://x/api/internal/namespaces/root/rpc/echo";
 
-const putRequest = (value: unknown) =>
+const putPatch = (patch: unknown) =>
 	new Request(getUrl, {
 		method: "PUT",
-		body: JSON.stringify(value),
+		body: JSON.stringify(patch),
 		headers: { "content-type": "application/json" },
 	});
 
@@ -1222,7 +1222,7 @@ describe("get", () => {
 });
 
 describe("update", () => {
-	test("stores the decoded payload and returns 204", async () => {
+	test("applies a root replace patch and returns 204", async () => {
 		const setEncoded = vi.fn((_value: unknown) => Effect.void);
 		const handler = webHandler([
 			registeredNamespace("root", {
@@ -1232,14 +1232,57 @@ describe("update", () => {
 				}),
 			}),
 		]);
-		const res = await handler(putRequest(7));
+		const res = await handler(
+			putPatch([{ op: "replace", path: "", value: 7 }]),
+		);
 		expect(res.status).toBe(204);
 		expect(setEncoded).toHaveBeenCalledWith(7);
 	});
 
+	test("applies the last value of a multi-op root replace patch", async () => {
+		const setEncoded = vi.fn((_value: unknown) => Effect.void);
+		const handler = webHandler([
+			registeredNamespace("root", {
+				count: stubField({
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+					setEncoded,
+				}),
+			}),
+		]);
+		const res = await handler(
+			putPatch([
+				{ op: "replace", path: "", value: 7 },
+				{ op: "replace", path: "", value: 8 },
+			]),
+		);
+		expect(res.status).toBe(204);
+		expect(setEncoded).toHaveBeenCalledWith(8);
+	});
+
+	test("400 when the payload is not a patch", async () => {
+		const setEncoded = vi.fn((_value: unknown) => Effect.void);
+		const handler = webHandler([
+			registeredNamespace("root", {
+				count: stubField({
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+					setEncoded,
+				}),
+			}),
+		]);
+		expect((await handler(putPatch(7))).status).toBe(400);
+		expect((await handler(putPatch([]))).status).toBe(400);
+		expect(
+			(await handler(putPatch([{ op: "replace", path: "/a", value: 7 }])))
+				.status,
+		).toBe(400);
+		expect(setEncoded).not.toHaveBeenCalled();
+	});
+
 	test("404 when the namespace/name is not registered", async () => {
 		const handler = webHandler([]);
-		const res = await handler(putRequest(7));
+		const res = await handler(
+			putPatch([{ op: "replace", path: "", value: 7 }]),
+		);
 		expect(res.status).toBe(404);
 	});
 
@@ -1259,7 +1302,9 @@ describe("update", () => {
 				}),
 			}),
 		]);
-		const res = await handler(putRequest(7));
+		const res = await handler(
+			putPatch([{ op: "replace", path: "", value: 7 }]),
+		);
 		expect(res.status).toBe(400);
 	});
 
@@ -1275,7 +1320,9 @@ describe("update", () => {
 				}),
 			}),
 		]);
-		const res = await handler(putRequest(7));
+		const res = await handler(
+			putPatch([{ op: "replace", path: "", value: 7 }]),
+		);
 		expect(res.status).toBe(404);
 	});
 });
@@ -1321,7 +1368,9 @@ describe("permission enforcement", () => {
 				}),
 			}),
 		]);
-		const res = await handler(putRequest(7));
+		const res = await handler(
+			putPatch([{ op: "replace", path: "", value: 7 }]),
+		);
 		expect(res.status).toBe(403);
 	});
 

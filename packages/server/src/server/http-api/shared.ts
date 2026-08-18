@@ -1,6 +1,7 @@
 import { HttpApiError } from "@effect/platform";
 import { RpcCallError } from "@nodecg/internal";
-import { Effect, Match } from "effect";
+import type { Patch } from "@nodecg/internal/occ";
+import { Array, Effect, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { FieldRegistryService } from "../../field-registry.ts";
@@ -21,10 +22,10 @@ export const getReplicant = (namespace: string, name: string) =>
 		);
 	});
 
-export const setReplicant = (
+export const updateReplicant = (
 	namespace: string,
 	name: string,
-	payload: JsonValue,
+	payload: Patch,
 ) =>
 	Effect.gen(function* () {
 		const registry = yield* FieldRegistryService;
@@ -32,7 +33,8 @@ export const setReplicant = (
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
 		}
-		yield* field.setEncoded(payload).pipe(
+		const { value } = Array.lastNonEmpty(payload);
+		yield* field.setEncoded(value).pipe(
 			Effect.mapError((error) =>
 				Match.value(error).pipe(
 					Match.tag(
