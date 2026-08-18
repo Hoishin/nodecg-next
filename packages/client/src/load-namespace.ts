@@ -141,7 +141,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				new FieldSetError({ namespace, name, cause: toError(error) }),
 		});
 		const encoded = yield* manifest.encode(next);
-		const patch = diffPatch(base, encoded);
+		const patch = yield* diffPatch(base, encoded).pipe(Effect.orDie);
 		if (!Array.isNonEmptyReadonlyArray(patch)) {
 			return;
 		}

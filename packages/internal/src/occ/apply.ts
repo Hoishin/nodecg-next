@@ -32,6 +32,7 @@ export type ApplyFailure = Data.TaggedEnum<{
 	MissingKey: { readonly key: string };
 	ForbiddenKey: { readonly key: string };
 	ImmovableRoot: {};
+	MoveIntoSelf: { readonly from: Pointer; readonly path: Pointer };
 }>;
 export const ApplyFailure = Data.taggedEnum<ApplyFailure>();
 
@@ -125,7 +126,7 @@ const add = (
 };
 
 /**
- * RFC 6902 remove: returns the new document
+ * RFC 6902 remove: returns the removed value, so move can add it
  * - array: remove at the index
  * - object: remove the key
  */
@@ -151,17 +152,22 @@ const remove = (
 		if (Option.isNone(idx)) {
 			return Either.left(ApplyFailure.InvalidIndex({ token: targetToken }));
 		}
-		if (parent.splice(idx.value, 1).length === 0) {
+		const removed = parent.splice(idx.value, 1)[0];
+		if (typeof removed === "undefined") {
 			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
 		}
-		return Either.right(root);
+		return Either.right(removed);
 	}
 	if (parent !== null && typeof parent === "object") {
 		if (!Object.hasOwn(parent, targetToken)) {
 			return Either.left(ApplyFailure.MissingKey({ key: targetToken }));
 		}
+		const removed = parent[targetToken];
+		if (typeof removed === "undefined") {
+			return Either.left(ApplyFailure.MissingKey({ key: targetToken }));
+		}
 		delete parent[targetToken];
-		return Either.right(root);
+		return Either.right(removed);
 	}
 	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
 };
@@ -211,6 +217,30 @@ const replace = (
 	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
 };
 
+/**
+ * RFC 6902 move: returns the new document
+ * - remove at `from`, then add the removed value at `path`
+ * - moving the root out and moving into the moved subtree are rejected
+ */
+const move = (
+	root: MutableJson,
+	from: Pointer,
+	path: Pointer,
+): Either.Either<MutableJson, ApplyFailure> => {
+	if (from === path) {
+		return Either.right(root);
+	}
+	if (from === "") {
+		return Either.left(ApplyFailure.ImmovableRoot());
+	}
+	if (path.startsWith(`${from}/`)) {
+		return Either.left(ApplyFailure.MoveIntoSelf({ from, path }));
+	}
+	return remove(root, from).pipe(
+		Either.flatMap((removed) => add(root, path, removed)),
+	);
+};
+
 const applyChangeOp = (
 	root: MutableJson,
 	op: ChangeOp,
@@ -219,10 +249,13 @@ const applyChangeOp = (
 		Match.when({ op: "add" }, ({ path, value }) =>
 			add(root, path, cloneJson(value)),
 		),
-		Match.when({ op: "remove" }, ({ path }) => remove(root, path)),
+		Match.when({ op: "remove" }, ({ path }) =>
+			remove(root, path).pipe(Either.map(() => root)),
+		),
 		Match.when({ op: "replace" }, ({ path, value }) =>
 			replace(root, path, cloneJson(value)),
 		),
+		Match.when({ op: "move" }, ({ from, path }) => move(root, from, path)),
 		Match.exhaustive,
 	);
 

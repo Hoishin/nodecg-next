@@ -34,12 +34,14 @@ describe("ChangeOp", () => {
 			path: "",
 			value: [1],
 		});
+		expect(decodeOp({ op: "move", from: "/a/1", path: "/a/0" })).toEqual({
+			op: "move",
+			from: "/a/1",
+			path: "/a/0",
+		});
 	});
 
 	test("rejects ops outside the wire vocabulary", () => {
-		expect(() =>
-			decodeOp({ op: "move", from: "/a/1", path: "/a/0" }),
-		).toThrow();
 		expect(() => decodeOp({ op: "copy", from: "/a", path: "/b" })).toThrow();
 		expect(() => decodeOp({ op: "test", path: "/a", value: 1 })).toThrow();
 	});

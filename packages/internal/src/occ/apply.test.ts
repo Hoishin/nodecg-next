@@ -160,6 +160,67 @@ describe("applyPatch", () => {
 		});
 	});
 
+	describe("move", () => {
+		test("array reorder", () => {
+			expect(
+				applied(
+					[1, 2, 3],
+					[
+						{ op: "move", from: "/2", path: "/0" },
+						{ op: "move", from: "/2", path: "/1" },
+					],
+				),
+			).toEqual([3, 2, 1]);
+		});
+
+		test("object key rename", () => {
+			expect(
+				applied({ a: 1 }, [{ op: "move", from: "/a", path: "/b" }]),
+			).toEqual({ b: 1 });
+		});
+
+		test("moves a value between containers", () => {
+			expect(
+				applied({ from: [{ deep: 1 }], to: [] }, [
+					{ op: "move", from: "/from/0", path: "/to/-" },
+				]),
+			).toEqual({ from: [], to: [{ deep: 1 }] });
+		});
+
+		test("move onto itself is a no-op", () => {
+			expect(applied([1, 2], [{ op: "move", from: "/1", path: "/1" }])).toEqual(
+				[1, 2],
+			);
+		});
+
+		test("missing source fails", () => {
+			expect(
+				failure({ a: 1 }, [{ op: "move", from: "/b", path: "/c" }]).cause,
+			).toEqual(ApplyFailure.MissingKey({ key: "b" }));
+		});
+
+		test("the root is not movable", () => {
+			expect(
+				failure({ a: 1 }, [{ op: "move", from: "", path: "/a" }]).cause,
+			).toEqual(ApplyFailure.ImmovableRoot());
+		});
+
+		test("moving into its own child fails", () => {
+			expect(
+				failure({ a: { b: 1 } }, [{ op: "move", from: "/a", path: "/a/b" }])
+					.cause,
+			).toEqual(ApplyFailure.MoveIntoSelf({ from: "/a", path: "/a/b" }));
+		});
+
+		test("a move onto __proto__ is refused", () => {
+			expect(
+				failure({ a: 1, b: 2 }, [
+					{ op: "move", from: "/a", path: "/__proto__" },
+				]).cause,
+			).toEqual(ApplyFailure.ForbiddenKey({ key: "__proto__" }));
+		});
+	});
+
 	describe("pointer escaping", () => {
 		test("~1 and ~0 address keys containing / and ~", () => {
 			expect(

@@ -34,7 +34,14 @@ export const ReplaceOp = Schema.Struct({
 });
 export type ReplaceOp = typeof ReplaceOp.Type;
 
-export const ChangeOp = Schema.Union(AddOp, RemoveOp, ReplaceOp);
+export const MoveOp = Schema.Struct({
+	op: Schema.Literal("move"),
+	from: Pointer,
+	path: Pointer,
+});
+export type MoveOp = typeof MoveOp.Type;
+
+export const ChangeOp = Schema.Union(AddOp, RemoveOp, ReplaceOp, MoveOp);
 export type ChangeOp = typeof ChangeOp.Type;
 
 // Patch is a collection of ops

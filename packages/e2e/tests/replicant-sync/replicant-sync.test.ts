@@ -150,6 +150,39 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		]);
 	});
 
+	test("subscribe receives an array reorder with an element edit", async () => {
+		const ns = await loadNamespace(fixtureManifest, { baseUrl: base });
+		const seed = [
+			{ id: "alice", score: 1 },
+			{ id: "bob", score: 2 },
+			{ id: "carol", score: 3 },
+		];
+		await ns.replicant.roster.set(seed);
+		const received: { id: string; score: number }[][] = [];
+		const cancel = await ns.replicant.roster.subscribe((value) => {
+			received.push([...value]);
+		});
+		onTestFinished(() => cancel());
+		await vi.waitFor(() => expect(received.at(-1)).toEqual(seed));
+
+		await ns.replicant.roster.update((roster) => {
+			for (const entry of roster) {
+				if (entry.id === "carol") {
+					entry.score = 99;
+				}
+			}
+			roster.reverse();
+		});
+
+		await vi.waitFor(() =>
+			expect(received.at(-1)).toEqual([
+				{ id: "carol", score: 99 },
+				{ id: "bob", score: 2 },
+				{ id: "alice", score: 1 },
+			]),
+		);
+	});
+
 	test("reads a server-computed value over HTTP", async () => {
 		const ns = await loadNamespace(fixtureManifest, { baseUrl: base });
 		await ns.replicant.count.set(10);
