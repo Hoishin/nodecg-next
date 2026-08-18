@@ -221,6 +221,115 @@ describe("commit", () => {
 	);
 });
 
+describe("commitPatch", () => {
+	const noValidate = () => Effect.void;
+
+	test(
+		"applies a field-level patch and bumps the revision",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1, b: 2 });
+				const committed = yield* engine.commitPatch(
+					"ns",
+					"a",
+					[{ op: "replace", path: "/a", value: 5 }],
+					noValidate,
+				);
+				expect(committed).toEqual({ value: { a: 5, b: 2 }, revision: 1 });
+				expect(yield* engine.readReplicant("ns", "a")).toEqual({
+					value: { a: 5, b: 2 },
+					revision: 1,
+				});
+			}),
+		),
+	);
+
+	test(
+		"fails PatchNotApplicable and leaves the value untouched",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1 });
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"a",
+						[{ op: "replace", path: "/missing", value: 5 }],
+						noValidate,
+					)
+					.pipe(Effect.flip);
+				assert(error._tag === "PatchNotApplicable");
+				expect(error.path).toBe("/missing");
+				expect(error.reason).toBe("MissingKey");
+				expect(yield* engine.readReplicant("ns", "a")).toEqual({
+					value: { a: 1 },
+					revision: 0,
+				});
+			}),
+		),
+	);
+
+	test(
+		"a validate failure propagates and nothing is written",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1 });
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"a",
+						[{ op: "replace", path: "/a", value: 5 }],
+						() => Effect.fail(new Error("invalid")),
+					)
+					.pipe(Effect.flip);
+				assert(error instanceof Error);
+				expect(error.message).toBe("invalid");
+				expect(yield* engine.readReplicant("ns", "a")).toEqual({
+					value: { a: 1 },
+					revision: 0,
+				});
+			}),
+		),
+	);
+
+	test(
+		"a patch applying to the current value does not bump the revision",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1 });
+				const committed = yield* engine.commitPatch(
+					"ns",
+					"a",
+					[{ op: "replace", path: "/a", value: 1 }],
+					noValidate,
+				);
+				expect(committed).toEqual({ value: { a: 1 }, revision: 0 });
+			}),
+		),
+	);
+
+	test(
+		"fails for an unregistered replicant",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"missing",
+						[{ op: "replace", path: "", value: 1 }],
+						noValidate,
+					)
+					.pipe(Effect.flip);
+				expect(error._tag).toBe("UnknownReplicant");
+			}),
+		),
+	);
+});
+
 describe("subscribeReplicant", () => {
 	test(
 		"seeds with a snapshot frame then emits a frame per commit",

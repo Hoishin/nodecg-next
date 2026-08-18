@@ -376,7 +376,7 @@ describe("subscribe", () => {
 
 describe("derivation engine write-through", () => {
 	test(
-		"set, setEncoded, and update feed the engine replicant",
+		"set, commitPatch, and update feed the engine replicant",
 		testStubbed(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -390,7 +390,9 @@ describe("derivation engine write-through", () => {
 				yield* field.set(7);
 				expect((yield* engine.readReplicant("ns", "count")).value).toEqual("7");
 
-				yield* field[fieldInternal].setEncoded("8");
+				yield* field[fieldInternal].commitPatch([
+					{ op: "replace", path: "", value: "8" },
+				]);
 				expect((yield* engine.readReplicant("ns", "count")).value).toEqual("8");
 
 				yield* field.update((v) => v + 3);
@@ -473,7 +475,7 @@ describe("encoded read/write enforce permission", () => {
 	);
 
 	test(
-		"setEncoded validates and writes for an allowed caller",
+		"commitPatch validates and writes for an allowed caller",
 		testStubbed(
 			Effect.gen(function* () {
 				const field = yield* buildReplicant(
@@ -483,16 +485,17 @@ describe("encoded read/write enforce permission", () => {
 					0,
 				);
 				const engine = yield* DerivationEngineService;
-				yield* field[fieldInternal]
-					.setEncoded(7)
+				const committed = yield* field[fieldInternal]
+					.commitPatch([{ op: "replace", path: "", value: 7 }])
 					.pipe(Effect.provide(anonymous));
+				expect(committed).toEqual({ value: 7, revision: 1 });
 				expect((yield* engine.readReplicant("ns", "open")).value).toBe(7);
 			}),
 		),
 	);
 
 	test(
-		"setEncoded fails FieldDecodeError and does not write for an invalid value",
+		"commitPatch fails FieldDecodeError and does not write for an invalid applied document",
 		testStubbed(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -503,7 +506,7 @@ describe("encoded read/write enforce permission", () => {
 					0,
 				);
 				const error = yield* field[fieldInternal]
-					.setEncoded("not a number")
+					.commitPatch([{ op: "replace", path: "", value: "not a number" }])
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldDecodeError");
 				expect((yield* engine.readReplicant("ns", "open")).value).toBe(0);
@@ -512,7 +515,7 @@ describe("encoded read/write enforce permission", () => {
 	);
 
 	test(
-		"setEncoded fails FieldPermissionDenied and does not write for a denied caller",
+		"commitPatch fails FieldPermissionDenied and does not write for a denied caller",
 		testStubbed(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -523,10 +526,67 @@ describe("encoded read/write enforce permission", () => {
 					0,
 				);
 				const error = yield* field[fieldInternal]
-					.setEncoded(7)
+					.commitPatch([{ op: "replace", path: "", value: 7 }])
 					.pipe(Effect.provide(anonymous), Effect.flip);
 				expect(error._tag).toBe("FieldPermissionDenied");
 				expect((yield* engine.readReplicant("ns", "locked")).value).toBe(0);
+			}),
+		),
+	);
+});
+
+describe("commitPatch", () => {
+	const nested = defineNamespace("ns", {
+		replicant: {
+			doc: {
+				schema: Schema.Struct({
+					a: Schema.NumberFromString,
+					b: Schema.NumberFromString,
+				}),
+			},
+		},
+	});
+
+	test(
+		"applies a field-level replace and validates the applied document",
+		testStubbed(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const field = yield* buildReplicant("ns", "doc", nested.replicant.doc, {
+					a: 1,
+					b: 2,
+				});
+				const committed = yield* field[fieldInternal].commitPatch([
+					{ op: "replace", path: "/a", value: "5" },
+				]);
+				expect(committed).toEqual({ value: { a: "5", b: "2" }, revision: 1 });
+				expect((yield* engine.readReplicant("ns", "doc")).value).toEqual({
+					a: "5",
+					b: "2",
+				});
+			}),
+		),
+	);
+
+	test(
+		"fails PatchNotApplicable when the patch does not fit the current value",
+		testStubbed(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				const field = yield* buildReplicant("ns", "doc", nested.replicant.doc, {
+					a: 1,
+					b: 2,
+				});
+				const error = yield* field[fieldInternal]
+					.commitPatch([{ op: "replace", path: "/missing", value: "5" }])
+					.pipe(Effect.flip);
+				assert(error._tag === "PatchNotApplicable");
+				expect(error.path).toBe("/missing");
+				expect(error.reason).toBe("MissingKey");
+				expect((yield* engine.readReplicant("ns", "doc")).value).toEqual({
+					a: "1",
+					b: "2",
+				});
 			}),
 		),
 	);

@@ -1,7 +1,7 @@
 import { HttpApiError } from "@effect/platform";
 import { RpcCallError } from "@nodecg/internal";
 import type { Patch } from "@nodecg/internal/occ";
-import { Array, Effect, Match } from "effect";
+import { Effect, Match } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { FieldRegistryService } from "../../field-registry.ts";
@@ -33,10 +33,10 @@ export const updateReplicant = (
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
 		}
-		const { value } = Array.lastNonEmpty(payload);
-		yield* field.setEncoded(value).pipe(
+		yield* field.commitPatch(payload).pipe(
 			Effect.mapError((error) =>
 				Match.value(error).pipe(
+					Match.tag("PatchNotApplicable", (invalid) => invalid),
 					Match.tag(
 						"FieldPermissionDenied",
 						() => new HttpApiError.Forbidden(),

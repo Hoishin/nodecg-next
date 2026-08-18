@@ -322,6 +322,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.4
+      klona:
+        specifier: ^2.0.6
+        version: 2.0.6
       type-fest:
         specifier: 'catalog:'
         version: 5.8.0
@@ -1264,6 +1267,10 @@ packages:
 
   jose@6.2.3:
     resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
+
+  klona@2.0.6:
+    resolution: {integrity: sha512-dhG34DXATL5hSxJbIexCft8FChFXtmskoZYnoPWjXQuebWYCNkVeV3KkGegCK9CP1oswI/vQibS2GY7Em/sJJA==}
+    engines: {node: '>= 8'}
 
   kubernetes-types@1.30.0:
     resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
@@ -2259,6 +2266,8 @@ snapshots:
   is-plain-obj@4.1.0: {}
 
   jose@6.2.3: {}
+
+  klona@2.0.6: {}
 
   kubernetes-types@1.30.0: {}
 

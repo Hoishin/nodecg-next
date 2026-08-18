@@ -7,7 +7,7 @@ import { fieldInternal } from "./field-builders/field-internal-key.ts";
 // Exclude Decoded types
 type ReplicantFieldInternal = Pick<
 	BuiltNamespace["replicant"][string][typeof fieldInternal],
-	"getRevisioned" | "setEncoded" | "subscribeRevisioned" | "permission"
+	"getRevisioned" | "commitPatch" | "subscribeRevisioned" | "permission"
 >;
 type ComputedFieldInternal = Pick<
 	BuiltNamespace["computed"][string][typeof fieldInternal],

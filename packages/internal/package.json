@@ -16,6 +16,7 @@
 	"dependencies": {
 		"@effect/platform": "catalog:",
 		"effect": "catalog:",
+		"klona": "^2.0.6",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {

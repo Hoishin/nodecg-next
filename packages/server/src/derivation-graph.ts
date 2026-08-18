@@ -1,4 +1,9 @@
 import type { FieldEncodeError } from "@nodecg/core";
+import {
+	applyPatch,
+	type Patch,
+	PatchNotApplicable,
+} from "@nodecg/internal/occ";
 import { toError } from "@nodecg/internal/utils";
 import {
 	computed,
@@ -10,6 +15,7 @@ import {
 import {
 	Data,
 	Effect,
+	Either,
 	Equal,
 	Exit,
 	Hash,
@@ -312,6 +318,30 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				);
 			});
 
+			const commitPatch = Effect.fn("DerivationEngine.commitPatch")(function* <
+				E,
+			>(
+				namespace: string,
+				name: string,
+				patch: Patch,
+				validate: (applied: JsonValue) => Effect.Effect<unknown, E>,
+			) {
+				return yield* commit(namespace, name, (current) =>
+					Effect.gen(function* () {
+						const applied = applyPatch(current, patch);
+						if (Either.isLeft(applied)) {
+							const { op, cause } = applied.left;
+							return yield* new PatchNotApplicable({
+								path: op.path,
+								reason: cause._tag,
+							});
+						}
+						yield* validate(applied.right);
+						return applied.right;
+					}),
+				);
+			});
+
 			const subscribeReplicant = Effect.fn(
 				"DerivationEngine.subscribeReplicant",
 			)(function* (namespace: string, name: string) {
@@ -454,6 +484,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				initializeReplicant,
 				readReplicant,
 				commit,
+				commitPatch,
 				subscribeReplicant,
 				initializeComputed,
 				readComputed,

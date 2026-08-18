@@ -1,5 +1,6 @@
 import type { FieldManifest } from "@nodecg/core";
 import type { Updater } from "@nodecg/internal";
+import type { Patch } from "@nodecg/internal/occ";
 import { toError } from "@nodecg/internal/utils";
 import { Effect, Schema, Stream } from "effect";
 import type { JsonValue } from "type-fest";
@@ -37,10 +38,10 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* manifest.encode(initialValue),
 	);
 
-	const commit = <E>(
-		produce: (current: JsonValue) => Effect.Effect<JsonValue, E>,
+	const retryContention = <A, E, R>(
+		attempt: Effect.Effect<A, E | CommitContended, R>,
 	) =>
-		engine.commit(namespace, name, produce).pipe(
+		attempt.pipe(
 			Effect.retry({
 				while: (error) => error instanceof CommitContended,
 				times: 100,
@@ -51,6 +52,10 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 				),
 			),
 		);
+
+	const commit = <E>(
+		produce: (current: JsonValue) => Effect.Effect<JsonValue, E>,
+	) => retryContention(engine.commit(namespace, name, produce));
 
 	const get = Effect.fn("get")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
@@ -70,10 +75,12 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* commit(() => Effect.succeed(encoded));
 	});
 
-	const setEncoded = Effect.fn("setEncoded")(function* (value: JsonValue) {
+	// Wire write: applies the client's patch, the decode gate validates the applied document
+	const commitPatch = Effect.fn("commitPatch")(function* (patch: Patch) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		yield* manifest.decode(value); // Only for validation
-		yield* commit(() => Effect.succeed(value));
+		return yield* retryContention(
+			engine.commitPatch(namespace, name, patch, manifest.decode),
+		);
 	});
 
 	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
@@ -129,7 +136,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 			validate: manifest.encode,
 			subscribe,
 			getRevisioned,
-			setEncoded,
+			commitPatch,
 			subscribeRevisioned,
 			permission: manifest.permission,
 		},

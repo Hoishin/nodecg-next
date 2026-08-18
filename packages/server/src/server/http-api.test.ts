@@ -9,6 +9,7 @@ import {
 	ADMIN_ROLE,
 	RoleName,
 } from "@nodecg/internal";
+import { PatchNotApplicable } from "@nodecg/internal/occ";
 import {
 	ConfigProvider,
 	Effect,
@@ -59,7 +60,7 @@ const openPermission: ResolvedPermission = {
 };
 
 function stubField(
-	internal: Pick<Internal, "getRevisioned" | "setEncoded">,
+	internal: Pick<Internal, "getRevisioned" | "commitPatch">,
 ): ReplicantStub {
 	const unused = vi.fn();
 	const subscribeRevisioned = () => Effect.succeed(Stream.empty);
@@ -77,7 +78,7 @@ function stubField(
 			validate: unused,
 			subscribe,
 			getRevisioned: internal.getRevisioned,
-			setEncoded: internal.setEncoded,
+			commitPatch: internal.commitPatch,
 			subscribeRevisioned,
 			permission: openPermission,
 		},
@@ -197,6 +198,8 @@ const getUrl = "http://x/api/internal/namespaces/root/replicant/count";
 const computedUrl = "http://x/api/internal/namespaces/root/computed/count";
 const topicUrl = "http://x/api/internal/namespaces/root/topic/chat";
 const rpcUrl = "http://x/api/internal/namespaces/root/rpc/echo";
+
+const committed = () => Effect.succeed({ value: null, revision: 1 });
 
 const putPatch = (patch: unknown) =>
 	new Request(getUrl, {
@@ -1176,7 +1179,7 @@ describe("get", () => {
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
-					setEncoded: () => Effect.void,
+					commitPatch: committed,
 				}),
 			}),
 		]);
@@ -1199,7 +1202,7 @@ describe("get", () => {
 						Effect.fail(
 							new UnknownReplicant({ namespace: "root", name: "count" }),
 						),
-					setEncoded: () => Effect.void,
+					commitPatch: committed,
 				}),
 			}),
 		]);
@@ -1222,13 +1225,13 @@ describe("get", () => {
 });
 
 describe("update", () => {
-	test("applies a root replace patch and returns 204", async () => {
-		const setEncoded = vi.fn((_value: unknown) => Effect.void);
+	test("passes a root replace patch through to the field and returns 204", async () => {
+		const commitPatch = vi.fn(committed);
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					setEncoded,
+					commitPatch,
 				}),
 			}),
 		]);
@@ -1236,46 +1239,74 @@ describe("update", () => {
 			putPatch([{ op: "replace", path: "", value: 7 }]),
 		);
 		expect(res.status).toBe(204);
-		expect(setEncoded).toHaveBeenCalledWith(7);
+		expect(commitPatch).toHaveBeenCalledWith([
+			{ op: "replace", path: "", value: 7 },
+		]);
 	});
 
-	test("applies the last value of a multi-op root replace patch", async () => {
-		const setEncoded = vi.fn((_value: unknown) => Effect.void);
+	test("passes a field-level patch through whole", async () => {
+		const commitPatch = vi.fn(committed);
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					setEncoded,
+					commitPatch,
 				}),
 			}),
 		]);
 		const res = await handler(
 			putPatch([
-				{ op: "replace", path: "", value: 7 },
-				{ op: "replace", path: "", value: 8 },
+				{ op: "replace", path: "/a", value: 7 },
+				{ op: "replace", path: "/b/0", value: 8 },
 			]),
 		);
 		expect(res.status).toBe(204);
-		expect(setEncoded).toHaveBeenCalledWith(8);
+		expect(commitPatch).toHaveBeenCalledWith([
+			{ op: "replace", path: "/a", value: 7 },
+			{ op: "replace", path: "/b/0", value: 8 },
+		]);
 	});
 
 	test("400 when the payload is not a patch", async () => {
-		const setEncoded = vi.fn((_value: unknown) => Effect.void);
+		const commitPatch = vi.fn(committed);
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					setEncoded,
+					commitPatch,
 				}),
 			}),
 		]);
 		expect((await handler(putPatch(7))).status).toBe(400);
 		expect((await handler(putPatch([]))).status).toBe(400);
 		expect(
-			(await handler(putPatch([{ op: "replace", path: "/a", value: 7 }])))
+			(await handler(putPatch([{ op: "replace", path: "a", value: 7 }])))
 				.status,
 		).toBe(400);
-		expect(setEncoded).not.toHaveBeenCalled();
+		expect(commitPatch).not.toHaveBeenCalled();
+	});
+
+	test("422 when the field reports PatchNotApplicable", async () => {
+		const handler = webHandler([
+			registeredNamespace("root", {
+				count: stubField({
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+					commitPatch: () =>
+						Effect.fail(
+							new PatchNotApplicable({ path: "/a", reason: "MissingKey" }),
+						),
+				}),
+			}),
+		]);
+		const res = await handler(
+			putPatch([{ op: "replace", path: "/a", value: 7 }]),
+		);
+		expect(res.status).toBe(422);
+		expect(await res.json()).toEqual({
+			_tag: "PatchNotApplicable",
+			path: "/a",
+			reason: "MissingKey",
+		});
 	});
 
 	test("404 when the namespace/name is not registered", async () => {
@@ -1291,7 +1322,7 @@ describe("update", () => {
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					setEncoded: () =>
+					commitPatch: () =>
 						Effect.fail(
 							new FieldDecodeError({
 								fieldName: "count",
@@ -1313,7 +1344,7 @@ describe("update", () => {
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					setEncoded: () =>
+					commitPatch: () =>
 						Effect.fail(
 							new UnknownReplicant({ namespace: "root", name: "count" }),
 						),
@@ -1350,7 +1381,7 @@ describe("permission enforcement", () => {
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: readDenied,
-					setEncoded: () => Effect.void,
+					commitPatch: committed,
 				}),
 			}),
 		]);
@@ -1358,13 +1389,13 @@ describe("permission enforcement", () => {
 		expect(res.status).toBe(403);
 	});
 
-	test("403 when replicant setEncoded denies the caller", async () => {
-		const setEncoded = vi.fn(writeDenied);
+	test("403 when replicant commitPatch denies the caller", async () => {
+		const commitPatch = vi.fn(writeDenied);
 		const handler = webHandler([
 			registeredNamespace("root", {
 				count: stubField({
 					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					setEncoded,
+					commitPatch,
 				}),
 			}),
 		]);
@@ -1389,7 +1420,7 @@ describe("permission enforcement", () => {
 			);
 		const handler = webHandler([
 			registeredNamespace("root", {
-				count: stubField({ getRevisioned, setEncoded: () => Effect.void }),
+				count: stubField({ getRevisioned, commitPatch: committed }),
 			}),
 		]);
 		const res = await handler(new Request(getUrl));
@@ -1554,7 +1585,7 @@ describe("public surface (v0) with bearer token", () => {
 		registeredNamespace("root", {
 			count: stubField({
 				getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
-				setEncoded: () => Effect.void,
+				commitPatch: committed,
 			}),
 		});
 
