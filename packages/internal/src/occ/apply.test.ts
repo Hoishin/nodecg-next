@@ -2,7 +2,7 @@ import { Either } from "effect";
 import type { JsonValue } from "type-fest";
 import { assert, describe, expect, test } from "vitest";
 
-import { ApplyFailure, applyPatch, isDrift } from "./apply.ts";
+import { ApplyFailure, applyPatch } from "./apply.ts";
 import { computeTestHash } from "./hash.ts";
 import type { Patch } from "./schema.ts";
 
@@ -273,25 +273,41 @@ describe("applyPatch", () => {
 		});
 	});
 
-	describe("isDrift", () => {
-		test("the document moving on is drift", () => {
+	describe("test", () => {
+		test("a matching value passes and leaves the document unchanged", () => {
 			expect(
-				isDrift(ApplyFailure.HashMismatch({ expected: "a", actual: "b" })),
-			).toBe(true);
-			expect(isDrift(ApplyFailure.MissingKey({ key: "a" }))).toBe(true);
-			expect(isDrift(ApplyFailure.IndexOutOfBounds({ index: 3 }))).toBe(true);
-			expect(isDrift(ApplyFailure.NonContainer({ token: "a" }))).toBe(true);
+				applied({ a: 1, b: 2 }, [{ op: "test", path: "/a", value: 1 }]),
+			).toEqual({ a: 1, b: 2 });
 		});
 
-		test("a patch that fits no document is not drift", () => {
-			expect(isDrift(ApplyFailure.InvalidIndex({ token: "x" }))).toBe(false);
-			expect(isDrift(ApplyFailure.ForbiddenKey({ key: "__proto__" }))).toBe(
-				false,
-			);
-			expect(isDrift(ApplyFailure.ImmovableRoot())).toBe(false);
+		test("a stale value fails", () => {
 			expect(
-				isDrift(ApplyFailure.MoveIntoSelf({ from: "/a", path: "/a/b" })),
-			).toBe(false);
+				failure({ a: 2 }, [{ op: "test", path: "/a", value: 1 }]).cause,
+			).toEqual(ApplyFailure.ValueMismatch());
+		});
+
+		test("a vanished target fails on navigation, not on the value", () => {
+			expect(
+				failure({ a: 1 }, [{ op: "test", path: "/gone", value: 1 }]).cause,
+			).toEqual(ApplyFailure.MissingKey({ key: "gone" }));
+		});
+
+		test("key order does not matter", () => {
+			expect(
+				applied({ pair: { x: 1, y: 2 } }, [
+					{ op: "test", path: "/pair", value: { y: 2, x: 1 } },
+					{ op: "replace", path: "/pair", value: { x: 3, y: 4 } },
+				]),
+			).toEqual({ pair: { x: 3, y: 4 } });
+		});
+
+		test("a precondition on one path does not guard a sibling", () => {
+			expect(
+				applied({ a: 1, b: 2 }, [
+					{ op: "test", path: "/a", value: 1 },
+					{ op: "replace", path: "/b", value: 9 },
+				]),
+			).toEqual({ a: 1, b: 9 });
 		});
 	});
 

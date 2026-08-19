@@ -51,6 +51,16 @@ const readV0 = (fieldName: string, token?: string) =>
 		headers: token ? { authorization: `Bearer ${token}` } : {},
 	});
 
+const writeV0 = (fieldName: string, token: string, patch: unknown) =>
+	fetch(`${base}/api/v0/namespaces/e2e/replicant/${fieldName}`, {
+		method: "PUT",
+		headers: {
+			authorization: `Bearer ${token}`,
+			"content-type": "application/json",
+		},
+		body: JSON.stringify(patch),
+	});
+
 describe("public /api/v0 bearer authentication", () => {
 	test("a request without a bearer token is rejected", async () => {
 		expect((await readV0("count")).status).toBe(401);
@@ -94,5 +104,31 @@ describe("public /api/v0 bearer authentication", () => {
 		expect((await revokeMachine(id)).status).toBe(204);
 
 		expect((await readV0("count", token)).status).toBe(401);
+	});
+});
+
+describe("hand-written patches with test preconditions", () => {
+	test("a matching test commits, the same patch replayed answers 409", async () => {
+		const { token } = await provisionMachine("patch-bot");
+		const patch = [
+			{ op: "test", path: "/home", value: 0 },
+			{ op: "replace", path: "/home", value: 5 },
+		];
+
+		const write = await writeV0("scoreboard", token, patch);
+		expect(write.status).toBe(204);
+		expect(await (await readV0("scoreboard", token)).json()).toEqual({
+			home: 5,
+			away: 0,
+		});
+
+		const replay = await writeV0("scoreboard", token, patch);
+		expect(replay.status).toBe(409);
+		expect(await replay.json()).toEqual({
+			_tag: "RevisionConflict",
+			value: { home: 5, away: 0 },
+			revision: 1,
+			reason: "ValueMismatch",
+		});
 	});
 });

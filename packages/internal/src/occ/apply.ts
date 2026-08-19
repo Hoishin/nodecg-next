@@ -4,7 +4,7 @@ import { Data, Either, Match, Option } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { cloneJson, type MutableJson } from "../utils/clone.ts";
-import { computeTestHash } from "./hash.ts";
+import { stableStringify, computeTestHash } from "./hash.ts";
 import type { ChangeOp, PatchOp, Pointer } from "./schema.ts";
 
 const unescapeToken = (token: string) =>
@@ -35,11 +35,13 @@ export type ApplyFailure = Data.TaggedEnum<{
 	ImmovableRoot: {};
 	MoveIntoSelf: { readonly from: Pointer; readonly path: Pointer };
 	HashMismatch: { readonly expected: string; readonly actual: string };
+	ValueMismatch: {};
 }>;
 export const ApplyFailure = Data.taggedEnum<ApplyFailure>();
 
 export const isDrift = ApplyFailure.$match({
 	HashMismatch: () => true,
+	ValueMismatch: () => true,
 	IndexOutOfBounds: () => true,
 	MissingKey: () => true,
 	NonContainer: () => true,
@@ -277,6 +279,22 @@ const testHash = (
 		}),
 	);
 
+/**
+ * RFC 6902 test: the value at the pointer must still equal `expected`
+ */
+const test = (
+	root: MutableJson,
+	pointer: Pointer,
+	expected: JsonValue,
+): Either.Either<MutableJson, ApplyFailure> =>
+	getAtPointer(root, pointer).pipe(
+		Either.flatMap((seen) =>
+			stableStringify(seen) === stableStringify(expected)
+				? Either.right(root)
+				: Either.left(ApplyFailure.ValueMismatch()),
+		),
+	);
+
 export const applyChangeOp = (
 	root: MutableJson,
 	op: ChangeOp,
@@ -306,10 +324,13 @@ export const applyPatch = (
 ): Either.Either<MutableJson, PatchFailure> => {
 	let doc = cloneJson(current);
 	for (const op of patch) {
-		const result =
-			op.op === "test-hash"
-				? testHash(doc, op.path, op.hash)
-				: applyChangeOp(doc, op);
+		const result = Match.value(op).pipe(
+			Match.when({ op: "test-hash" }, ({ path, hash }) =>
+				testHash(doc, path, hash),
+			),
+			Match.when({ op: "test" }, ({ path, value }) => test(doc, path, value)),
+			Match.orElse((changeOp) => applyChangeOp(doc, changeOp)),
+		);
 		if (Either.isLeft(result)) {
 			return Either.left({ op, cause: result.left });
 		}

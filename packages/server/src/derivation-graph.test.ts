@@ -341,6 +341,26 @@ describe("commitPatch", () => {
 	);
 
 	test(
+		"a stale test precondition fails RevisionConflict",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1 });
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"a",
+						[{ op: "test", path: "/a", value: 2 }],
+						noValidate,
+					)
+					.pipe(Effect.flip);
+				assert(error._tag === "RevisionConflict");
+				expect(error.reason).toBe("ValueMismatch");
+			}),
+		),
+	);
+
+	test(
 		"a passing precondition with no change op returns the current value without committing",
 		testEngine(
 			Effect.gen(function* () {

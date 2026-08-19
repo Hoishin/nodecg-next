@@ -52,7 +52,14 @@ export const TestHashOp = Schema.Struct({
 });
 export type TestHashOp = typeof TestHashOp.Type;
 
-export const PatchOp = Schema.Union(ChangeOp, TestHashOp);
+export const TestOp = Schema.Struct({
+	op: Schema.Literal("test"),
+	path: Pointer,
+	value: JsonValueSchema,
+});
+export type TestOp = typeof TestOp.Type;
+
+export const PatchOp = Schema.Union(ChangeOp, TestHashOp, TestOp);
 export type PatchOp = typeof PatchOp.Type;
 
 // Patch is a collection of ops

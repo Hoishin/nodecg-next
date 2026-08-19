@@ -44,7 +44,9 @@ describe("ChangeOp", () => {
 
 	test("rejects ops outside the wire vocabulary", () => {
 		expect(() => decodeOp({ op: "copy", from: "/a", path: "/b" })).toThrow();
-		expect(() => decodeOp({ op: "test", path: "/a", value: 1 })).toThrow();
+		expect(() =>
+			decodePatchOp({ op: "copy", from: "/a", path: "/b" }),
+		).toThrow();
 	});
 });
 
@@ -55,10 +57,19 @@ describe("PatchOp", () => {
 		).toEqual({ op: "test-hash", path: "/a", hash: "ab12" });
 	});
 
-	test("a test-hash is not a change op", () => {
+	test("decodes a test precondition", () => {
+		expect(decodePatchOp({ op: "test", path: "/a", value: { b: 1 } })).toEqual({
+			op: "test",
+			path: "/a",
+			value: { b: 1 },
+		});
+	});
+
+	test("a precondition is not a change op", () => {
 		expect(() =>
 			decodeOp({ op: "test-hash", path: "/a", hash: "ab12" }),
 		).toThrow();
+		expect(() => decodeOp({ op: "test", path: "/a", value: 1 })).toThrow();
 	});
 });
 
