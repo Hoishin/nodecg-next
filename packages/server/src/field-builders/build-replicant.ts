@@ -8,6 +8,7 @@ import type { JsonValue } from "type-fest";
 import {
 	CommitContended,
 	DerivationEngineService,
+	type RevisionedValue,
 } from "../derivation-graph.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
@@ -54,7 +55,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		);
 
 	const commit = <E>(
-		produce: (current: JsonValue) => Effect.Effect<JsonValue, E>,
+		produce: (current: RevisionedValue) => Effect.Effect<JsonValue, E>,
 	) => retryContention(engine.commit(namespace, name, produce));
 
 	const get = Effect.fn("get")(function* () {
@@ -85,10 +86,10 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 
 	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		yield* commit((encoded) =>
+		yield* commit((stored) =>
 			Effect.gen(function* () {
 				const current = yield* manifest
-					.mutableDecode(encoded)
+					.mutableDecode(stored.value)
 					.pipe(migrationDie);
 				const next = yield* Effect.try({
 					try: () => {

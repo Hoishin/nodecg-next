@@ -1,7 +1,7 @@
 import { FetchHttpClient } from "@effect/platform";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect } from "effect";
-import { describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import { FieldTransportService } from "../field-transport/field-transport.ts";
 import { httpFieldTransport } from "../field-transport/http-field-transport.ts";
@@ -126,6 +126,44 @@ describe("update", () => {
 					);
 
 				expect(error._tag).toBe("FieldPermissionDenied");
+			}).pipe(Effect.provide(HttpFieldTransport)),
+		),
+	);
+
+	test(
+		"surfaces a 409 as the RevisionConflict the server sent",
+		testEffect(
+			Effect.gen(function* () {
+				const transport = yield* FieldTransportService;
+				const conflict = {
+					_tag: "RevisionConflict",
+					value: { a: 9 },
+					revision: 4,
+					reason: "HashMismatch",
+				};
+
+				const error = yield* transport
+					.updateReplicant("root", "count", [
+						{ op: "replace", path: "/a", value: 7 },
+					])
+					.pipe(
+						Effect.provideService(
+							FetchHttpClient.Fetch,
+							mockFetch(
+								() =>
+									new Response(JSON.stringify(conflict), {
+										status: 409,
+										headers: { "content-type": "application/json" },
+									}),
+							),
+						),
+						Effect.flip,
+					);
+
+				assert(error._tag === "RevisionConflict");
+				expect(error.value).toEqual({ a: 9 });
+				expect(error.revision).toBe(4);
+				expect(error.reason).toBe("HashMismatch");
 			}).pipe(Effect.provide(HttpFieldTransport)),
 		),
 	);

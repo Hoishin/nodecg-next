@@ -89,6 +89,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 									"Forbidden",
 									() => new FieldPermissionDenied({ namespace, name }),
 								),
+								Match.tag("RevisionConflict", (conflict) => conflict),
 								Match.orElse(
 									(e) =>
 										new FieldSetError({ namespace, name, cause: toError(e) }),

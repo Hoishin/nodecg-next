@@ -5,6 +5,7 @@ import {
 	type ServerMessage,
 	SubscribeRejectedMessage,
 } from "@nodecg/internal";
+import { computeTestHash, RevisionConflict } from "@nodecg/internal/occ";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import {
 	Effect,
@@ -284,7 +285,10 @@ describe("update", () => {
 				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"count",
-					[{ op: "replace", path: "", value: 15 }],
+					[
+						{ op: "test-hash", path: "", hash: computeTestHash(10) },
+						{ op: "replace", path: "", value: 15 },
+					],
 				);
 			}),
 		),
@@ -325,7 +329,10 @@ describe("update", () => {
 				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"root",
 					"box",
-					[{ op: "replace", path: "/n", value: "5" }],
+					[
+						{ op: "test-hash", path: "/n", hash: computeTestHash("1") },
+						{ op: "replace", path: "/n", value: "5" },
+					],
 				);
 			}),
 		),
@@ -390,6 +397,49 @@ describe("update", () => {
 				expect(error._tag).toBe("FieldSetError");
 				expect(error.message).toContain("boom");
 				expect(transportStub.updateReplicant).not.toHaveBeenCalled();
+			}),
+		),
+	);
+
+	test(
+		"a rejected precondition surfaces as ReplicantWriteConflict carrying the decoded current value",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
+				transportStub.updateReplicant.mockReturnValue(
+					new RevisionConflict({
+						value: { n: "7" },
+						revision: 4,
+						reason: "HashMismatch",
+					}),
+				);
+				const manifest = defineNamespace("root", {
+					replicant: {
+						box: { schema: Schema.Struct({ n: Schema.NumberFromString }) },
+					},
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const error = yield* loaded.replicant.box
+					.update((draft) => {
+						draft.n = 5;
+					})
+					.pipe(
+						Effect.provideService(FieldTransportService, transportStub),
+						Effect.flip,
+					);
+				assert(error._tag === "ReplicantWriteConflict");
+				expect(error.current).toEqual({ n: 7 });
+				expect(error.revision).toBe(4);
+				expect(transportStub.updateReplicant).toHaveBeenCalledTimes(1);
 			}),
 		),
 	);
@@ -1494,7 +1544,10 @@ describe("derivation over loaded fields", () => {
 				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"match",
 					"scoreLeft",
-					[{ op: "replace", path: "", value: "11" }],
+					[
+						{ op: "test-hash", path: "", hash: computeTestHash("10") },
+						{ op: "replace", path: "", value: "11" },
+					],
 				);
 
 				yield* Scope.close(scope, Exit.void);

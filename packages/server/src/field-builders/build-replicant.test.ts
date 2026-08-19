@@ -7,6 +7,7 @@ import {
 	RoleName,
 	ServerIdentitySchema,
 } from "@nodecg/internal";
+import { computeTestHash } from "@nodecg/internal/occ";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import {
 	Cause,
@@ -569,7 +570,7 @@ describe("commitPatch", () => {
 	);
 
 	test(
-		"fails PatchNotApplicable when the patch does not fit the current value",
+		"fails PatchNotApplicable when the patch fits no document",
 		testStubbed(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -578,15 +579,37 @@ describe("commitPatch", () => {
 					b: 2,
 				});
 				const error = yield* field[fieldInternal]
-					.commitPatch([{ op: "replace", path: "/missing", value: "5" }])
+					.commitPatch([{ op: "remove", path: "" }])
 					.pipe(Effect.flip);
 				assert(error._tag === "PatchNotApplicable");
-				expect(error.path).toBe("/missing");
-				expect(error.reason).toBe("MissingKey");
+				expect(error.path).toBe("");
+				expect(error.reason).toBe("ImmovableRoot");
 				expect((yield* engine.readReplicant("ns", "doc")).value).toEqual({
 					a: "1",
 					b: "2",
 				});
+			}),
+		),
+	);
+
+	test(
+		"fails RevisionConflict when a precondition no longer holds",
+		testStubbed(
+			Effect.gen(function* () {
+				const field = yield* buildReplicant("ns", "doc", nested.replicant.doc, {
+					a: 1,
+					b: 2,
+				});
+				const error = yield* field[fieldInternal]
+					.commitPatch([
+						{ op: "test-hash", path: "/a", hash: computeTestHash("9") },
+						{ op: "replace", path: "/a", value: "5" },
+					])
+					.pipe(Effect.flip);
+				assert(error._tag === "RevisionConflict");
+				expect(error.value).toEqual({ a: "1", b: "2" });
+				expect(error.revision).toBe(0);
+				expect(error.reason).toBe("HashMismatch");
 			}),
 		),
 	);

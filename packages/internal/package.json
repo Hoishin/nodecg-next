@@ -19,9 +19,11 @@
 		"fast-json-stable-stringify": "^2.1.0",
 		"jsondiffpatch": "^0.7.6",
 		"klona": "^2.0.6",
+		"murmurhash3js-revisited": "^3.0.0",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@types/murmurhash3js-revisited": "^3.0.3",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

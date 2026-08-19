@@ -1,3 +1,11 @@
-export { applyPatch } from "./apply.ts";
-export { diffPatch } from "./diff.ts";
-export { ChangeOp, Patch, PatchNotApplicable, Pointer } from "./schema.ts";
+export { applyPatch, isDrift } from "./apply.ts";
+export { diffSignedPatch } from "./diff.ts";
+export { computeTestHash } from "./hash.ts";
+export {
+	ChangeOp,
+	Patch,
+	PatchNotApplicable,
+	PatchOp,
+	Pointer,
+	RevisionConflict,
+} from "./schema.ts";

@@ -6,7 +6,7 @@ import {
 } from "@effect/platform";
 import { Schema } from "effect";
 
-import { Patch, PatchNotApplicable } from "../occ/schema.ts";
+import { Patch, PatchNotApplicable, RevisionConflict } from "../occ/schema.ts";
 import { JsonValueSchema } from "../utils/json-value-schema.ts";
 
 const namespaceParam = HttpApiSchema.param("namespace", Schema.String);
@@ -28,6 +28,7 @@ const replicantUpdate = HttpApiEndpoint.put(
 	.addError(HttpApiError.Forbidden)
 	.addError(HttpApiError.BadRequest)
 	.addError(PatchNotApplicable)
+	.addError(RevisionConflict)
 	.addError(HttpApiError.InternalServerError);
 
 const computedGet = HttpApiEndpoint.get(

@@ -4,7 +4,8 @@ import { Data, Either, Match, Option } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { cloneJson, type MutableJson } from "../utils/clone.ts";
-import type { ChangeOp, Pointer } from "./schema.ts";
+import { computeTestHash } from "./hash.ts";
+import type { ChangeOp, PatchOp, Pointer } from "./schema.ts";
 
 const unescapeToken = (token: string) =>
 	token.replaceAll("~1", "/").replaceAll("~0", "~");
@@ -33,8 +34,20 @@ export type ApplyFailure = Data.TaggedEnum<{
 	ForbiddenKey: { readonly key: string };
 	ImmovableRoot: {};
 	MoveIntoSelf: { readonly from: Pointer; readonly path: Pointer };
+	HashMismatch: { readonly expected: string; readonly actual: string };
 }>;
 export const ApplyFailure = Data.taggedEnum<ApplyFailure>();
+
+export const isDrift = ApplyFailure.$match({
+	HashMismatch: () => true,
+	IndexOutOfBounds: () => true,
+	MissingKey: () => true,
+	NonContainer: () => true,
+	InvalidIndex: () => false,
+	ForbiddenKey: () => false,
+	ImmovableRoot: () => false,
+	MoveIntoSelf: () => false,
+});
 
 const getChild = (
 	parent: MutableJson,
@@ -74,6 +87,9 @@ const navigate = (root: MutableJson, tokens: ReadonlyArray<string>) =>
 			cur.pipe(Either.flatMap((currentValue) => getChild(currentValue, token))),
 		Either.right(root),
 	);
+
+export const getAtPointer = (root: MutableJson, pointer: Pointer) =>
+	navigate(root, parsePointer(pointer));
 
 /**
  * RFC 6902 add: returns the new document
@@ -241,7 +257,27 @@ const move = (
 	);
 };
 
-const applyChangeOp = (
+/**
+ * Non-standard test-hash: the value at the pointer must still hash to `hash`, document unchanged
+ */
+const testHash = (
+	root: MutableJson,
+	pointer: Pointer,
+	hash: string,
+): Either.Either<MutableJson, ApplyFailure> =>
+	getAtPointer(root, pointer).pipe(
+		Either.flatMap((seen) => {
+			const actual = computeTestHash(seen);
+			if (actual !== hash) {
+				return Either.left(
+					ApplyFailure.HashMismatch({ expected: hash, actual }),
+				);
+			}
+			return Either.right(root);
+		}),
+	);
+
+export const applyChangeOp = (
 	root: MutableJson,
 	op: ChangeOp,
 ): Either.Either<MutableJson, ApplyFailure> =>
@@ -260,17 +296,20 @@ const applyChangeOp = (
 	);
 
 export interface PatchFailure {
-	readonly op: ChangeOp;
+	readonly op: PatchOp;
 	readonly cause: ApplyFailure;
 }
 
 export const applyPatch = (
 	current: JsonValue,
-	patch: ReadonlyArray<ChangeOp>,
+	patch: ReadonlyArray<PatchOp>,
 ): Either.Either<MutableJson, PatchFailure> => {
 	let doc = cloneJson(current);
 	for (const op of patch) {
-		const result = applyChangeOp(doc, op);
+		const result =
+			op.op === "test-hash"
+				? testHash(doc, op.path, op.hash)
+				: applyChangeOp(doc, op);
 		if (Either.isLeft(result)) {
 			return Either.left({ op, cause: result.left });
 		}

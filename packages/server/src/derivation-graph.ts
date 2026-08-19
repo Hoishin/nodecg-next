@@ -1,8 +1,10 @@
 import type { FieldEncodeError } from "@nodecg/core";
 import {
 	applyPatch,
+	isDrift,
 	type Patch,
 	PatchNotApplicable,
+	RevisionConflict,
 } from "@nodecg/internal/occ";
 import { toError } from "@nodecg/internal/utils";
 import {
@@ -152,6 +154,11 @@ interface LeafValue {
 	readonly revision: number;
 }
 
+export interface RevisionedValue {
+	readonly value: JsonValue;
+	readonly revision: number;
+}
+
 export type ReplicantFrame = {
 	readonly kind: "snapshot";
 	readonly value: JsonValue;
@@ -290,11 +297,14 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			const commit = Effect.fn("DerivationEngine.commit")(function* <E>(
 				namespace: string,
 				name: string,
-				produce: (current: JsonValue) => Effect.Effect<JsonValue, E>,
+				produce: (current: RevisionedValue) => Effect.Effect<JsonValue, E>,
 			) {
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
-				const nextEncoded = yield* produce(stored.value);
+				const nextEncoded = yield* produce({
+					value: stored.value,
+					revision: stored.revision,
+				});
 				if (sameValue(stored, nextEncoded)) {
 					return { value: stored.value, revision: stored.revision };
 				}
@@ -328,9 +338,16 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			) {
 				return yield* commit(namespace, name, (current) =>
 					Effect.gen(function* () {
-						const applied = applyPatch(current, patch);
+						const applied = applyPatch(current.value, patch);
 						if (Either.isLeft(applied)) {
 							const { op, cause } = applied.left;
+							if (isDrift(cause)) {
+								return yield* new RevisionConflict({
+									value: current.value,
+									revision: current.revision,
+									reason: cause._tag,
+								});
+							}
 							return yield* new PatchNotApplicable({
 								path: op.path,
 								reason: cause._tag,

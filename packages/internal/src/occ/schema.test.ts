@@ -1,9 +1,10 @@
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
-import { ChangeOp, Patch, Pointer } from "./schema.ts";
+import { ChangeOp, Patch, PatchOp, Pointer } from "./schema.ts";
 
 const decodeOp = Schema.decodeUnknownSync(ChangeOp);
+const decodePatchOp = Schema.decodeUnknownSync(PatchOp);
 const decodePatch = Schema.decodeUnknownSync(Patch);
 const decodePointer = Schema.decodeUnknownSync(Pointer);
 
@@ -47,15 +48,30 @@ describe("ChangeOp", () => {
 	});
 });
 
+describe("PatchOp", () => {
+	test("decodes a test-hash precondition", () => {
+		expect(
+			decodePatchOp({ op: "test-hash", path: "/a", hash: "ab12" }),
+		).toEqual({ op: "test-hash", path: "/a", hash: "ab12" });
+	});
+
+	test("a test-hash is not a change op", () => {
+		expect(() =>
+			decodeOp({ op: "test-hash", path: "/a", hash: "ab12" }),
+		).toThrow();
+	});
+});
+
 describe("Patch", () => {
 	test("decodes a mixed multi-op patch and rejects an empty one", () => {
 		expect(
 			decodePatch([
+				{ op: "test-hash", path: "/a", hash: "ab12" },
 				{ op: "replace", path: "/a", value: 2 },
 				{ op: "add", path: "/b", value: 3 },
 				{ op: "remove", path: "/c" },
 			]),
-		).toHaveLength(3);
+		).toHaveLength(4);
 		expect(() => decodePatch([])).toThrow();
 	});
 });

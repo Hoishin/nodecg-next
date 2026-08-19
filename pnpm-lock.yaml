@@ -331,10 +331,16 @@ importers:
       klona:
         specifier: ^2.0.6
         version: 2.0.6
+      murmurhash3js-revisited:
+        specifier: ^3.0.0
+        version: 3.0.0
       type-fest:
         specifier: 'catalog:'
         version: 5.8.0
     devDependencies:
+      '@types/murmurhash3js-revisited':
+        specifier: ^3.0.3
+        version: 3.0.3
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.10(vite@8.1.4(@types/node@24.13.3))(vitest@4.1.10)
@@ -1013,6 +1019,9 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
+  '@types/murmurhash3js-revisited@3.0.3':
+    resolution: {integrity: sha512-QvlqvYtGBYIDeO8dFdY4djkRubcrc+yTJtBc7n8VZPlJDUS/00A+PssbvERM8f9bYRmcaSEHPZgZojeQj7kzAA==}
+
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
 
@@ -1390,6 +1399,10 @@ packages:
 
   multipasta@0.2.8:
     resolution: {integrity: sha512-ZPWuMKyv0cSO29f7hozp+k6+crZbQijV8ipMvxNxRf2SwtYGTX1ZX89Kd20VV4H9Znonx+EQn+iy1wGQsJ+b+Q==}
+
+  murmurhash3js-revisited@3.0.0:
+    resolution: {integrity: sha512-/sF3ee6zvScXMb1XFJ8gDsSnY+X8PbOyjIuBhtgis10W2Jx4ZjIhikUCIF9c4gpJxVnQIsPAFrSwTCuAjicP6g==}
+    engines: {node: '>=8.0.0'}
 
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
@@ -2079,6 +2092,8 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
+  '@types/murmurhash3js-revisited@3.0.3': {}
+
   '@types/node@24.13.3':
     dependencies:
       undici-types: 7.18.2
@@ -2372,6 +2387,8 @@ snapshots:
   multipasta@0.2.7: {}
 
   multipasta@0.2.8: {}
+
+  murmurhash3js-revisited@3.0.0: {}
 
   nanoid@3.3.15: {}
 

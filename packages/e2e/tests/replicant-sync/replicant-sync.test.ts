@@ -105,6 +105,36 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		});
 	});
 
+	test("concurrent writes to the same field conflict instead of clobbering", async () => {
+		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
+		await writer.replicant.scoreboard.set({ home: 0, away: 0 });
+		const cancel = await writer.replicant.scoreboard.subscribe(() => {});
+		onTestFinished(() => cancel());
+
+		const [first, second] = await Promise.allSettled([
+			writer.replicant.scoreboard.update((draft) => {
+				draft.home = 1;
+			}),
+			writer.replicant.scoreboard.update((draft) => {
+				draft.home = 2;
+			}),
+		]);
+
+		const rejected = [first, second].filter(
+			(outcome) => outcome.status === "rejected",
+		);
+		expect(rejected).toHaveLength(1);
+		expect(String(rejected[0]?.reason)).toMatch(
+			/conflicted with a concurrent update/,
+		);
+
+		const reader = await loadNamespace(fixtureManifest, { baseUrl: base });
+		expect(await reader.replicant.scoreboard.get()).toEqual({
+			home: first.status === "fulfilled" ? 1 : 2,
+			away: 0,
+		});
+	});
+
 	test("concurrent key adds both land", async () => {
 		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
 		await writer.replicant.tallies.set({});

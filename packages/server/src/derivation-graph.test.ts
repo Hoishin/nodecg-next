@@ -1,3 +1,4 @@
+import { computeTestHash } from "@nodecg/internal/occ";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import {
 	Cause,
@@ -133,8 +134,8 @@ describe("commit", () => {
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
 				yield* engine.initializeReplicant("ns", "a", 1);
-				const committed = yield* engine.commit("ns", "a", (current) =>
-					Effect.succeed(typeof current === "number" ? current + 1 : 0),
+				const committed = yield* engine.commit("ns", "a", ({ value }) =>
+					Effect.succeed(typeof value === "number" ? value + 1 : 0),
 				);
 				expect(committed).toEqual({ value: 2, revision: 1 });
 				expect(yield* engine.readReplicant("ns", "a")).toEqual({
@@ -167,13 +168,13 @@ describe("commit", () => {
 				const runtime = yield* Effect.runtime<never>();
 				yield* engine.initializeReplicant("ns", "a", 1);
 				yield* engine.initializeReplicant("ns", "b", 1);
-				const committed = yield* engine.commit("ns", "a", (current) =>
+				const committed = yield* engine.commit("ns", "a", ({ value }) =>
 					Effect.sync(() => {
 						Runtime.runSync(
 							runtime,
 							engine.commit("ns", "b", () => Effect.succeed(5)),
 						);
-						return typeof current === "number" ? current + 1 : 0;
+						return typeof value === "number" ? value + 1 : 0;
 					}),
 				);
 				expect(committed.value).toBe(2);
@@ -190,13 +191,13 @@ describe("commit", () => {
 				const runtime = yield* Effect.runtime<never>();
 				yield* engine.initializeReplicant("ns", "a", 1);
 				const error = yield* engine
-					.commit("ns", "a", (current) =>
+					.commit("ns", "a", ({ value }) =>
 						Effect.sync(() => {
 							Runtime.runSync(
 								runtime,
 								engine.commit("ns", "a", () => Effect.succeed(100)),
 							);
-							return typeof current === "number" ? current + 1 : 0;
+							return typeof value === "number" ? value + 1 : 0;
 						}),
 					)
 					.pipe(Effect.flip);
@@ -246,7 +247,32 @@ describe("commitPatch", () => {
 	);
 
 	test(
-		"fails PatchNotApplicable and leaves the value untouched",
+		"a malformed op fails PatchNotApplicable and leaves the value untouched",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { list: [1] });
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"a",
+						[{ op: "remove", path: "/list/notAnIndex" }],
+						noValidate,
+					)
+					.pipe(Effect.flip);
+				assert(error._tag === "PatchNotApplicable");
+				expect(error.path).toBe("/list/notAnIndex");
+				expect(error.reason).toBe("InvalidIndex");
+				expect(yield* engine.readReplicant("ns", "a")).toEqual({
+					value: { list: [1] },
+					revision: 0,
+				});
+			}),
+		),
+	);
+
+	test(
+		"a target that moved on fails RevisionConflict carrying the current value",
 		testEngine(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
@@ -259,13 +285,74 @@ describe("commitPatch", () => {
 						noValidate,
 					)
 					.pipe(Effect.flip);
-				assert(error._tag === "PatchNotApplicable");
-				expect(error.path).toBe("/missing");
+				assert(error._tag === "RevisionConflict");
+				expect(error.value).toEqual({ a: 1 });
+				expect(error.revision).toBe(0);
 				expect(error.reason).toBe("MissingKey");
+			}),
+		),
+	);
+
+	test(
+		"a move whose destination drifted out of range fails RevisionConflict",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", ["a", "b", "c"]);
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"a",
+						[
+							{ op: "test-hash", path: "/0", hash: computeTestHash("a") },
+							{ op: "move", from: "/0", path: "/4" },
+						],
+						noValidate,
+					)
+					.pipe(Effect.flip);
+				assert(error._tag === "RevisionConflict");
+				expect(error.reason).toBe("IndexOutOfBounds");
 				expect(yield* engine.readReplicant("ns", "a")).toEqual({
-					value: { a: 1 },
+					value: ["a", "b", "c"],
 					revision: 0,
 				});
+			}),
+		),
+	);
+
+	test(
+		"a stale precondition fails RevisionConflict even with no change op to apply",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1 });
+				const error = yield* engine
+					.commitPatch(
+						"ns",
+						"a",
+						[{ op: "test-hash", path: "/a", hash: computeTestHash(2) }],
+						noValidate,
+					)
+					.pipe(Effect.flip);
+				assert(error._tag === "RevisionConflict");
+				expect(error.reason).toBe("HashMismatch");
+			}),
+		),
+	);
+
+	test(
+		"a passing precondition with no change op returns the current value without committing",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1 });
+				const committed = yield* engine.commitPatch(
+					"ns",
+					"a",
+					[{ op: "test-hash", path: "/a", hash: computeTestHash(1) }],
+					noValidate,
+				);
+				expect(committed).toEqual({ value: { a: 1 }, revision: 0 });
 			}),
 		),
 	);

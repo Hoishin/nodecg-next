@@ -37,6 +37,7 @@ export const updateReplicant = (
 			Effect.mapError((error) =>
 				Match.value(error).pipe(
 					Match.tag("PatchNotApplicable", (invalid) => invalid),
+					Match.tag("RevisionConflict", (conflict) => conflict),
 					Match.tag(
 						"FieldPermissionDenied",
 						() => new HttpApiError.Forbidden(),

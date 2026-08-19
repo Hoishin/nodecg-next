@@ -1,5 +1,5 @@
-import type { Patch } from "@nodecg/internal/occ";
-import { Context, type Effect, Schema } from "effect";
+import type { Patch, RevisionConflict } from "@nodecg/internal/occ";
+import { Context, Data, type Effect, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 
 export class FieldNotFound extends Schema.TaggedError<FieldNotFound>()(
@@ -51,6 +51,18 @@ export class FieldSetError extends Schema.TaggedError<FieldSetError>()(
 	override readonly message = `Failed to set field "${this.name}" in "${this.namespace}": ${this.cause.message}`;
 }
 
+// Carries the fresh decoded value so the caller can merge or retry
+export class ReplicantWriteConflict<out Decoded> extends Data.TaggedError(
+	"ReplicantWriteConflict",
+)<{
+	readonly namespace: string;
+	readonly name: string;
+	readonly current: Decoded;
+	readonly revision: number;
+}> {
+	override readonly message = `Write to "${this.name}" in "${this.namespace}" conflicted with a concurrent update`;
+}
+
 export class TopicPublishError extends Schema.TaggedError<TopicPublishError>()(
 	"TopicPublishError",
 	{
@@ -94,7 +106,7 @@ export interface FieldTransport {
 		patch: Patch,
 	) => Effect.Effect<
 		void,
-		FieldNotFound | FieldPermissionDenied | FieldSetError
+		FieldNotFound | FieldPermissionDenied | FieldSetError | RevisionConflict
 	>;
 	publishTopic: (
 		namespace: string,

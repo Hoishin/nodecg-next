@@ -9,7 +9,11 @@ import {
 	ADMIN_ROLE,
 	RoleName,
 } from "@nodecg/internal";
-import { PatchNotApplicable } from "@nodecg/internal/occ";
+import {
+	computeTestHash,
+	PatchNotApplicable,
+	RevisionConflict,
+} from "@nodecg/internal/occ";
 import {
 	ConfigProvider,
 	Effect,
@@ -1306,6 +1310,37 @@ describe("update", () => {
 			_tag: "PatchNotApplicable",
 			path: "/a",
 			reason: "MissingKey",
+		});
+	});
+
+	test("409 with the current value when the field reports RevisionConflict", async () => {
+		const handler = webHandler([
+			registeredNamespace("root", {
+				count: stubField({
+					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+					commitPatch: () =>
+						Effect.fail(
+							new RevisionConflict({
+								value: 9,
+								revision: 3,
+								reason: "HashMismatch",
+							}),
+						),
+				}),
+			}),
+		]);
+		const res = await handler(
+			putPatch([
+				{ op: "test-hash", path: "", hash: computeTestHash(0) },
+				{ op: "replace", path: "", value: 7 },
+			]),
+		);
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({
+			_tag: "RevisionConflict",
+			value: 9,
+			revision: 3,
+			reason: "HashMismatch",
 		});
 	});
 

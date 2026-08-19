@@ -5,7 +5,7 @@ import type {
 	RpcFieldManifest,
 } from "@nodecg/core";
 import type { Updater } from "@nodecg/internal";
-import { diffPatch } from "@nodecg/internal/occ";
+import { diffSignedPatch } from "@nodecg/internal/occ";
 import {
 	mapEffectValues,
 	mapValues,
@@ -39,6 +39,7 @@ import { isFailure, isReady, matchLoadable } from "./loadable.ts";
 import {
 	FieldSetError,
 	FieldTransportService,
+	ReplicantWriteConflict,
 	type FieldTransport,
 } from "./services/field-transport/field-transport.ts";
 import { httpFieldTransport } from "./services/field-transport/http-field-transport.ts";
@@ -120,9 +121,14 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		const encoded = yield* manifest.encode(value);
-		yield* transport.updateReplicant(namespace, name, [
-			{ op: "replace", path: "", value: encoded },
-		]);
+		yield* transport
+			.updateReplicant(namespace, name, [
+				{ op: "replace", path: "", value: encoded },
+			])
+			.pipe(
+				// A whole-document replace carries no precondition, so it cannot conflict
+				Effect.catchTag("RevisionConflict", Effect.die),
+			);
 		cell.reflect(value);
 	});
 
@@ -141,11 +147,29 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				new FieldSetError({ namespace, name, cause: toError(error) }),
 		});
 		const encoded = yield* manifest.encode(next);
-		const patch = yield* diffPatch(base, encoded).pipe(Effect.orDie);
+		const patch = yield* diffSignedPatch(base, encoded).pipe(
+			Effect.orDieWith(
+				(failure) =>
+					new Error(
+						`Diffing "${namespace}/${name}" produced an unusable patch: ${failure._tag}`,
+					),
+			),
+		);
 		if (!Array.isNonEmptyReadonlyArray(patch)) {
 			return;
 		}
-		yield* transport.updateReplicant(namespace, name, patch);
+		yield* transport.updateReplicant(namespace, name, patch).pipe(
+			Effect.catchTag("RevisionConflict", (conflict) =>
+				Effect.gen(function* () {
+					return yield* new ReplicantWriteConflict<Decoded>({
+						namespace,
+						name,
+						current: yield* manifest.decode(conflict.value),
+						revision: conflict.revision,
+					});
+				}),
+			),
+		);
 		cell.reflect(yield* manifest.decode(encoded));
 	});
 

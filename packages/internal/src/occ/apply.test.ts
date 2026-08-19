@@ -2,7 +2,8 @@ import { Either } from "effect";
 import type { JsonValue } from "type-fest";
 import { assert, describe, expect, test } from "vitest";
 
-import { ApplyFailure, applyPatch } from "./apply.ts";
+import { ApplyFailure, applyPatch, isDrift } from "./apply.ts";
+import { computeTestHash } from "./hash.ts";
 import type { Patch } from "./schema.ts";
 
 const applied = (value: JsonValue, patch: Patch) => {
@@ -218,6 +219,79 @@ describe("applyPatch", () => {
 					{ op: "move", from: "/a", path: "/__proto__" },
 				]).cause,
 			).toEqual(ApplyFailure.ForbiddenKey({ key: "__proto__" }));
+		});
+	});
+
+	describe("test-hash", () => {
+		test("a matching hash passes and leaves the document unchanged", () => {
+			expect(
+				applied({ a: 1, b: 2 }, [
+					{ op: "test-hash", path: "/a", hash: computeTestHash(1) },
+				]),
+			).toEqual({ a: 1, b: 2 });
+		});
+
+		test("a stale hash fails with both hashes", () => {
+			expect(
+				failure({ a: 2 }, [
+					{ op: "test-hash", path: "/a", hash: computeTestHash(1) },
+				]).cause,
+			).toEqual(
+				ApplyFailure.HashMismatch({
+					expected: computeTestHash(1),
+					actual: computeTestHash(2),
+				}),
+			);
+		});
+
+		test("a vanished target fails on navigation, not on the hash", () => {
+			expect(
+				failure({ a: 1 }, [
+					{ op: "test-hash", path: "/gone", hash: computeTestHash(1) },
+				]).cause,
+			).toEqual(ApplyFailure.MissingKey({ key: "gone" }));
+		});
+
+		test("a stale precondition blocks the op it guards", () => {
+			const input = { a: 1 };
+			expect(
+				failure(input, [
+					{ op: "test-hash", path: "/a", hash: computeTestHash(99) },
+					{ op: "replace", path: "/a", value: 5 },
+				]).op,
+			).toEqual({ op: "test-hash", path: "/a", hash: computeTestHash(99) });
+			expect(input).toEqual({ a: 1 });
+		});
+
+		test("a precondition on one path does not guard a sibling", () => {
+			expect(
+				applied({ a: 1, b: 2 }, [
+					{ op: "test-hash", path: "/a", hash: computeTestHash(1) },
+					{ op: "replace", path: "/b", value: 9 },
+				]),
+			).toEqual({ a: 1, b: 9 });
+		});
+	});
+
+	describe("isDrift", () => {
+		test("the document moving on is drift", () => {
+			expect(
+				isDrift(ApplyFailure.HashMismatch({ expected: "a", actual: "b" })),
+			).toBe(true);
+			expect(isDrift(ApplyFailure.MissingKey({ key: "a" }))).toBe(true);
+			expect(isDrift(ApplyFailure.IndexOutOfBounds({ index: 3 }))).toBe(true);
+			expect(isDrift(ApplyFailure.NonContainer({ token: "a" }))).toBe(true);
+		});
+
+		test("a patch that fits no document is not drift", () => {
+			expect(isDrift(ApplyFailure.InvalidIndex({ token: "x" }))).toBe(false);
+			expect(isDrift(ApplyFailure.ForbiddenKey({ key: "__proto__" }))).toBe(
+				false,
+			);
+			expect(isDrift(ApplyFailure.ImmovableRoot())).toBe(false);
+			expect(
+				isDrift(ApplyFailure.MoveIntoSelf({ from: "/a", path: "/a/b" })),
+			).toBe(false);
 		});
 	});
 
