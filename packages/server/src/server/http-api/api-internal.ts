@@ -79,7 +79,7 @@ const callbackUrl = Effect.fn("callbackUrl")(function* (
 		provider,
 	);
 	return url.href;
-});
+}, Effect.provide(Path.layer));
 
 const loginPath = Effect.fn("loginUrl")(function* (
 	basePath: string,
@@ -87,7 +87,7 @@ const loginPath = Effect.fn("loginUrl")(function* (
 ) {
 	const path = yield* Path.Path;
 	return path.join(basePath, "api/internal/authentication/login", provider);
-});
+}, Effect.provide(Path.layer));
 
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
