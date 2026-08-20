@@ -402,7 +402,7 @@ describe("update", () => {
 	);
 
 	test(
-		"a rejected precondition surfaces as ReplicantWriteConflict carrying the decoded current value",
+		"{ retry: false } fails fast as ReplicantWriteConflict carrying the decoded current value",
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
@@ -429,9 +429,12 @@ describe("update", () => {
 				);
 
 				const error = yield* loaded.replicant.box
-					.update((draft) => {
-						draft.n = 5;
-					})
+					.update(
+						(draft) => {
+							draft.n = 5;
+						},
+						{ retry: false },
+					)
 					.pipe(
 						Effect.provideService(FieldTransportService, transportStub),
 						Effect.flip,
@@ -440,6 +443,44 @@ describe("update", () => {
 				expect(error.current).toEqual({ n: 7 });
 				expect(error.revision).toBe(4);
 				expect(transportStub.updateReplicant).toHaveBeenCalledTimes(1);
+			}),
+		),
+	);
+
+	test(
+		"{ retry: n } resends n times before rejecting",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
+				transportStub.updateReplicant.mockReturnValue(
+					new RevisionConflict({
+						value: 20,
+						revision: 5,
+						reason: "HashMismatch",
+					}),
+				);
+				const manifest = defineNamespace("root", {
+					replicant: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(
+						MessageChannelService,
+						createMessageChannelStub(),
+					),
+				);
+
+				const error = yield* loaded.replicant.count
+					.update((v) => v + 1, { retry: 2 })
+					.pipe(
+						Effect.provideService(FieldTransportService, transportStub),
+						Effect.flip,
+					);
+
+				assert(error._tag === "ReplicantWriteConflict");
+				expect(transportStub.updateReplicant).toHaveBeenCalledTimes(3);
 			}),
 		),
 	);

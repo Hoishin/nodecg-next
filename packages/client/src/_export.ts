@@ -26,4 +26,5 @@ export type {
 	Identity,
 	LoginProvider,
 	MePayload,
+	Updater,
 } from "@nodecg/internal";

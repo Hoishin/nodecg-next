@@ -24,10 +24,11 @@ import {
 	Layer,
 	Mailbox,
 	ManagedRuntime,
+	Ref,
 	Scope,
 	Stream,
 } from "effect";
-import type { Promisable } from "type-fest";
+import type { JsonValue, Promisable } from "type-fest";
 
 import { type FieldSource, fieldSource } from "./derive.ts";
 import {
@@ -53,6 +54,10 @@ type RpcShape = Record<
 	string,
 	{ readonly request: unknown; readonly response: unknown }
 >;
+
+export type RetryPolicy = boolean | number;
+
+const defaultResends = 9;
 
 const subscribeCell = Effect.fn(function* <Decoded>(cell: FieldCell<Decoded>) {
 	const mailbox = yield* Mailbox.make<Decoded>();
@@ -132,8 +137,10 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		cell.reflect(value);
 	});
 
-	const update = Effect.fn("update")(function* (updater: Updater<Decoded>) {
-		const base = yield* manifest.encode(yield* get());
+	const send = Effect.fn(function* (
+		updater: Updater<Decoded>,
+		base: JsonValue,
+	) {
 		const current = yield* manifest.mutableDecode(base);
 		const next = yield* Effect.try({
 			try: () => {
@@ -158,7 +165,27 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		if (!Array.isNonEmptyReadonlyArray(patch)) {
 			return;
 		}
-		yield* transport.updateReplicant(namespace, name, patch).pipe(
+		yield* transport.updateReplicant(namespace, name, patch);
+		cell.reflect(yield* manifest.decode(encoded));
+	});
+
+	const update = Effect.fn("update")(function* (
+		updater: Updater<Decoded>,
+		options?: { readonly retry?: RetryPolicy },
+	) {
+		const retry = options?.retry ?? true;
+		const resends =
+			typeof retry === "boolean" ? (retry ? defaultResends : 0) : retry;
+		const base = yield* Ref.make(yield* manifest.encode(yield* get()));
+		yield* Ref.get(base).pipe(
+			Effect.flatMap((current) => send(updater, current)),
+			Effect.tapErrorTag("RevisionConflict", (conflict) =>
+				Ref.set(base, conflict.value),
+			),
+			Effect.retry({
+				while: (error) => error._tag === "RevisionConflict",
+				times: resends,
+			}),
 			Effect.catchTag("RevisionConflict", (conflict) =>
 				Effect.gen(function* () {
 					return yield* new ReplicantWriteConflict<Decoded>({
@@ -170,7 +197,6 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				}),
 			),
 		);
-		cell.reflect(yield* manifest.decode(encoded));
 	});
 
 	const subscribe = () => subscribeCell(cell);
@@ -503,7 +529,7 @@ export async function loadNamespace<
 	>((field, name) => ({
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
-		update: (fn) => runtime.runPromise(field.update(fn)),
+		update: (fn, options) => runtime.runPromise(field.update(fn, options)),
 		subscribe: subscribeEffectToPromise(field.subscribe, name),
 		[fieldSource]: field[fieldSource],
 	}))(effectFields);

@@ -105,19 +105,43 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		});
 	});
 
-	test("concurrent writes to the same field conflict instead of clobbering", async () => {
+	test("concurrent same-field increments converge through retry", async () => {
+		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
+		await writer.replicant.count.set(0);
+		// Subscribing holds the field hot, so all three updaters read the same
+		// base and the losers genuinely conflict before re-running.
+		const cancel = await writer.replicant.count.subscribe(() => {});
+		onTestFinished(() => cancel());
+
+		await Promise.all([
+			writer.replicant.count.update((c) => c + 1),
+			writer.replicant.count.update((c) => c + 1),
+			writer.replicant.count.update((c) => c + 1),
+		]);
+
+		const reader = await loadNamespace(fixtureManifest, { baseUrl: base });
+		expect(await reader.replicant.count.get()).toBe(3);
+	});
+
+	test("{ retry: false } surfaces a same-field conflict instead of resending", async () => {
 		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
 		await writer.replicant.scoreboard.set({ home: 0, away: 0 });
 		const cancel = await writer.replicant.scoreboard.subscribe(() => {});
 		onTestFinished(() => cancel());
 
 		const [first, second] = await Promise.allSettled([
-			writer.replicant.scoreboard.update((draft) => {
-				draft.home = 1;
-			}),
-			writer.replicant.scoreboard.update((draft) => {
-				draft.home = 2;
-			}),
+			writer.replicant.scoreboard.update(
+				(draft) => {
+					draft.home = 1;
+				},
+				{ retry: false },
+			),
+			writer.replicant.scoreboard.update(
+				(draft) => {
+					draft.home = 2;
+				},
+				{ retry: false },
+			),
 		]);
 
 		const rejected = [first, second].filter(
