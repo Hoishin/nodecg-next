@@ -1,5 +1,5 @@
 import { Socket } from "@effect/platform";
-import { PublishMessage, SubscribeMessage } from "@nodecg/internal";
+import { ReplicantSnapshotMessage, SubscribeMessage } from "@nodecg/internal";
 import { testEffect } from "@nodecg/internal/test-utils";
 import { Effect, Layer, Mailbox, Option, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
@@ -84,9 +84,10 @@ describe("receive", () => {
 					const stream = yield* channel.receive();
 					yield* deliver(
 						JSON.stringify(
-							PublishMessage.make({
+							ReplicantSnapshotMessage.make({
 								field: { type: "replicant", namespace: "root", name: "count" },
 								value: 42,
+								revision: 1,
 							}),
 						),
 					);
@@ -94,9 +95,10 @@ describe("receive", () => {
 					const first = yield* Stream.runHead(stream);
 					assert(Option.isSome(first));
 					expect(first.value).toEqual({
-						_tag: "publish",
+						_tag: "snapshot",
 						field: { type: "replicant", namespace: "root", name: "count" },
 						value: 42,
+						revision: 1,
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
@@ -164,9 +166,10 @@ describe("receive", () => {
 					yield* deliver("not valid json");
 					yield* deliver(
 						JSON.stringify(
-							PublishMessage.make({
+							ReplicantSnapshotMessage.make({
 								field: { type: "replicant", namespace: "root", name: "count" },
 								value: 7,
+								revision: 1,
 							}),
 						),
 					);
@@ -174,7 +177,7 @@ describe("receive", () => {
 					const first = yield* Stream.runHead(stream);
 					assert(Option.isSome(first));
 					expect(first.value).toMatchObject({
-						_tag: "publish",
+						_tag: "snapshot",
 						value: 7,
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
@@ -194,9 +197,10 @@ describe("receive", () => {
 					yield* deliver(new Uint8Array([1, 2, 3]));
 					yield* deliver(
 						JSON.stringify(
-							PublishMessage.make({
+							ReplicantSnapshotMessage.make({
 								field: { type: "replicant", namespace: "root", name: "ok" },
 								value: 1,
+								revision: 1,
 							}),
 						),
 					);

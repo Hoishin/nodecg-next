@@ -1,7 +1,8 @@
 import { FetchHttpClient } from "@effect/platform";
 import { defineNamespace } from "@nodecg/core";
 import {
-	PublishMessage,
+	FieldValueMessage,
+	ReplicantSnapshotMessage,
 	type ServerMessage,
 	SubscribeRejectedMessage,
 } from "@nodecg/internal";
@@ -495,10 +496,11 @@ describe("subscribe", () => {
 		_tag: "unsubscribe",
 		field: { type: "replicant", namespace: "root", name: "count" },
 	};
-	const publishFrame = (value: number): ServerMessage =>
-		PublishMessage.make({
+	const publishFrame = (value: number, revision = 1): ServerMessage =>
+		ReplicantSnapshotMessage.make({
 			field: { type: "replicant", namespace: "root", name: "count" },
 			value,
+			revision,
 		});
 
 	test(
@@ -572,9 +574,10 @@ describe("subscribe", () => {
 				);
 
 				yield* mailbox.offer(
-					PublishMessage.make({
+					ReplicantSnapshotMessage.make({
 						field: { type: "replicant", namespace: "root", name: "other" },
 						value: 99,
+						revision: 1,
 					}),
 				);
 				yield* mailbox.offer(publishFrame(7));
@@ -1016,7 +1019,7 @@ describe("computed", () => {
 				);
 
 				yield* pubsub.publish(
-					PublishMessage.make({
+					FieldValueMessage.make({
 						field: { type: "computed", namespace: "root", name: "firstGameId" },
 						value: "z",
 					}),
@@ -1043,7 +1046,7 @@ describe("topic", () => {
 		field: { type: "topic", namespace: "root", name: "chat" },
 	};
 	const publishFrame = (value: number): ServerMessage =>
-		PublishMessage.make({
+		FieldValueMessage.make({
 			field: { type: "topic", namespace: "root", name: "chat" },
 			value,
 		});
@@ -1124,7 +1127,7 @@ describe("topic", () => {
 
 				yield* PubSub.publish(
 					pubsub,
-					PublishMessage.make({
+					FieldValueMessage.make({
 						field: { type: "topic", namespace: "root", name: "other" },
 						value: 99,
 					}),
@@ -1422,10 +1425,11 @@ describe("derivation over loaded fields", () => {
 		return { channel, pubsub, send };
 	});
 
-	const publish = (name: string, value: number): ServerMessage =>
-		PublishMessage.make({
+	const publish = (name: string, value: number, revision = 1): ServerMessage =>
+		ReplicantSnapshotMessage.make({
 			field: { type: "replicant", namespace: "match", name },
 			value: String(value),
+			revision,
 		});
 
 	test(
@@ -1476,7 +1480,7 @@ describe("derivation over loaded fields", () => {
 					}),
 				);
 
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 3));
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 3, 2));
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(seen.at(-1)).toBe("left");

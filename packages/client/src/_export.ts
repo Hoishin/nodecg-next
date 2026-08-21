@@ -21,10 +21,16 @@ export {
 	type RpcField,
 } from "./load-namespace.ts";
 export { ReplicantWriteConflict } from "./services/field-transport/field-transport.ts";
-export type {
-	HumanIdentity,
-	Identity,
-	LoginProvider,
-	MePayload,
-	Updater,
+export {
+	ClientMessage,
+	PingMessage,
+	ServerMessage,
+	SubscribeMessage,
+	UnsubscribeMessage,
+	type FieldIdentifier,
+	type HumanIdentity,
+	type Identity,
+	type LoginProvider,
+	type MePayload,
+	type Updater,
 } from "@nodecg/internal";

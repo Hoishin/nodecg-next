@@ -30,6 +30,8 @@ export type FieldFailure =
 	| FieldPermissionDenied
 	| FieldUnavailable;
 
+const fieldKey = (field: FieldIdentifier) => Data.struct(field);
+
 /**
  * Field read/write container on top of signal
  */
@@ -57,11 +59,6 @@ export interface FieldCells {
 	) => FieldCell<Decoded>;
 }
 
-// Data.struct gives the key structural equality (Hash/Equal), so distinct
-// fields can't collide the way a delimiter-joined string could
-const fieldKey = (field: FieldIdentifier) => Data.struct(field);
-type FieldKey = ReturnType<typeof fieldKey>;
-
 // Forks two fibers: sender (client -> server) and pump (server -> client), both interrupted when the scope closes.
 export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 	"FieldCells",
@@ -77,7 +74,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 					message: string | undefined,
 				) => Effect.Effect<void>;
 			}
-			const handlers = MutableHashMap.empty<FieldKey, CellHandlers>();
+			const handlers = MutableHashMap.empty<FieldIdentifier, CellHandlers>();
 
 			const cellFor = <Decoded>(
 				type: FieldIdentifier["type"],
@@ -183,7 +180,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 			yield* Effect.forkScoped(
 				Stream.runForEach(incoming, (message) =>
 					Match.value(message).pipe(
-						Match.tag("publish", (published) =>
+						Match.tag("snapshot", "value", (published) =>
 							Effect.gen(function* () {
 								const handler = Option.getOrUndefined(
 									MutableHashMap.get(handlers, fieldKey(published.field)),

@@ -38,14 +38,18 @@ export {
 export { baseUrlCookieName, baseUrlGlobalName } from "./base-url.ts";
 export {
 	ClientMessage,
+	FieldValueMessage,
 	PingMessage,
 	PublishMessage,
+	ReplicantSnapshotMessage,
 	ServerMessage,
 	SubscribeMessage,
 	SubscribeRejectedMessage,
 	UnsubscribeMessage,
+	type ComputedFieldIdentifier,
 	type FieldIdentifier,
-	fieldIdentifierEquivalence,
+	type ReplicantFieldIdentifier,
+	type TopicFieldIdentifier,
 } from "./messages.ts";
 export {
 	DeclarablePrincipalNameSchema,

@@ -1,6 +1,6 @@
 import { defineNamespace } from "@nodecg/core";
 import {
-	PublishMessage,
+	ReplicantSnapshotMessage,
 	type ServerMessage,
 	SubscribeRejectedMessage,
 } from "@nodecg/internal";
@@ -44,10 +44,11 @@ const makeFakeChannel = Effect.gen(function* () {
 	return { channel, pubsub, sent };
 });
 
-const publish = (name: string, value: number): ServerMessage =>
-	PublishMessage.make({
+const publish = (name: string, value: number, revision = 1): ServerMessage =>
+	ReplicantSnapshotMessage.make({
 		field: { type: "replicant", namespace: "match", name },
 		value: String(value),
+		revision,
 	});
 
 const waitFor = (assertion: () => void) =>
@@ -337,12 +338,13 @@ describe("FieldCellsService", () => {
 
 				yield* PubSub.publish(
 					pubsub,
-					PublishMessage.make({
+					ReplicantSnapshotMessage.make({
 						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
 						value: "not a number",
+						revision: 2,
 					}),
 				);
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 7));
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 7, 3));
 				yield* waitFor(() => {
 					expect(cell.peek()).toEqual(Ready({ value: 7 }));
 				});

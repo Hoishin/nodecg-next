@@ -5,15 +5,15 @@ import { type BuiltNamespace } from "./build-fields.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 
 // Exclude Decoded types
-type ReplicantFieldInternal = Pick<
+export type ReplicantFieldInternal = Pick<
 	BuiltNamespace["replicant"][string][typeof fieldInternal],
 	"getRevisioned" | "commitPatch" | "subscribeRevisioned" | "permission"
 >;
-type ComputedFieldInternal = Pick<
+export type ComputedFieldInternal = Pick<
 	BuiltNamespace["computed"][string][typeof fieldInternal],
 	"getEncoded" | "getEncodedNoAuth" | "subscribeEncoded" | "permission"
 >;
-type TopicFieldInternal = Pick<
+export type TopicFieldInternal = Pick<
 	BuiltNamespace["topic"][string][typeof fieldInternal],
 	"publishEncoded" | "subscribeEncoded" | "permission"
 >;

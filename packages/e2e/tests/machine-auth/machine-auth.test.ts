@@ -1,5 +1,6 @@
-import { Schema } from "effect";
-import { describe, expect, test } from "vitest";
+import { type ClientMessage, ServerMessage } from "@nodecg/client";
+import { Option, Schema } from "effect";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { makeAuthHelpers } from "../../src/client/auth.ts";
 import { suiteBase } from "../../src/client/suite-base.ts";
@@ -104,6 +105,57 @@ describe("public /api/v0 bearer authentication", () => {
 		expect((await revokeMachine(id)).status).toBe(204);
 
 		expect((await readV0("count", token)).status).toBe(401);
+	});
+});
+
+describe("duplicate subscribe over the raw wire", () => {
+	const decodeServerMessage = Schema.decodeOption(
+		Schema.parseJson(ServerMessage),
+	);
+
+	test("restarts the subscription: a fresh seed arrives and later writes deliver once", async () => {
+		const { token } = await provisionMachine("ws-bot");
+		const wsUrl = new URL(`${base}/ws/internal`);
+		wsUrl.protocol = "ws:";
+		const socket = new WebSocket(wsUrl);
+		onTestFinished(() => socket.close());
+		await new Promise<void>((resolve, reject) => {
+			socket.onopen = () => resolve();
+			socket.onerror = () => reject(new Error("websocket failed to open"));
+		});
+		const frames: unknown[] = [];
+		socket.onmessage = (event) => {
+			if (typeof event.data !== "string") {
+				return;
+			}
+			const message = decodeServerMessage(event.data);
+			if (
+				Option.isSome(message) &&
+				message.value._tag === "snapshot" &&
+				message.value.field.name === "tallies"
+			) {
+				frames.push(message.value.value);
+			}
+		};
+		const subscribeFrame: ClientMessage = {
+			_tag: "subscribe",
+			field: { type: "replicant", namespace: "e2e", name: "tallies" },
+		};
+		socket.send(JSON.stringify(subscribeFrame));
+		await vi.waitFor(() => expect(frames).toHaveLength(1));
+		socket.send(JSON.stringify(subscribeFrame));
+		await vi.waitFor(() => expect(frames).toHaveLength(2));
+		const first = await writeV0("tallies", token, [
+			{ op: "replace", path: "", value: { ws: 41 } },
+		]);
+		expect(first.status).toBe(204);
+		await vi.waitFor(() => expect(frames).toContainEqual({ ws: 41 }));
+		const second = await writeV0("tallies", token, [
+			{ op: "replace", path: "", value: { ws: 42 } },
+		]);
+		expect(second.status).toBe(204);
+		await vi.waitFor(() => expect(frames).toContainEqual({ ws: 42 }));
+		expect(frames).toEqual([{}, {}, { ws: 41 }, { ws: 42 }]);
 	});
 });
 
