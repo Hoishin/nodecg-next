@@ -12,7 +12,8 @@ const encoder = new TextEncoder();
 
 export const stableStringify = (value: JsonValue) => stringify(value);
 
-const jsonToBytes = (value: JsonValue) => encoder.encode(stableStringify(value));
+const jsonToBytes = (value: JsonValue) =>
+	encoder.encode(stableStringify(value));
 
 export const computeTestHash = (value: JsonValue) =>
 	murmur.x64.hash128(jsonToBytes(value));
