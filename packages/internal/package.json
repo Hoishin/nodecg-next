@@ -15,6 +15,7 @@
 	},
 	"dependencies": {
 		"@effect/platform": "catalog:",
+		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"fast-json-stable-stringify": "^2.1.0",
 		"jsondiffpatch": "^0.7.6",

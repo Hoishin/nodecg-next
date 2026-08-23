@@ -1,8 +1,9 @@
 import { Effect, HKT, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
-type Subscribe<A> = (
+type Subscribe<A, E> = (
 	callback: (value: A) => Promisable<void>,
+	onError?: (error: E) => void,
 ) => Promise<() => Promise<void>>;
 
 export interface EffectToPromiseLambda extends HKT.TypeLambda {
@@ -27,21 +28,21 @@ export interface EffectToSyncLambda extends HKT.TypeLambda {
 
 export interface StreamToSubscribeLambda extends HKT.TypeLambda {
 	type: this["Target"] extends () => Effect.Effect<
-		Stream.Stream<infer A, any, any>,
+		Stream.Stream<infer A, infer E, any>,
 		any,
 		any
 	>
-		? Subscribe<A>
-		: this["Target"] extends () => Stream.Stream<infer A, any, any>
-			? Subscribe<A>
+		? Subscribe<A, E>
+		: this["Target"] extends () => Stream.Stream<infer A, infer E, any>
+			? Subscribe<A, E>
 			: this["Target"] extends Effect.Effect<
-						Stream.Stream<infer A, any, any>,
+						Stream.Stream<infer A, infer E, any>,
 						any,
 						any
 				  >
-				? Subscribe<A>
-				: this["Target"] extends Stream.Stream<infer A, any, any>
-					? Subscribe<A>
+				? Subscribe<A, E>
+				: this["Target"] extends Stream.Stream<infer A, infer E, any>
+					? Subscribe<A, E>
 					: never;
 }
 

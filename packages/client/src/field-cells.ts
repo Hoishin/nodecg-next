@@ -1,4 +1,4 @@
-import type { FieldDecodeError, FieldManifest } from "@nodecg/core";
+import type { FieldManifest } from "@nodecg/core";
 import {
 	type ClientMessage,
 	type FieldIdentifier,
@@ -6,6 +6,7 @@ import {
 	SubscribeMessage,
 	UnsubscribeMessage,
 } from "@nodecg/internal";
+import { setSignal, type SetSignalError } from "@nodecg/internal/utils";
 import { type Signal, signal } from "@preact/signals-core";
 import {
 	Data,
@@ -36,10 +37,8 @@ import {
 } from "./services/field-transport/field-transport.ts";
 import { MessageChannelService } from "./services/message-channel/message-channel.ts";
 
-export type FieldFailure =
-	| FieldNotFound
-	| FieldPermissionDenied
-	| FieldUnavailable;
+export type TerminalFieldFailure = FieldNotFound | FieldPermissionDenied;
+export type FieldFailure = TerminalFieldFailure | FieldUnavailable;
 
 const fieldKey = (field: FieldIdentifier) => Data.struct(field);
 
@@ -69,7 +68,9 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 			const outbound = yield* Mailbox.make<ClientMessage>();
 
 			interface CellHandlers {
-				readonly applyFrame: (frame: PublishMessage) => Effect.Effect<void>;
+				readonly applyFrame: (
+					frame: PublishMessage,
+				) => Effect.Effect<void, SetSignalError>;
 				readonly reject: (
 					reason: "forbidden" | "not-found" | "unavailable",
 					message: string | undefined,
@@ -134,13 +135,6 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				return { cell, onFrame };
 			};
 
-			const logDecodeFailure =
-				(field: FieldIdentifier) => (error: FieldDecodeError) =>
-					Effect.logError(
-						`Failed to decode published value for "${field.namespace}/${field.name}":`,
-						error,
-					);
-
 			const makeReplicantCell = <Decoded>(
 				namespace: string,
 				name: string,
@@ -153,18 +147,30 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 					Match.value(frame).pipe(
 						Match.tag("snapshot", (snapshot) =>
 							manifest.decode(snapshot.value).pipe(
-								Effect.map((decoded) => {
-									if (!isCold(cell.peek())) {
-										cell.value = Loadable.Ready({
+								Effect.flatMap((decoded) =>
+									setSignal(
+										cell,
+										Loadable.Ready({
 											value: ReadyLoadableValue.Replicant({
 												decoded,
 												encoded: snapshot.value,
 												revision: snapshot.revision,
 											}),
-										});
-									}
-								}),
-								Effect.catchTag("FieldDecodeError", logDecodeFailure(field)),
+										}),
+									),
+								),
+								Effect.catchTag("FieldDecodeError", (error) =>
+									setSignal(
+										cell,
+										Loadable.Failure({
+											error: new FieldUnavailable({
+												namespace,
+												name,
+												detail: `published value did not decode: ${error.message}`,
+											}),
+										}),
+									),
+								),
 							),
 						),
 						Match.tag("value", () => Effect.void),
@@ -187,14 +193,26 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 					Match.value(frame).pipe(
 						Match.tag("value", (published) =>
 							manifest.decode(published.value).pipe(
-								Effect.map((decoded) => {
-									if (!isCold(cell.peek())) {
-										cell.value = Loadable.Ready({
+								Effect.flatMap((decoded) =>
+									setSignal(
+										cell,
+										Loadable.Ready({
 											value: ReadyLoadableValue.Computed({ decoded }),
-										});
-									}
-								}),
-								Effect.catchTag("FieldDecodeError", logDecodeFailure(field)),
+										}),
+									),
+								),
+								Effect.catchTag("FieldDecodeError", (error) =>
+									setSignal(
+										cell,
+										Loadable.Failure({
+											error: new FieldUnavailable({
+												namespace,
+												name,
+												detail: `published value did not decode: ${error.message}`,
+											}),
+										}),
+									),
+								),
 							),
 						),
 						Match.tag("snapshot", () => Effect.void),
@@ -217,14 +235,26 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 					Match.value(frame).pipe(
 						Match.tag("value", (published) =>
 							manifest.decode(published.value).pipe(
-								Effect.map((decoded) => {
-									if (!isCold(cell.peek())) {
-										cell.value = Loadable.Ready({
+								Effect.flatMap((decoded) =>
+									setSignal(
+										cell,
+										Loadable.Ready({
 											value: ReadyLoadableValue.Topic({ decoded }),
-										});
-									}
-								}),
-								Effect.catchTag("FieldDecodeError", logDecodeFailure(field)),
+										}),
+									),
+								),
+								Effect.catchTag("FieldDecodeError", (error) =>
+									setSignal(
+										cell,
+										Loadable.Failure({
+											error: new FieldUnavailable({
+												namespace,
+												name,
+												detail: `published value did not decode: ${error.message}`,
+											}),
+										}),
+									),
+								),
 							),
 						),
 						Match.tag("snapshot", () => Effect.void),
@@ -265,7 +295,14 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 									MutableHashMap.get(handlers, fieldKey(published.field)),
 								);
 								if (handler) {
-									yield* handler.applyFrame(published);
+									yield* handler.applyFrame(published).pipe(
+										Effect.catchTag("SetSignalError", (error) =>
+											Effect.logError(
+												`A watcher of "${published.field.namespace}/${published.field.name}" threw:`,
+												error,
+											),
+										),
+									);
 								}
 							}),
 						),

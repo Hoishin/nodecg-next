@@ -314,7 +314,7 @@ describe("FieldCellsService", () => {
 	);
 
 	test(
-		"logs and drops a publish that fails to decode, keeping the cell state",
+		"fails the cell with FieldUnavailable when a publish does not decode, and goes Ready again on the next publish that does",
 		testEffect(
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
@@ -346,6 +346,18 @@ describe("FieldCellsService", () => {
 						revision: 2,
 					}),
 				);
+				yield* waitFor(() => {
+					expect(cell.peek()._tag).toBe("Failure");
+				});
+				const failed = cell.peek();
+				assert(Loadable.$is("Failure")(failed));
+				expect(failed.error).toBeInstanceOf(FieldUnavailable);
+				expect(failed.error).toMatchObject({
+					namespace: "match",
+					name: "scoreLeft",
+					detail: expect.stringContaining("published value did not decode"),
+				});
+
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 7, 3));
 				yield* waitFor(() => {
 					expect(cell.peek()).toEqual(

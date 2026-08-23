@@ -20,7 +20,13 @@ export {
 	type TopicField,
 	type RpcField,
 } from "./load-namespace.ts";
-export { ReplicantWriteConflict } from "./services/field-transport/field-transport.ts";
+export { type FieldFailure, type TerminalFieldFailure } from "./field-cells.ts";
+export {
+	FieldNotFound,
+	FieldPermissionDenied,
+	FieldUnavailable,
+	ReplicantWriteConflict,
+} from "./services/field-transport/field-transport.ts";
 export {
 	ClientMessage,
 	PingMessage,

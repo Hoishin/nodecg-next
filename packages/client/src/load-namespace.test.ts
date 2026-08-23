@@ -878,6 +878,110 @@ describe("subscribe", () => {
 	);
 
 	test(
+		"ends the stream with the error when the subscribe is rejected after the first value",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const manifest = defineNamespace("root", {
+					replicant: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const received: number[] = [];
+				const consumer = yield* loaded.replicant.count.subscribe().pipe(
+					Effect.flatMap(
+						Stream.runForEach((value) =>
+							Effect.sync(() => {
+								received.push(value);
+							}),
+						),
+					),
+					Effect.flip,
+					Effect.forkScoped,
+				);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
+				);
+				yield* mailbox.offer(publishFrame(1));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([1])),
+				);
+
+				yield* mailbox.offer(rejectedFrame("forbidden"));
+				const error = yield* Fiber.join(consumer);
+				expect(error).toEqual(
+					new FieldPermissionDenied({ namespace: "root", name: "count" }),
+				);
+				expect(received).toEqual([1]);
+			}),
+		),
+	);
+
+	test(
+		"keeps the stream open when a publish does not decode after the first value, and delivers the next publish that does",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const manifest = defineNamespace("root", {
+					replicant: { count: { schema: Schema.Number } },
+				});
+
+				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const received: number[] = [];
+				yield* loaded.replicant.count.subscribe().pipe(
+					Effect.flatMap(
+						Stream.runForEach((value) =>
+							Effect.sync(() => {
+								received.push(value);
+							}),
+						),
+					),
+					Effect.forkScoped,
+				);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
+				);
+				yield* mailbox.offer(publishFrame(1));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([1])),
+				);
+
+				yield* mailbox.offer(
+					ReplicantSnapshotMessage.make({
+						field: { type: "replicant", namespace: "root", name: "count" },
+						value: "not a number",
+						revision: 2,
+					}),
+				);
+				yield* mailbox.offer(publishFrame(7, 3));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(received).toEqual([1, 7])),
+				);
+			}),
+		),
+	);
+
+	test(
 		"re-subscribing after a rejection sends a fresh subscribe and heals on the next publish",
 		testEffect(
 			Effect.gen(function* () {
@@ -1246,6 +1350,57 @@ describe("topic", () => {
 			}),
 		),
 	);
+
+	test(
+		"ends the stream with the error when the server rejects the subscribe",
+		testEffect(
+			Effect.gen(function* () {
+				const transportStub = createTransportStub();
+				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+				const messageChannelStub: MessageChannel = {
+					send,
+					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+				};
+				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.provideService(MessageChannelService, messageChannelStub),
+				);
+
+				const seen: number[] = [];
+				const consumer = yield* loaded.topic.chat.subscribe().pipe(
+					Effect.flatMap(
+						Stream.runForEach((value) =>
+							Effect.sync(() => {
+								seen.push(value);
+							}),
+						),
+					),
+					Effect.flip,
+					Effect.forkScoped,
+				);
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
+				);
+				yield* mailbox.offer(publishFrame(1));
+				yield* Effect.promise(() =>
+					vi.waitFor(() => expect(seen).toEqual([1])),
+				);
+
+				yield* mailbox.offer(
+					SubscribeRejectedMessage.make({
+						field: { type: "topic", namespace: "root", name: "chat" },
+						reason: "forbidden",
+					}),
+				);
+				const error = yield* Fiber.join(consumer);
+				expect(error).toEqual(
+					new FieldPermissionDenied({ namespace: "root", name: "chat" }),
+				);
+				expect(seen).toEqual([1]);
+			}),
+		),
+	);
 });
 
 describe("rpc", () => {
@@ -1405,6 +1560,54 @@ describe("loadNamespace (Promise wrapper)", () => {
 		expect(transportStub.publishTopic).toHaveBeenCalledWith("root", "chat", 3);
 		expect(await loaded.rpc.echo.call(42)).toBe(84);
 		expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
+	});
+
+	test("calls onError when the subscribe is rejected after the first value", async () => {
+		const transportStub = createTransportStub();
+		const mailbox = Effect.runSync(Mailbox.make<ServerMessage>());
+		const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+		const messageChannelStub: MessageChannel = {
+			send,
+			receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+		};
+		const manifest = defineNamespace("root", {
+			replicant: { count: { schema: Schema.Number } },
+		});
+		const field = {
+			type: "replicant",
+			namespace: "root",
+			name: "count",
+		} as const;
+
+		const loaded = await loadNamespace(manifest, {
+			fieldTransport: () => transportStub,
+			messageChannel: () => messageChannelStub,
+		});
+
+		const received: number[] = [];
+		const onError = vi.fn();
+		const subscribed = loaded.replicant.count.subscribe((value) => {
+			received.push(value);
+		}, onError);
+		await vi.waitFor(() =>
+			expect(send).toHaveBeenCalledWith({ _tag: "subscribe", field }),
+		);
+		mailbox.unsafeOffer(
+			ReplicantSnapshotMessage.make({ field, value: 1, revision: 1 }),
+		);
+		const cancel = await subscribed;
+		onTestFinished(() => cancel());
+		expect(received).toEqual([1]);
+
+		mailbox.unsafeOffer(
+			SubscribeRejectedMessage.make({ field, reason: "forbidden" }),
+		);
+		await vi.waitFor(() =>
+			expect(onError).toHaveBeenCalledWith(
+				new FieldPermissionDenied({ namespace: "root", name: "count" }),
+			),
+		);
+		expect(received).toEqual([1]);
 	});
 });
 

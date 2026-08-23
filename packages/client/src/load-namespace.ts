@@ -37,6 +37,7 @@ import {
 	FieldCellsService,
 	type FieldFailure,
 	type ReplicantCell,
+	type TerminalFieldFailure,
 	type TopicCell,
 } from "./field-cells.ts";
 import { Loadable } from "./loadable.ts";
@@ -65,25 +66,41 @@ const defaultResends = 9;
 const subscribeCell = Effect.fn(function* <Decoded>(
 	cell: ReplicantCell<Decoded> | ComputedCell<Decoded>,
 ) {
-	const mailbox = yield* Mailbox.make<Decoded>();
+	const mailbox = yield* Mailbox.make<Decoded, TerminalFieldFailure>();
 	const ready = yield* Deferred.make<void, FieldFailure>();
 	yield* Effect.acquireRelease(
-		Effect.sync(() =>
-			effect(() => {
+		Effect.sync(() => {
+			let settled = false;
+			return effect(() => {
 				Match.value(cell.signal.value).pipe(
 					Match.tag("Ready", ({ value }) => {
+						settled = true;
 						mailbox.unsafeOffer(value.decoded);
 						Deferred.unsafeDone(ready, Effect.void);
 					}),
 					Match.tag("Failure", ({ error }) => {
-						Deferred.unsafeDone(ready, Effect.fail(error));
+						if (!settled) {
+							Deferred.unsafeDone(ready, Effect.fail(error));
+							return;
+						}
+						Match.value(error).pipe(
+							Match.tag("FieldUnavailable", () => {}),
+							Match.tag(
+								"FieldNotFound",
+								"FieldPermissionDenied",
+								(terminal) => {
+									mailbox.unsafeDone(Exit.fail(terminal));
+								},
+							),
+							Match.exhaustive,
+						);
 					}),
 					Match.tag("Cold", () => {}),
 					Match.tag("Pending", () => {}),
 					Match.exhaustive,
 				);
-			}),
-		),
+			});
+		}),
 		(dispose) => Effect.sync(dispose),
 	);
 	yield* Deferred.await(ready);
@@ -94,21 +111,38 @@ const subscribeCell = Effect.fn(function* <Decoded>(
 const subscribeTopicCell = Effect.fn(function* <Decoded>(
 	cell: TopicCell<Decoded>,
 ) {
-	const mailbox = yield* Mailbox.make<Decoded>();
-	let initial = true;
+	const mailbox = yield* Mailbox.make<Decoded, TerminalFieldFailure>();
 	yield* Effect.acquireRelease(
-		Effect.sync(() =>
-			effect(() => {
-				const value = cell.signal.value;
-				if (initial) {
-					initial = false;
-					return;
-				}
-				if (Loadable.$is("Ready")(value)) {
-					mailbox.unsafeOffer(value.value.decoded);
-				}
-			}),
-		),
+		Effect.sync(() => {
+			let initial = true;
+			return effect(() => {
+				Match.value(cell.signal.value).pipe(
+					Match.tag("Ready", ({ value }) => {
+						if (!initial) {
+							mailbox.unsafeOffer(value.decoded);
+						}
+					}),
+					Match.tag("Failure", ({ error }) => {
+						Match.value(error).pipe(
+							Match.tag("FieldUnavailable", () => {}),
+							Match.tag(
+								"FieldNotFound",
+								"FieldPermissionDenied",
+								(terminal) => {
+									mailbox.unsafeDone(Exit.fail(terminal));
+								},
+							),
+							Match.exhaustive,
+						);
+					}),
+					Match.tag("Cold", () => {}),
+					Match.tag("Pending", () => {}),
+					Match.exhaustive,
+				);
+
+				initial = false;
+			});
+		}),
 		(dispose) => Effect.sync(dispose),
 	);
 	return Mailbox.toStream(mailbox);
@@ -515,10 +549,17 @@ export async function loadNamespace<
 
 	const subscribeEffectToPromise =
 		<Decoded, E>(
-			subscribe: () => Effect.Effect<Stream.Stream<Decoded>, E, Scope.Scope>,
+			subscribe: () => Effect.Effect<
+				Stream.Stream<Decoded, TerminalFieldFailure>,
+				E,
+				Scope.Scope
+			>,
 			name: string,
 		) =>
-		async (callback: (value: Decoded) => Promisable<void>) =>
+		async (
+			callback: (value: Decoded) => Promisable<void>,
+			onError?: (error: TerminalFieldFailure) => void,
+		) =>
 			runtime.runPromise(
 				Effect.gen(function* () {
 					const scope = yield* Scope.make();
@@ -536,6 +577,9 @@ export async function loadNamespace<
 									),
 								),
 							),
+						),
+						Effect.catchTag("FieldNotFound", "FieldPermissionDenied", (error) =>
+							Effect.sync(() => onError?.(error)),
 						),
 						Effect.forkIn(scope),
 					);

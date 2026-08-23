@@ -6,7 +6,7 @@ import {
 	PatchNotApplicable,
 	RevisionConflict,
 } from "@nodecg/internal/occ";
-import { toError } from "@nodecg/internal/utils";
+import { setSignal, toError } from "@nodecg/internal/utils";
 import {
 	computed,
 	effect,
@@ -86,37 +86,6 @@ export class DerivationReadValueError extends Schema.TaggedError<DerivationReadV
 
 const readSignal = <T>(signal: ReadonlySignal<T>) =>
 	Effect.try(() => signal.value);
-
-export class DerivationSetValueError extends Schema.TaggedError<DerivationSetValueError>()(
-	"DerivationSetValueError",
-	{
-		namespace: Schema.String,
-		name: Schema.String,
-		cause: Schema.instanceOf(Error),
-	},
-) {
-	override readonly message = `Setting value for "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
-}
-
-const setSignal = <T>(
-	signal: Signal<T>,
-	value: T,
-	meta: {
-		namespace: string;
-		name: string;
-	},
-) =>
-	Effect.try({
-		try: () => {
-			signal.value = value;
-		},
-		catch: (cause) =>
-			new DerivationSetValueError({
-				namespace: meta.namespace,
-				name: meta.name,
-				cause: toError(cause),
-			}),
-	}).pipe(Effect.orDie);
 
 export class UnknownReplicant extends Schema.TaggedError<UnknownReplicant>()(
 	"UnknownReplicant",
@@ -225,7 +194,10 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 						}
 						const stored = makeLeafValue(initial, 0);
 						const replicant = signal(stored);
-						yield* setSignal(replicant, stored, { namespace, name });
+						yield* setSignal(replicant, stored).pipe(
+							Effect.withSpan("setSignal", { attributes: { namespace, name } }),
+							Effect.orDie,
+						);
 						return HashMap.set(map, key, replicant);
 					}),
 				);
@@ -314,10 +286,10 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 							return yield* new CommitContended({ namespace, name });
 						}
 						const revision = stored.revision + 1;
-						yield* setSignal(node, makeLeafValue(nextEncoded, revision), {
-							namespace,
-							name,
-						});
+						yield* setSignal(node, makeLeafValue(nextEncoded, revision)).pipe(
+							Effect.withSpan("setSignal", { attributes: { namespace, name } }),
+							Effect.orDie,
+						);
 						yield* Queue.offer(pendingWrites, {
 							namespace,
 							name,
