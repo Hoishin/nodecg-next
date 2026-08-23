@@ -81,6 +81,23 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		await vi.waitFor(() => expect(received).toEqual([5, 7]));
 	});
 
+	test("a subscriber receives its own update exactly once", async () => {
+		const ns = await loadNamespace(fixtureManifest, { baseUrl: base });
+		await ns.replicant.count.set(20);
+		const received: number[] = [];
+		const cancel = await ns.replicant.count.subscribe((value) => {
+			received.push(value);
+		});
+		onTestFinished(() => cancel());
+		await vi.waitFor(() => expect(received).toEqual([20]));
+
+		await ns.replicant.count.update((count) => count + 1);
+		await vi.waitFor(() => expect(received).toContain(21));
+		await ns.replicant.count.update((count) => count + 1);
+		await vi.waitFor(() => expect(received).toContain(22));
+		expect(received).toEqual([20, 21, 22]);
+	});
+
 	test("concurrent writes to disjoint fields both land", async () => {
 		const writer = await loadNamespace(fixtureManifest, { baseUrl: base });
 		await writer.replicant.scoreboard.set({ home: 0, away: 0 });

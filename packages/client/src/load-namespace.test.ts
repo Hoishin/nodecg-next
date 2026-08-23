@@ -15,6 +15,7 @@ import {
 	Mailbox,
 	Option,
 	PubSub,
+	Runtime,
 	Schema,
 	Scope,
 	Stream,
@@ -1543,7 +1544,7 @@ describe("derivation over loaded fields", () => {
 	);
 
 	test(
-		"set reflects into the hot cell so a following update reads it, not a stale value",
+		"a write lands in the hot cell only as the server echo, which the next update reads as its base",
 		testEffect(
 			Effect.gen(function* () {
 				const { channel, pubsub, send } = yield* makePubSubChannel;
@@ -1552,6 +1553,8 @@ describe("derivation over loaded fields", () => {
 					Effect.provideService(FieldTransportService, transportStub),
 					Effect.provideService(MessageChannelService, channel),
 				);
+
+				const runtime = yield* Effect.runtime();
 
 				const scope = yield* Scope.make();
 				yield* loaded.replicant.scoreLeft
@@ -1568,23 +1571,29 @@ describe("derivation over loaded fields", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(async () => {
 						expect(
-							await Effect.runPromise(
-								loaded.replicant.scoreLeft
-									.get()
-									.pipe(
-										Effect.provideService(FieldTransportService, transportStub),
-									),
+							await Runtime.runPromise(runtime)(
+								loaded.replicant.scoreLeft.get(),
 							),
 						).toBe(0);
 					}),
 				);
 
-				yield* loaded.replicant.scoreLeft
-					.set(10)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				yield* loaded.replicant.scoreLeft
-					.update((v) => v + 1)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
+				yield* loaded.replicant.scoreLeft.set(10);
+				expect(yield* loaded.replicant.scoreLeft.get()).toBe(0);
+
+				yield* PubSub.publish(pubsub, publish("scoreLeft", 10, 2));
+				yield* Effect.promise(() =>
+					vi.waitFor(async () => {
+						expect(
+							await Runtime.runPromise(runtime)(
+								loaded.replicant.scoreLeft.get(),
+							),
+						).toBe(10);
+					}),
+				);
+
+				transportStub.getReplicant.mockClear();
+				yield* loaded.replicant.scoreLeft.update((v) => v + 1);
 
 				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 					"match",
@@ -1594,6 +1603,7 @@ describe("derivation over loaded fields", () => {
 						{ op: "replace", path: "", value: "11" },
 					],
 				);
+				expect(transportStub.getReplicant).not.toHaveBeenCalled();
 
 				yield* Scope.close(scope, Exit.void);
 			}),

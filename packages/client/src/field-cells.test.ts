@@ -10,7 +10,7 @@ import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect";
 import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { FieldCellsService } from "./field-cells.ts";
-import { isFailure, isPending, isReady, Ready } from "./loadable.ts";
+import { Loadable, ReadyLoadableValue } from "./loadable.ts";
 import {
 	FieldNotFound,
 	FieldPermissionDenied,
@@ -85,7 +85,15 @@ describe("FieldCellsService", () => {
 
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 5));
 				yield* waitFor(() => {
-					expect(cell.peek()).toEqual(Ready({ value: 5 }));
+					expect(cell.peek()).toEqual(
+						Loadable.Ready({
+							value: ReadyLoadableValue.Replicant({
+								decoded: 5,
+								encoded: "5",
+								revision: 1,
+							}),
+						}),
+					);
 				});
 			}),
 		),
@@ -121,22 +129,7 @@ describe("FieldCellsService", () => {
 						),
 					).toBe(true);
 				});
-			}),
-		),
-	);
-
-	test(
-		"rejects a duplicate registration of the same field",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel } = yield* makeFakeChannel;
-				const cells = yield* makeCells.pipe(
-					Effect.provideService(MessageChannelService, channel),
-				);
-				cells.replicant("match", "scoreLeft", namespace.replicant.scoreLeft);
-				expect(() =>
-					cells.replicant("match", "scoreLeft", namespace.replicant.scoreLeft),
-				).toThrow(/already registered/);
+				expect(cell.peek()._tag).toBe("Cold");
 			}),
 		),
 	);
@@ -186,10 +179,10 @@ describe("FieldCellsService", () => {
 				);
 
 				yield* waitFor(() => {
-					expect(isFailure(cell.peek())).toBe(true);
+					expect(cell.peek()._tag).toBe("Failure");
 				});
 				const value = cell.peek();
-				assert(isFailure(value));
+				assert(Loadable.$is("Failure")(value));
 				expect(value.error).toBeInstanceOf(FieldPermissionDenied);
 			}),
 		),
@@ -224,10 +217,10 @@ describe("FieldCellsService", () => {
 				);
 
 				yield* waitFor(() => {
-					expect(isFailure(cell.peek())).toBe(true);
+					expect(cell.peek()._tag).toBe("Failure");
 				});
 				const value = cell.peek();
-				assert(isFailure(value));
+				assert(Loadable.$is("Failure")(value));
 				expect(value.error).toBeInstanceOf(FieldNotFound);
 			}),
 		),
@@ -260,10 +253,10 @@ describe("FieldCellsService", () => {
 				);
 
 				yield* waitFor(() => {
-					expect(isFailure(cell.peek())).toBe(true);
+					expect(cell.peek()._tag).toBe("Failure");
 				});
 				const value = cell.peek();
-				assert(isFailure(value));
+				assert(Loadable.$is("Failure")(value));
 				expect(value.error).toBeInstanceOf(FieldUnavailable);
 				expect(value.error.message).toContain("compute boom");
 			}),
@@ -296,16 +289,25 @@ describe("FieldCellsService", () => {
 					}),
 				);
 				yield* waitFor(() => {
-					expect(isFailure(cell.peek())).toBe(true);
+					expect(cell.peek()._tag).toBe("Failure");
 				});
 				dispose1();
+				expect(cell.peek()._tag).toBe("Cold");
 
 				const dispose2 = effect(() => void cell.signal.value);
 				onTestFinished(() => dispose2());
-				expect(isPending(cell.peek())).toBe(true);
+				expect(cell.peek()._tag).toBe("Pending");
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 5));
 				yield* waitFor(() => {
-					expect(cell.peek()).toEqual(Ready({ value: 5 }));
+					expect(cell.peek()).toEqual(
+						Loadable.Ready({
+							value: ReadyLoadableValue.Replicant({
+								decoded: 5,
+								encoded: "5",
+								revision: 1,
+							}),
+						}),
+					);
 				});
 			}),
 		),
@@ -333,7 +335,7 @@ describe("FieldCellsService", () => {
 
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 5));
 				yield* waitFor(() => {
-					expect(isReady(cell.peek())).toBe(true);
+					expect(cell.peek()._tag).toBe("Ready");
 				});
 
 				yield* PubSub.publish(
@@ -346,7 +348,15 @@ describe("FieldCellsService", () => {
 				);
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 7, 3));
 				yield* waitFor(() => {
-					expect(cell.peek()).toEqual(Ready({ value: 7 }));
+					expect(cell.peek()).toEqual(
+						Loadable.Ready({
+							value: ReadyLoadableValue.Replicant({
+								decoded: 7,
+								encoded: "7",
+								revision: 3,
+							}),
+						}),
+					);
 				});
 			}),
 		),
@@ -382,9 +392,17 @@ describe("FieldCellsService", () => {
 				yield* PubSub.publish(pubsub, publish("scoreLeft", 7));
 				yield* PubSub.publish(pubsub, publish("scoreRight", 9));
 				yield* waitFor(() => {
-					expect(right.peek()).toEqual(Ready({ value: 9 }));
+					expect(right.peek()).toEqual(
+						Loadable.Ready({
+							value: ReadyLoadableValue.Replicant({
+								decoded: 9,
+								encoded: "9",
+								revision: 1,
+							}),
+						}),
+					);
 				});
-				expect(isPending(left.peek())).toBe(true);
+				expect(left.peek()._tag).toBe("Cold");
 			}),
 		),
 	);

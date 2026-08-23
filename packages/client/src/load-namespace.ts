@@ -24,6 +24,7 @@ import {
 	Layer,
 	Mailbox,
 	ManagedRuntime,
+	Match,
 	Ref,
 	Scope,
 	Stream,
@@ -32,11 +33,13 @@ import type { JsonValue, Promisable } from "type-fest";
 
 import { type FieldSource, fieldSource } from "./derive.ts";
 import {
-	type FieldCell,
+	type ComputedCell,
 	FieldCellsService,
 	type FieldFailure,
+	type ReplicantCell,
+	type TopicCell,
 } from "./field-cells.ts";
-import { isFailure, isReady, matchLoadable } from "./loadable.ts";
+import { Loadable } from "./loadable.ts";
 import {
 	FieldSetError,
 	FieldTransportService,
@@ -59,19 +62,26 @@ export type RetryPolicy = boolean | number;
 
 const defaultResends = 9;
 
-const subscribeCell = Effect.fn(function* <Decoded>(cell: FieldCell<Decoded>) {
+const subscribeCell = Effect.fn(function* <Decoded>(
+	cell: ReplicantCell<Decoded> | ComputedCell<Decoded>,
+) {
 	const mailbox = yield* Mailbox.make<Decoded>();
 	const ready = yield* Deferred.make<void, FieldFailure>();
 	yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			effect(() => {
-				const value = cell.signal.value;
-				if (isReady(value)) {
-					mailbox.unsafeOffer(value.value);
-					Deferred.unsafeDone(ready, Effect.void);
-				} else if (isFailure(value)) {
-					Deferred.unsafeDone(ready, Effect.fail(value.error));
-				}
+				Match.value(cell.signal.value).pipe(
+					Match.tag("Ready", ({ value }) => {
+						mailbox.unsafeOffer(value.decoded);
+						Deferred.unsafeDone(ready, Effect.void);
+					}),
+					Match.tag("Failure", ({ error }) => {
+						Deferred.unsafeDone(ready, Effect.fail(error));
+					}),
+					Match.tag("Cold", () => {}),
+					Match.tag("Pending", () => {}),
+					Match.exhaustive,
+				);
 			}),
 		),
 		(dispose) => Effect.sync(dispose),
@@ -82,7 +92,7 @@ const subscribeCell = Effect.fn(function* <Decoded>(cell: FieldCell<Decoded>) {
 
 // Topic doesn't have to wait for first value
 const subscribeTopicCell = Effect.fn(function* <Decoded>(
-	cell: FieldCell<Decoded>,
+	cell: TopicCell<Decoded>,
 ) {
 	const mailbox = yield* Mailbox.make<Decoded>();
 	let initial = true;
@@ -94,8 +104,8 @@ const subscribeTopicCell = Effect.fn(function* <Decoded>(
 					initial = false;
 					return;
 				}
-				if (isReady(value)) {
-					mailbox.unsafeOffer(value.value);
+				if (Loadable.$is("Ready")(value)) {
+					mailbox.unsafeOffer(value.value.decoded);
 				}
 			}),
 		),
@@ -113,14 +123,23 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	const cells = yield* FieldCellsService;
 	const cell = cells.replicant(namespace, name, manifest);
 
+	const fetchEncoded = () => transport.getReplicant(namespace, name);
+
 	const get = Effect.fn("get")(function* () {
-		return yield* matchLoadable(cell.peek(), {
-			Ready: ({ value }) => Effect.succeed(value),
+		return yield* Loadable.$match(cell.peek(), {
+			Ready: ({ value }) => Effect.succeed(value.decoded),
 			Failure: ({ error }) => Effect.fail(error),
-			Pending: () =>
-				transport
-					.getReplicant(namespace, name)
-					.pipe(Effect.flatMap(manifest.decode)),
+			Cold: () => fetchEncoded().pipe(Effect.flatMap(manifest.decode)),
+			Pending: () => fetchEncoded().pipe(Effect.flatMap(manifest.decode)),
+		});
+	});
+
+	const readBase = Effect.fn(function* () {
+		return yield* Loadable.$match(cell.peek(), {
+			Ready: ({ value }) => Effect.succeed(value.encoded),
+			Failure: ({ error }) => Effect.fail(error),
+			Cold: fetchEncoded,
+			Pending: fetchEncoded,
 		});
 	});
 
@@ -134,7 +153,6 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				// A whole-document replace carries no precondition, so it cannot conflict
 				Effect.catchTag("RevisionConflict", Effect.die),
 			);
-		cell.reflect(value);
 	});
 
 	const send = Effect.fn(function* (
@@ -166,7 +184,6 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 			return;
 		}
 		yield* transport.updateReplicant(namespace, name, patch);
-		cell.reflect(yield* manifest.decode(encoded));
 	});
 
 	const update = Effect.fn("update")(function* (
@@ -176,7 +193,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		const retry = options?.retry ?? true;
 		const resends =
 			typeof retry === "boolean" ? (retry ? defaultResends : 0) : retry;
-		const base = yield* Ref.make(yield* manifest.encode(yield* get()));
+		const base = yield* Ref.make(yield* readBase());
 		yield* Ref.get(base).pipe(
 			Effect.flatMap((current) => send(updater, current)),
 			Effect.tapErrorTag("RevisionConflict", (conflict) =>
@@ -227,14 +244,17 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 	const cells = yield* FieldCellsService;
 	const cell = cells.computed(namespace, name, manifest);
 
+	const fetchCurrent = () =>
+		transport
+			.getComputed(namespace, name)
+			.pipe(Effect.flatMap(manifest.decode));
+
 	const get = Effect.fn("get")(function* () {
-		return yield* matchLoadable(cell.peek(), {
-			Ready: ({ value }) => Effect.succeed(value),
+		return yield* Loadable.$match(cell.peek(), {
+			Ready: ({ value }) => Effect.succeed(value.decoded),
 			Failure: ({ error }) => Effect.fail(error),
-			Pending: () =>
-				transport
-					.getComputed(namespace, name)
-					.pipe(Effect.flatMap(manifest.decode)),
+			Cold: fetchCurrent,
+			Pending: fetchCurrent,
 		});
 	});
 

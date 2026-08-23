@@ -2,9 +2,18 @@ import { batch, signal } from "@preact/signals-core";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { derive, type FieldSource, fieldSource } from "./derive.ts";
-import { Failure, type Loadable, Pending, Ready } from "./loadable.ts";
+import {
+	Cold,
+	Loadable,
+	ReadyLoadableValue,
+	type ReadyLoadableValue as ReadyLoadableValueType,
+	Pending,
+} from "./loadable.ts";
 
-const source = <T>(initial: Loadable<T>) => {
+const ready = <T>(decoded: T) =>
+	Loadable.Ready({ value: ReadyLoadableValue.Derived({ decoded }) });
+
+const source = <T>(initial: Loadable<ReadyLoadableValueType<T>>) => {
 	const s = signal(initial);
 	const handle: FieldSource<T> = { [fieldSource]: s };
 	return { s, handle };
@@ -12,8 +21,8 @@ const source = <T>(initial: Loadable<T>) => {
 
 describe("derive", () => {
 	it("computes over ready sources and recomputes on change", async () => {
-		const left = source(Ready({ value: 3 }));
-		const right = source(Ready({ value: 1 }));
+		const left = source(ready(3));
+		const right = source(ready(1));
 		const delta = derive((get) => get(left.handle) - get(right.handle));
 
 		expect(await delta.get()).toBe(2);
@@ -23,13 +32,13 @@ describe("derive", () => {
 			seen.push(value);
 		});
 		onTestFinished(unsubscribe);
-		left.s.value = Ready({ value: 10 });
+		left.s.value = ready(10);
 		expect(seen).toEqual([2, 9]);
 	});
 
 	it("a batched multi-source write recomputes once, glitch-free", () => {
-		const a = source(Ready({ value: 1 }));
-		const b = source(Ready({ value: 2 }));
+		const a = source(ready(1));
+		const b = source(ready(2));
 		let evaluations = 0;
 		const sum = derive((get) => {
 			evaluations += 1;
@@ -43,8 +52,8 @@ describe("derive", () => {
 		onTestFinished(unsubscribe);
 		const before = evaluations;
 		batch(() => {
-			a.s.value = Ready({ value: 10 });
-			b.s.value = Ready({ value: 20 });
+			a.s.value = ready(10);
+			b.s.value = ready(20);
 		});
 		expect(evaluations - before).toBe(1);
 		expect(seen).toEqual([3, 30]);
@@ -62,17 +71,32 @@ describe("derive", () => {
 		onTestFinished(unsubscribe);
 		expect(seen).toEqual([]);
 
-		left.s.value = Ready({ value: 3 });
+		left.s.value = ready(3);
 		expect(seen).toEqual([]); // still pending on right
-		right.s.value = Ready({ value: 1 });
+		right.s.value = ready(1);
 		expect(seen).toEqual([true]);
 
 		expect(await winning.get()).toBe(true);
 	});
 
+	it("suspends on a cold source until it becomes ready", () => {
+		const cold = source<number>(Cold);
+		const doubled = derive((get) => get(cold.handle) * 2);
+
+		const seen: number[] = [];
+		const unsubscribe = doubled.subscribe((value) => {
+			seen.push(value);
+		});
+		onTestFinished(unsubscribe);
+		expect(seen).toEqual([]);
+
+		cold.s.value = ready(2);
+		expect(seen).toEqual([4]);
+	});
+
 	it("rejects get() and fires onError when a source failed", async () => {
 		const boom = new Error("rejected");
-		const failed = source<number>(Failure({ error: boom }));
+		const failed = source<number>(Loadable.Failure({ error: boom }));
 		const doubled = derive((get) => get(failed.handle) * 2);
 
 		await expect(doubled.get()).rejects.toBe(boom);
@@ -84,8 +108,8 @@ describe("derive", () => {
 	});
 
 	it("derives over another derive and dedupes an unchanged intermediate", () => {
-		const left = source(Ready({ value: 3 }));
-		const right = source(Ready({ value: 1 }));
+		const left = source(ready(3));
+		const right = source(ready(1));
 		const delta = derive((get) => get(left.handle) - get(right.handle));
 		let evaluations = 0;
 		const winning = derive((get) => {
@@ -97,27 +121,27 @@ describe("derive", () => {
 		onTestFinished(unsubscribe);
 		const before = evaluations;
 		batch(() => {
-			left.s.value = Ready({ value: 4 });
-			right.s.value = Ready({ value: 2 }); // delta still 2
+			left.s.value = ready(4);
+			right.s.value = ready(2); // delta still 2
 		});
 		expect(evaluations - before).toBe(0);
 	});
 
 	it("never evaluates while nothing subscribes or reads", () => {
-		const src = source(Ready({ value: 1 }));
+		const src = source(ready(1));
 		let evaluations = 0;
 		const doubled = derive((get) => {
 			evaluations += 1;
 			return get(src.handle) * 2;
 		});
-		src.s.value = Ready({ value: 2 });
-		src.s.value = Ready({ value: 3 });
+		src.s.value = ready(2);
+		src.s.value = ready(3);
 		expect(evaluations).toBe(0);
 		void doubled;
 	});
 
 	it("dedupes object values through a custom equals", () => {
-		const src = source(Ready({ value: 1 }));
+		const src = source(ready(1));
 		const boxed = derive((get) => ({ n: get(src.handle) }), {
 			equals: (a, b) => a.n === b.n,
 		});
@@ -129,10 +153,10 @@ describe("derive", () => {
 		onTestFinished(unsubscribe);
 		expect(seen).toHaveLength(1);
 
-		src.s.value = Ready({ value: 1 }); // same n, fresh object → deduped
+		src.s.value = ready(1); // same n, fresh object → deduped
 		expect(seen).toHaveLength(1);
 
-		src.s.value = Ready({ value: 2 });
+		src.s.value = ready(2);
 		expect(seen).toEqual([{ n: 1 }, { n: 2 }]);
 	});
 });

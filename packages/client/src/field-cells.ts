@@ -1,7 +1,8 @@
-import type { FieldManifest } from "@nodecg/core";
+import type { FieldDecodeError, FieldManifest } from "@nodecg/core";
 import {
 	type ClientMessage,
 	type FieldIdentifier,
+	type PublishMessage,
 	SubscribeMessage,
 	UnsubscribeMessage,
 } from "@nodecg/internal";
@@ -15,9 +16,19 @@ import {
 	Option,
 	Stream,
 } from "effect";
-import type { JsonValue } from "type-fest";
 
-import { Failure, type Loadable, Pending, Ready } from "./loadable.ts";
+import {
+	Cold,
+	type ComputedLoadable,
+	type ComputedValue,
+	Loadable,
+	ReadyLoadableValue,
+	Pending,
+	type ReplicantLoadable,
+	type ReplicantValue,
+	type TopicLoadable,
+	type TopicValue,
+} from "./loadable.ts";
 import {
 	FieldNotFound,
 	FieldPermissionDenied,
@@ -32,31 +43,21 @@ export type FieldFailure =
 
 const fieldKey = (field: FieldIdentifier) => Data.struct(field);
 
-/**
- * Field read/write container on top of signal
- */
-export interface FieldCell<Decoded> {
-	readonly signal: Signal<Loadable<Decoded, FieldFailure>>;
-	readonly peek: () => Loadable<Decoded, FieldFailure>;
-	readonly reflect: (value: Decoded) => void;
+const isCold = Loadable.$is("Cold");
+
+export interface ReplicantCell<Decoded> {
+	readonly signal: Signal<ReplicantLoadable<Decoded, FieldFailure>>;
+	readonly peek: () => ReplicantLoadable<Decoded, FieldFailure>;
 }
 
-export interface FieldCells {
-	readonly replicant: <Decoded>(
-		namespace: string,
-		name: string,
-		manifest: FieldManifest<Decoded>,
-	) => FieldCell<Decoded>;
-	readonly computed: <Decoded>(
-		namespace: string,
-		name: string,
-		manifest: FieldManifest<Decoded>,
-	) => FieldCell<Decoded>;
-	readonly topic: <Decoded>(
-		namespace: string,
-		name: string,
-		manifest: FieldManifest<Decoded>,
-	) => FieldCell<Decoded>;
+export interface ComputedCell<Decoded> {
+	readonly signal: Signal<ComputedLoadable<Decoded, FieldFailure>>;
+	readonly peek: () => ComputedLoadable<Decoded, FieldFailure>;
+}
+
+export interface TopicCell<Decoded> {
+	readonly signal: Signal<TopicLoadable<Decoded, FieldFailure>>;
+	readonly peek: () => TopicLoadable<Decoded, FieldFailure>;
 }
 
 // Forks two fibers: sender (client -> server) and pump (server -> client), both interrupted when the scope closes.
@@ -68,92 +69,170 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 			const outbound = yield* Mailbox.make<ClientMessage>();
 
 			interface CellHandlers {
-				readonly valueChange: (value: JsonValue) => Effect.Effect<void>;
+				readonly applyFrame: (frame: PublishMessage) => Effect.Effect<void>;
 				readonly reject: (
 					reason: "forbidden" | "not-found" | "unavailable",
 					message: string | undefined,
-				) => Effect.Effect<void>;
+				) => void;
 			}
 			const handlers = MutableHashMap.empty<FieldIdentifier, CellHandlers>();
 
-			const cellFor = <Decoded>(
-				type: FieldIdentifier["type"],
+			const makeRejectionError = (
 				namespace: string,
 				name: string,
-				manifest: FieldManifest<Decoded>,
-			): FieldCell<Decoded> => {
-				const field: FieldIdentifier = { type, namespace, name };
-				const key = fieldKey(field);
-				if (MutableHashMap.has(handlers, key)) {
-					throw new Error(
-						`field "${type} ${namespace}/${name}" is already registered`,
-					);
-				}
+				reason: "forbidden" | "not-found" | "unavailable",
+				message: string | undefined,
+			) =>
+				Match.value(reason).pipe(
+					Match.when("not-found", () => new FieldNotFound({ namespace, name })),
+					Match.when(
+						"forbidden",
+						() => new FieldPermissionDenied({ namespace, name }),
+					),
+					Match.when(
+						"unavailable",
+						() => new FieldUnavailable({ namespace, name, detail: message }),
+					),
+					Match.exhaustive,
+				);
 
-				let hot = false;
-				const cell = signal<Loadable<Decoded, FieldFailure>>(Pending, {
+			const makeCell = <V extends ReadyLoadableValue<unknown>>(
+				field: FieldIdentifier,
+			) => {
+				const cell = signal<Loadable<V, FieldFailure>>(Cold, {
 					watched: () => {
-						hot = true;
+						cell.value = Pending;
 						outbound.unsafeOffer(SubscribeMessage.make({ field }));
 					},
 					unwatched: () => {
-						// Immediately reject incoming updates to prevent overwriting Pending with live data
-						hot = false;
-						cell.value = Pending;
+						// Cold drops the base with the value, so nothing stale can be read back
+						cell.value = Cold;
 						outbound.unsafeOffer(UnsubscribeMessage.make({ field }));
 					},
 				});
 
-				MutableHashMap.set(handlers, key, {
-					valueChange: (value) =>
-						manifest.decode(value).pipe(
-							Effect.map((decoded) => {
-								// dropped if the field went cold while we were decoding
-								if (hot) {
-									cell.value = Ready({ value: decoded });
-								}
-							}),
-							Effect.catchAll((error) =>
-								Effect.logError(
-									`Failed to decode published value for "${namespace}/${name}":`,
-									error,
-								),
-							),
-						),
-					reject: (reason, message) =>
-						Effect.sync(() => {
-							if (!hot) {
+				const onFrame = (applyFrame: CellHandlers["applyFrame"]) => {
+					MutableHashMap.set(handlers, fieldKey(field), {
+						applyFrame: (frame) =>
+							isCold(cell.peek()) ? Effect.void : applyFrame(frame),
+						reject: (reason, message) => {
+							if (isCold(cell.peek())) {
 								return;
 							}
-							const error = Match.value(reason).pipe(
-								Match.when(
-									"not-found",
-									() => new FieldNotFound({ namespace, name }),
+							cell.value = Loadable.Failure({
+								error: makeRejectionError(
+									field.namespace,
+									field.name,
+									reason,
+									message,
 								),
-								Match.when(
-									"forbidden",
-									() => new FieldPermissionDenied({ namespace, name }),
-								),
-								Match.when(
-									"unavailable",
-									() =>
-										new FieldUnavailable({ namespace, name, detail: message }),
-								),
-								Match.exhaustive,
-							);
-							cell.value = Failure({ error });
-						}),
-				});
-
-				return {
-					signal: cell,
-					peek: () => cell.peek(),
-					reflect: (value) => {
-						if (hot) {
-							cell.value = Ready({ value });
-						}
-					},
+							});
+						},
+					});
 				};
+
+				return { cell, onFrame };
+			};
+
+			const logDecodeFailure =
+				(field: FieldIdentifier) => (error: FieldDecodeError) =>
+					Effect.logError(
+						`Failed to decode published value for "${field.namespace}/${field.name}":`,
+						error,
+					);
+
+			const makeReplicantCell = <Decoded>(
+				namespace: string,
+				name: string,
+				manifest: FieldManifest<Decoded>,
+			): ReplicantCell<Decoded> => {
+				const field: FieldIdentifier = { type: "replicant", namespace, name };
+				const { cell, onFrame } = makeCell<ReplicantValue<Decoded>>(field);
+
+				onFrame((frame) =>
+					Match.value(frame).pipe(
+						Match.tag("snapshot", (snapshot) =>
+							manifest.decode(snapshot.value).pipe(
+								Effect.map((decoded) => {
+									if (!isCold(cell.peek())) {
+										cell.value = Loadable.Ready({
+											value: ReadyLoadableValue.Replicant({
+												decoded,
+												encoded: snapshot.value,
+												revision: snapshot.revision,
+											}),
+										});
+									}
+								}),
+								Effect.catchTag("FieldDecodeError", logDecodeFailure(field)),
+							),
+						),
+						Match.tag("value", () => Effect.void),
+						Match.exhaustive,
+					),
+				);
+
+				return { signal: cell, peek: () => cell.peek() };
+			};
+
+			const makeComputedCell = <Decoded>(
+				namespace: string,
+				name: string,
+				manifest: FieldManifest<Decoded>,
+			): ComputedCell<Decoded> => {
+				const field: FieldIdentifier = { type: "computed", namespace, name };
+				const { cell, onFrame } = makeCell<ComputedValue<Decoded>>(field);
+
+				onFrame((frame) =>
+					Match.value(frame).pipe(
+						Match.tag("value", (published) =>
+							manifest.decode(published.value).pipe(
+								Effect.map((decoded) => {
+									if (!isCold(cell.peek())) {
+										cell.value = Loadable.Ready({
+											value: ReadyLoadableValue.Computed({ decoded }),
+										});
+									}
+								}),
+								Effect.catchTag("FieldDecodeError", logDecodeFailure(field)),
+							),
+						),
+						Match.tag("snapshot", () => Effect.void),
+						Match.exhaustive,
+					),
+				);
+
+				return { signal: cell, peek: () => cell.peek() };
+			};
+
+			const makeTopicCell = <Decoded>(
+				namespace: string,
+				name: string,
+				manifest: FieldManifest<Decoded>,
+			): TopicCell<Decoded> => {
+				const field: FieldIdentifier = { type: "topic", namespace, name };
+				const { cell, onFrame } = makeCell<TopicValue<Decoded>>(field);
+
+				onFrame((frame) =>
+					Match.value(frame).pipe(
+						Match.tag("value", (published) =>
+							manifest.decode(published.value).pipe(
+								Effect.map((decoded) => {
+									if (!isCold(cell.peek())) {
+										cell.value = Loadable.Ready({
+											value: ReadyLoadableValue.Topic({ decoded }),
+										});
+									}
+								}),
+								Effect.catchTag("FieldDecodeError", logDecodeFailure(field)),
+							),
+						),
+						Match.tag("snapshot", () => Effect.void),
+						Match.exhaustive,
+					),
+				);
+
+				return { signal: cell, peek: () => cell.peek() };
 			};
 
 			// Sender: drain mailbox and send changes to server
@@ -163,7 +242,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 						channel
 							.send(message)
 							.pipe(
-								Effect.catchAll((error) =>
+								Effect.catchTag("MessageEncodeError", (error) =>
 									Effect.logError(
 										`Failed to send "${message._tag}" message:`,
 										error,
@@ -186,34 +265,31 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 									MutableHashMap.get(handlers, fieldKey(published.field)),
 								);
 								if (handler) {
-									yield* handler.valueChange(published.value);
+									yield* handler.applyFrame(published);
 								}
 							}),
 						),
 						Match.tag("subscribe-rejected", (rejected) =>
-							Effect.gen(function* () {
+							Effect.sync(() => {
 								const handler = Option.getOrUndefined(
 									MutableHashMap.get(handlers, fieldKey(rejected.field)),
 								);
 								if (handler) {
-									yield* handler.reject(rejected.reason, rejected.message);
+									handler.reject(rejected.reason, rejected.message);
 								}
 							}),
 						),
-						Match.orElse(() => Effect.void),
+						Match.tag("ping", () => Effect.void),
+						Match.exhaustive,
 					),
 				),
 			);
 
-			const cells: FieldCells = {
-				replicant: (namespace, name, manifest) =>
-					cellFor("replicant", namespace, name, manifest),
-				computed: (namespace, name, manifest) =>
-					cellFor("computed", namespace, name, manifest),
-				topic: (namespace, name, manifest) =>
-					cellFor("topic", namespace, name, manifest),
+			return {
+				replicant: makeReplicantCell,
+				computed: makeComputedCell,
+				topic: makeTopicCell,
 			};
-			return cells;
 		}),
 	},
 ) {}

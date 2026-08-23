@@ -2,12 +2,10 @@ import { computed, effect } from "@preact/signals-core";
 import { Equal } from "effect";
 
 import {
-	Failure,
-	isReady,
-	type Loadable,
-	matchLoadable,
+	type DerivedLoadable,
+	Loadable,
+	ReadyLoadableValue,
 	Pending,
-	Ready,
 } from "./loadable.ts";
 
 /**
@@ -20,25 +18,8 @@ const isSuspended = (e: unknown): e is typeof SUSPENDED => e === SUSPENDED;
 export const fieldSource: unique symbol = Symbol("client/field-source");
 
 export interface FieldSource<T> {
-	readonly [fieldSource]: { readonly value: Loadable<T> };
+	readonly [fieldSource]: { readonly value: Loadable<ReadyLoadableValue<T>> };
 }
-
-/**
- * Synchronously read the current value of a field with suspense mechanism
- */
-export type Get = <T>(source: FieldSource<T>) => T;
-
-const getAccessor: Get = (source) => {
-	const value = source[fieldSource].value;
-	switch (value._tag) {
-		case "Ready":
-			return value.value;
-		case "Failure":
-			throw value.error;
-		case "Pending":
-			throw SUSPENDED;
-	}
-};
 
 export interface DerivedHandle<T> extends FieldSource<T> {
 	readonly get: () => Promise<T>;
@@ -48,6 +29,21 @@ export interface DerivedHandle<T> extends FieldSource<T> {
 	) => () => void;
 }
 
+const getAccessor = <T>(source: FieldSource<T>): T => {
+	const loadable = source[fieldSource].value;
+	switch (loadable._tag) {
+		case "Ready":
+			return loadable.value.decoded;
+		case "Failure":
+			throw loadable.error;
+		case "Pending":
+		case "Cold":
+			throw SUSPENDED;
+	}
+};
+
+export type Get = typeof getAccessor;
+
 /**
  * Client-local reactive value calculated from other fields
  */
@@ -56,19 +52,23 @@ export const derive = <T>(
 	options?: { readonly equals?: (a: T, b: T) => boolean },
 ): DerivedHandle<T> => {
 	const equals = options?.equals;
-	const same = (a: Loadable<T>, b: Loadable<T>): boolean =>
+	const isReady = Loadable.$is("Ready");
+	const same = (a: DerivedLoadable<T>, b: DerivedLoadable<T>): boolean =>
 		equals && isReady(a) && isReady(b)
-			? equals(a.value, b.value)
+			? equals(a.value.decoded, b.value.decoded)
 			: Equal.equals(a, b);
 
-	let last: Loadable<T> | undefined;
-	const derived = computed<Loadable<T>>(() => {
-		let next: Loadable<T>;
+	let last: DerivedLoadable<T> | undefined;
+	const derived = computed<DerivedLoadable<T>>(() => {
+		let next: DerivedLoadable<T>;
 		try {
-			next = Ready({ value: compute(getAccessor) });
+			const decoded = compute(getAccessor);
+			next = Loadable.Ready({
+				value: ReadyLoadableValue.Derived({ decoded }),
+			});
 		} catch (error) {
 			// Catch SUSPENDED value and propagate as Pending, which makes it wait for next update
-			next = isSuspended(error) ? Pending : Failure({ error });
+			next = isSuspended(error) ? Pending : Loadable.Failure({ error });
 		}
 		if (typeof last !== "undefined" && same(last, next)) {
 			return last;
@@ -79,16 +79,17 @@ export const derive = <T>(
 
 	const get = () =>
 		new Promise<T>((resolve, reject) => {
-			const settle = (value: Loadable<T>): boolean =>
-				matchLoadable(value, {
+			const settle = (state: DerivedLoadable<T>): boolean =>
+				Loadable.$match(state, {
 					Ready: ({ value }) => {
-						resolve(value);
+						resolve(value.decoded);
 						return true;
 					},
 					Failure: ({ error }) => {
 						reject(error);
 						return true;
 					},
+					Cold: () => false,
 					Pending: () => false,
 				});
 			if (settle(derived.peek())) {
@@ -107,9 +108,10 @@ export const derive = <T>(
 		onError?: (error: unknown) => void,
 	) =>
 		effect(() => {
-			matchLoadable(derived.value, {
-				Ready: ({ value }) => listener(value),
+			Loadable.$match(derived.value, {
+				Ready: ({ value }) => listener(value.decoded),
 				Failure: ({ error }) => onError?.(error),
+				Cold: () => {},
 				Pending: () => {},
 			});
 		});
