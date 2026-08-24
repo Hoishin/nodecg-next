@@ -129,12 +129,19 @@ describe("duplicate subscribe over the raw wire", () => {
 				return;
 			}
 			const message = decodeServerMessage(event.data);
-			if (
-				Option.isSome(message) &&
-				message.value._tag === "snapshot" &&
-				message.value.field.name === "tallies"
-			) {
-				frames.push(message.value.value);
+			if (Option.isNone(message)) {
+				return;
+			}
+			const frame = message.value;
+			if (frame._tag === "snapshot" && frame.field.name === "tallies") {
+				frames.push(frame.value);
+			}
+			if (frame._tag === "delta" && frame.field.name === "tallies") {
+				for (const op of frame.ops) {
+					if (op.op === "replace" && op.path === "") {
+						frames.push(op.value);
+					}
+				}
 			}
 		};
 		const subscribeFrame: ClientMessage = {
