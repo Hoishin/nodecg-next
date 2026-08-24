@@ -7,6 +7,7 @@ import {
 	type Patch,
 	PatchNotApplicable,
 	RevisionConflict,
+	stableStringify,
 } from "@nodecg/internal/occ";
 import { setSignal, toError } from "@nodecg/internal/utils";
 import {
@@ -144,16 +145,16 @@ export interface ReplicantFrame {
 
 // Cheap hash for quick deduplication, can collide
 const makeLeafValue = (value: JsonValue, revision: number): LeafValue => ({
-	hash: Hash.string(JSON.stringify(value)),
+	hash: Hash.string(stableStringify(value)),
 	value,
 	revision,
 });
 
 const sameValue = (current: LeafValue, value: JsonValue) => {
-	const serialized = JSON.stringify(value);
+	const serialized = stableStringify(value);
 	return (
 		current.hash === Hash.string(serialized) &&
-		JSON.stringify(current.value) === serialized
+		stableStringify(current.value) === serialized
 	);
 };
 

@@ -103,6 +103,24 @@ describe("commit", () => {
 	);
 
 	test(
+		"a commit equal in content but different in key order does not bump the revision",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { x: 1, y: 2 });
+				const committed = yield* engine.commit("ns", "a", () =>
+					Effect.succeed({ y: 2, x: 1 }),
+				);
+				expect(committed).toEqual({ value: { x: 1, y: 2 }, revision: 0 });
+				expect(yield* engine.readReplicant("ns", "a")).toEqual({
+					value: { x: 1, y: 2 },
+					revision: 0,
+				});
+			}),
+		),
+	);
+
+	test(
 		"a value-equal commit does not re-evaluate dependents",
 		testEngine(
 			Effect.gen(function* () {
