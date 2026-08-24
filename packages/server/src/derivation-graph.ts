@@ -318,7 +318,6 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				name: string,
 				produce: (current: RevisionedValue) => Effect.Effect<JsonValue, E>,
 			) {
-				// TODO: Make sure preconditions here are safe to run outside the lock
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
 				const nextEncoded = yield* produce({
@@ -345,7 +344,6 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				patch: Patch,
 				validate: (applied: JsonValue) => Effect.Effect<unknown, E>,
 			) {
-				// TODO: Make sure preconditions here are safe to run outside the lock
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
 				const applied = applyPatch(stored.value, patch);

@@ -1,11 +1,5 @@
-import { Context, type Effect, Schema, type Scope, type Stream } from "effect";
+import { Context, type Effect, Schema } from "effect";
 import type { JsonValue } from "type-fest";
-
-export interface ReplicantChange {
-	readonly namespace: string;
-	readonly name: string;
-	readonly value: JsonValue;
-}
 
 export class ReplicantNotFound extends Schema.TaggedError<ReplicantNotFound>()(
 	"ReplicantNotFound",
@@ -29,12 +23,6 @@ export interface ReplicantStorage {
 		value: JsonValue,
 		createIfNotFound?: boolean,
 	) => Effect.Effect<void, ReplicantNotFound>;
-
-	subscribe: () => Effect.Effect<
-		Stream.Stream<ReplicantChange>,
-		never,
-		Scope.Scope
-	>;
 }
 
 export class ReplicantStorageService extends Context.Tag("ReplicantStorage")<

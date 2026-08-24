@@ -1,6 +1,6 @@
 import { defineNamespace, extendNamespace } from "@nodecg/core";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
-import { Cause, Effect, Layer, Option, Queue, Schema } from "effect";
+import { Cause, Effect, Layer, Option, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { DerivationEngineService } from "./derivation-graph.ts";
@@ -11,7 +11,6 @@ import {
 import { loadNodeCG, loadNodeCGEffect } from "./load-nodecg.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import {
-	type ReplicantChange,
 	type ReplicantStorage,
 	ReplicantNotFound,
 } from "./services/replicant-storage/replicant-storage.ts";
@@ -350,9 +349,6 @@ describe("loadNodeCG", () => {
 				(namespace, name) => new ReplicantNotFound({ namespace, name }),
 			),
 			write: vi.fn<ReplicantStorage["write"]>(() => Effect.void),
-			subscribe: vi.fn<ReplicantStorage["subscribe"]>(() =>
-				Queue.unbounded<ReplicantChange>(),
-			),
 		} satisfies ReplicantStorage;
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
@@ -372,9 +368,6 @@ describe("loadNodeCG", () => {
 				(namespace, name) => new ReplicantNotFound({ namespace, name }),
 			),
 			write: vi.fn<ReplicantStorage["write"]>(() => Effect.void),
-			subscribe: vi.fn<ReplicantStorage["subscribe"]>(() =>
-				Queue.unbounded<ReplicantChange>(),
-			),
 		} satisfies ReplicantStorage;
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });

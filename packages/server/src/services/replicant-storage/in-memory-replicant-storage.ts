@@ -1,17 +1,15 @@
-import { Effect, Layer, PubSub, Stream } from "effect";
+import { Effect, Layer } from "effect";
 import type { JsonValue } from "type-fest";
 
 import {
-	type ReplicantChange,
 	ReplicantNotFound,
 	ReplicantStorageService,
 } from "./replicant-storage.ts";
 
-export const InMemoryReplicantStorage = Layer.effect(
+export const InMemoryReplicantStorage = Layer.sync(
 	ReplicantStorageService,
-	Effect.gen(function* () {
+	() => {
 		const map = new Map<string, Map<string, JsonValue>>();
-		const changes = yield* PubSub.unbounded<ReplicantChange>();
 
 		const read = (
 			namespace: string,
@@ -41,13 +39,11 @@ export const InMemoryReplicantStorage = Layer.effect(
 			} else {
 				map.set(namespace, new Map([[name, value]]));
 			}
-			yield* changes.publish({ namespace, name, value });
 		});
 
 		return {
 			read,
 			write,
-			subscribe: () => Stream.fromPubSub(changes, { scoped: true }),
 		};
-	}),
+	},
 );
