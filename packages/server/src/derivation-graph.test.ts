@@ -1,4 +1,4 @@
-import { computeTestHash } from "@nodecg/internal/occ";
+import { computeFingerprint, computeTestHash } from "@nodecg/internal/occ";
 import { makeTestEffect } from "@nodecg/internal/test-utils";
 import {
 	Cause,
@@ -6,6 +6,7 @@ import {
 	Effect,
 	Exit,
 	Layer,
+	Option,
 	Runtime,
 	Schema,
 	Scope,
@@ -452,13 +453,15 @@ describe("subscribeReplicant", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() =>
-					expect(frames).toEqual([{ kind: "snapshot", value: 2, revision: 1 }]),
+					expect(frames).toEqual([
+						{ value: 2, revision: 1, delta: Option.none() },
+					]),
 				);
 				yield* engine.commit("ns", "a", () => Effect.succeed(3));
 				yield* waitFor(() =>
 					expect(frames).toEqual([
-						{ kind: "snapshot", value: 2, revision: 1 },
-						{ kind: "snapshot", value: 3, revision: 2 },
+						{ value: 2, revision: 1, delta: Option.none() },
+						{ value: 3, revision: 2, delta: Option.none() },
 					]),
 				);
 			}),
@@ -479,15 +482,15 @@ describe("subscribeReplicant", () => {
 
 				yield* waitFor(() =>
 					expect(frames).toEqual([
-						{ kind: "snapshot", value: { x: 1 }, revision: 0 },
+						{ value: { x: 1 }, revision: 0, delta: Option.none() },
 					]),
 				);
 				yield* engine.commit("ns", "a", () => Effect.succeed({ x: 1 }));
 				yield* engine.commit("ns", "a", () => Effect.succeed({ x: 2 }));
 				yield* waitFor(() =>
 					expect(frames).toEqual([
-						{ kind: "snapshot", value: { x: 1 }, revision: 0 },
-						{ kind: "snapshot", value: { x: 2 }, revision: 1 },
+						{ value: { x: 1 }, revision: 0, delta: Option.none() },
+						{ value: { x: 2 }, revision: 1, delta: Option.none() },
 					]),
 				);
 			}),
@@ -508,14 +511,60 @@ describe("subscribeReplicant", () => {
 				).pipe(Effect.fork);
 
 				yield* waitFor(() =>
-					expect(frames).toEqual([{ kind: "snapshot", value: 1, revision: 0 }]),
+					expect(frames).toEqual([
+						{ value: 1, revision: 0, delta: Option.none() },
+					]),
 				);
 				yield* engine.commit("ns", "b", () => Effect.succeed(99));
 				yield* engine.commit("ns", "a", () => Effect.succeed(2));
 				yield* waitFor(() =>
 					expect(frames).toEqual([
-						{ kind: "snapshot", value: 1, revision: 0 },
-						{ kind: "snapshot", value: 2, revision: 1 },
+						{ value: 1, revision: 0, delta: Option.none() },
+						{ value: 2, revision: 1, delta: Option.none() },
+					]),
+				);
+			}),
+		),
+	);
+
+	test(
+		"a patch commit emits a delta frame carrying only its change ops",
+		testEngine(
+			Effect.gen(function* () {
+				const engine = yield* DerivationEngineService;
+				yield* engine.initializeReplicant("ns", "a", { a: 1, b: 2 });
+				const stream = yield* engine.subscribeReplicant("ns", "a");
+				const frames: ReplicantFrame[] = [];
+				yield* Stream.runForEach(stream, (frame) =>
+					Effect.sync(() => frames.push(frame)),
+				).pipe(Effect.fork);
+
+				yield* waitFor(() =>
+					expect(frames).toEqual([
+						{ value: { a: 1, b: 2 }, revision: 0, delta: Option.none() },
+					]),
+				);
+				yield* engine.commitPatch(
+					"ns",
+					"a",
+					[
+						{ op: "test-hash", path: "/a", hash: computeTestHash(1) },
+						{ op: "replace", path: "/a", value: 5 },
+					],
+					() => Effect.void,
+				);
+				yield* waitFor(() =>
+					expect(frames).toEqual([
+						{ value: { a: 1, b: 2 }, revision: 0, delta: Option.none() },
+						{
+							value: { a: 5, b: 2 },
+							revision: 1,
+							delta: Option.some({
+								ops: [{ op: "replace", path: "/a", value: 5 }],
+								baseRevision: 0,
+								hash: computeFingerprint({ a: 5, b: 2 }),
+							}),
+						},
 					]),
 				);
 			}),

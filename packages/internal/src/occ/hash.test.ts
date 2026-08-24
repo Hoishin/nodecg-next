@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { computeTestHash } from "./hash.ts";
+import { computeFingerprint, computeTestHash } from "./hash.ts";
 
 describe("computeTestHash", () => {
 	test("equal values hash equal regardless of key order", () => {
@@ -18,5 +18,21 @@ describe("computeTestHash", () => {
 
 	test("is 128 bits of hex", () => {
 		expect(computeTestHash(null)).toMatch(/^[0-9a-f]{32}$/);
+	});
+});
+
+describe("computeFingerprint", () => {
+	test("equal values hash equal regardless of key order", () => {
+		expect(computeFingerprint({ b: 1, a: 2 })).toBe(
+			computeFingerprint({ a: 2, b: 1 }),
+		);
+	});
+
+	test("different values hash different", () => {
+		expect(computeFingerprint({ a: 1 })).not.toBe(computeFingerprint({ a: 2 }));
+	});
+
+	test("is a number", () => {
+		expect(typeof computeFingerprint({ a: 1 })).toBe("number");
 	});
 });

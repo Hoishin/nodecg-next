@@ -350,7 +350,7 @@ describe("subscribe", () => {
 	);
 
 	test(
-		"[fieldInternal].subscribeRevisioned emits a snapshot frame per commit",
+		"[fieldInternal].subscribeRevisioned streams this field's frames",
 		testInMemory(
 			Effect.gen(function* () {
 				const storage = yield* ReplicantStorageService;
@@ -367,8 +367,8 @@ describe("subscribe", () => {
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 				expect(Chunk.toArray(events)).toEqual([
-					{ kind: "snapshot", value: "0", revision: 0 },
-					{ kind: "snapshot", value: "42", revision: 1 },
+					{ value: "0", revision: 0, delta: Option.none() },
+					{ value: "42", revision: 1, delta: Option.none() },
 				]);
 			}),
 		),

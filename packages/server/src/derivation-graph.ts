@@ -1,6 +1,8 @@
 import type { FieldEncodeError } from "@nodecg/core";
 import {
 	applyPatch,
+	ChangeOp,
+	computeFingerprint,
 	isDrift,
 	type Patch,
 	PatchNotApplicable,
@@ -15,6 +17,7 @@ import {
 	signal,
 } from "@preact/signals-core";
 import {
+	Array,
 	Data,
 	Effect,
 	Either,
@@ -24,6 +27,7 @@ import {
 	HashMap,
 	Mailbox,
 	Option,
+	PubSub,
 	Queue,
 	Ref,
 	Runtime,
@@ -128,11 +132,15 @@ export interface RevisionedValue {
 	readonly revision: number;
 }
 
-export type ReplicantFrame = {
-	readonly kind: "snapshot";
+export interface ReplicantFrame {
 	readonly value: JsonValue;
 	readonly revision: number;
-};
+	readonly delta: Option.Option<{
+		readonly ops: Array.NonEmptyReadonlyArray<ChangeOp>;
+		readonly baseRevision: number;
+		readonly hash: number;
+	}>;
+}
 
 // Cheap hash for quick deduplication, can collide
 const makeLeafValue = (value: JsonValue, revision: number): LeafValue => ({
@@ -176,6 +184,12 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				readonly namespace: string;
 				readonly name: string;
 				readonly value: JsonValue;
+			}>();
+
+			const changes = yield* PubSub.unbounded<{
+				readonly namespace: string;
+				readonly name: string;
+				readonly frame: ReplicantFrame;
 			}>();
 
 			const initializeReplicant = Effect.fn(
@@ -266,11 +280,44 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				},
 			);
 
+			const finishCommit = (
+				node: ReplicantNode,
+				namespace: string,
+				name: string,
+				stored: LeafValue,
+				frame: ReplicantFrame,
+			) =>
+				SynchronizedRef.modifyEffect(replicants, (map) =>
+					Effect.gen(function* () {
+						if (node.peek().revision !== stored.revision) {
+							return yield* new CommitContended({ namespace, name });
+						}
+						yield* setSignal(
+							node,
+							makeLeafValue(frame.value, frame.revision),
+						).pipe(
+							Effect.withSpan("setSignal", { attributes: { namespace, name } }),
+							Effect.orDie,
+						);
+						yield* Queue.offer(pendingWrites, {
+							namespace,
+							name,
+							value: frame.value,
+						});
+						yield* PubSub.publish(changes, { namespace, name, frame });
+						return [
+							{ value: frame.value, revision: frame.revision },
+							map,
+						] as const;
+					}),
+				);
+
 			const commit = Effect.fn("DerivationEngine.commit")(function* <E>(
 				namespace: string,
 				name: string,
 				produce: (current: RevisionedValue) => Effect.Effect<JsonValue, E>,
 			) {
+				// TODO: Make sure preconditions here are safe to run outside the lock
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
 				const nextEncoded = yield* produce({
@@ -280,25 +327,14 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				if (sameValue(stored, nextEncoded)) {
 					return { value: stored.value, revision: stored.revision };
 				}
-				return yield* SynchronizedRef.modifyEffect(replicants, (map) =>
-					Effect.gen(function* () {
-						if (node.peek().revision !== stored.revision) {
-							return yield* new CommitContended({ namespace, name });
-						}
-						const revision = stored.revision + 1;
-						yield* setSignal(node, makeLeafValue(nextEncoded, revision)).pipe(
-							Effect.withSpan("setSignal", { attributes: { namespace, name } }),
-							Effect.orDie,
-						);
-						yield* Queue.offer(pendingWrites, {
-							namespace,
-							name,
-							value: nextEncoded,
-						});
-						return [{ value: nextEncoded, revision }, map] as const;
-					}),
-				);
+				return yield* finishCommit(node, namespace, name, stored, {
+					value: nextEncoded,
+					revision: stored.revision + 1,
+					delta: Option.none(),
+				});
 			});
+
+			const isChangeOp = Schema.is(ChangeOp);
 
 			const commitPatch = Effect.fn("DerivationEngine.commitPatch")(function* <
 				E,
@@ -308,48 +344,64 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				patch: Patch,
 				validate: (applied: JsonValue) => Effect.Effect<unknown, E>,
 			) {
-				return yield* commit(namespace, name, (current) =>
-					Effect.gen(function* () {
-						const applied = applyPatch(current.value, patch);
-						if (Either.isLeft(applied)) {
-							const { op, cause } = applied.left;
-							if (isDrift(cause)) {
-								return yield* new RevisionConflict({
-									value: current.value,
-									revision: current.revision,
-									reason: cause._tag,
-								});
-							}
-							return yield* new PatchNotApplicable({
-								path: op.path,
-								reason: cause._tag,
-							});
-						}
-						yield* validate(applied.right);
-						return applied.right;
+				// TODO: Make sure preconditions here are safe to run outside the lock
+				const node = yield* lookupNode(namespace, name);
+				const stored = node.peek();
+				const applied = applyPatch(stored.value, patch);
+				if (Either.isLeft(applied)) {
+					const { op, cause } = applied.left;
+					if (isDrift(cause)) {
+						return yield* new RevisionConflict({
+							value: stored.value,
+							revision: stored.revision,
+							reason: cause._tag,
+						});
+					}
+					return yield* new PatchNotApplicable({
+						path: op.path,
+						reason: cause._tag,
+					});
+				}
+				const changeOps = patch.filter(isChangeOp);
+				if (
+					!Array.isNonEmptyReadonlyArray(changeOps) ||
+					sameValue(stored, applied.right)
+				) {
+					return { value: stored.value, revision: stored.revision };
+				}
+				yield* validate(applied.right);
+				return yield* finishCommit(node, namespace, name, stored, {
+					value: applied.right,
+					revision: stored.revision + 1,
+					delta: Option.some({
+						ops: changeOps,
+						baseRevision: stored.revision,
+						hash: computeFingerprint(applied.right),
 					}),
-				);
+				});
 			});
 
 			const subscribeReplicant = Effect.fn(
 				"DerivationEngine.subscribeReplicant",
 			)(function* (namespace: string, name: string) {
+				const dequeue = yield* PubSub.subscribe(changes);
 				const node = yield* lookupNode(namespace, name);
-				const frames = yield* Queue.unbounded<ReplicantFrame>();
-				yield* Effect.acquireRelease(
-					Effect.sync(() =>
-						effect(() => {
-							const stored = node.value;
-							Queue.unsafeOffer(frames, {
-								kind: "snapshot",
-								value: stored.value,
-								revision: stored.revision,
-							});
-						}),
+				const stored = yield* readLeaf(node, namespace, name);
+				const seed: ReplicantFrame = {
+					value: stored.value,
+					revision: stored.revision,
+					delta: Option.none(),
+				};
+				const updates = Stream.fromQueue(dequeue).pipe(
+					Stream.filter(
+						(event) =>
+							event.namespace === namespace &&
+							event.name === name &&
+							event.frame.revision > stored.revision,
 					),
-					(dispose) => Effect.sync(dispose),
+					Stream.map((event) => event.frame),
 				);
-				return Stream.fromQueue(frames);
+				return Stream.concat(Stream.succeed(seed), updates);
 			});
 
 			const initializeComputed = Effect.fn(

@@ -155,7 +155,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 ) {
 	const transport = yield* FieldTransportService;
 	const cells = yield* FieldCellsService;
-	const cell = cells.replicant(namespace, name, manifest);
+	const cell = yield* cells.replicant(namespace, name, manifest);
 
 	const fetchEncoded = () => transport.getReplicant(namespace, name);
 

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { ChangeOp } from "./occ/schema.ts";
 import { JsonValueSchema } from "./utils/json-value-schema.ts";
 
 const ReplicantFieldIdentifier = Schema.Struct({
@@ -36,6 +37,10 @@ export const UnsubscribeMessage = Schema.TaggedStruct("unsubscribe", {
 	field: FieldIdentifier,
 });
 
+export const ResyncMessage = Schema.TaggedStruct("resync", {
+	field: ReplicantFieldIdentifier,
+});
+
 export const PingMessage = Schema.TaggedStruct("ping", {
 	kind: Schema.Union(Schema.Literal("ping"), Schema.Literal("pong")),
 });
@@ -43,6 +48,7 @@ export const PingMessage = Schema.TaggedStruct("ping", {
 export const ClientMessage = Schema.Union(
 	SubscribeMessage,
 	UnsubscribeMessage,
+	ResyncMessage,
 	PingMessage,
 );
 export type ClientMessage = typeof ClientMessage.Type;
@@ -54,6 +60,15 @@ export const ReplicantSnapshotMessage = Schema.TaggedStruct("snapshot", {
 });
 export type ReplicantSnapshotMessage = typeof ReplicantSnapshotMessage.Type;
 
+export const ReplicantDeltaMessage = Schema.TaggedStruct("delta", {
+	field: ReplicantFieldIdentifier,
+	ops: Schema.NonEmptyArray(ChangeOp),
+	baseRevision: Schema.Number,
+	revision: Schema.Number,
+	hash: Schema.Number,
+});
+export type ReplicantDeltaMessage = typeof ReplicantDeltaMessage.Type;
+
 export const FieldValueMessage = Schema.TaggedStruct("value", {
 	field: Schema.Union(ComputedFieldIdentifier, TopicFieldIdentifier),
 	value: JsonValueSchema,
@@ -62,6 +77,7 @@ export type FieldValueMessage = typeof FieldValueMessage.Type;
 
 export const PublishMessage = Schema.Union(
 	ReplicantSnapshotMessage,
+	ReplicantDeltaMessage,
 	FieldValueMessage,
 );
 export type PublishMessage = typeof PublishMessage.Type;

@@ -30,6 +30,7 @@ export {
 export {
 	ClientMessage,
 	PingMessage,
+	ResyncMessage,
 	ServerMessage,
 	SubscribeMessage,
 	UnsubscribeMessage,

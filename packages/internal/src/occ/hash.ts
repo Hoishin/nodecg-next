@@ -17,3 +17,6 @@ const jsonToBytes = (value: JsonValue) =>
 
 export const computeTestHash = (value: JsonValue) =>
 	murmur.x64.hash128(jsonToBytes(value));
+
+export const computeFingerprint = (value: JsonValue) =>
+	murmur.x86.hash32(jsonToBytes(value));

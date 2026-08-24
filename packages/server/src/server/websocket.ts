@@ -13,6 +13,7 @@ import {
 	FieldValueMessage,
 	type Identity,
 	PingMessage,
+	ReplicantDeltaMessage,
 	type ReplicantFieldIdentifier,
 	ReplicantSnapshotMessage,
 	ServerMessage,
@@ -42,6 +43,7 @@ import {
 	type ComputedComputeError,
 	type ComputedNotFound,
 	DerivationEngineService,
+	type ReplicantFrame,
 	type UnknownReplicant,
 } from "../derivation-graph.ts";
 import type { FieldPermissionDenied } from "../field-builders/permission.ts";
@@ -174,6 +176,27 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					);
 			};
 
+			const replicantFrameMessage = (
+				field: ReplicantFieldIdentifier,
+				frame: ReplicantFrame,
+			) =>
+				Option.match(frame.delta, {
+					onNone: () =>
+						ReplicantSnapshotMessage.make({
+							field,
+							value: frame.value,
+							revision: frame.revision,
+						}),
+					onSome: (delta) =>
+						ReplicantDeltaMessage.make({
+							field,
+							ops: delta.ops,
+							baseRevision: delta.baseRevision,
+							revision: frame.revision,
+							hash: delta.hash,
+						}),
+				});
+
 			const openSubscription = Effect.fn("openSubscription")(function* (
 				field: FieldIdentifier,
 			) {
@@ -191,31 +214,29 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					);
 					return Option.none();
 				}
+
 				const fiber = yield* Effect.forkScoped(
-					Effect.gen(function* () {
-						if (target._tag === "Replicant") {
-							const stream = yield* target.internal.subscribeRevisioned();
-							yield* Stream.runForEach(stream, (frame) =>
-								send(
-									ReplicantSnapshotMessage.make({
-										field: target.field,
-										value: frame.value,
-										revision: frame.revision,
-									}),
-								),
-							);
-						} else if (target._tag === "Computed") {
-							const stream = yield* target.internal.subscribeEncoded();
-							yield* Stream.runForEach(stream, (value) =>
-								send(FieldValueMessage.make({ field: target.field, value })),
-							);
-						} else {
-							const stream = yield* target.internal.subscribeEncoded();
-							yield* Stream.runForEach(stream, (value) =>
-								send(FieldValueMessage.make({ field: target.field, value })),
-							);
-						}
-					}).pipe(Effect.scoped, rejectSubscribeFailure(field)),
+					Match.value(target)
+						.pipe(
+							Match.tag("Replicant", ({ field, internal }) =>
+								Effect.gen(function* () {
+									const frames = yield* internal.subscribeRevisioned();
+									yield* Stream.runForEach(frames, (frame) =>
+										send(replicantFrameMessage(field, frame)),
+									);
+								}),
+							),
+							Match.tag("Computed", "Topic", ({ field, internal }) =>
+								Effect.gen(function* () {
+									const stream = yield* internal.subscribeEncoded();
+									yield* Stream.runForEach(stream, (value) =>
+										send(FieldValueMessage.make({ field, value })),
+									);
+								}),
+							),
+							Match.exhaustive,
+						)
+						.pipe(Effect.scoped, rejectSubscribeFailure(field)),
 				);
 				return Option.some(fiber);
 			});
@@ -234,21 +255,26 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					}
 					const message = yield* decodeClientMessage(data);
 					yield* Match.value(message).pipe(
-						Match.when({ _tag: "ping", kind: "ping" }, () =>
-							Effect.gen(function* () {
-								yield* Effect.logDebug("Received ping");
-								yield* send(PingMessage.make({ kind: "pong" }));
-							}),
+						Match.tag("ping", (msg) =>
+							Match.value(msg).pipe(
+								Match.when({ kind: "ping" }, () =>
+									Effect.gen(function* () {
+										yield* Effect.logDebug("Received ping");
+										yield* send(PingMessage.make({ kind: "pong" }));
+									}),
+								),
+								Match.when({ kind: "pong" }, () =>
+									Effect.logDebug("Received pong"),
+								),
+								Match.exhaustive,
+							),
 						),
-						Match.when({ _tag: "ping", kind: "pong" }, () =>
-							Effect.logDebug("Received pong"),
-						),
-						Match.when({ _tag: "subscribe" }, (msg) =>
+						Match.tag("subscribe", (msg) =>
 							SynchronizedRef.updateEffect(subscriptions, (map) =>
 								Effect.gen(function* () {
 									const key = fieldKey(msg.field);
 									const existing = HashMap.get(map, key);
-									// A duplicate subscribe restarts the subscription, so the fresh seed is the new fiber's own first frame, in order with its snapshots.
+									// Restart subscription for fresh reseed if already running
 									if (Option.isSome(existing)) {
 										yield* Fiber.interrupt(existing.value);
 									}
@@ -257,7 +283,22 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 								}),
 							),
 						),
-						Match.when({ _tag: "unsubscribe" }, (msg) =>
+						Match.tag("resync", (msg) =>
+							SynchronizedRef.updateEffect(subscriptions, (map) =>
+								Effect.gen(function* () {
+									const key = fieldKey(msg.field);
+									const existing = HashMap.get(map, key);
+									// Ignore if not subscribed
+									if (Option.isNone(existing)) {
+										return map;
+									}
+									yield* Fiber.interrupt(existing.value);
+									const fiber = yield* openSubscription(msg.field);
+									return HashMap.modifyAt(map, key, () => fiber);
+								}),
+							),
+						),
+						Match.tag("unsubscribe", (msg) =>
 							SynchronizedRef.updateEffect(subscriptions, (map) =>
 								Effect.gen(function* () {
 									const key = fieldKey(msg.field);
