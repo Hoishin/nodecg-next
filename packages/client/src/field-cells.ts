@@ -398,12 +398,20 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				Stream.runForEach(incoming, (message) =>
 					Match.value(message).pipe(
 						Match.tag("snapshot", "delta", (published) =>
-							applyFrameToCell(replicantHandlers, fieldKey(published.field), published),
+							applyFrameToCell(
+								replicantHandlers,
+								fieldKey(published.field),
+								published,
+							),
 						),
 						Match.tag("value", (published) =>
 							Match.value(published.field).pipe(
 								Match.when({ type: "computed" }, (field) =>
-									applyFrameToCell(computedHandlers, fieldKey(field), published),
+									applyFrameToCell(
+										computedHandlers,
+										fieldKey(field),
+										published,
+									),
 								),
 								Match.when({ type: "topic" }, (field) =>
 									applyFrameToCell(topicHandlers, fieldKey(field), published),
