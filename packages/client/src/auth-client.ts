@@ -5,6 +5,7 @@ import {
 	type LoginProvider,
 	type MePayload,
 } from "@nodecg/internal";
+import { buildRelativeUrl } from "@nodecg/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
 
 export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
@@ -34,17 +35,8 @@ export interface AuthClient {
 	readonly [Symbol.dispose]: () => void;
 }
 
-export const loginUrl = (
-	provider: LoginProvider,
-	returnTo?: string,
-): string => {
-	if (typeof returnTo === "undefined") {
-		return provider.url;
-	}
-	const url = new URL(provider.url, "http://relative");
-	url.searchParams.set("returnTo", returnTo);
-	return url.pathname + url.search;
-};
+export const loginUrl = (provider: LoginProvider, returnTo?: string) =>
+	buildRelativeUrl(provider.url, { returnTo });
 
 export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	baseUrl?: string,

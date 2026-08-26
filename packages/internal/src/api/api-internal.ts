@@ -9,6 +9,7 @@ import { Schema } from "effect";
 
 import { HumanAuthenticationMiddleware, IdentitySchema } from "../auth.ts";
 import { AdminRoleNameSchema, RoleNameSchema } from "../role.ts";
+import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
 export class TooManyRequests extends HttpApiSchema.EmptyError<TooManyRequests>()(
@@ -71,14 +72,16 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 				Schema.Struct({ returnTo: Schema.optional(ReturnToSchema) }),
 			)
 			.addSuccess(HttpApiSchema.Empty(302))
-			.addError(HttpApiError.InternalServerError),
+			.addError(HttpApiError.InternalServerError)
+			.addError(MalformedUrl, { status: 400 }),
 	)
 	.add(
 		HttpApiEndpoint.get(
 			"callback",
 		)`/authentication/callback/${HttpApiSchema.param("provider", Schema.String)}`
 			.addSuccess(HttpApiSchema.Empty(302))
-			.addError(HttpApiError.InternalServerError),
+			.addError(HttpApiError.InternalServerError)
+			.addError(MalformedUrl, { status: 400 }),
 	)
 	.add(
 		HttpApiEndpoint.post("logout", "/authentication/logout")

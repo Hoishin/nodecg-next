@@ -1,6 +1,6 @@
 import { FetchHttpClient } from "@effect/platform";
 import { testEffect } from "@nodecg/internal/test-utils";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 import { describe, expect, test, vi } from "vitest";
 
 import { loginUrl, makeAuthClient } from "./auth-client.ts";
@@ -39,9 +39,13 @@ const buildClient = makeAuthClient().pipe(
 describe("loginUrl", () => {
 	test("returns the provider URL, appending an encoded returnTo when given", () => {
 		const dev = { name: "dev", url: "/api/internal/authentication/login/dev" };
-		expect(loginUrl(dev)).toBe("/api/internal/authentication/login/dev");
-		expect(loginUrl(dev, "/dash?tab=1")).toBe(
-			"/api/internal/authentication/login/dev?returnTo=%2Fdash%3Ftab%3D1",
+		expect(loginUrl(dev)).toEqual(
+			Either.right("/api/internal/authentication/login/dev"),
+		);
+		expect(loginUrl(dev, "/dash?tab=1")).toEqual(
+			Either.right(
+				"/api/internal/authentication/login/dev?returnTo=%2Fdash%3Ftab%3D1",
+			),
 		);
 	});
 });

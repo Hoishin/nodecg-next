@@ -23,6 +23,7 @@ import {
 	sessionCookieSecurity,
 	TooManyRequests,
 } from "@nodecg/internal";
+import { parseRelativeUrl } from "@nodecg/internal/utils";
 import {
 	Clock,
 	type Duration,
@@ -81,7 +82,7 @@ const callbackUrl = Effect.fn("callbackUrl")(function* (
 	return url.href;
 }, Effect.provide(Path.layer));
 
-const loginPath = Effect.fn("loginUrl")(function* (
+const loginPath = Effect.fn("loginPath")(function* (
 	basePath: string,
 	provider: string,
 ) {
@@ -174,11 +175,11 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								{ status: 404 },
 							);
 						}
+						const requestUrl = yield* parseRelativeUrl(request.url);
 						const redirect = yield* provider.value
 							.authorize({
 								redirectUri: yield* callbackUrl(baseUrl.href, name),
-								searchParams: new URL(request.url, "http://example.com")
-									.searchParams,
+								searchParams: new URLSearchParams(requestUrl.search),
 							})
 							.pipe(Effect.either);
 						if (Either.isLeft(redirect)) {
@@ -221,11 +222,11 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							});
 						}
 						yield* stashes.revoke(stashId);
+						const requestUrl = yield* parseRelativeUrl(request.url);
 						const account = yield* provider.value
 							.callback({
 								redirectUri: yield* callbackUrl(baseUrl.href, name),
-								searchParams: new URL(request.url, "http://example.com")
-									.searchParams,
+								searchParams: new URLSearchParams(requestUrl.search),
 								stash: stash.value,
 							})
 							.pipe(

@@ -1,5 +1,6 @@
 import {
 	loadAuthClient,
+	loginUrl,
 	type AuthClient,
 	type HumanIdentity,
 	type Identity,
@@ -7,7 +8,7 @@ import {
 	type MePayload,
 } from "@nodecg/client";
 import { AnonymousIdentitySchema } from "@nodecg/internal";
-import { Schema } from "effect";
+import { Either, Schema } from "effect";
 
 import { nodecgBase } from "./base.ts";
 
@@ -81,7 +82,10 @@ export const authSession = (
 	void refresh().catch(() => undefined);
 
 	const popupLogin = async (provider: LoginProvider) => {
-		const popup = window.open(provider.url, "nodecg-login");
+		const url = loginUrl(provider).pipe(
+			Either.getOrThrowWith((error) => error),
+		);
+		const popup = window.open(url, "nodecg-login");
 		if (popup === null) {
 			throw new LoginWindowBlocked();
 		}
