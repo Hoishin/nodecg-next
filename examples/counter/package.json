@@ -9,7 +9,6 @@
 		"type-check": "tsc -b --noEmit src/client src/server"
 	},
 	"dependencies": {
-		"@effect/platform-node": "catalog:",
 		"@nodecg/browser": "workspace:*",
 		"@nodecg/client": "workspace:*",
 		"@nodecg/core": "workspace:*",

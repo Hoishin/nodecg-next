@@ -13,7 +13,6 @@
 		"@nodecg/client": "workspace:*",
 		"@nodecg/core": "workspace:*",
 		"@nodecg/server": "workspace:*",
-		"effect": "catalog:",
 		"react": "catalog:",
 		"react-dom": "catalog:"
 	},

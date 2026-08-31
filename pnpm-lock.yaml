@@ -95,9 +95,6 @@ importers:
 
   examples/counter:
     dependencies:
-      '@effect/platform-node':
-        specifier: 'catalog:'
-        version: 0.107.0(@effect/cluster@0.59.0(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(effect@3.21.4)
       '@nodecg/browser':
         specifier: workspace:*
         version: link:../../packages/browser
@@ -156,9 +153,6 @@ importers:
       '@nodecg/server':
         specifier: workspace:*
         version: link:../../packages/server
-      effect:
-        specifier: 'catalog:'
-        version: 3.21.4
       react:
         specifier: 'catalog:'
         version: 19.2.7
@@ -212,9 +206,6 @@ importers:
       '@effect/platform':
         specifier: 'catalog:'
         version: 0.96.2(effect@3.21.4)
-      '@effect/platform-browser':
-        specifier: ^0.76.0
-        version: 0.76.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)
       '@nodecg/core':
         specifier: workspace:*
         version: link:../core
@@ -439,12 +430,6 @@ packages:
   '@effect/language-service@0.86.6':
     resolution: {integrity: sha512-uwXbp+lWzt60bZnm6lG6S5DWy0m6TthUzV2hcQoiS6NzieEDm07tuBakscxOXoO+AU9+yTH+0TSIa9mEDt9dFA==}
     hasBin: true
-
-  '@effect/platform-browser@0.76.0':
-    resolution: {integrity: sha512-cUyBpcLstrP/HiNsIePMBAI6R1+u6aRFlAUZb4wf08y1d1Vqf/Dmxsq14ZjBfnSYiqBPrCeYf1ZI+qMGQQL0RA==}
-    peerDependencies:
-      '@effect/platform': ^0.96.0
-      effect: ^3.21.0
 
   '@effect/platform-node-shared@0.60.0':
     resolution: {integrity: sha512-obT8Mau/guSYjehF9pg09FHM/ERXAAVBl/FXRXEyvTc7ZiDGTYnPBihytGNccsfNsgqBdvCE24sflwK6j5nFXA==}
@@ -1397,9 +1382,6 @@ packages:
   msgpackr@1.12.1:
     resolution: {integrity: sha512-4EUH9tQHnMmEgzW/MdAP0KIfa1T9AF+htl0ffe2n5vb2EKn9y2co8ccpgWko6S52Jy1PQZKwRnx5/KkYjtd9MQ==}
 
-  multipasta@0.2.7:
-    resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
-
   multipasta@0.2.8:
     resolution: {integrity: sha512-ZPWuMKyv0cSO29f7hozp+k6+crZbQijV8ipMvxNxRf2SwtYGTX1ZX89Kd20VV4H9Znonx+EQn+iy1wGQsJ+b+Q==}
 
@@ -1724,12 +1706,6 @@ snapshots:
       uuid: 11.1.1
 
   '@effect/language-service@0.86.6': {}
-
-  '@effect/platform-browser@0.76.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)':
-    dependencies:
-      '@effect/platform': 0.96.2(effect@3.21.4)
-      effect: 3.21.4
-      multipasta: 0.2.7
 
   '@effect/platform-node-shared@0.60.0(@effect/cluster@0.59.0(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(effect@3.21.4)':
     dependencies:
@@ -2386,8 +2362,6 @@ snapshots:
   msgpackr@1.12.1:
     optionalDependencies:
       msgpackr-extract: 3.0.4
-
-  multipasta@0.2.7: {}
 
   multipasta@0.2.8: {}
 
