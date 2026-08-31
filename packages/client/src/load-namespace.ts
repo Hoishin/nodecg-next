@@ -207,12 +207,13 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		});
 		const encoded = yield* manifest.encode(next);
 		const patch = yield* diffSignedPatch(base, encoded).pipe(
-			Effect.orDieWith(
+			Effect.mapError(
 				(failure) =>
 					new Error(
 						`Diffing "${namespace}/${name}" produced an unusable patch: ${failure._tag}`,
 					),
 			),
+			Effect.orDie,
 		);
 		if (!Array.isNonEmptyReadonlyArray(patch)) {
 			return;

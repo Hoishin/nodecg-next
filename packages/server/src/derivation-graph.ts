@@ -232,7 +232,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 
 			const readLeaf = (node: ReplicantNode, namespace: string, name: string) =>
 				readSignal(node).pipe(
-					Effect.orDieWith(
+					Effect.mapError(
 						(cause) =>
 							new DerivationReadValueError({
 								namespace,
@@ -240,6 +240,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 								cause: toError(cause.error),
 							}),
 					),
+					Effect.orDie,
 				);
 
 			const persist = (namespace: string, name: string, value: JsonValue) =>
@@ -456,7 +457,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 						return yield* new ComputedNotFound({ namespace, name });
 					}
 					const stored = yield* readSignal(existing.value).pipe(
-						Effect.orDieWith(
+						Effect.mapError(
 							(cause) =>
 								new DerivationReadValueError({
 									namespace,
@@ -464,6 +465,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 									cause: toError(cause.error),
 								}),
 						),
+						Effect.orDie,
 					);
 					return yield* stored; // Unwrap the Exit
 				},
