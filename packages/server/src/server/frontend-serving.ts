@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import sirv from "sirv";
 
 import { type WidenedImplementedNamespace } from "../implement-namespace.ts";
-import { connectToHttpApp } from "./connect-middleware.ts";
+import { nodeMiddlewareToHttpApp } from "./node-connect-middleware.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
 
 const frontendPrefix = (namespace: string) =>
@@ -21,14 +21,15 @@ const coerceToPath = (url: string | URL) => {
 	return url;
 };
 
-const staticApp = (dirPath: string | URL, single: boolean) =>
-	connectToHttpApp(
+const sirvHttpApp = (dirPath: string | URL, single: boolean) =>
+	nodeMiddlewareToHttpApp(
 		sirv(coerceToPath(dirPath), {
 			etag: true,
 			single,
 			// Don't cache files in memory
 			dev: true,
 		}),
+		{ stripUrl: true },
 	);
 
 export const frontendRoutes = (options: {
@@ -47,25 +48,22 @@ export const frontendRoutes = (options: {
 				if (options.dev && typeof frontend.vite !== "undefined") {
 					const devServer = yield* buildViteServer({
 						root: coerceToPath(frontend.vite.root),
-						base: `${frontendPrefix(name)}/`,
+						prefix: frontendPrefix(name),
 						spa,
 					});
 					yield* router.mountApp(
 						frontendPrefix(name),
-						connectToHttpApp(devServer.middlewares),
-						{ includePrefix: true },
+						nodeMiddlewareToHttpApp(devServer.middlewares),
 					);
 				} else {
-					const exact = frontend.dir.map((dirPath) =>
-						staticApp(dirPath, false),
+					const apps = frontend.dir.map((dirPath) =>
+						sirvHttpApp(dirPath, false),
 					);
-					// Fallback pass runs only after every dir missed the exact path, so an exact match in any dir wins and the first dir with an index.html serves the fallback
-					const apps = spa
-						? [
-								...exact,
-								...frontend.dir.map((dirPath) => staticApp(dirPath, true)),
-							]
-						: exact;
+					if (spa) {
+						apps.push(
+							...frontend.dir.map((dirPath) => sirvHttpApp(dirPath, true)),
+						);
+					}
 					yield* router.mountApp(
 						frontendPrefix(name),
 						apps.reduce((acc, next) =>

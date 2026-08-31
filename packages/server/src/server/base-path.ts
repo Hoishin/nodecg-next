@@ -1,4 +1,8 @@
-import { type HttpApp, HttpRouter, HttpServerResponse } from "@effect/platform";
+import {
+	type HttpApp,
+	HttpRouter,
+	HttpServerRespondable,
+} from "@effect/platform";
 import { Effect } from "effect";
 
 import { config } from "../server-config.ts";
@@ -8,8 +12,6 @@ export const basePathMiddleware = Effect.gen(function* () {
 	return (httpApp: HttpApp.Default): HttpApp.Default =>
 		HttpRouter.empty.pipe(
 			HttpRouter.mountApp(pathname, httpApp),
-			Effect.catchTag("RouteNotFound", () =>
-				HttpServerResponse.empty({ status: 404 }),
-			),
+			Effect.catchTag("RouteNotFound", HttpServerRespondable.toResponse),
 		);
 });

@@ -1,10 +1,27 @@
-import { createServer, type Server } from "node:http";
+import {
+	createServer,
+	type IncomingMessage,
+	type Server,
+	type ServerResponse,
+} from "node:http";
 
-import { HttpServer } from "@effect/platform";
+import { Cookies, HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
+import { baseUrlCookieName } from "@nodecg/internal";
 import { Effect, Layer } from "effect";
 
 import { config } from "../server-config.ts";
+
+const baseUrlCookieListener = Effect.gen(function* () {
+	const { pathname: basePath } = yield* config.baseUrl;
+	const cookie = yield* Cookies.makeCookie(baseUrlCookieName, basePath, {
+		path: basePath,
+	});
+	const setCookieHeader = Cookies.serializeCookie(cookie);
+	return (_: IncomingMessage, response: ServerResponse) => {
+		response.setHeader("set-cookie", setCookieHeader);
+	};
+});
 
 const forceShutdownServer = Effect.fn("forceShutdownServer")(function* (
 	server: Server,
@@ -28,6 +45,7 @@ export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
 	onReady?: (address?: string) => void;
 }) {
 	const server = createServer();
+	server.addListener("request", yield* baseUrlCookieListener);
 	if (onReady) {
 		const handleListening = () => {
 			const address = server.address();

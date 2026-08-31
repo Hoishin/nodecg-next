@@ -9,21 +9,24 @@ import {
 import { NodeHttpServerRequest } from "@effect/platform-node";
 import { Effect } from "effect";
 
-export type ConnectMiddleware = (
+export type NodeMiddleware = (
 	req: IncomingMessage,
 	res: ServerResponse,
 	next: () => void | Promise<void>,
 ) => void;
 
-export const connectToHttpApp = (
-	middleware: ConnectMiddleware,
+export const nodeMiddlewareToHttpApp = (
+	middleware: NodeMiddleware,
+	options?: { readonly stripUrl?: boolean },
 ): HttpApp.Default<HttpServerError.RouteNotFound> =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest;
 		const req = NodeHttpServerRequest.toIncomingMessage(request);
 		const res = NodeHttpServerRequest.toServerResponse(request);
 
-		req.url = request.url;
+		if (options?.stripUrl) {
+			req.url = request.url;
+		}
 
 		return yield* Effect.async<
 			HttpServerResponse.HttpServerResponse,
