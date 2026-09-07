@@ -1,4 +1,4 @@
-import { defineNamespace } from "@nodecg/core";
+import { defineNamespace } from "@nodecg-next/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
@@ -6,9 +6,9 @@ import {
 	HumanIdentitySchema,
 	RoleName,
 	ServerIdentitySchema,
-} from "@nodecg/internal";
-import { computeTestHash } from "@nodecg/internal/occ";
-import { makeTestEffect } from "@nodecg/internal/test-utils";
+} from "@nodecg-next/internal";
+import { computeTestHash } from "@nodecg-next/internal/occ";
+import { makeTestEffect } from "@nodecg-next/internal/test-utils";
 import {
 	Cause,
 	Chunk,

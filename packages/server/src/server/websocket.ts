@@ -5,7 +5,7 @@ import {
 	HttpServerResponse,
 	type Socket,
 } from "@effect/platform";
-import type { FieldEncodeError } from "@nodecg/core";
+import type { FieldEncodeError } from "@nodecg-next/core";
 import {
 	ClientMessage,
 	type ComputedFieldIdentifier,
@@ -20,7 +20,7 @@ import {
 	sessionCookieName,
 	SubscribeRejectedMessage,
 	type TopicFieldIdentifier,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import {
 	Data,
 	Effect,

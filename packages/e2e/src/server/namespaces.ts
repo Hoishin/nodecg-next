@@ -1,4 +1,7 @@
-import { implementExtendedNamespace, implementNamespace } from "@nodecg/server";
+import {
+	implementExtendedNamespace,
+	implementNamespace,
+} from "@nodecg-next/server";
 
 import {
 	baseManifest,

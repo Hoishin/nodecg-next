@@ -1,4 +1,4 @@
-import { extendNamespace } from "@nodecg/core";
+import { extendNamespace } from "@nodecg-next/core";
 import { Schema } from "effect";
 
 import { counterManifest } from "./library/manifest.ts";

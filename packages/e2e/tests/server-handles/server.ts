@@ -1,4 +1,4 @@
-import { loadNodeCG } from "@nodecg/server";
+import { loadNodeCG } from "@nodecg-next/server";
 
 import { fixture } from "../../src/server/namespaces.ts";
 import { reportReady } from "../../src/server/report-ready.ts";

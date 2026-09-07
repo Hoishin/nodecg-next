@@ -1,5 +1,5 @@
 {
-	"name": "@nodecg/server",
+	"name": "@nodecg-next/server",
 	"version": "0.0.0-experimental",
 	"license": "MIT",
 	"type": "module",
@@ -12,7 +12,7 @@
 	"dependencies": {
 		"@effect/platform": "catalog:",
 		"@effect/platform-node": "catalog:",
-		"@nodecg/core": "workspace:*",
+		"@nodecg-next/core": "workspace:*",
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"openid-client": "^6.8.4",
@@ -20,7 +20,7 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"@nodecg/internal": "workspace:*",
+		"@nodecg-next/internal": "workspace:*",
 		"@types/node": "catalog:",
 		"oauth2-mock-server": "catalog:",
 		"typescript": "catalog:",

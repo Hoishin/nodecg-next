@@ -4,8 +4,8 @@ import {
 	RoleName,
 	ServerIdentitySchema,
 	type Identity,
-} from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+} from "@nodecg-next/internal";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
 

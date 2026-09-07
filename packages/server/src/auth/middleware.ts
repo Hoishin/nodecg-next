@@ -2,7 +2,7 @@ import { HttpApiError } from "@effect/platform";
 import {
 	HumanAuthenticationMiddleware,
 	MachineAuthenticationMiddleware,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import { Effect, Layer, Option, Redacted } from "effect";
 
 import { config } from "../server-config.ts";

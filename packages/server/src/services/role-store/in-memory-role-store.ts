@@ -1,4 +1,4 @@
-import type { RoleName } from "@nodecg/internal";
+import type { RoleName } from "@nodecg-next/internal";
 import { Effect, Layer } from "effect";
 
 import { type IdentityKey, RoleStoreService } from "./role-store.ts";

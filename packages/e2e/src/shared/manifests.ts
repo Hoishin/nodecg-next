@@ -1,4 +1,4 @@
-import { defineNamespace, extendNamespace } from "@nodecg/core";
+import { defineNamespace, extendNamespace } from "@nodecg-next/core";
 import { Schema } from "effect";
 
 const everyoneRead = { read: { everyone: "allow" } } as const;

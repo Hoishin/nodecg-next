@@ -1,6 +1,9 @@
 import { Socket } from "@effect/platform";
-import { ReplicantSnapshotMessage, SubscribeMessage } from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+import {
+	ReplicantSnapshotMessage,
+	SubscribeMessage,
+} from "@nodecg-next/internal";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect, Layer, Mailbox, Option, Stream } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 

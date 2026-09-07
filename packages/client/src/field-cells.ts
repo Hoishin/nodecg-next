@@ -1,4 +1,4 @@
-import type { FieldManifest } from "@nodecg/core";
+import type { FieldManifest } from "@nodecg-next/core";
 import {
 	type ClientMessage,
 	type ComputedFieldIdentifier,
@@ -12,9 +12,9 @@ import {
 	SubscribeMessage,
 	type TopicFieldIdentifier,
 	UnsubscribeMessage,
-} from "@nodecg/internal";
-import { applyPatch, computeFingerprint } from "@nodecg/internal/occ";
-import { setSignal, type SetSignalError } from "@nodecg/internal/utils";
+} from "@nodecg-next/internal";
+import { applyPatch, computeFingerprint } from "@nodecg-next/internal/occ";
+import { setSignal, type SetSignalError } from "@nodecg-next/internal/utils";
 import { type Signal, signal } from "@preact/signals-core";
 import {
 	Data,

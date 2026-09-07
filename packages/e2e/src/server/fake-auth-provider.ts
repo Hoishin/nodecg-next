@@ -4,7 +4,7 @@ import {
 	type AuthProvider,
 	HumanAccountSchema,
 	ProviderStateMismatch,
-} from "@nodecg/server";
+} from "@nodecg-next/server";
 import { Effect } from "effect";
 
 interface SeededIdentity {

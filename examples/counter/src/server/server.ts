@@ -2,7 +2,7 @@ import {
 	implementExtendedNamespace,
 	loadNodeCG,
 	makeOidcProvider,
-} from "@nodecg/server";
+} from "@nodecg-next/server";
 import { OAuth2Server } from "oauth2-mock-server";
 
 import { extendedCounterManifest } from "../shared/manifest.ts";

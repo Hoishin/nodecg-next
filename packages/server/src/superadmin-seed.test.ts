@@ -1,5 +1,5 @@
-import { ADMIN_ROLE } from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { ADMIN_ROLE } from "@nodecg-next/internal";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Cause, ConfigProvider, Effect, Exit, HashMap, Layer } from "effect";
 import { assert, describe, expect, test } from "vitest";
 

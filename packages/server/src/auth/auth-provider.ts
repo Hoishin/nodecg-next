@@ -1,4 +1,4 @@
-import type { HumanAccount } from "@nodecg/internal";
+import type { HumanAccount } from "@nodecg-next/internal";
 import { Context, type Effect, HashMap, Schema } from "effect";
 
 import type { AuthStash } from "../services/stash-store/stash-store.ts";

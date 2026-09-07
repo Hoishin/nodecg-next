@@ -7,7 +7,7 @@ import {
 	type DeclarablePrincipalName,
 	type Principal,
 	type UndeclarableRoleName,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import {
 	type AddedRpcSchemas,
 	type AddedSchemas,
@@ -15,7 +15,7 @@ import {
 	mapSchemaValues,
 	mapValues,
 	mergeRecords,
-} from "@nodecg/internal/utils";
+} from "@nodecg-next/internal/utils";
 import { Effect, type HKT, Schema } from "effect";
 import type { JsonValue, WritableDeep } from "type-fest";
 

@@ -1,4 +1,4 @@
-import type { HumanAccount } from "@nodecg/internal";
+import type { HumanAccount } from "@nodecg-next/internal";
 import { Context, type Effect, type Option } from "effect";
 
 export interface SessionStore {

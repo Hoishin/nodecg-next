@@ -1,4 +1,4 @@
-import { type Identity, MachineIdentitySchema } from "@nodecg/internal";
+import { type Identity, MachineIdentitySchema } from "@nodecg-next/internal";
 import { Effect, Option } from "effect";
 
 import type { MachineClientStore } from "../services/machine-client-store/machine-client-store.ts";

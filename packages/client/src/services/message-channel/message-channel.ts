@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from "@nodecg/internal";
+import type { ClientMessage, ServerMessage } from "@nodecg-next/internal";
 import {
 	Context,
 	type Effect,

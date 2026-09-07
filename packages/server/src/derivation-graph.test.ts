@@ -1,5 +1,5 @@
-import { computeFingerprint, computeTestHash } from "@nodecg/internal/occ";
-import { makeTestEffect } from "@nodecg/internal/test-utils";
+import { computeFingerprint, computeTestHash } from "@nodecg-next/internal/occ";
+import { makeTestEffect } from "@nodecg-next/internal/test-utils";
 import {
 	Cause,
 	Context,

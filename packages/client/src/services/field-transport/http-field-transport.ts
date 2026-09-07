@@ -1,7 +1,7 @@
 import { FetchHttpClient, HttpApiClient } from "@effect/platform";
-import { InternalApi } from "@nodecg/internal";
-import type { Patch } from "@nodecg/internal/occ";
-import { toError } from "@nodecg/internal/utils";
+import { InternalApi } from "@nodecg-next/internal";
+import type { Patch } from "@nodecg-next/internal/occ";
+import { toError } from "@nodecg-next/internal/utils";
 import { Effect, Layer, Match } from "effect";
 import type { JsonValue } from "type-fest";
 

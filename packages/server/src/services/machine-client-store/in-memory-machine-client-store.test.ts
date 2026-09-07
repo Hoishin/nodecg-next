@@ -1,5 +1,5 @@
-import { RoleName } from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { RoleName } from "@nodecg-next/internal";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect, Option, Redacted } from "effect";
 import { assert, describe, expect, test } from "vitest";
 

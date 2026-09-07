@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import type { HumanAccount } from "@nodecg/internal";
+import type { HumanAccount } from "@nodecg-next/internal";
 import { Clock, Duration, Effect, Layer, Option } from "effect";
 
 import { config } from "../../server-config.ts";

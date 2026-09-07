@@ -2,7 +2,7 @@ import {
 	HumanIdentitySchema,
 	type Identity,
 	AnonymousIdentitySchema,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import { Effect, Option } from "effect";
 
 import type { RoleStore } from "../services/role-store/role-store.ts";

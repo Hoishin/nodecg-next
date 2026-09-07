@@ -1,13 +1,13 @@
 import { FetchHttpClient } from "@effect/platform";
-import { defineNamespace } from "@nodecg/core";
+import { defineNamespace } from "@nodecg-next/core";
 import {
 	FieldValueMessage,
 	ReplicantSnapshotMessage,
 	type ServerMessage,
 	SubscribeRejectedMessage,
-} from "@nodecg/internal";
-import { computeTestHash, RevisionConflict } from "@nodecg/internal/occ";
-import { makeTestEffect } from "@nodecg/internal/test-utils";
+} from "@nodecg-next/internal";
+import { computeTestHash, RevisionConflict } from "@nodecg-next/internal/occ";
+import { makeTestEffect } from "@nodecg-next/internal/test-utils";
 import {
 	Effect,
 	Exit,

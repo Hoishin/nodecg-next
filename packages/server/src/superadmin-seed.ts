@@ -1,4 +1,4 @@
-import { ADMIN_ROLE } from "@nodecg/internal";
+import { ADMIN_ROLE } from "@nodecg-next/internal";
 import { Effect, HashMap, Layer, Option } from "effect";
 
 import { AuthProviderRegistry } from "./auth/auth-provider.ts";

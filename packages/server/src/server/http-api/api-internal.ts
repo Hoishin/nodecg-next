@@ -8,7 +8,7 @@ import {
 	HttpServerResponse,
 	Path,
 } from "@effect/platform";
-import { isAdminTier, isSuperadmin } from "@nodecg/core";
+import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	type AdminRoleAssignment,
 	ADMIN_ROLE,
@@ -22,8 +22,8 @@ import {
 	sessionCookieName,
 	sessionCookieSecurity,
 	TooManyRequests,
-} from "@nodecg/internal";
-import { parseRelativeUrl } from "@nodecg/internal/utils";
+} from "@nodecg-next/internal";
+import { parseRelativeUrl } from "@nodecg-next/internal/utils";
 import {
 	Clock,
 	type Duration,

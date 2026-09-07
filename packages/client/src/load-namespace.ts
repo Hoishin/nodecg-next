@@ -3,9 +3,9 @@ import type {
 	NamespaceManifest,
 	FieldManifest,
 	RpcFieldManifest,
-} from "@nodecg/core";
-import type { Updater } from "@nodecg/internal";
-import { diffSignedPatch } from "@nodecg/internal/occ";
+} from "@nodecg-next/core";
+import type { Updater } from "@nodecg-next/internal";
+import { diffSignedPatch } from "@nodecg-next/internal/occ";
 import {
 	mapEffectValues,
 	mapValues,
@@ -13,7 +13,7 @@ import {
 	type EffectToPromiseLambda,
 	type StreamToSubscribeLambda,
 	type ApplyLambdaToObject,
-} from "@nodecg/internal/utils";
+} from "@nodecg-next/internal/utils";
 import { effect } from "@preact/signals-core";
 import {
 	Array,

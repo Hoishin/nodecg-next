@@ -1,4 +1,4 @@
-import type { FieldEncodeError } from "@nodecg/core";
+import type { FieldEncodeError } from "@nodecg-next/core";
 import {
 	applyPatch,
 	ChangeOp,
@@ -8,8 +8,8 @@ import {
 	PatchNotApplicable,
 	RevisionConflict,
 	stableStringify,
-} from "@nodecg/internal/occ";
-import { setSignal, toError } from "@nodecg/internal/utils";
+} from "@nodecg-next/internal/occ";
+import { setSignal, toError } from "@nodecg-next/internal/utils";
 import {
 	computed,
 	effect,

@@ -5,7 +5,7 @@ import {
 	type Identity,
 	type Principal,
 	type RoleName,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import { Match } from "effect";
 
 export const ROLE_CAPABILITY = [

@@ -1,4 +1,4 @@
-import type { Patch, RevisionConflict } from "@nodecg/internal/occ";
+import type { Patch, RevisionConflict } from "@nodecg-next/internal/occ";
 import { Context, Data, type Effect, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 

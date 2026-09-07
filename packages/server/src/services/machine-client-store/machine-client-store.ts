@@ -1,4 +1,4 @@
-import type { RoleName } from "@nodecg/internal";
+import type { RoleName } from "@nodecg-next/internal";
 import { Context, type Effect, type Option, type Redacted } from "effect";
 
 export interface MachineClient {

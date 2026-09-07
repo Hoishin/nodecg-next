@@ -1,6 +1,6 @@
 import { HttpApiError } from "@effect/platform";
-import { RpcCallError } from "@nodecg/internal";
-import type { Patch } from "@nodecg/internal/occ";
+import { RpcCallError } from "@nodecg-next/internal";
+import type { Patch } from "@nodecg-next/internal/occ";
 import { Effect, Match } from "effect";
 import type { JsonValue } from "type-fest";
 

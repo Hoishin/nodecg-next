@@ -1,6 +1,6 @@
-import type { NamespaceManifest } from "@nodecg/core";
-import type { Updater } from "@nodecg/internal";
-import { mergeRecords } from "@nodecg/internal/utils";
+import type { NamespaceManifest } from "@nodecg-next/core";
+import type { Updater } from "@nodecg-next/internal";
+import { mergeRecords } from "@nodecg-next/internal/utils";
 import type { JsonValue, Promisable } from "type-fest";
 
 export type FrontendConfig = {

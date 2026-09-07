@@ -6,7 +6,7 @@ import {
 	AnonymousIdentitySchema,
 	RoleName,
 	ServerIdentitySchema,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 

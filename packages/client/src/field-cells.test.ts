@@ -1,12 +1,12 @@
-import { defineNamespace } from "@nodecg/core";
+import { defineNamespace } from "@nodecg-next/core";
 import {
 	ReplicantDeltaMessage,
 	ReplicantSnapshotMessage,
 	type ServerMessage,
 	SubscribeRejectedMessage,
-} from "@nodecg/internal";
-import { computeFingerprint } from "@nodecg/internal/occ";
-import { testEffect } from "@nodecg/internal/test-utils";
+} from "@nodecg-next/internal";
+import { computeFingerprint } from "@nodecg-next/internal/occ";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { effect, type Signal } from "@preact/signals-core";
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect";
 import { describe, expect, onTestFinished, test, vi } from "vitest";

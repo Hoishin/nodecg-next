@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { RoleName } from "@nodecg/internal";
+import type { RoleName } from "@nodecg-next/internal";
 import { Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
 import {

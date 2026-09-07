@@ -1,4 +1,4 @@
-import { mapValues } from "@nodecg/internal/utils";
+import { mapValues } from "@nodecg-next/internal/utils";
 import { Effect, Exit, Runtime, Schema, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 

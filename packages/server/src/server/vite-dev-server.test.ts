@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 
 import { FileSystem } from "@effect/platform";
 import { NodeFileSystem } from "@effect/platform-node";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect } from "effect";
 import { afterAll, describe, expect, test, vi } from "vitest";
 

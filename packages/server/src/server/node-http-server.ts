@@ -7,7 +7,7 @@ import {
 
 import { Cookies, HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
-import { baseUrlCookieName } from "@nodecg/internal";
+import { baseUrlCookieName } from "@nodecg-next/internal";
 import { Effect, Layer } from "effect";
 
 import { config } from "../server-config.ts";

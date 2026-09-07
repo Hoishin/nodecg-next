@@ -1,5 +1,5 @@
 import { Socket } from "@effect/platform";
-import { ClientMessage, ServerMessage } from "@nodecg/internal";
+import { ClientMessage, ServerMessage } from "@nodecg-next/internal";
 import {
 	Effect,
 	Layer,

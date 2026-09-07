@@ -4,7 +4,7 @@ import {
 	type DerivedHandle,
 	type ReplicantField,
 	type TopicField,
-} from "@nodecg/client";
+} from "@nodecg-next/client";
 import {
 	type ReactNode,
 	useEffect,

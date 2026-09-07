@@ -1,4 +1,4 @@
-import type { FieldManifest } from "@nodecg/core";
+import type { FieldManifest } from "@nodecg-next/core";
 import { Effect, Stream } from "effect";
 
 import {

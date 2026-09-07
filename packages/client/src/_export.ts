@@ -40,4 +40,4 @@ export {
 	type LoginProvider,
 	type MePayload,
 	type Updater,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";

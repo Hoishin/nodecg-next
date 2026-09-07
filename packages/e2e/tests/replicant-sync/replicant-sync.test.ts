@@ -1,4 +1,4 @@
-import { loadNamespace } from "@nodecg/client";
+import { loadNamespace } from "@nodecg-next/client";
 import {
 	afterAll,
 	beforeAll,

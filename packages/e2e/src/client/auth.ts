@@ -1,5 +1,5 @@
-import { authSession } from "@nodecg/browser";
-import { loadAuthClient } from "@nodecg/client";
+import { authSession } from "@nodecg-next/browser";
+import { loadAuthClient } from "@nodecg-next/client";
 
 export const makeAuthHelpers = (baseUrl: string) => {
 	const client = loadAuthClient(baseUrl);

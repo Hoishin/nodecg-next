@@ -1,4 +1,4 @@
-import { loadNodeCG } from "@nodecg/server";
+import { loadNodeCG } from "@nodecg-next/server";
 
 import { devProvider } from "../../src/server/fake-auth-provider.ts";
 import { extended, fixture } from "../../src/server/namespaces.ts";

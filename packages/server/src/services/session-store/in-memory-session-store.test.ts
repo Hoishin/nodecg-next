@@ -1,5 +1,5 @@
-import { HumanAccountSchema } from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { HumanAccountSchema } from "@nodecg-next/internal";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import {
 	ConfigProvider,
 	Effect,

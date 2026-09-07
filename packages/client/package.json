@@ -1,5 +1,5 @@
 {
-	"name": "@nodecg/client",
+	"name": "@nodecg-next/client",
 	"version": "0.0.0-experimental",
 	"license": "MIT",
 	"type": "module",
@@ -11,13 +11,13 @@
 	},
 	"dependencies": {
 		"@effect/platform": "catalog:",
-		"@nodecg/core": "workspace:*",
+		"@nodecg-next/core": "workspace:*",
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"@nodecg/internal": "workspace:*",
+		"@nodecg-next/internal": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

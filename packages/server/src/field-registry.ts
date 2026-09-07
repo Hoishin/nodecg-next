@@ -1,4 +1,4 @@
-import type { RoleName } from "@nodecg/internal";
+import type { RoleName } from "@nodecg-next/internal";
 import { Effect } from "effect";
 
 import { type BuiltNamespace } from "./build-fields.ts";

@@ -1,5 +1,5 @@
 {
-	"name": "@nodecg/core",
+	"name": "@nodecg-next/core",
 	"version": "0.0.0-experimental",
 	"license": "MIT",
 	"type": "module",
@@ -14,7 +14,7 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"@nodecg/internal": "workspace:*",
+		"@nodecg-next/internal": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

@@ -1,5 +1,5 @@
-import { authSession } from "@nodecg/browser";
-import { loadAuthClient, type LoginProvider } from "@nodecg/client";
+import { authSession } from "@nodecg-next/browser";
+import { loadAuthClient, type LoginProvider } from "@nodecg-next/client";
 import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
 import { commands } from "vitest/browser";
 

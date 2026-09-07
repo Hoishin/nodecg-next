@@ -4,8 +4,8 @@ import {
 	RoleName,
 	type LoginProvider,
 	type MePayload,
-} from "@nodecg/internal";
-import { buildRelativeUrl } from "@nodecg/internal/utils";
+} from "@nodecg-next/internal";
+import { buildRelativeUrl } from "@nodecg-next/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
 
 export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(

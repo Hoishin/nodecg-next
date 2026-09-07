@@ -1,10 +1,10 @@
-import { defineNamespace } from "@nodecg/core";
+import { defineNamespace } from "@nodecg-next/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
 	ServerIdentitySchema,
-} from "@nodecg/internal";
-import { makeTestEffect } from "@nodecg/internal/test-utils";
+} from "@nodecg-next/internal";
+import { makeTestEffect } from "@nodecg-next/internal/test-utils";
 import { Chunk, Effect, Layer, Schema, Stream } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 

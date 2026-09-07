@@ -6,8 +6,8 @@ import {
 	type Identity,
 	type LoginProvider,
 	type MePayload,
-} from "@nodecg/client";
-import { AnonymousIdentitySchema } from "@nodecg/internal";
+} from "@nodecg-next/client";
+import { AnonymousIdentitySchema } from "@nodecg-next/internal";
 import { Either, Schema } from "effect";
 
 import { nodecgBase } from "./base.ts";

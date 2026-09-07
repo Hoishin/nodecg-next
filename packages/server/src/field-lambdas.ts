@@ -1,4 +1,4 @@
-import type { FieldManifest, RpcFieldManifest } from "@nodecg/core";
+import type { FieldManifest, RpcFieldManifest } from "@nodecg-next/core";
 import type { HKT } from "effect";
 import type { Promisable } from "type-fest";
 

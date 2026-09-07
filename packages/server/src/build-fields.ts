@@ -1,11 +1,11 @@
-import type { NamespaceManifest } from "@nodecg/core";
-import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
+import type { NamespaceManifest } from "@nodecg-next/core";
+import { CurrentIdentity, ServerIdentitySchema } from "@nodecg-next/internal";
 import {
 	mapValues,
 	mapEffectValues,
 	toError,
 	zipEffectValues,
-} from "@nodecg/internal/utils";
+} from "@nodecg-next/internal/utils";
 import { Context, Effect, Option, Runtime, Schema } from "effect";
 
 import {

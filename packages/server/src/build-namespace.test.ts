@@ -1,6 +1,6 @@
-import { defineNamespace } from "@nodecg/core";
-import { CurrentIdentity, ServerIdentitySchema } from "@nodecg/internal";
-import { makeTestEffect } from "@nodecg/internal/test-utils";
+import { defineNamespace } from "@nodecg-next/core";
+import { CurrentIdentity, ServerIdentitySchema } from "@nodecg-next/internal";
+import { makeTestEffect } from "@nodecg-next/internal/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 

@@ -3,7 +3,7 @@ import {
 	HttpServerRequest,
 	HttpServerResponse,
 } from "@effect/platform";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { ConfigProvider, Effect } from "effect";
 import { describe, expect, test } from "vitest";
 

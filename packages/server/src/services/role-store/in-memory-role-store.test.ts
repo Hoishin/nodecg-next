@@ -1,5 +1,5 @@
-import { ADMIN_ROLE } from "@nodecg/internal";
-import { testEffect } from "@nodecg/internal/test-utils";
+import { ADMIN_ROLE } from "@nodecg-next/internal";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect } from "effect";
 import { describe, expect, test } from "vitest";
 

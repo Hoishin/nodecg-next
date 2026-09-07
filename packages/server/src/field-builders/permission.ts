@@ -1,5 +1,5 @@
-import type { ResolvedPermission } from "@nodecg/core";
-import { CurrentIdentity } from "@nodecg/internal";
+import type { ResolvedPermission } from "@nodecg-next/core";
+import { CurrentIdentity } from "@nodecg-next/internal";
 import { Effect, Schema } from "effect";
 
 export class FieldPermissionDenied extends Schema.TaggedError<FieldPermissionDenied>()(

@@ -12,7 +12,7 @@ export {
 	type AuthProvider,
 	ProviderStateMismatch,
 } from "./auth/auth-provider.ts";
-export { type HumanAccount, HumanAccountSchema } from "@nodecg/internal";
+export { type HumanAccount, HumanAccountSchema } from "@nodecg-next/internal";
 export {
 	makeOidcProvider,
 	type OidcProviderConfig,

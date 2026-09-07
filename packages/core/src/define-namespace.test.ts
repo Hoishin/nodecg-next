@@ -1,4 +1,4 @@
-import { testEffect } from "@nodecg/internal/test-utils";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect, Schema } from "effect";
 import type { JsonValue } from "type-fest";
 import { describe, expect, expectTypeOf, test } from "vitest";

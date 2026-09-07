@@ -1,8 +1,12 @@
 import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
-import { declaredRoleNames } from "@nodecg/core";
-import type { RoleName } from "@nodecg/internal";
-import { mapEffectValues, mapValues, toError } from "@nodecg/internal/utils";
+import { declaredRoleNames } from "@nodecg-next/core";
+import type { RoleName } from "@nodecg-next/internal";
+import {
+	mapEffectValues,
+	mapValues,
+	toError,
+} from "@nodecg-next/internal/utils";
 import {
 	Effect,
 	Exit,

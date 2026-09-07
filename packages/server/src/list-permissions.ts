@@ -1,5 +1,5 @@
-import { getRolesFromIdentity } from "@nodecg/core";
-import type { Identity, MePayload } from "@nodecg/internal";
+import { getRolesFromIdentity } from "@nodecg-next/core";
+import type { Identity, MePayload } from "@nodecg-next/internal";
 import { Effect } from "effect";
 
 import { FieldRegistryService } from "./field-registry.ts";

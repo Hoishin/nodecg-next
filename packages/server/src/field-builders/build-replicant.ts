@@ -1,7 +1,7 @@
-import type { FieldManifest } from "@nodecg/core";
-import type { Updater } from "@nodecg/internal";
-import type { Patch } from "@nodecg/internal/occ";
-import { toError } from "@nodecg/internal/utils";
+import type { FieldManifest } from "@nodecg-next/core";
+import type { Updater } from "@nodecg-next/internal";
+import type { Patch } from "@nodecg-next/internal/occ";
+import { toError } from "@nodecg-next/internal/utils";
 import { Effect, Schema, Stream } from "effect";
 import type { JsonValue } from "type-fest";
 

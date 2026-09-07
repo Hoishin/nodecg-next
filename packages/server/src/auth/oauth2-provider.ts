@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { HumanAccountSchema } from "@nodecg/internal";
+import { HumanAccountSchema } from "@nodecg-next/internal";
 import { Effect } from "effect";
 import {
 	allowInsecureRequests,

@@ -1,4 +1,4 @@
-import { testEffect } from "@nodecg/internal/test-utils";
+import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Context, Effect, Schema, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 

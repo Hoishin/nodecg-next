@@ -1,5 +1,5 @@
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
-import { type ResolvedPermission, FieldDecodeError } from "@nodecg/core";
+import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
 	HumanAuthenticationMiddleware,
 	AnonymousIdentitySchema,
@@ -8,12 +8,12 @@ import {
 	type Identity,
 	ADMIN_ROLE,
 	RoleName,
-} from "@nodecg/internal";
+} from "@nodecg-next/internal";
 import {
 	computeTestHash,
 	PatchNotApplicable,
 	RevisionConflict,
-} from "@nodecg/internal/occ";
+} from "@nodecg-next/internal/occ";
 import {
 	ConfigProvider,
 	Effect,

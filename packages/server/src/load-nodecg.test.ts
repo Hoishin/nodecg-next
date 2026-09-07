@@ -1,5 +1,5 @@
-import { defineNamespace, extendNamespace } from "@nodecg/core";
-import { makeTestEffect } from "@nodecg/internal/test-utils";
+import { defineNamespace, extendNamespace } from "@nodecg-next/core";
+import { makeTestEffect } from "@nodecg-next/internal/test-utils";
 import { Cause, Effect, Layer, Option, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
