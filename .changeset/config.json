@@ -1,0 +1,10 @@
+{
+	"$schema": "../node_modules/.pnpm/@changesets+config@4.0.0/node_modules/@changesets/config/schema.json",
+	"changelog": [
+		"@changesets/changelog-github",
+		{ "repo": "Hoishin/nodecg-next", "template": "- {summary} {ref}" }
+	],
+	"linked": [
+		["@nodecg-next/core", "@nodecg-next/client", "@nodecg-next/server"]
+	]
+}

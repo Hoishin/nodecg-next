@@ -8,6 +8,8 @@
 		"type-check": "pnpm -r --stream run type-check"
 	},
 	"devDependencies": {
+		"@changesets/changelog-github": "^1.0.0",
+		"@changesets/cli": "^3.0.1",
 		"@effect/language-service": "^0.86.6",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",

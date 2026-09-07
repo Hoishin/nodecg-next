@@ -16,10 +16,21 @@ jobs:
       - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
       - run: pnpm type-check
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: corepack enable pnpm
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm run build
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -27,9 +38,9 @@ jobs:
       - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
       - run: pnpm oxlint
   format-check:
     runs-on: ubuntu-latest
@@ -38,9 +49,9 @@ jobs:
       - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
       - run: pnpm oxfmt --check
 
   test-matrix:
@@ -56,9 +67,9 @@ jobs:
       - run: corepack enable pnpm
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
       - run: pnpm exec playwright install --with-deps
       - run: pnpm vitest run
 
