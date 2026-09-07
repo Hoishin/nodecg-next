@@ -14,6 +14,11 @@
 	"exports": {
 		".": "./src/_exports.ts"
 	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/_exports.js"
+		}
+	},
 	"scripts": {
 		"type-check": "tsc --noEmit"
 	},

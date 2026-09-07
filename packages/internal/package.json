@@ -14,8 +14,16 @@
 	"exports": {
 		".": "./src/_exports.ts",
 		"./occ": "./src/occ/_exports.ts",
-		"./utils": "./src/utils/_exports.ts",
-		"./test-utils": "./src/test-utils/_exports.ts"
+		"./test-utils": "./src/test-utils/_exports.ts",
+		"./utils": "./src/utils/_exports.ts"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/index.js",
+			"./occ": "./dist/occ.js",
+			"./test-utils": "./dist/test-utils.js",
+			"./utils": "./dist/utils.js"
+		}
 	},
 	"scripts": {
 		"type-check": "tsc --noEmit"

@@ -4,6 +4,7 @@
 	"author": "Keiichiro Amemiya",
 	"type": "module",
 	"scripts": {
+		"build": "tsdown",
 		"type-check": "pnpm -r --stream run type-check"
 	},
 	"devDependencies": {
@@ -14,6 +15,7 @@
 		"oxlint": "^1.73.0",
 		"oxlint-tsgolint": "^0.24.0",
 		"playwright": "catalog:",
+		"tsdown": "^0.23.0",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	},
