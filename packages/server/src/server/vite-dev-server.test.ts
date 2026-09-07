@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 
 import { FileSystem } from "@effect/platform";
@@ -15,7 +16,8 @@ afterAll(() => {
 
 const startDevServer = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem;
-	const root = yield* fs.makeTempDirectoryScoped();
+	// Vite rejects "~"" short name paths on Windows
+	const root = realpathSync.native(yield* fs.makeTempDirectoryScoped());
 	yield* fs.writeFileString(
 		`${root}/index.html`,
 		"<html><head><title>t</title></head><body>dev</body></html>",
