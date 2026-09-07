@@ -19,7 +19,7 @@ catalog:
   "react": ^19.2.7
   "type-fest": ^5.8.0
   "typescript": ~7.0.2
-  "vite": ^8.1.4
+  "vite": ^8.2.2
   "vitest": ^4.1.10
 
 allowBuilds:
