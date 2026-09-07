@@ -104,8 +104,6 @@ type ResolvedField = Data.TaggedEnum<{
 }>;
 const ResolvedField = Data.taggedEnum<ResolvedField>();
 
-const fieldKey = (field: FieldIdentifier) => ({ ...field });
-
 export const websocketRoute = HttpRouter.use((router) =>
 	Effect.gen(function* () {
 		const registry = yield* FieldRegistryService;
@@ -280,42 +278,39 @@ export const websocketRoute = HttpRouter.use((router) =>
 						Match.tag("subscribe", (msg) =>
 							SynchronizedRef.updateEffect(subscriptions, (map) =>
 								Effect.gen(function* () {
-									const key = fieldKey(msg.field);
-									const existing = HashMap.get(map, key);
+									const existing = HashMap.get(map, msg.field);
 									// Restart subscription for fresh reseed if already running
 									if (Option.isSome(existing)) {
 										yield* Fiber.interrupt(existing.value);
 									}
 									const fiber = yield* openSubscription(msg.field);
-									return HashMap.modifyAt(map, key, () => fiber);
+									return HashMap.modifyAt(map, msg.field, () => fiber);
 								}),
 							),
 						),
 						Match.tag("resync", (msg) =>
 							SynchronizedRef.updateEffect(subscriptions, (map) =>
 								Effect.gen(function* () {
-									const key = fieldKey(msg.field);
-									const existing = HashMap.get(map, key);
+									const existing = HashMap.get(map, msg.field);
 									// Ignore if not subscribed
 									if (Option.isNone(existing)) {
 										return map;
 									}
 									yield* Fiber.interrupt(existing.value);
 									const fiber = yield* openSubscription(msg.field);
-									return HashMap.modifyAt(map, key, () => fiber);
+									return HashMap.modifyAt(map, msg.field, () => fiber);
 								}),
 							),
 						),
 						Match.tag("unsubscribe", (msg) =>
 							SynchronizedRef.updateEffect(subscriptions, (map) =>
 								Effect.gen(function* () {
-									const key = fieldKey(msg.field);
-									const existing = HashMap.get(map, key);
+									const existing = HashMap.get(map, msg.field);
 									if (Option.isNone(existing)) {
 										return map;
 									}
 									yield* Fiber.interrupt(existing.value);
-									return HashMap.remove(map, key);
+									return HashMap.remove(map, msg.field);
 								}),
 							),
 						),

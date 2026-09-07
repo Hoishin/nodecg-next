@@ -1618,6 +1618,23 @@ describe("loadNamespace (Promise wrapper)", () => {
 		);
 		expect(received).toEqual([1]);
 	});
+
+	test("topic subscribe resolves before any event is published", async () => {
+		const manifest = defineNamespace("root", {
+			topic: { chat: { schema: Schema.Number } },
+		});
+		const loaded = await loadNamespace(manifest, {
+			fieldTransport: () => createTransportStub(),
+			messageChannel: () => createMessageChannelStub(),
+		});
+
+		const received: number[] = [];
+		const cancel = await loaded.topic.chat.subscribe((value) => {
+			received.push(value);
+		});
+		onTestFinished(() => cancel());
+		expect(received).toEqual([]);
+	});
 });
 
 describe("derivation over loaded fields", () => {

@@ -559,6 +559,7 @@ export async function loadNamespace<
 				Scope.Scope
 			>,
 			name: string,
+			awaitSeed: boolean,
 		) =>
 		async (
 			callback: (value: Decoded) => Promisable<void>,
@@ -571,6 +572,7 @@ export async function loadNamespace<
 						Scope.provide(scope),
 						Effect.onError(() => Scope.close(scope, Exit.void)),
 					);
+					const seeded = yield* Deferred.make<void>();
 					yield* stream.pipe(
 						Stream.runForEach((value) =>
 							Effect.tryPromise(async () => callback(value)).pipe(
@@ -580,14 +582,18 @@ export async function loadNamespace<
 										error,
 									),
 								),
+								Effect.tap(() => Deferred.succeed(seeded, undefined)),
 							),
 						),
 						Effect.catchTag(
 							["FieldNotFound", "FieldPermissionDenied"],
 							(error) => Effect.sync(() => onError?.(error)),
 						),
-						Effect.forkIn(scope, { startImmediately: true }),
+						Effect.forkIn(scope),
 					);
+					if (awaitSeed) {
+						yield* Deferred.await(seeded);
+					}
 					return () => runtime.runPromise(Scope.close(scope, Exit.void));
 				}),
 			);
@@ -599,7 +605,7 @@ export async function loadNamespace<
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn, options) => runtime.runPromise(field.update(fn, options)),
-		subscribe: subscribeEffectToPromise(field.subscribe, name),
+		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
 		[fieldSource]: field[fieldSource],
 	}))(effectFields);
 
@@ -608,14 +614,14 @@ export async function loadNamespace<
 		ComputedFieldPromiseLambda
 	>((field, name) => ({
 		get: () => runtime.runPromise(field.get()),
-		subscribe: subscribeEffectToPromise(field.subscribe, name),
+		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
 		[fieldSource]: field[fieldSource],
 	}))(effectComputedFields);
 
 	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(
 		(field, name) => ({
 			publish: (value) => runtime.runPromise(field.publish(value)),
-			subscribe: subscribeEffectToPromise(field.subscribe, name),
+			subscribe: subscribeEffectToPromise(field.subscribe, name, false),
 		}),
 	)(effectTopicFields);
 
