@@ -2,6 +2,14 @@
 	"name": "@nodecg-next/client",
 	"version": "0.0.0",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Hoishin/nodecg-next.git",
+		"directory": "packages/client"
+	},
+	"files": [
+		"dist"
+	],
 	"type": "module",
 	"exports": {
 		".": "./src/_export.ts"
@@ -12,12 +20,12 @@
 	"dependencies": {
 		"@effect/platform": "catalog:",
 		"@nodecg-next/core": "workspace:*",
+		"@nodecg-next/internal": "workspace:*",
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"@nodecg-next/internal": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

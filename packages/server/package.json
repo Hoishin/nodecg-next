@@ -2,6 +2,14 @@
 	"name": "@nodecg-next/server",
 	"version": "0.0.0",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Hoishin/nodecg-next.git",
+		"directory": "packages/server"
+	},
+	"files": [
+		"dist"
+	],
 	"type": "module",
 	"exports": {
 		".": "./src/_export.ts"
@@ -13,6 +21,7 @@
 		"@effect/platform": "catalog:",
 		"@effect/platform-node": "catalog:",
 		"@nodecg-next/core": "workspace:*",
+		"@nodecg-next/internal": "workspace:*",
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"openid-client": "^6.8.4",
@@ -20,7 +29,6 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
-		"@nodecg-next/internal": "workspace:*",
 		"@types/node": "catalog:",
 		"oauth2-mock-server": "catalog:",
 		"typescript": "catalog:",

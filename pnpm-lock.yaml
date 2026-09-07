@@ -209,6 +209,9 @@ importers:
       '@nodecg-next/core':
         specifier: workspace:*
         version: link:../core
+      '@nodecg-next/internal':
+        specifier: workspace:*
+        version: link:../internal
       '@preact/signals-core':
         specifier: 'catalog:'
         version: 1.14.4
@@ -219,9 +222,6 @@ importers:
         specifier: 'catalog:'
         version: 5.8.0
     devDependencies:
-      '@nodecg-next/internal':
-        specifier: workspace:*
-        version: link:../internal
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.10(vite@8.1.4(@types/node@24.13.3))(vitest@4.1.10)
@@ -240,6 +240,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@nodecg-next/internal':
+        specifier: workspace:*
+        version: link:../internal
       effect:
         specifier: 'catalog:'
         version: 3.21.4
@@ -247,9 +250,6 @@ importers:
         specifier: 'catalog:'
         version: 5.8.0
     devDependencies:
-      '@nodecg-next/internal':
-        specifier: workspace:*
-        version: link:../internal
       '@vitest/browser':
         specifier: 'catalog:'
         version: 4.1.10(vite@8.1.4(@types/node@24.13.3))(vitest@4.1.10)
@@ -362,6 +362,9 @@ importers:
       '@nodecg-next/core':
         specifier: workspace:*
         version: link:../core
+      '@nodecg-next/internal':
+        specifier: workspace:*
+        version: link:../internal
       '@preact/signals-core':
         specifier: 'catalog:'
         version: 1.14.4
@@ -378,9 +381,6 @@ importers:
         specifier: 'catalog:'
         version: 5.8.0
     devDependencies:
-      '@nodecg-next/internal':
-        specifier: workspace:*
-        version: link:../internal
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
