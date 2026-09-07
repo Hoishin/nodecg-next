@@ -21,7 +21,7 @@ export interface TopicBroker {
 	>;
 }
 
-export class TopicBrokerService extends Context.Tag("TopicBroker")<
+export class TopicBrokerService extends Context.Service<
 	TopicBrokerService,
 	TopicBroker
->() {}
+>()("TopicBroker") {}

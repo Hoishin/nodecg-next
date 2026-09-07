@@ -25,17 +25,15 @@ import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
-const server = ServerIdentitySchema.make();
+const server = ServerIdentitySchema.make({});
 const identity = Layer.succeed(CurrentIdentity, server);
 
 const testInMemory = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default.pipe(
-			Layer.provide(InMemoryReplicantStorage),
-		),
-		BuiltNamespaceRegistry.Default,
+		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		BuiltNamespaceRegistry.layer,
 		identity,
 	),
 );
@@ -84,7 +82,7 @@ describe("computed source snapshot", () => {
 							Effect.sync(() => received.push(value)),
 						),
 					),
-					Effect.fork,
+					Effect.forkChild,
 				);
 
 				yield* Effect.promise(() =>
@@ -170,9 +168,9 @@ describe("compute fn contract", () => {
 
 describe("computed-on-computed via ctx.computed", () => {
 	const manifest = defineNamespace("chain", {
-		replicant: { score: { schema: Schema.NumberFromString } },
+		replicant: { score: { schema: Schema.FiniteFromString } },
 		computed: {
-			delta: { schema: Schema.NumberFromString },
+			delta: { schema: Schema.FiniteFromString },
 			winning: { schema: Schema.Boolean },
 		},
 	});
@@ -214,7 +212,7 @@ describe("computed-on-computed via ctx.computed", () => {
 							Effect.sync(() => received.push(value)),
 						),
 					),
-					Effect.fork,
+					Effect.forkChild,
 				);
 
 				yield* Effect.promise(() =>
@@ -331,7 +329,7 @@ describe("rpc ctx runs as the server identity", () => {
 	const manifest = defineNamespace("guarded", {
 		roles: { operator: { permission: ["rpc-call"] } },
 		replicant: {
-			hidden: { schema: Schema.NumberFromString },
+			hidden: { schema: Schema.FiniteFromString },
 		},
 		rpc: {
 			writeHidden: {
@@ -385,7 +383,7 @@ describe("rpc ctx runs as the server identity", () => {
 
 const settings = implementNamespace(
 	defineNamespace("settings", {
-		replicant: { multiplier: { schema: Schema.NumberFromString } },
+		replicant: { multiplier: { schema: Schema.FiniteFromString } },
 	}),
 	{ seedReplicant: { multiplier: () => 3 } },
 );
@@ -393,8 +391,8 @@ const settings = implementNamespace(
 describe("cross-namespace computed via ctx.use", () => {
 	const scoreboard = implementNamespace(
 		defineNamespace("scoreboard", {
-			replicant: { total: { schema: Schema.NumberFromString } },
-			computed: { weighted: { schema: Schema.NumberFromString } },
+			replicant: { total: { schema: Schema.FiniteFromString } },
+			computed: { weighted: { schema: Schema.FiniteFromString } },
 		}),
 		{
 			seedReplicant: { total: () => 10 },
@@ -436,7 +434,7 @@ describe("cross-namespace computed via ctx.use", () => {
 							Effect.sync(() => received.push(value)),
 						),
 					),
-					Effect.fork,
+					Effect.forkChild,
 				);
 
 				yield* Effect.promise(() =>
@@ -488,7 +486,7 @@ describe("cross-namespace computed via ctx.use", () => {
 describe("cross-namespace rpc via ctx.use", () => {
 	const scoreboard = implementNamespace(
 		defineNamespace("scoreboard", {
-			replicant: { total: { schema: Schema.NumberFromString } },
+			replicant: { total: { schema: Schema.FiniteFromString } },
 			rpc: {
 				award: {
 					schema: { request: Schema.Number, response: Schema.Number },

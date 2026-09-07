@@ -58,12 +58,12 @@ class TransformError extends Schema.TaggedError<TransformError>()(
 	{ key: Schema.String },
 ) {}
 
-class BoxService extends Context.Tag("BoxService")<
+class BoxService extends Context.Service<
 	BoxService,
 	{ readonly box: <X>(value: X) => ReadonlyArray<X> }
->() {}
+>()("BoxService") {}
 
-type Option = { readonly schema?: Schema.Schema<any, any, never> };
+type Option = { readonly schema?: Schema.Codec<any> };
 
 describe("mapValues", () => {
 	const identitiesToArrays = mapValues<IdentityLambda, ArrayLambda>((value) => [

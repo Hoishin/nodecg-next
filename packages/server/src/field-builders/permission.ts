@@ -7,7 +7,7 @@ export class FieldPermissionDenied extends Schema.TaggedError<FieldPermissionDen
 	{
 		namespace: Schema.String,
 		name: Schema.String,
-		operation: Schema.Literal("read", "write"),
+		operation: Schema.Literals(["read", "write"]),
 	},
 ) {
 	override readonly message = `Permission denied to ${this.operation} "${this.name}" in "${this.namespace}"`;

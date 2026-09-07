@@ -48,8 +48,10 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 				times: 100,
 			}),
 			Effect.catchTag("CommitContended", () =>
-				Effect.dieMessage(
-					`Committing "${namespace}/${name}" lost 100 compare-and-swap attempts, is an updater writing its own field?`,
+				Effect.die(
+					new Error(
+						`Committing "${namespace}/${name}" lost 100 compare-and-swap attempts, is an updater writing its own field?`,
+					),
 				),
 			),
 		);
@@ -118,7 +120,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	const subscribe = Effect.fn("subscribe")(function* () {
 		const stream = yield* engine.subscribeReplicant(namespace, name);
 		return stream.pipe(
-			Stream.flatMap((frame) =>
+			Stream.mapEffect((frame) =>
 				manifest.decode(frame.value).pipe(migrationDie),
 			),
 		);
@@ -144,6 +146,6 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	};
 });
 
-export type ReplicantFieldEffect<Decoded> = Effect.Effect.Success<
+export type ReplicantFieldEffect<Decoded> = Effect.Success<
 	ReturnType<typeof buildReplicant<Decoded>>
 >;

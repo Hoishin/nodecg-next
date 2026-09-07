@@ -46,6 +46,7 @@ export interface MachineClientStore {
 	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
 }
 
-export class MachineClientStoreService extends Context.Tag(
-	"MachineClientStore",
-)<MachineClientStoreService, MachineClientStore>() {}
+export class MachineClientStoreService extends Context.Service<
+	MachineClientStoreService,
+	MachineClientStore
+>()("MachineClientStore") {}

@@ -20,7 +20,7 @@ export const fixtureManifest = defineNamespace("e2e", {
 			permission: everyoneReadWrite,
 		},
 		tallies: {
-			schema: Schema.Record({ key: Schema.String, value: Schema.Number }),
+			schema: Schema.Record(Schema.String, Schema.Number),
 			permission: everyoneReadWrite,
 		},
 		roster: {

@@ -57,6 +57,6 @@ export const buildRpc = Effect.fn("buildRpc")(
 		}),
 );
 
-export type RpcFieldEffect<Request, Response> = Effect.Effect.Success<
+export type RpcFieldEffect<Request, Response> = Effect.Success<
 	ReturnType<typeof buildRpc<Request, Response>>
 >;

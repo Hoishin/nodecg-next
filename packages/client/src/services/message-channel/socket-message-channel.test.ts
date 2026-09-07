@@ -1,19 +1,19 @@
-import { Socket } from "@effect/platform";
 import {
 	ReplicantSnapshotMessage,
 	SubscribeMessage,
 } from "@nodecg-next/internal";
 import { testEffect } from "@nodecg-next/internal/test-utils";
-import { Effect, Layer, Mailbox, Option, Stream } from "effect";
+import { Cause, Effect, Layer, Option, Queue, Stream } from "effect";
+import { Socket } from "effect/unstable/socket";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { MessageChannelService } from "./message-channel.ts";
 import { SocketMessageChannel } from "./socket-message-channel.ts";
 
 const makeFakeSocket = Effect.gen(function* () {
-	const incoming = yield* Mailbox.make<
+	const incoming = yield* Queue.make<
 		string | Uint8Array,
-		Socket.SocketError
+		Socket.SocketError | Cause.Done
 	>();
 	const write = vi.fn<
 		(
@@ -24,10 +24,11 @@ const makeFakeSocket = Effect.gen(function* () {
 	const socket: Socket.Socket = {
 		[Socket.TypeId]: Socket.TypeId,
 		run: vi.fn(() => Effect.die("FakeSocket.run is not used")),
+		runString: vi.fn(() => Effect.die("FakeSocket.runString is not used")),
 		runRaw<_, E, R>(
 			handler: (data: string | Uint8Array) => Effect.Effect<_, E, R> | void,
 		): Effect.Effect<void, Socket.SocketError | E, R> {
-			return Stream.runForEach(Mailbox.toStream(incoming), (data) => {
+			return Stream.runForEach(Stream.fromQueue(incoming), (data) => {
 				const result = handler(data);
 				return Effect.isEffect(result) ? result : Effect.void;
 			});
@@ -38,9 +39,9 @@ const makeFakeSocket = Effect.gen(function* () {
 	return {
 		socket,
 		write,
-		deliver: (data: string | Uint8Array) => incoming.offer(data),
-		closeClean: incoming.end,
-		closeWithError: (error: Socket.SocketError) => incoming.fail(error),
+		deliver: (data: string | Uint8Array) => Queue.offer(incoming, data),
+		closeClean: Queue.end(incoming),
+		closeWithError: (error: Socket.SocketError) => Queue.fail(incoming, error),
 	};
 });
 
@@ -119,12 +120,9 @@ describe("receive", () => {
 					const stream = yield* channel.receive();
 					yield* closeClean;
 					const all = yield* Stream.runCollect(stream).pipe(
-						Effect.timeoutFail({
-							duration: "1 second",
-							onTimeout: () => "Stream did not finish",
-						}),
+						Effect.timeout("1 second"),
 					);
-					expect(Array.from(all)).toEqual([]);
+					expect(all).toEqual([]);
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
 		),
@@ -140,18 +138,16 @@ describe("receive", () => {
 					const channel = yield* MessageChannelService;
 					const stream = yield* channel.receive();
 					yield* closeWithError(
-						new Socket.SocketGenericError({
-							reason: "Read",
-							cause: new Error("simulated"),
+						new Socket.SocketError({
+							reason: new Socket.SocketReadError({
+								cause: new Error("simulated"),
+							}),
 						}),
 					);
 					const all = yield* Stream.runCollect(stream).pipe(
-						Effect.timeoutFail({
-							duration: "1 second",
-							onTimeout: () => "Stream did not finish",
-						}),
+						Effect.timeout("1 second"),
 					);
-					expect(Array.from(all)).toEqual([]);
+					expect(all).toEqual([]);
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
 		),

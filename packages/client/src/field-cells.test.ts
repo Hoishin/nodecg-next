@@ -25,11 +25,11 @@ import {
 
 const namespace = defineNamespace("match", {
 	replicant: {
-		scoreLeft: { schema: Schema.NumberFromString },
-		scoreRight: { schema: Schema.NumberFromString },
+		scoreLeft: { schema: Schema.FiniteFromString },
+		scoreRight: { schema: Schema.FiniteFromString },
 	},
 	computed: {
-		total: { schema: Schema.NumberFromString },
+		total: { schema: Schema.FiniteFromString },
 	},
 });
 
@@ -41,7 +41,8 @@ const makeFakeChannel = Effect.gen(function* () {
 			Effect.sync(() => {
 				sent.push(message);
 			}),
-		receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+		receive: () =>
+			PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 	};
 	return { channel, pubsub, sent };
 });
@@ -80,7 +81,7 @@ const resync = {
 const waitFor = (assertion: () => void) =>
 	Effect.promise(() => vi.waitFor(assertion));
 
-const makeCells = Layer.build(FieldCellsService.Default).pipe(
+const makeCells = Layer.build(FieldCellsService.layer).pipe(
 	Effect.map((context) => Context.get(context, FieldCellsService)),
 );
 
@@ -122,7 +123,7 @@ describe("FieldCellsService", () => {
 					).toBe(true);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", 5));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 5));
 				yield* waitFor(() => {
 					expect(seen).toEqual([Pending, ready(5, "5", 1)]);
 				});
@@ -202,7 +203,8 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					SubscribeRejectedMessage.make({
 						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
 						reason: "forbidden",
@@ -243,7 +245,8 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					SubscribeRejectedMessage.make({
 						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
 						reason: "not-found",
@@ -281,7 +284,8 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					SubscribeRejectedMessage.make({
 						field: { type: "computed", namespace: "match", name: "total" },
 						reason: "unavailable",
@@ -323,7 +327,8 @@ describe("FieldCellsService", () => {
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					SubscribeRejectedMessage.make({
 						field: { type: "replicant", namespace: "match", name: "scoreLeft" },
 						reason: "forbidden",
@@ -344,7 +349,7 @@ describe("FieldCellsService", () => {
 				expect(cell.peek()._tag).toBe("Cold");
 
 				const second = observe(cell.signal);
-				yield* pubsub.publish(snapshot("scoreLeft", 5));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 5));
 				yield* waitFor(() => {
 					expect(second.seen).toEqual([Pending, ready(5, "5", 1)]);
 				});
@@ -371,9 +376,9 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", 5));
-				yield* pubsub.publish(snapshot("scoreLeft", "not a number", 2));
-				yield* pubsub.publish(snapshot("scoreLeft", 7, 3));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 5));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", "not a number", 2));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7, 3));
 				yield* waitFor(() => {
 					expect(seen).toEqual([
 						Pending,
@@ -421,8 +426,8 @@ describe("FieldCellsService", () => {
 				});
 
 				leftObserved.dispose();
-				yield* pubsub.publish(snapshot("scoreLeft", 7));
-				yield* pubsub.publish(snapshot("scoreRight", 9));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7));
+				yield* PubSub.publish(pubsub, snapshot("scoreRight", 9));
 				yield* waitFor(() => {
 					expect(rightObserved.seen).toEqual([Pending, ready(9, "9", 1)]);
 				});
@@ -451,15 +456,17 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", 0, 0));
-				yield* pubsub.publish(
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 0, 0));
+				yield* PubSub.publish(
+					pubsub,
 					delta("scoreLeft", "5", 0, 1, computeFingerprint("5")),
 				);
 				yield* waitFor(() => {
 					expect(seen).toEqual([Pending, ready(0, "0", 0), ready(5, "5", 1)]);
 				});
 
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					delta("scoreLeft", "9", 99, 100, computeFingerprint("9")),
 				);
 				yield* waitFor(() => {
@@ -489,10 +496,11 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					delta("scoreLeft", "5", 0, 1, computeFingerprint("5")),
 				);
-				yield* pubsub.publish(snapshot("scoreLeft", 7, 7));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7, 7));
 				yield* waitFor(() => {
 					expect(seen).toEqual([Pending, ready(7, "7", 7)]);
 				});
@@ -520,8 +528,9 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", 1000, 1000));
-				yield* pubsub.publish(
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 1000, 1000));
+				yield* PubSub.publish(
+					pubsub,
 					delta("scoreLeft", "4", 3, 4, computeFingerprint("4")),
 				);
 				yield* waitFor(() => {
@@ -529,8 +538,9 @@ describe("FieldCellsService", () => {
 				});
 				expect(seen).toEqual([Pending, ready(1000, "1000", 1000)]);
 
-				yield* pubsub.publish(snapshot("scoreLeft", 4, 4));
-				yield* pubsub.publish(
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 4, 4));
+				yield* PubSub.publish(
+					pubsub,
 					delta("scoreLeft", "5", 4, 5, computeFingerprint("5")),
 				);
 				yield* waitFor(() => {
@@ -564,9 +574,10 @@ describe("FieldCellsService", () => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", 0, 0));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 0, 0));
 				// Send wrong fingerprint
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					delta("scoreLeft", "5", 0, 1, computeFingerprint("9")),
 				);
 				yield* waitFor(() => {
@@ -574,7 +585,7 @@ describe("FieldCellsService", () => {
 				});
 				expect(seen).toEqual([Pending, ready(0, "0", 0)]);
 
-				yield* pubsub.publish(snapshot("scoreLeft", 9, 1));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 9, 1));
 				yield* waitFor(() => {
 					expect(seen).toEqual([Pending, ready(0, "0", 0), ready(9, "9", 1)]);
 				});
@@ -600,24 +611,27 @@ describe("FieldCellsService", () => {
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
-				yield* pubsub.publish(snapshot("scoreLeft", 0, 0));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 0, 0));
 
 				const resyncs = () => sent.filter((m) => m._tag === "resync").length;
 				const gappedDelta = () =>
 					delta("scoreLeft", "9", 99, 100, computeFingerprint("9"));
 
-				yield* pubsub.publish(gappedDelta());
+				yield* PubSub.publish(pubsub, gappedDelta());
 				yield* waitFor(() => {
 					expect(resyncs()).toBe(1);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", "not a number", 100));
-				yield* pubsub.publish(gappedDelta());
+				yield* PubSub.publish(
+					pubsub,
+					snapshot("scoreLeft", "not a number", 100),
+				);
+				yield* PubSub.publish(pubsub, gappedDelta());
 				yield* waitFor(() => {
 					expect(resyncs()).toBe(2);
 				});
 
-				yield* pubsub.publish(snapshot("scoreLeft", 7, 100));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7, 100));
 				yield* waitFor(() => {
 					expect(seen).toEqual([
 						Pending,
@@ -657,7 +671,7 @@ describe("FieldCellsService", () => {
 				yield* waitFor(() => {
 					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
 				});
-				yield* pubsub.publish(snapshot("scoreLeft", 0, 0));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 0, 0));
 
 				const resyncs = () => sent.filter((m) => m._tag === "resync").length;
 				const gapped = (baseRevision: number, revision: number) =>
@@ -669,14 +683,14 @@ describe("FieldCellsService", () => {
 						computeFingerprint(String(revision)),
 					);
 
-				yield* pubsub.publish(gapped(50, 51));
+				yield* PubSub.publish(pubsub, gapped(50, 51));
 				yield* waitFor(() => {
 					expect(resyncs()).toBe(1);
 				});
-				yield* pubsub.publish(gapped(51, 52));
-				yield* pubsub.publish(gapped(52, 53));
-				yield* pubsub.publish(gapped(53, 54));
-				yield* pubsub.publish(snapshot("scoreLeft", 54, 54));
+				yield* PubSub.publish(pubsub, gapped(51, 52));
+				yield* PubSub.publish(pubsub, gapped(52, 53));
+				yield* PubSub.publish(pubsub, gapped(53, 54));
+				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 54, 54));
 				yield* waitFor(() => {
 					expect(seen).toEqual([
 						Pending,

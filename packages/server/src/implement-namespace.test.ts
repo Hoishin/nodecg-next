@@ -16,13 +16,11 @@ import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-bro
 
 const testEffect = makeTestEffect(
 	Layer.mergeAll(
-		Layer.succeed(CurrentIdentity, ServerIdentitySchema.make()),
+		Layer.succeed(CurrentIdentity, ServerIdentitySchema.make({})),
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default.pipe(
-			Layer.provide(InMemoryReplicantStorage),
-		),
-		BuiltNamespaceRegistry.Default,
+		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		BuiltNamespaceRegistry.layer,
 	),
 );
 

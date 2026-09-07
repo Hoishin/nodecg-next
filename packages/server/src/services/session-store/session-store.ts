@@ -13,7 +13,7 @@ export interface SessionStore {
 	readonly revoke: (sessionId: string) => Effect.Effect<void>;
 }
 
-export class SessionStoreService extends Context.Tag("SessionStore")<
+export class SessionStoreService extends Context.Service<
 	SessionStoreService,
 	SessionStore
->() {}
+>()("SessionStore") {}

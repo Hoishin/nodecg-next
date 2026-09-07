@@ -1,12 +1,12 @@
 import { testEffect } from "@nodecg-next/internal/test-utils";
-import { ConfigError, ConfigProvider, Effect } from "effect";
+import { Config, ConfigProvider, Effect } from "effect";
 import { describe, expect, test } from "vitest";
 
 import { config } from "./server-config.ts";
 
-const readBaseUrl = (env: ReadonlyArray<readonly [string, string]>) =>
+const readBaseUrl = (env: Record<string, string>) =>
 	config.baseUrl.pipe(
-		Effect.withConfigProvider(ConfigProvider.fromMap(new Map(env))),
+		Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
 	);
 
 describe("baseUrl", () => {
@@ -14,11 +14,11 @@ describe("baseUrl", () => {
 		"defaults to localhost on the configured port at root",
 		testEffect(
 			Effect.gen(function* () {
-				expect(yield* readBaseUrl([])).toEqual({
+				expect(yield* readBaseUrl({})).toEqual({
 					href: "http://localhost:3000",
 					pathname: "/",
 				});
-				expect(yield* readBaseUrl([["PORT", "8080"]])).toEqual({
+				expect(yield* readBaseUrl({ PORT: "8080" })).toEqual({
 					href: "http://localhost:8080",
 					pathname: "/",
 				});
@@ -30,9 +30,10 @@ describe("baseUrl", () => {
 		"a bare origin resolves to root",
 		testEffect(
 			Effect.gen(function* () {
-				expect(
-					yield* readBaseUrl([["NODECG_BASE_URL", "http://host"]]),
-				).toEqual({ href: "http://host/", pathname: "/" });
+				expect(yield* readBaseUrl({ NODECG_BASE_URL: "http://host" })).toEqual({
+					href: "http://host/",
+					pathname: "/",
+				});
 			}),
 		),
 	);
@@ -42,7 +43,7 @@ describe("baseUrl", () => {
 		testEffect(
 			Effect.gen(function* () {
 				expect(
-					yield* readBaseUrl([["NODECG_BASE_URL", "http://host/foo"]]),
+					yield* readBaseUrl({ NODECG_BASE_URL: "http://host/foo" }),
 				).toEqual({ href: "http://host/foo", pathname: "/foo" });
 			}),
 		),
@@ -53,10 +54,10 @@ describe("baseUrl", () => {
 		testEffect(
 			Effect.gen(function* () {
 				expect(
-					yield* readBaseUrl([["NODECG_BASE_URL", "http://host/foo/"]]),
+					yield* readBaseUrl({ NODECG_BASE_URL: "http://host/foo/" }),
 				).toEqual({ href: "http://host/foo/", pathname: "/foo" });
 				expect(
-					yield* readBaseUrl([["NODECG_BASE_URL", "http://host/a/b/"]]),
+					yield* readBaseUrl({ NODECG_BASE_URL: "http://host/a/b/" }),
 				).toEqual({ href: "http://host/a/b/", pathname: "/a/b" });
 			}),
 		),
@@ -66,10 +67,10 @@ describe("baseUrl", () => {
 		"rejects a malformed url instead of falling back to the default",
 		testEffect(
 			Effect.gen(function* () {
-				const error = yield* readBaseUrl([
-					["NODECG_BASE_URL", "not a url"],
-				]).pipe(Effect.flip);
-				expect(ConfigError.isConfigError(error)).toBe(true);
+				const error = yield* readBaseUrl({
+					NODECG_BASE_URL: "not a url",
+				}).pipe(Effect.flip);
+				expect(error).toBeInstanceOf(Config.ConfigError);
 			}),
 		),
 	);

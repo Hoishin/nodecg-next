@@ -1,5 +1,5 @@
 import { mapValues } from "@nodecg-next/internal/utils";
-import { Effect, Exit, Runtime, Schema, Scope, Stream } from "effect";
+import { Effect, Exit, Schema, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
 import {
@@ -62,9 +62,11 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	Topic extends Record<string, unknown>,
 	Rpc extends RpcShape,
 >(built: BuiltNamespace<Replicant, Computed, Topic, Rpc>) {
-	const runtime = yield* Effect.runtime<
+	const context = yield* Effect.context<
 		TopicBrokerService | DerivationEngineService
 	>();
+	const runSync = Effect.runSyncWith(context);
+	const runPromise = Effect.runPromiseWith(context);
 
 	const subscribeAdapter =
 		<Decoded, E>(
@@ -80,26 +82,25 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 			name: string,
 		) =>
 		async (handler: (value: Decoded) => Promisable<void>) =>
-			Runtime.runPromise(
-				runtime,
+			runPromise(
 				Effect.gen(function* () {
 					const scope = yield* Scope.make();
-					const subscription = yield* subscribe().pipe(Scope.extend(scope));
+					const subscription = yield* subscribe().pipe(Scope.provide(scope));
 					yield* Effect.forkIn(
 						Stream.runForEach(subscription, (value) =>
 							Effect.tryPromise(async () => handler(value)).pipe(
-								Effect.catchAll((error) =>
+								Effect.catch((error) =>
 									Effect.logError(
 										`Subscription handler for "${built.namespace}/${name}" threw`,
 										error,
 									),
 								),
 							),
-						).pipe(Effect.ensureErrorType<never>()),
+						).pipe(Effect.satisfiesErrorType<never>()),
 						scope,
 					);
 					return async () => {
-						await Runtime.runPromise(runtime, Scope.close(scope, Exit.void));
+						await runPromise(Scope.close(scope, Exit.void));
 					};
 				}),
 			);
@@ -107,31 +108,27 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	const loaded: LoadedNamespace<Replicant, Computed, Topic, Rpc> = {
 		replicant: mapValues<ReplicantFieldEffectLambda, ReplicantFieldLambda>(
 			(field, name) => ({
-				get: () => Runtime.runSync(runtime, field.get().pipe(asServer)),
-				set: (value) =>
-					Runtime.runSync(runtime, field.set(value).pipe(asServer)),
-				update: (fn) =>
-					Runtime.runSync(runtime, field.update(fn).pipe(asServer)),
-				validate: (value) => Runtime.runPromise(runtime, field.validate(value)),
+				get: () => runSync(field.get().pipe(asServer)),
+				set: (value) => runSync(field.set(value).pipe(asServer)),
+				update: (fn) => runSync(field.update(fn).pipe(asServer)),
+				validate: (value) => runPromise(field.validate(value)),
 				subscribe: subscribeAdapter(field.subscribe, name),
 			}),
 		)(built.replicant),
 		computed: mapValues<ComputedFieldEffectLambda, ComputedFieldLambda>(
 			(field, name) => ({
-				get: () => Runtime.runSync(runtime, field.get().pipe(asServer)),
+				get: () => runSync(field.get().pipe(asServer)),
 				subscribe: subscribeAdapter(field.subscribe, name),
 			}),
 		)(built.computed),
 		topic: mapValues<TopicFieldEffectLambda, TopicFieldLambda>(
 			(field, name) => ({
-				publish: (value) =>
-					Runtime.runPromise(runtime, field.publish(value).pipe(asServer)),
+				publish: (value) => runPromise(field.publish(value).pipe(asServer)),
 				subscribe: subscribeAdapter(field.subscribe, name),
 			}),
 		)(built.topic),
 		rpc: mapValues<RpcFieldEffectLambda, RpcFieldLambda>(
-			(field) => (request) =>
-				Runtime.runPromise(runtime, field.call(request).pipe(asServer)),
+			(field) => (request) => runPromise(field.call(request).pipe(asServer)),
 		)(built.rpc),
 	};
 	return loaded;

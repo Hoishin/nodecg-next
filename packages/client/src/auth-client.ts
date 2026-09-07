@@ -1,4 +1,3 @@
-import { FetchHttpClient, HttpApiClient } from "@effect/platform";
 import {
 	InternalApi,
 	RoleName,
@@ -7,10 +6,12 @@ import {
 } from "@nodecg-next/internal";
 import { buildRelativeUrl } from "@nodecg-next/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { HttpApiClient } from "effect/unstable/httpapi";
 
 export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 	"AuthRequestFailed",
-	{ cause: Schema.Defect },
+	{ cause: Schema.Defect() },
 ) {
 	override readonly message = "Authentication request failed";
 }

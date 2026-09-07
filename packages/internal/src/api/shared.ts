@@ -1,67 +1,93 @@
+import { Schema } from "effect";
 import {
 	HttpApiEndpoint,
 	HttpApiError,
 	HttpApiGroup,
 	HttpApiSchema,
-} from "@effect/platform";
-import { Schema } from "effect";
+} from "effect/unstable/httpapi";
 
 import { Patch, PatchNotApplicable, RevisionConflict } from "../occ/schema.ts";
 import { JsonValueSchema } from "../utils/json-value-schema.ts";
 
-const namespaceParam = HttpApiSchema.param("namespace", Schema.String);
-const fieldNameParam = HttpApiSchema.param("fieldName", Schema.String);
-
 const replicantGet = HttpApiEndpoint.get(
 	"replicantGet",
-)`/namespaces/${namespaceParam}/replicant/${fieldNameParam}`
-	.addSuccess(JsonValueSchema)
-	.addError(HttpApiError.NotFound)
-	.addError(HttpApiError.Forbidden)
-	.addError(HttpApiError.InternalServerError);
+	"/namespaces/:namespace/replicant/:fieldName",
+	{
+		params: { namespace: Schema.String, fieldName: Schema.String },
+		success: JsonValueSchema,
+		error: [
+			HttpApiError.NotFound,
+			HttpApiError.Forbidden,
+			HttpApiError.InternalServerError,
+		],
+	},
+);
 
 const replicantUpdate = HttpApiEndpoint.put(
 	"replicantUpdate",
-)`/namespaces/${namespaceParam}/replicant/${fieldNameParam}`
-	.setPayload(Patch)
-	.addError(HttpApiError.NotFound)
-	.addError(HttpApiError.Forbidden)
-	.addError(HttpApiError.BadRequest)
-	.addError(PatchNotApplicable)
-	.addError(RevisionConflict)
-	.addError(HttpApiError.InternalServerError);
+	"/namespaces/:namespace/replicant/:fieldName",
+	{
+		params: { namespace: Schema.String, fieldName: Schema.String },
+		payload: Patch,
+		error: [
+			HttpApiError.NotFound,
+			HttpApiError.Forbidden,
+			HttpApiError.BadRequest,
+			PatchNotApplicable.pipe(HttpApiSchema.status(422)),
+			RevisionConflict.pipe(HttpApiSchema.status(409)),
+			HttpApiError.InternalServerError,
+		],
+	},
+);
 
 const computedGet = HttpApiEndpoint.get(
 	"computedGet",
-)`/namespaces/${namespaceParam}/computed/${fieldNameParam}`
-	.addSuccess(JsonValueSchema)
-	.addError(HttpApiError.NotFound)
-	.addError(HttpApiError.Forbidden)
-	.addError(HttpApiError.InternalServerError);
+	"/namespaces/:namespace/computed/:fieldName",
+	{
+		params: { namespace: Schema.String, fieldName: Schema.String },
+		success: JsonValueSchema,
+		error: [
+			HttpApiError.NotFound,
+			HttpApiError.Forbidden,
+			HttpApiError.InternalServerError,
+		],
+	},
+);
 
 const topicPublish = HttpApiEndpoint.post(
 	"topicPublish",
-)`/namespaces/${namespaceParam}/topic/${fieldNameParam}`
-	.setPayload(JsonValueSchema)
-	.addError(HttpApiError.NotFound)
-	.addError(HttpApiError.Forbidden)
-	.addError(HttpApiError.BadRequest);
+	"/namespaces/:namespace/topic/:fieldName",
+	{
+		params: { namespace: Schema.String, fieldName: Schema.String },
+		payload: JsonValueSchema,
+		error: [
+			HttpApiError.NotFound,
+			HttpApiError.Forbidden,
+			HttpApiError.BadRequest,
+		],
+	},
+);
 
 export class RpcCallError extends Schema.TaggedError<RpcCallError>()(
 	"RpcCallError",
 	{ message: Schema.String },
-	HttpApiSchema.annotations({ status: 500 }),
 ) {}
 
 const rpcCall = HttpApiEndpoint.post(
 	"rpcCall",
-)`/namespaces/${namespaceParam}/rpc/${fieldNameParam}`
-	.setPayload(JsonValueSchema)
-	.addSuccess(JsonValueSchema)
-	.addError(HttpApiError.NotFound)
-	.addError(HttpApiError.Forbidden)
-	.addError(HttpApiError.BadRequest)
-	.addError(RpcCallError);
+	"/namespaces/:namespace/rpc/:fieldName",
+	{
+		params: { namespace: Schema.String, fieldName: Schema.String },
+		payload: JsonValueSchema,
+		success: JsonValueSchema,
+		error: [
+			HttpApiError.NotFound,
+			HttpApiError.Forbidden,
+			HttpApiError.BadRequest,
+			RpcCallError.pipe(HttpApiSchema.status(500)),
+		],
+	},
+);
 
 export const fieldGroup = <const Id extends string>(id: Id) =>
 	HttpApiGroup.make(id)

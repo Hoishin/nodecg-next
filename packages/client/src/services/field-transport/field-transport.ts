@@ -126,7 +126,7 @@ export interface FieldTransport {
 	>;
 }
 
-export class FieldTransportService extends Context.Tag("FieldTransport")<
+export class FieldTransportService extends Context.Service<
 	FieldTransportService,
 	FieldTransport
->() {}
+>()("FieldTransport") {}

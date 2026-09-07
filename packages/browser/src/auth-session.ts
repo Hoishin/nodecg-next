@@ -8,7 +8,7 @@ import {
 	type MePayload,
 } from "@nodecg-next/client";
 import { AnonymousIdentitySchema } from "@nodecg-next/internal";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { nodecgBase } from "./base.ts";
 
@@ -21,7 +21,7 @@ export class LoginWindowBlocked extends Schema.TaggedError<LoginWindowBlocked>()
 
 export class LoginAbandoned extends Schema.TaggedError<LoginAbandoned>()(
 	"LoginAbandoned",
-	{ reason: Schema.Literal("closed", "timeout") },
+	{ reason: Schema.Literals(["closed", "timeout"]) },
 ) {
 	override readonly message = `Login was abandoned before completing (popup ${this.reason})`;
 }
@@ -83,7 +83,7 @@ export const authSession = (
 
 	const popupLogin = async (provider: LoginProvider) => {
 		const url = loginUrl(provider).pipe(
-			Either.getOrThrowWith((error) => error),
+			Result.getOrThrowWith((error) => error),
 		);
 		const popup = window.open(url, "nodecg-login");
 		if (popup === null) {
@@ -100,7 +100,7 @@ export const authSession = (
 
 	const logout = async () => {
 		await client.logout();
-		setIdentity(AnonymousIdentitySchema.make());
+		setIdentity(AnonymousIdentitySchema.make({}));
 	};
 
 	return {

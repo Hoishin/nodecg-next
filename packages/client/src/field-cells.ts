@@ -17,14 +17,15 @@ import { applyPatch, computeFingerprint } from "@nodecg-next/internal/occ";
 import { setSignal, type SetSignalError } from "@nodecg-next/internal/utils";
 import { type Signal, signal } from "@preact/signals-core";
 import {
-	Data,
+	Context,
 	Effect,
-	Either,
-	Mailbox,
+	Layer,
 	Match,
 	MutableHashMap,
 	Option,
+	Queue,
 	Ref,
+	Result,
 	Stream,
 } from "effect";
 import type { JsonValue } from "type-fest";
@@ -51,9 +52,6 @@ import { MessageChannelService } from "./services/message-channel/message-channe
 export type TerminalFieldFailure = FieldNotFound | FieldPermissionDenied;
 export type FieldFailure = TerminalFieldFailure | FieldUnavailable;
 
-const fieldKey = <Field extends FieldIdentifier>(field: Field) =>
-	Data.struct(field);
-
 const isCold = Loadable.$is("Cold");
 
 export interface ReplicantCell<Decoded> {
@@ -72,12 +70,12 @@ export interface TopicCell<Decoded> {
 }
 
 // Forks two fibers: sender (client -> server) and pump (server -> client), both interrupted when the scope closes.
-export class FieldCellsService extends Effect.Service<FieldCellsService>()(
+export class FieldCellsService extends Context.Service<FieldCellsService>()(
 	"FieldCells",
 	{
-		scoped: Effect.gen(function* () {
+		make: Effect.gen(function* () {
 			const channel = yield* MessageChannelService;
-			const outbound = yield* Mailbox.make<ClientMessage>();
+			const outbound = yield* Queue.unbounded<ClientMessage>();
 
 			interface CellHandlers<Message> {
 				readonly applyFrame: (
@@ -130,12 +128,12 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				const cell = signal<Loadable<V, FieldFailure>>(Cold, {
 					watched: () => {
 						cell.value = Pending;
-						outbound.unsafeOffer(SubscribeMessage.make({ field }));
+						Queue.offerUnsafe(outbound, SubscribeMessage.make({ field }));
 					},
 					unwatched: () => {
 						// Cold drops the base with the value, so nothing stale can be read back
 						cell.value = Cold;
-						outbound.unsafeOffer(UnsubscribeMessage.make({ field }));
+						Queue.offerUnsafe(outbound, UnsubscribeMessage.make({ field }));
 					},
 				});
 				return cell;
@@ -177,7 +175,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 					if (wasResyncing) {
 						return;
 					}
-					yield* outbound.offer(ResyncMessage.make({ field }));
+					yield* Queue.offer(outbound, ResyncMessage.make({ field }));
 				});
 
 				const decodeIntoCell = (encoded: JsonValue, revision: number) =>
@@ -222,24 +220,24 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 									return yield* requestResync;
 								}
 								const applied = applyPatch(current.encoded, delta.ops);
-								if (Either.isLeft(applied)) {
+								if (Result.isFailure(applied)) {
 									yield* Effect.logWarning(
 										`Delta for "${namespace}/${name}" did not apply, resyncing:`,
-										applied.left,
+										applied.failure,
 									);
 									return yield* requestResync;
 								}
-								if (computeFingerprint(applied.right) !== delta.hash) {
+								if (computeFingerprint(applied.success) !== delta.hash) {
 									yield* Effect.logWarning(
 										`Delta for "${namespace}/${name}" diverged from the server fingerprint, resyncing`,
 									);
 									return yield* requestResync;
 								}
-								yield* decodeIntoCell(applied.right, delta.revision);
+								yield* decodeIntoCell(applied.success, delta.revision);
 							}),
 					});
 
-				MutableHashMap.set(replicantHandlers, fieldKey(field), {
+				MutableHashMap.set(replicantHandlers, field, {
 					applyFrame: (frame) =>
 						Effect.gen(function* () {
 							if (isCold(cell.peek())) {
@@ -274,7 +272,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				};
 				const cell = makeCell<ComputedValue<Decoded>>(field);
 
-				MutableHashMap.set(computedHandlers, fieldKey(field), {
+				MutableHashMap.set(computedHandlers, field, {
 					applyFrame: (published) =>
 						Effect.gen(function* () {
 							if (isCold(cell.peek())) {
@@ -317,7 +315,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				const field: TopicFieldIdentifier = { type: "topic", namespace, name };
 				const cell = makeCell<TopicValue<Decoded>>(field);
 
-				MutableHashMap.set(topicHandlers, fieldKey(field), {
+				MutableHashMap.set(topicHandlers, field, {
 					applyFrame: (published) =>
 						Effect.gen(function* () {
 							if (isCold(cell.peek())) {
@@ -354,7 +352,7 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 
 			// Sender: drain mailbox and send changes to server
 			yield* Effect.forkScoped(
-				Mailbox.toStream(outbound).pipe(
+				Stream.fromQueue(outbound).pipe(
 					Stream.runForEach((message) =>
 						channel
 							.send(message)
@@ -398,23 +396,15 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 				Stream.runForEach(incoming, (message) =>
 					Match.value(message).pipe(
 						Match.tag("snapshot", "delta", (published) =>
-							applyFrameToCell(
-								replicantHandlers,
-								fieldKey(published.field),
-								published,
-							),
+							applyFrameToCell(replicantHandlers, published.field, published),
 						),
 						Match.tag("value", (published) =>
 							Match.value(published.field).pipe(
 								Match.when({ type: "computed" }, (field) =>
-									applyFrameToCell(
-										computedHandlers,
-										fieldKey(field),
-										published,
-									),
+									applyFrameToCell(computedHandlers, field, published),
 								),
 								Match.when({ type: "topic" }, (field) =>
-									applyFrameToCell(topicHandlers, fieldKey(field), published),
+									applyFrameToCell(topicHandlers, field, published),
 								),
 								Match.exhaustive,
 							),
@@ -423,13 +413,13 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 							Effect.gen(function* () {
 								const handler = Match.value(rejected.field).pipe(
 									Match.when({ type: "replicant" }, (field) =>
-										MutableHashMap.get(replicantHandlers, fieldKey(field)),
+										MutableHashMap.get(replicantHandlers, field),
 									),
 									Match.when({ type: "computed" }, (field) =>
-										MutableHashMap.get(computedHandlers, fieldKey(field)),
+										MutableHashMap.get(computedHandlers, field),
 									),
 									Match.when({ type: "topic" }, (field) =>
-										MutableHashMap.get(topicHandlers, fieldKey(field)),
+										MutableHashMap.get(topicHandlers, field),
 									),
 									Match.exhaustive,
 								);
@@ -460,4 +450,6 @@ export class FieldCellsService extends Effect.Service<FieldCellsService>()(
 			};
 		}),
 	},
-) {}
+) {
+	static readonly layer = Layer.effect(this, this.make);
+}

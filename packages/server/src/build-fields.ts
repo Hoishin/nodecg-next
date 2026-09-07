@@ -6,7 +6,7 @@ import {
 	toError,
 	zipEffectValues,
 } from "@nodecg-next/internal/utils";
-import { Context, Effect, Option, Runtime, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 
 import {
 	ComputedComputeError,
@@ -55,7 +55,7 @@ import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts
 
 export const asServer = Effect.provideService(
 	CurrentIdentity,
-	ServerIdentitySchema.make(),
+	ServerIdentitySchema.make({}),
 );
 
 export class NamespaceNotLoaded extends Schema.TaggedError<NamespaceNotLoaded>()(
@@ -65,16 +65,16 @@ export class NamespaceNotLoaded extends Schema.TaggedError<NamespaceNotLoaded>()
 	override readonly message = `Namespace "${this.namespace}" was not loaded — pass it to loadNodeCG's namespaces`;
 }
 
-export class LoadedNamespacesService extends Context.Tag("LoadedNamespaces")<
+export class LoadedNamespacesService extends Context.Service<
 	LoadedNamespacesService,
 	ReadonlySet<string>
->() {}
+>()("LoadedNamespaces") {}
 
 // ctx.use lookup keyed by ImplementedNamespace. Returns typed whole namespace
-export class BuiltNamespaceRegistry extends Effect.Service<BuiltNamespaceRegistry>()(
+export class BuiltNamespaceRegistry extends Context.Service<BuiltNamespaceRegistry>()(
 	"BuiltNamespaceRegistry",
 	{
-		sync: () => {
+		make: Effect.sync(() => {
 			const map = new WeakMap<WidenedImplementedNamespace, unknown>();
 			return {
 				register: <S extends BaseNamespaceShape>(
@@ -107,9 +107,11 @@ export class BuiltNamespaceRegistry extends Effect.Service<BuiltNamespaceRegistr
 						>;
 					}),
 			};
-		},
+		}),
 	},
-) {}
+) {
+	static readonly layer = Layer.effect(this, this.make);
+}
 
 export const requireLoaded = (namespace: string) =>
 	Effect.gen(function* () {
@@ -124,7 +126,7 @@ type FieldOps =
 	| DerivationEngineService
 	| BuiltNamespaceRegistry;
 
-type FieldOpsRuntime = Runtime.Runtime<FieldOps>;
+type FieldOpsContext = Context.Context<FieldOps>;
 
 const lookupLoaded = <S extends BaseNamespaceShape>(
 	implemented: ImplementedNamespace<S>,
@@ -140,25 +142,26 @@ const makeComputeUse = <S extends BaseNamespaceShape>(
 ) =>
 	Effect.gen(function* () {
 		const fields = yield* lookupLoaded(implemented);
-		const runtime = yield* Effect.runtime<FieldOps>();
+		const runSync = yield* Effect.context<FieldOps>().pipe(
+			Effect.map(Effect.runSyncWith),
+		);
 		return {
 			replicant: mapValues<ReplicantFieldEffectLambda, CrossFieldReadLambda>(
 				(field) => ({
-					get: () =>
-						Runtime.runSync(runtime, field[fieldInternal].get().pipe(asServer)),
+					get: () => runSync(field[fieldInternal].get().pipe(asServer)),
 				}),
 			)(fields.replicant),
 			computed: mapValues<ComputedFieldEffectLambda, CrossFieldReadLambda>(
 				(field) => ({
-					get: () =>
-						Runtime.runSync(runtime, field[fieldInternal].get().pipe(asServer)),
+					get: () => runSync(field[fieldInternal].get().pipe(asServer)),
 				}),
 			)(fields.computed),
 		};
 	});
 
+// TODO: use Effect's R instead of Context
 const fieldAccessors =
-	(runtime: FieldOpsRuntime) =>
+	(context: FieldOpsContext) =>
 	<
 		Replicant extends Record<string, unknown>,
 		Computed extends Record<string, unknown>,
@@ -175,39 +178,42 @@ const fieldAccessors =
 		readonly topic: {
 			readonly [K in keyof Topic & string]: TopicFieldEffect<Topic[K]>;
 		};
-	}) => ({
-		replicant: mapValues<
-			ReplicantFieldEffectLambda,
-			RpcReplicantAccessorLambda
-		>((field) => ({
-			get: () => Runtime.runSync(runtime, field.get().pipe(asServer)),
-			set: (value) => Runtime.runSync(runtime, field.set(value).pipe(asServer)),
-			update: (fn) => Runtime.runSync(runtime, field.update(fn).pipe(asServer)),
-		}))(fields.replicant),
-		computed: mapValues<ComputedFieldEffectLambda, RpcComputedAccessorLambda>(
-			(field) => ({
-				get: () => Runtime.runSync(runtime, field.get().pipe(asServer)),
-			}),
-		)(fields.computed),
-		topic: mapValues<TopicFieldEffectLambda, RpcTopicAccessorLambda>(
-			(field) => ({
-				publish: (value) =>
-					Runtime.runPromise(runtime, field.publish(value).pipe(asServer)),
-			}),
-		)(fields.topic),
-	});
+	}) => {
+		const runSync = Effect.runSyncWith(context);
+		return {
+			replicant: mapValues<
+				ReplicantFieldEffectLambda,
+				RpcReplicantAccessorLambda
+			>((field) => ({
+				get: () => runSync(field.get().pipe(asServer)),
+				set: (value) => runSync(field.set(value).pipe(asServer)),
+				update: (fn) => runSync(field.update(fn).pipe(asServer)),
+			}))(fields.replicant),
+			computed: mapValues<ComputedFieldEffectLambda, RpcComputedAccessorLambda>(
+				(field) => ({
+					get: () => runSync(field.get().pipe(asServer)),
+				}),
+			)(fields.computed),
+			topic: mapValues<TopicFieldEffectLambda, RpcTopicAccessorLambda>(
+				(field) => ({
+					publish: (value) =>
+						Effect.runPromiseWith(context)(field.publish(value).pipe(asServer)),
+				}),
+			)(fields.topic),
+		};
+	};
 
 export const makeUseCross = <S extends BaseNamespaceShape>(
 	implemented: ImplementedNamespace<S>,
 ) =>
 	Effect.gen(function* () {
 		const fields = yield* lookupLoaded(implemented);
-		const runtime = yield* Effect.runtime<FieldOps>();
+		const context = yield* Effect.context<FieldOps>();
 		return {
-			...fieldAccessors(runtime)(fields),
+			...fieldAccessors(context)(fields),
 			rpc: mapValues<RpcFieldEffectLambda, RpcFieldLambda>(
 				(field) => (request) =>
-					Runtime.runPromise(runtime, field.call(request).pipe(asServer)),
+					Effect.runPromiseWith(context)(field.call(request).pipe(asServer)),
 			)(fields.rpc),
 		};
 	});
@@ -225,9 +231,10 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const computeFns = options?.implementComputed;
 	const rpcHandlers = options?.implementRpc;
 
-	const runtime = yield* Effect.runtime<
+	const context = yield* Effect.context<
 		TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
 	>();
+	const runSync = Effect.runSyncWith(context);
 
 	const replicant = yield* zipEffectValues<
 		FieldManifestLambda,
@@ -245,8 +252,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const computeContext: ComputeContext<Replicant, Computed> = {
 		replicant: mapValues<ReplicantFieldEffectLambda, CrossFieldReadLambda>(
 			(field) => ({
-				get: () =>
-					Runtime.runSync(runtime, field[fieldInternal].get().pipe(asServer)),
+				get: () => runSync(field[fieldInternal].get().pipe(asServer)),
 			}),
 		)(replicant),
 		get computed() {
@@ -258,7 +264,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 			return ownComputedAccessors;
 		},
 		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
-			Runtime.runSync(runtime, makeComputeUse(implemented)),
+			runSync(makeComputeUse(implemented)),
 	};
 
 	const computed = yield* zipEffectValues<
@@ -290,8 +296,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 		ComputedFieldEffectLambda,
 		CrossFieldReadLambda
 	>((field) => ({
-		get: () =>
-			Runtime.runSync(runtime, field[fieldInternal].get().pipe(asServer)),
+		get: () => runSync(field[fieldInternal].get().pipe(asServer)),
 	}))(computed);
 
 	const topic = yield* mapEffectValues<
@@ -302,9 +307,9 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	);
 
 	const rpcContext: RpcContext<Replicant, Computed, Topic> = {
-		...fieldAccessors(runtime)({ replicant, computed, topic }),
+		...fieldAccessors(context)({ replicant, computed, topic }),
 		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
-			Runtime.runSync(runtime, makeUseCross(implemented)),
+			runSync(makeUseCross(implemented)),
 	};
 
 	const rpc = yield* zipEffectValues<
@@ -325,6 +330,6 @@ export interface BuiltNamespace<
 	Computed extends Record<string, unknown> = Record<string, unknown>,
 	Topic extends Record<string, unknown> = Record<string, unknown>,
 	Rpc extends RpcShape = RpcShape,
-> extends Effect.Effect.Success<
+> extends Effect.Success<
 	ReturnType<typeof buildFields<Replicant, Computed, Topic, Rpc>>
 > {}

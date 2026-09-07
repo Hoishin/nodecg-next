@@ -22,11 +22,11 @@ const TopicFieldIdentifier = Schema.Struct({
 });
 export type TopicFieldIdentifier = typeof TopicFieldIdentifier.Type;
 
-const FieldIdentifier = Schema.Union(
+const FieldIdentifier = Schema.Union([
 	ReplicantFieldIdentifier,
 	ComputedFieldIdentifier,
 	TopicFieldIdentifier,
-);
+]);
 export type FieldIdentifier = typeof FieldIdentifier.Type;
 
 export const SubscribeMessage = Schema.TaggedStruct("subscribe", {
@@ -42,15 +42,15 @@ export const ResyncMessage = Schema.TaggedStruct("resync", {
 });
 
 export const PingMessage = Schema.TaggedStruct("ping", {
-	kind: Schema.Union(Schema.Literal("ping"), Schema.Literal("pong")),
+	kind: Schema.Literals(["ping", "pong"]),
 });
 
-export const ClientMessage = Schema.Union(
+export const ClientMessage = Schema.Union([
 	SubscribeMessage,
 	UnsubscribeMessage,
 	ResyncMessage,
 	PingMessage,
-);
+]);
 export type ClientMessage = typeof ClientMessage.Type;
 
 export const ReplicantSnapshotMessage = Schema.TaggedStruct("snapshot", {
@@ -70,31 +70,31 @@ export const ReplicantDeltaMessage = Schema.TaggedStruct("delta", {
 export type ReplicantDeltaMessage = typeof ReplicantDeltaMessage.Type;
 
 export const FieldValueMessage = Schema.TaggedStruct("value", {
-	field: Schema.Union(ComputedFieldIdentifier, TopicFieldIdentifier),
+	field: Schema.Union([ComputedFieldIdentifier, TopicFieldIdentifier]),
 	value: JsonValueSchema,
 });
 export type FieldValueMessage = typeof FieldValueMessage.Type;
 
-export const PublishMessage = Schema.Union(
+export const PublishMessage = Schema.Union([
 	ReplicantSnapshotMessage,
 	ReplicantDeltaMessage,
 	FieldValueMessage,
-);
+]);
 export type PublishMessage = typeof PublishMessage.Type;
 
 export const SubscribeRejectedMessage = Schema.TaggedStruct(
 	"subscribe-rejected",
 	{
 		field: FieldIdentifier,
-		reason: Schema.Literal("forbidden", "not-found", "unavailable"),
+		reason: Schema.Literals(["forbidden", "not-found", "unavailable"]),
 		message: Schema.optional(Schema.String),
 	},
 );
 export type SubscribeRejectedMessage = typeof SubscribeRejectedMessage.Type;
 
-export const ServerMessage = Schema.Union(
+export const ServerMessage = Schema.Union([
 	PublishMessage,
 	SubscribeRejectedMessage,
 	PingMessage,
-);
+]);
 export type ServerMessage = typeof ServerMessage.Type;

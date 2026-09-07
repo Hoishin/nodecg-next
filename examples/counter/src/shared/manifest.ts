@@ -12,7 +12,7 @@ export const extendedCounterManifest = extendNamespace(counterManifest, {
 	},
 	computed: {
 		parity: {
-			schema: Schema.Literal("even", "odd"),
+			schema: Schema.Literals(["even", "odd"]),
 			permission: { read: { everyone: "allow" } },
 		},
 		announcement: {

@@ -1,13 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { NodeHttpServerRequest } from "@effect/platform-node";
+import { Effect } from "effect";
 import {
-	type HttpApp,
 	HttpServerError,
 	HttpServerRequest,
 	HttpServerResponse,
-} from "@effect/platform";
-import { NodeHttpServerRequest } from "@effect/platform-node";
-import { Effect } from "effect";
+} from "effect/unstable/http";
 
 export type NodeMiddleware = (
 	req: IncomingMessage,
@@ -18,7 +17,7 @@ export type NodeMiddleware = (
 export const nodeMiddlewareToHttpApp = (
 	middleware: NodeMiddleware,
 	options?: { readonly stripUrl?: boolean },
-): HttpApp.Default<HttpServerError.RouteNotFound> =>
+) =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest;
 		const req = NodeHttpServerRequest.toIncomingMessage(request);
@@ -28,7 +27,7 @@ export const nodeMiddlewareToHttpApp = (
 			req.url = request.url;
 		}
 
-		return yield* Effect.async<
+		return yield* Effect.callback<
 			HttpServerResponse.HttpServerResponse,
 			HttpServerError.RouteNotFound
 		>((resume) => {

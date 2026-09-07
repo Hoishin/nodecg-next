@@ -1,4 +1,3 @@
-import { Socket } from "@effect/platform";
 import { ClientMessage, ServerMessage } from "@nodecg-next/internal";
 import {
 	Effect,
@@ -10,16 +9,21 @@ import {
 	Scope,
 	Stream,
 } from "effect";
+import { Socket } from "effect/unstable/socket";
 
 import {
 	MessageChannelService,
 	MessageEncodeError,
 } from "./message-channel.ts";
 
-const encodeClientMessage = Schema.encode(Schema.parseJson(ClientMessage));
-const decodeServerMessage = Schema.decode(Schema.parseJson(ServerMessage));
+const encodeClientMessage = Schema.encodeEffect(
+	Schema.fromJsonString(ClientMessage),
+);
+const decodeServerMessage = Schema.decodeEffect(
+	Schema.fromJsonString(ServerMessage),
+);
 
-export const SocketMessageChannel = Layer.scoped(
+export const SocketMessageChannel = Layer.effect(
 	MessageChannelService,
 	Effect.gen(function* () {
 		const socket = yield* Socket.Socket;
@@ -35,9 +39,9 @@ export const SocketMessageChannel = Layer.scoped(
 							return;
 						}
 						const message = yield* decodeServerMessage(data);
-						yield* pubsub.publish(message);
+						yield* PubSub.publish(pubsub, message);
 					}).pipe(
-						Effect.catchTag("ParseError", (error) =>
+						Effect.catchTag("SchemaError", (error) =>
 							Effect.logError("Failed to decode incoming message:", error),
 						),
 					),
@@ -47,7 +51,7 @@ export const SocketMessageChannel = Layer.scoped(
 					Effect.catchTag("SocketError", (error) =>
 						Effect.logError("Message channel closed:", error),
 					),
-					Effect.ensureErrorType<never>(),
+					Effect.satisfiesErrorType<never>(),
 				),
 		);
 
@@ -59,7 +63,7 @@ export const SocketMessageChannel = Layer.scoped(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(
 						Match.tag(
-							"ParseError",
+							"SchemaError",
 							(error) => new MessageEncodeError({ cause: error }),
 						),
 						Match.exhaustive,
@@ -67,11 +71,16 @@ export const SocketMessageChannel = Layer.scoped(
 				),
 			);
 			yield* write(data).pipe(
-				Effect.ensureErrorType<Socket.SocketError>(),
+				Effect.satisfiesErrorType<Socket.SocketError>(),
 				Effect.orDie,
 			);
-		}, Scope.extend(scope));
+		}, Scope.provide(scope));
 
-		return { send, receive: () => Stream.fromPubSub(pubsub, { scoped: true }) };
+		const receive = Effect.fn("WebsocketMessageChannel.receive")(function* () {
+			const subscription = yield* PubSub.subscribe(pubsub);
+			return Stream.fromSubscription(subscription);
+		});
+
+		return { send, receive };
 	}),
 );

@@ -1,4 +1,4 @@
-import { HttpApiBuilder } from "@effect/platform";
+import { HttpApiBuilder } from "effect/unstable/httpapi";
 
 import { RootApi } from "../root-api.ts";
 import {
@@ -14,21 +14,21 @@ export const PublicGroupsLive = HttpApiBuilder.group(
 	"PublicField",
 	(handlers) =>
 		handlers
-			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
+			.handle("replicantGet", ({ params: { namespace, fieldName } }) =>
 				getReplicant(namespace, fieldName),
 			)
 			.handle(
 				"replicantUpdate",
-				({ path: { namespace, fieldName }, payload }) =>
+				({ params: { namespace, fieldName }, payload }) =>
 					updateReplicant(namespace, fieldName, payload),
 			)
-			.handle("computedGet", ({ path: { namespace, fieldName } }) =>
+			.handle("computedGet", ({ params: { namespace, fieldName } }) =>
 				getComputed(namespace, fieldName),
 			)
-			.handle("topicPublish", ({ path: { namespace, fieldName }, payload }) =>
+			.handle("topicPublish", ({ params: { namespace, fieldName }, payload }) =>
 				publishTopic(namespace, fieldName, payload),
 			)
-			.handle("rpcCall", ({ path: { namespace, fieldName }, payload }) =>
+			.handle("rpcCall", ({ params: { namespace, fieldName }, payload }) =>
 				callRpc(namespace, fieldName, payload),
 			),
 );

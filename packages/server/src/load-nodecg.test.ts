@@ -1,6 +1,6 @@
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
 import { makeTestEffect } from "@nodecg-next/internal/test-utils";
-import { Cause, Effect, Layer, Option, Schema } from "effect";
+import { Cause, Effect, Layer, Result, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { DerivationEngineService } from "./derivation-graph.ts";
@@ -20,15 +20,13 @@ const testEffect = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default.pipe(
-			Layer.provide(InMemoryReplicantStorage),
-		),
+		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
 	),
 );
 
 const counter = implementNamespace(
 	defineNamespace("counter", {
-		replicant: { count: { schema: Schema.NumberFromString } },
+		replicant: { count: { schema: Schema.FiniteFromString } },
 		rpc: {
 			bump: {
 				schema: { request: Schema.Number, response: Schema.Number },
@@ -49,7 +47,7 @@ const counter = implementNamespace(
 
 const settings = implementNamespace(
 	defineNamespace("settings", {
-		replicant: { multiplier: { schema: Schema.NumberFromString } },
+		replicant: { multiplier: { schema: Schema.FiniteFromString } },
 	}),
 	{ seedReplicant: { multiplier: () => 3 } },
 );
@@ -90,8 +88,8 @@ describe("namespaces", () => {
 
 describe("computed validation", () => {
 	const manifest = defineNamespace("broken", {
-		replicant: { value: { schema: Schema.NumberFromString } },
-		computed: { derived: { schema: Schema.NumberFromString } },
+		replicant: { value: { schema: Schema.FiniteFromString } },
+		computed: { derived: { schema: Schema.FiniteFromString } },
 	});
 
 	test(
@@ -142,8 +140,8 @@ describe("computed validation", () => {
 			Effect.gen(function* () {
 				const scoreboard = implementNamespace(
 					defineNamespace("scoreboard", {
-						replicant: { total: { schema: Schema.NumberFromString } },
-						computed: { weighted: { schema: Schema.NumberFromString } },
+						replicant: { total: { schema: Schema.FiniteFromString } },
+						computed: { weighted: { schema: Schema.FiniteFromString } },
 					}),
 					{
 						seedReplicant: { total: () => 10 },
@@ -201,7 +199,7 @@ describe("onLoad", () => {
 			Effect.gen(function* () {
 				const stats = implementNamespace(
 					defineNamespace("stats", {
-						replicant: { viewers: { schema: Schema.NumberFromString } },
+						replicant: { viewers: { schema: Schema.FiniteFromString } },
 					}),
 					{
 						seedReplicant: { viewers: () => 0 },
@@ -229,7 +227,7 @@ describe("onLoad", () => {
 				const cleanup = vi.fn();
 				const stats = implementNamespace(
 					defineNamespace("stats", {
-						replicant: { viewers: { schema: Schema.NumberFromString } },
+						replicant: { viewers: { schema: Schema.FiniteFromString } },
 					}),
 					{
 						seedReplicant: { viewers: () => 0 },
@@ -251,7 +249,7 @@ describe("onLoad", () => {
 				const calls: string[] = [];
 				const baseNs = implementNamespace(
 					defineNamespace("composed", {
-						replicant: { a: { schema: Schema.NumberFromString } },
+						replicant: { a: { schema: Schema.FiniteFromString } },
 					}),
 					{
 						seedReplicant: { a: () => 0 },
@@ -265,7 +263,7 @@ describe("onLoad", () => {
 				);
 				const extended = implementExtendedNamespace(
 					extendNamespace(baseNs.manifest, {
-						replicant: { b: { schema: Schema.NumberFromString } },
+						replicant: { b: { schema: Schema.FiniteFromString } },
 					}),
 					baseNs,
 					{
@@ -302,7 +300,7 @@ describe("onLoad", () => {
 			Effect.gen(function* () {
 				const stats = implementNamespace(
 					defineNamespace("stats", {
-						replicant: { viewers: { schema: Schema.NumberFromString } },
+						replicant: { viewers: { schema: Schema.FiniteFromString } },
 					}),
 					{
 						seedReplicant: { viewers: () => 0 },
@@ -333,10 +331,10 @@ describe("duplicate namespaces", () => {
 					namespaces: { first: counter, second: counter },
 				}).pipe(Effect.sandbox, Effect.flip);
 
-				const defect = Cause.dieOption(cause);
-				assert(Option.isSome(defect));
-				assert(defect.value instanceof Error);
-				expect(defect.value.message).toContain('"counter" was loaded twice');
+				const defect = Cause.findDefect(cause);
+				assert(Result.isSuccess(defect));
+				assert(defect.success instanceof Error);
+				expect(defect.success.message).toContain('"counter" was loaded twice');
 			}),
 		),
 	);

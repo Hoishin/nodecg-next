@@ -1,4 +1,4 @@
-import { HttpApi } from "@effect/platform";
+import { HttpApi } from "effect/unstable/httpapi";
 
 import { MachineAuthenticationMiddleware } from "../auth.ts";
 import { fieldGroup } from "./shared.ts";

@@ -1,5 +1,6 @@
 import { testEffect } from "@nodecg-next/internal/test-utils";
-import { Effect, Layer, Option, TestClock, TestContext } from "effect";
+import { Effect, Layer, Option } from "effect";
+import { TestClock } from "effect/testing";
 import { assert, describe, expect, test } from "vitest";
 
 import { InMemoryStashStore } from "./in-memory-stash-store.ts";
@@ -11,7 +12,7 @@ const stash: AuthStash = {
 	returnTo: "/dashboard",
 };
 
-const layer = InMemoryStashStore.pipe(Layer.merge(TestContext.TestContext));
+const layer = Layer.merge(InMemoryStashStore, TestClock.layer());
 
 describe("create / lookup", () => {
 	test(

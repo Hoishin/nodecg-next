@@ -1,5 +1,4 @@
-import { Path } from "@effect/platform";
-import { Effect } from "effect";
+import { Effect, Path } from "effect";
 
 /**
  * Path implementation used for URL pathnames. Always POSIX and platform agnostic.

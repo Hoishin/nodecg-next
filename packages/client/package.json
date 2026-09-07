@@ -23,7 +23,6 @@
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effect/platform": "catalog:",
 		"@nodecg-next/core": "workspace:*",
 		"@nodecg-next/internal": "workspace:*",
 		"@preact/signals-core": "catalog:",

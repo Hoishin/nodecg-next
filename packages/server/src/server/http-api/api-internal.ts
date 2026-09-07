@@ -1,13 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-import {
-	Cookies,
-	HttpApiBuilder,
-	HttpApiError,
-	HttpServerRequest,
-	HttpServerResponse,
-	Path,
-} from "@effect/platform";
 import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	type AdminRoleAssignment,
@@ -28,14 +20,22 @@ import {
 	Clock,
 	type Duration,
 	Effect,
-	Either,
 	HashMap,
 	Layer,
 	Match,
 	Option,
+	Path,
 	Redacted,
 	Ref,
+	Result,
+	Semaphore,
 } from "effect";
+import {
+	Cookies,
+	HttpServerRequest,
+	HttpServerResponse,
+} from "effect/unstable/http";
+import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
 import { listPermissions } from "../../list-permissions.ts";
@@ -113,7 +113,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 			const baseUrl = yield* config.baseUrl;
 
 			const setStash =
-				(value: string, maxAge: Duration.DurationInput) =>
+				(value: string, maxAge: Duration.Input) =>
 				(response: HttpServerResponse.HttpServerResponse) =>
 					response.pipe(
 						HttpServerResponse.setCookie(stashCookieName, value, {
@@ -128,10 +128,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						),
 					);
 			const clearStash = setStash("", 0);
-			const setSessionCookie = (
-				value: string,
-				maxAge: Duration.DurationInput,
-			) =>
+			const setSessionCookie = (value: string, maxAge: Duration.Input) =>
 				HttpApiBuilder.securitySetCookie(sessionCookieSecurity, value, {
 					...cookieOptions,
 					path: baseUrl.pathname,
@@ -145,7 +142,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 
 			// superadmin claim resources
 			const claimToken = yield* config.superadminClaimToken;
-			const claimLock = yield* Effect.makeSemaphore(1);
+			const claimLock = yield* Semaphore.make(1);
 			// Rate limiting is global on purpose to avoid attacker to abuse IdP issued tokens
 			const claimAttempts = yield* Ref.make<ReadonlyArray<number>>([]);
 
@@ -165,7 +162,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							),
 					),
 				)
-				.handle("login", ({ path: { provider: name }, urlParams }) =>
+				.handle("login", ({ params: { provider: name }, query }) =>
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest;
 						const provider = HashMap.get(registry, name);
@@ -175,29 +172,31 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								{ status: 404 },
 							);
 						}
-						const requestUrl = yield* parseRelativeUrl(request.url);
+						const requestUrl = yield* Effect.fromResult(
+							parseRelativeUrl(request.url),
+						);
 						const redirect = yield* provider.value
 							.authorize({
 								redirectUri: yield* callbackUrl(baseUrl.href, name),
 								searchParams: new URLSearchParams(requestUrl.search),
 							})
-							.pipe(Effect.either);
-						if (Either.isLeft(redirect)) {
+							.pipe(Effect.result);
+						if (Result.isFailure(redirect)) {
 							return HttpServerResponse.text(
 								"Authentication provider unavailable",
 								{ status: 502 },
 							);
 						}
 						const stashId = yield* stashes.create({
-							...redirect.right.stash,
-							returnTo: urlParams.returnTo,
+							...redirect.success.stash,
+							returnTo: query.returnTo,
 						});
-						return yield* HttpServerResponse.redirect(redirect.right.url, {
+						return yield* HttpServerResponse.redirect(redirect.success.url, {
 							status: 302,
 						}).pipe(setStash(stashId, "10 minutes")); // TODO: avoid hard-coded duration
 					}),
 				)
-				.handle("callback", ({ path: { provider: name } }) =>
+				.handle("callback", ({ params: { provider: name } }) =>
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest;
 						const provider = HashMap.get(registry, name);
@@ -222,7 +221,9 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							});
 						}
 						yield* stashes.revoke(stashId);
-						const requestUrl = yield* parseRelativeUrl(request.url);
+						const requestUrl = yield* Effect.fromResult(
+							parseRelativeUrl(request.url),
+						);
 						const account = yield* provider.value
 							.callback({
 								redirectUri: yield* callbackUrl(baseUrl.href, name),
@@ -235,10 +236,10 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 										`Authentication callback failed: ${error.message}`,
 									),
 								),
-								Effect.either,
+								Effect.result,
 							);
-						if (Either.isLeft(account)) {
-							return yield* Match.value(account.left).pipe(
+						if (Result.isFailure(account)) {
+							return yield* Match.value(account.failure).pipe(
 								Match.tag("ProviderStateMismatch", () =>
 									HttpServerResponse.text("OAuth state mismatch", {
 										status: 400,
@@ -269,7 +270,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Match.exhaustive,
 							);
 						}
-						const sessionId = yield* sessions.create(account.right);
+						const sessionId = yield* sessions.create(account.success);
 						yield* setSessionCookie(sessionId, ttl);
 						const returnTo = stash.value.returnTo;
 						return yield* (
@@ -411,7 +412,7 @@ const MachinesGroupLive = HttpApiBuilder.group(
 							return { machines: machineList };
 						}),
 					)
-					.handle("revoke", ({ path: { id } }) =>
+					.handle("revoke", ({ params: { id } }) =>
 						Effect.gen(function* () {
 							yield* requireAdminTier;
 							const revoked = yield* machines.revoke(id);
@@ -420,7 +421,7 @@ const MachinesGroupLive = HttpApiBuilder.group(
 							}
 						}),
 					)
-					.handle("refresh", ({ path: { id } }) =>
+					.handle("refresh", ({ params: { id } }) =>
 						Effect.gen(function* () {
 							yield* requireAdminTier;
 							const refreshed = yield* machines.refreshApiKey(id);
@@ -431,7 +432,7 @@ const MachinesGroupLive = HttpApiBuilder.group(
 						}),
 					)
 					// TODO: has to be scoped into namespace
-					.handle("grantRole", ({ path: { id }, payload: { role } }) =>
+					.handle("grantRole", ({ params: { id }, payload: { role } }) =>
 						Effect.gen(function* () {
 							yield* requireAdminTier;
 							// TODO: use the resolved list of roles in the namespace
@@ -445,7 +446,7 @@ const MachinesGroupLive = HttpApiBuilder.group(
 							return { roles: roles.value };
 						}),
 					)
-					.handle("revokeRole", ({ path: { id, role } }) =>
+					.handle("revokeRole", ({ params: { id, role } }) =>
 						Effect.gen(function* () {
 							yield* requireAdminTier;
 							const roles = yield* machines.revokeRole(id, role);
@@ -621,21 +622,21 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 export const InternalGroupsLive = Layer.mergeAll(
 	HttpApiBuilder.group(RootApi, "Field", (handlers) =>
 		handlers
-			.handle("replicantGet", ({ path: { namespace, fieldName } }) =>
+			.handle("replicantGet", ({ params: { namespace, fieldName } }) =>
 				getReplicant(namespace, fieldName),
 			)
 			.handle(
 				"replicantUpdate",
-				({ path: { namespace, fieldName }, payload }) =>
+				({ params: { namespace, fieldName }, payload }) =>
 					updateReplicant(namespace, fieldName, payload),
 			)
-			.handle("computedGet", ({ path: { namespace, fieldName } }) =>
+			.handle("computedGet", ({ params: { namespace, fieldName } }) =>
 				getComputed(namespace, fieldName),
 			)
-			.handle("topicPublish", ({ path: { namespace, fieldName }, payload }) =>
+			.handle("topicPublish", ({ params: { namespace, fieldName }, payload }) =>
 				publishTopic(namespace, fieldName, payload),
 			)
-			.handle("rpcCall", ({ path: { namespace, fieldName }, payload }) =>
+			.handle("rpcCall", ({ params: { namespace, fieldName }, payload }) =>
 				callRpc(namespace, fieldName, payload),
 			),
 	),

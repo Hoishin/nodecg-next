@@ -38,10 +38,7 @@ export interface OidcProviderConfig {
 const pickString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
 
-const recordSchema = Schema.Record({
-	key: Schema.String,
-	value: Schema.Unknown,
-});
+const recordSchema = Schema.Record(Schema.String, Schema.Unknown);
 type UnknownRecord = typeof recordSchema.Type;
 
 const tokenResponseFetch =

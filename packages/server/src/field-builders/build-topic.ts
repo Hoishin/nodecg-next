@@ -65,6 +65,6 @@ export const buildTopic = Effect.fn("buildTopic")(
 		}),
 );
 
-export type TopicFieldEffect<Decoded> = Effect.Effect.Success<
+export type TopicFieldEffect<Decoded> = Effect.Success<
 	ReturnType<typeof buildTopic<Decoded>>
 >;

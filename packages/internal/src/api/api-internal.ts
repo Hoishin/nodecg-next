@@ -1,28 +1,25 @@
+import { Schema } from "effect";
 import {
 	HttpApi,
 	HttpApiEndpoint,
 	HttpApiError,
 	HttpApiGroup,
 	HttpApiSchema,
-} from "@effect/platform";
-import { Schema } from "effect";
+} from "effect/unstable/httpapi";
 
 import { HumanAuthenticationMiddleware, IdentitySchema } from "../auth.ts";
 import { AdminRoleNameSchema, RoleNameSchema } from "../role.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
-export class TooManyRequests extends HttpApiSchema.EmptyError<TooManyRequests>()(
-	{
-		tag: "TooManyRequests",
-		status: 429,
-	},
+export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
+	"TooManyRequests",
+	{},
 ) {}
 
 export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
 	"RoleImportError",
 	{ message: Schema.String },
-	HttpApiSchema.annotations({ status: 400 }),
 ) {}
 
 const RoleAssignmentResultSchema = Schema.Struct({
@@ -34,10 +31,7 @@ const NamespacePermissionsSchema = Schema.Struct({
 });
 export const MePayloadSchema = Schema.Struct({
 	identity: IdentitySchema,
-	namespaces: Schema.Record({
-		key: Schema.String,
-		value: NamespacePermissionsSchema,
-	}),
+	namespaces: Schema.Record(Schema.String, NamespacePermissionsSchema),
 });
 export type MePayload = typeof MePayloadSchema.Type;
 
@@ -51,49 +45,59 @@ const ClaimSuperadminRequestSchema = Schema.Struct({
 	token: Schema.Redacted(Schema.String),
 });
 
-const ReturnToSchema = Schema.String.pipe(
-	Schema.pattern(/^\/(?![/\\])/, {
+const ReturnToSchema = Schema.String.check(
+	Schema.isPattern(/^\/(?![/\\])/, {
 		description: "a same-origin relative path",
 	}),
 );
 
 const AuthenticationGroup = HttpApiGroup.make("Authentication")
-	.add(HttpApiEndpoint.get("me", "/me").addSuccess(MePayloadSchema))
+	.add(HttpApiEndpoint.get("me", "/me", { success: MePayloadSchema }))
 	.add(
-		HttpApiEndpoint.get("providers", "/authentication/providers").addSuccess(
-			Schema.Array(LoginProviderSchema),
+		HttpApiEndpoint.get("providers", "/authentication/providers", {
+			success: Schema.Array(LoginProviderSchema),
+		}),
+	)
+	.add(
+		HttpApiEndpoint.get("login", "/authentication/login/:provider", {
+			params: { provider: Schema.String },
+			query: { returnTo: Schema.optional(ReturnToSchema) },
+			success: HttpApiSchema.Empty(302),
+			error: [
+				HttpApiError.InternalServerError,
+				MalformedUrl.pipe(HttpApiSchema.status(400)),
+			],
+		}),
+	)
+	.add(
+		HttpApiEndpoint.get("callback", "/authentication/callback/:provider", {
+			params: { provider: Schema.String },
+			success: HttpApiSchema.Empty(302),
+			error: [
+				HttpApiError.InternalServerError,
+				MalformedUrl.pipe(HttpApiSchema.status(400)),
+			],
+		}),
+	)
+	.add(
+		HttpApiEndpoint.post("logout", "/authentication/logout", {
+			success: HttpApiSchema.Empty(204),
+			error: HttpApiError.InternalServerError,
+		}),
+	)
+	.add(
+		HttpApiEndpoint.post(
+			"claimSuperadmin",
+			"/authentication/claim-superadmin",
+			{
+				payload: ClaimSuperadminRequestSchema,
+				success: RoleAssignmentResultSchema,
+				error: [
+					HttpApiError.Forbidden,
+					TooManyRequests.pipe(HttpApiSchema.status(429)),
+				],
+			},
 		),
-	)
-	.add(
-		HttpApiEndpoint.get(
-			"login",
-		)`/authentication/login/${HttpApiSchema.param("provider", Schema.String)}`
-			.setUrlParams(
-				Schema.Struct({ returnTo: Schema.optional(ReturnToSchema) }),
-			)
-			.addSuccess(HttpApiSchema.Empty(302))
-			.addError(HttpApiError.InternalServerError)
-			.addError(MalformedUrl, { status: 400 }),
-	)
-	.add(
-		HttpApiEndpoint.get(
-			"callback",
-		)`/authentication/callback/${HttpApiSchema.param("provider", Schema.String)}`
-			.addSuccess(HttpApiSchema.Empty(302))
-			.addError(HttpApiError.InternalServerError)
-			.addError(MalformedUrl, { status: 400 }),
-	)
-	.add(
-		HttpApiEndpoint.post("logout", "/authentication/logout")
-			.addSuccess(HttpApiSchema.Empty(204))
-			.addError(HttpApiError.InternalServerError),
-	)
-	.add(
-		HttpApiEndpoint.post("claimSuperadmin", "/authentication/claim-superadmin")
-			.setPayload(ClaimSuperadminRequestSchema)
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden)
-			.addError(TooManyRequests),
 	);
 
 const RoleAssignmentSchema = Schema.Struct({
@@ -116,13 +120,13 @@ export const MachineAssignmentSchema = Schema.TaggedStruct("machine", {
 export const RoleAssignmentsDocumentSchema = Schema.Struct({
 	version: Schema.Literal(0),
 	assignments: Schema.Array(
-		Schema.Union(HumanAssignmentSchema, MachineAssignmentSchema),
+		Schema.Union([HumanAssignmentSchema, MachineAssignmentSchema]),
 	),
 });
 export type RoleAssignmentsDocument = typeof RoleAssignmentsDocumentSchema.Type;
 
 const ImportAssignmentsRequestSchema = Schema.Struct({
-	mode: Schema.Literal("replace", "merge"),
+	mode: Schema.Literals(["replace", "merge"]),
 	document: RoleAssignmentsDocumentSchema,
 });
 
@@ -152,83 +156,87 @@ const MachineRoleRequestSchema = Schema.Struct({
 
 const MachinesGroup = HttpApiGroup.make("Machines")
 	.add(
-		HttpApiEndpoint.post("createApiKey", "/machines")
-			.setPayload(CreateApiKeyRequestSchema)
-			.addSuccess(CreateApiKeyResultSchema)
-			.addError(HttpApiError.Forbidden),
+		HttpApiEndpoint.post("createApiKey", "/machines", {
+			payload: CreateApiKeyRequestSchema,
+			success: CreateApiKeyResultSchema,
+			error: HttpApiError.Forbidden,
+		}),
 	)
 	.add(
-		HttpApiEndpoint.get("list", "/machines")
-			.addSuccess(ListMachinesResultSchema)
-			.addError(HttpApiError.Forbidden),
+		HttpApiEndpoint.get("list", "/machines", {
+			success: ListMachinesResultSchema,
+			error: HttpApiError.Forbidden,
+		}),
 	)
 	.add(
-		HttpApiEndpoint.del(
-			"revoke",
-		)`/machines/${HttpApiSchema.param("id", Schema.String)}`
-			.addSuccess(HttpApiSchema.Empty(204))
-			.addError(HttpApiError.Forbidden)
-			.addError(HttpApiError.NotFound),
+		HttpApiEndpoint.delete("revoke", "/machines/:id", {
+			params: { id: Schema.String },
+			success: HttpApiSchema.Empty(204),
+			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+		}),
 	)
 	.add(
-		HttpApiEndpoint.post(
-			"refresh",
-		)`/machines/${HttpApiSchema.param("id", Schema.String)}/refresh`
-			.addSuccess(CreateApiKeyResultSchema)
-			.addError(HttpApiError.Forbidden)
-			.addError(HttpApiError.NotFound),
+		HttpApiEndpoint.post("refresh", "/machines/:id/refresh", {
+			params: { id: Schema.String },
+			success: CreateApiKeyResultSchema,
+			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+		}),
 	)
 	.add(
-		HttpApiEndpoint.post(
-			"grantRole",
-		)`/machines/${HttpApiSchema.param("id", Schema.String)}/roles`
-			.setPayload(MachineRoleRequestSchema)
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden)
-			.addError(HttpApiError.NotFound),
+		HttpApiEndpoint.post("grantRole", "/machines/:id/roles", {
+			params: { id: Schema.String },
+			payload: MachineRoleRequestSchema,
+			success: RoleAssignmentResultSchema,
+			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+		}),
 	)
 	.add(
-		HttpApiEndpoint.del(
-			"revokeRole",
-		)`/machines/${HttpApiSchema.param("id", Schema.String)}/roles/${HttpApiSchema.param("role", RoleNameSchema)}`
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden)
-			.addError(HttpApiError.NotFound),
+		HttpApiEndpoint.delete("revokeRole", "/machines/:id/roles/:role", {
+			params: { id: Schema.String, role: RoleNameSchema },
+			success: RoleAssignmentResultSchema,
+			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+		}),
 	);
 
 const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
-		HttpApiEndpoint.post("grant", "/roles/grant")
-			.setPayload(RoleAssignmentSchema)
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden),
+		HttpApiEndpoint.post("grant", "/roles/grant", {
+			payload: RoleAssignmentSchema,
+			success: RoleAssignmentResultSchema,
+			error: HttpApiError.Forbidden,
+		}),
 	)
 	.add(
-		HttpApiEndpoint.post("revoke", "/roles/revoke")
-			.setPayload(RoleAssignmentSchema)
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden),
+		HttpApiEndpoint.post("revoke", "/roles/revoke", {
+			payload: RoleAssignmentSchema,
+			success: RoleAssignmentResultSchema,
+			error: HttpApiError.Forbidden,
+		}),
 	)
 	.add(
-		HttpApiEndpoint.get("export", "/roles/export")
-			.addSuccess(RoleAssignmentsDocumentSchema)
-			.addError(HttpApiError.Forbidden),
+		HttpApiEndpoint.get("export", "/roles/export", {
+			success: RoleAssignmentsDocumentSchema,
+			error: HttpApiError.Forbidden,
+		}),
 	)
 	.add(
-		HttpApiEndpoint.post("import", "/roles/import")
-			.setPayload(ImportAssignmentsRequestSchema)
-			.addSuccess(HttpApiSchema.Empty(204))
-			.addError(HttpApiError.Forbidden)
-			.addError(RoleImportError),
+		HttpApiEndpoint.post("import", "/roles/import", {
+			payload: ImportAssignmentsRequestSchema,
+			success: HttpApiSchema.Empty(204),
+			error: [
+				HttpApiError.Forbidden,
+				RoleImportError.pipe(HttpApiSchema.status(400)),
+			],
+		}),
 	);
 
-export const AdminSubjectSchema = Schema.Union(
+export const AdminSubjectSchema = Schema.Union([
 	Schema.TaggedStruct("human", {
 		issuer: Schema.String,
 		subject: Schema.String,
 	}),
 	Schema.TaggedStruct("machine", { id: Schema.String }),
-);
+]);
 export type AdminSubject = typeof AdminSubjectSchema.Type;
 
 export const AdminRoleAssignmentSchema = Schema.Struct({
@@ -239,18 +247,18 @@ export type AdminRoleAssignment = typeof AdminRoleAssignmentSchema.Type;
 
 const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 	.add(
-		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant")
-			.setPayload(AdminRoleAssignmentSchema)
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden)
-			.addError(HttpApiError.NotFound),
+		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
+			payload: AdminRoleAssignmentSchema,
+			success: RoleAssignmentResultSchema,
+			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+		}),
 	)
 	.add(
-		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke")
-			.setPayload(AdminRoleAssignmentSchema)
-			.addSuccess(RoleAssignmentResultSchema)
-			.addError(HttpApiError.Forbidden)
-			.addError(HttpApiError.NotFound),
+		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke", {
+			payload: AdminRoleAssignmentSchema,
+			success: RoleAssignmentResultSchema,
+			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+		}),
 	);
 
 export const InternalApi = HttpApi.make("InternalApi")

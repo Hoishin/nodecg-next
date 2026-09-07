@@ -140,6 +140,27 @@ describe("derive", () => {
 		void doubled;
 	});
 
+	it("dedupes an equal object value without a custom equals", () => {
+		const src = source(ready(1));
+		const boxed = derive((get) => ({ n: get(src.handle), tag: "x" }));
+
+		const seen: { n: number; tag: string }[] = [];
+		const unsubscribe = boxed.subscribe((value) => {
+			seen.push(value);
+		});
+		onTestFinished(unsubscribe);
+		expect(seen).toHaveLength(1);
+
+		src.s.value = ready(1);
+		expect(seen).toHaveLength(1);
+
+		src.s.value = ready(2);
+		expect(seen).toEqual([
+			{ n: 1, tag: "x" },
+			{ n: 2, tag: "x" },
+		]);
+	});
+
 	it("dedupes object values through a custom equals", () => {
 		const src = source(ready(1));
 		const boxed = derive((get) => ({ n: get(src.handle) }), {

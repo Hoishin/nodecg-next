@@ -29,7 +29,6 @@
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effect/platform": "catalog:",
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"fast-json-stable-stringify": "^2.1.0",

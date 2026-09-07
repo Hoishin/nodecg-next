@@ -8,7 +8,7 @@ import { Effect, Option } from "effect";
 import type { RoleStore } from "../services/role-store/role-store.ts";
 import type { SessionStore } from "../services/session-store/session-store.ts";
 
-export const anonymousIdentity = AnonymousIdentitySchema.make();
+export const anonymousIdentity = AnonymousIdentitySchema.make({});
 
 export const resolveSessionIdentity =
 	(deps: { readonly sessions: SessionStore; readonly roleStore: RoleStore }) =>

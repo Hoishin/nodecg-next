@@ -62,7 +62,7 @@ export interface AuthProvider {
 	}) => Effect.Effect<HumanAccount, CallbackError>;
 }
 
-export class AuthProviderRegistry extends Context.Tag("AuthProviderRegistry")<
+export class AuthProviderRegistry extends Context.Service<
 	AuthProviderRegistry,
 	HashMap.HashMap<string, AuthProvider>
->() {}
+>()("AuthProviderRegistry") {}

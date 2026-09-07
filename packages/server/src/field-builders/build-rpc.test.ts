@@ -13,11 +13,11 @@ import { fieldInternal } from "./field-internal-key.ts";
 
 const serverIdentity = Layer.succeed(
 	CurrentIdentity,
-	ServerIdentitySchema.make(),
+	ServerIdentitySchema.make({}),
 );
 const anonymousIdentity = Layer.succeed(
 	CurrentIdentity,
-	AnonymousIdentitySchema.make(),
+	AnonymousIdentitySchema.make({}),
 );
 
 const testEffect = makeTestEffect(serverIdentity);
@@ -26,8 +26,8 @@ const manifest = defineNamespace("ns", {
 	rpc: {
 		echo: {
 			schema: {
-				request: Schema.NumberFromString,
-				response: Schema.NumberFromString,
+				request: Schema.FiniteFromString,
+				response: Schema.FiniteFromString,
 			},
 			permission: { write: { everyone: "allow" } },
 		},

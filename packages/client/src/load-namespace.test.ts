@@ -1,4 +1,3 @@
-import { FetchHttpClient } from "@effect/platform";
 import { defineNamespace } from "@nodecg-next/core";
 import {
 	FieldValueMessage,
@@ -12,14 +11,14 @@ import {
 	Effect,
 	Exit,
 	Fiber,
-	Mailbox,
 	Option,
 	PubSub,
-	Runtime,
+	Queue,
 	Schema,
 	Scope,
 	Stream,
 } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { derive } from "./derive.ts";
@@ -308,7 +307,7 @@ describe("update", () => {
 					replicant: {
 						box: {
 							schema: Schema.Struct({
-								n: Schema.NumberFromString,
+								n: Schema.FiniteFromString,
 								kept: Schema.String,
 							}),
 						},
@@ -348,7 +347,7 @@ describe("update", () => {
 				transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
 				const manifest = defineNamespace("root", {
 					replicant: {
-						box: { schema: Schema.Struct({ n: Schema.NumberFromString }) },
+						box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
 					},
 				});
 
@@ -418,7 +417,7 @@ describe("update", () => {
 				);
 				const manifest = defineNamespace("root", {
 					replicant: {
-						box: { schema: Schema.Struct({ n: Schema.NumberFromString }) },
+						box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
 					},
 				});
 
@@ -509,11 +508,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -526,14 +525,14 @@ describe("subscribe", () => {
 
 				const head = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
+					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
 
-				yield* mailbox.offer(publishFrame(42));
+				yield* Queue.offer(queue, publishFrame(42));
 
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
@@ -547,11 +546,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: {
@@ -567,21 +566,22 @@ describe("subscribe", () => {
 
 				const head = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
+					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
 
-				yield* mailbox.offer(
+				yield* Queue.offer(
+					queue,
 					ReplicantSnapshotMessage.make({
 						field: { type: "replicant", namespace: "root", name: "other" },
 						value: 99,
 						revision: 1,
 					}),
 				);
-				yield* mailbox.offer(publishFrame(7));
+				yield* Queue.offer(queue, publishFrame(7));
 
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
@@ -595,11 +595,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -612,15 +612,15 @@ describe("subscribe", () => {
 
 				const fiber = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.asVoid, Effect.fork);
+					.pipe(Effect.asVoid, Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				assert(Option.isNone(yield* Fiber.poll(fiber)));
+				expect(fiber.pollUnsafe()).toBeUndefined();
 
-				yield* mailbox.offer(publishFrame(0));
+				yield* Queue.offer(queue, publishFrame(0));
 				yield* Fiber.join(fiber);
 			}),
 		),
@@ -631,11 +631,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -649,13 +649,13 @@ describe("subscribe", () => {
 				const scope = yield* Scope.make();
 				const fiber = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.asVoid, Scope.extend(scope), Effect.fork);
+					.pipe(Effect.asVoid, Scope.provide(scope), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(publishFrame(0));
+				yield* Queue.offer(queue, publishFrame(0));
 				yield* Fiber.join(fiber);
 
 				yield* Scope.close(scope, Exit.void);
@@ -673,11 +673,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -691,19 +691,19 @@ describe("subscribe", () => {
 				const scope1 = yield* Scope.make();
 				const sub1 = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.asVoid, Scope.extend(scope1), Effect.fork);
+					.pipe(Effect.asVoid, Scope.provide(scope1), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(publishFrame(0));
+				yield* Queue.offer(queue, publishFrame(0));
 				yield* Fiber.join(sub1);
 
 				const scope2 = yield* Scope.make();
 				const sub2 = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.asVoid, Scope.extend(scope2), Effect.fork);
+					.pipe(Effect.asVoid, Scope.provide(scope2), Effect.forkChild);
 				yield* Fiber.join(sub2);
 
 				const subscribeCount = send.mock.calls.filter(
@@ -740,7 +740,8 @@ describe("subscribe", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+					receive: () =>
+						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -759,15 +760,15 @@ describe("subscribe", () => {
 							Effect.sync(() => received1.push(value)),
 						),
 					),
-					Scope.extend(scope1),
-					Effect.fork,
+					Scope.provide(scope1),
+					Effect.forkChild,
 				);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* pubsub.publish(publishFrame(5));
+				yield* PubSub.publish(pubsub, publishFrame(5));
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(received1).toEqual([5]);
@@ -782,8 +783,8 @@ describe("subscribe", () => {
 							Effect.sync(() => received2.push(value)),
 						),
 					),
-					Scope.extend(scope2),
-					Effect.fork,
+					Scope.provide(scope2),
+					Effect.forkChild,
 				);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
@@ -810,11 +811,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -827,13 +828,13 @@ describe("subscribe", () => {
 
 				const fiber = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.flip, Effect.fork);
+					.pipe(Effect.flip, Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(rejectedFrame("forbidden"));
+				yield* Queue.offer(queue, rejectedFrame("forbidden"));
 
 				const error = yield* Fiber.join(fiber);
 				expect(error._tag).toBe("FieldPermissionDenied");
@@ -846,11 +847,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -863,13 +864,13 @@ describe("subscribe", () => {
 
 				const fiber = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.flip, Effect.fork);
+					.pipe(Effect.flip, Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(rejectedFrame("not-found"));
+				yield* Queue.offer(queue, rejectedFrame("not-found"));
 
 				const error = yield* Fiber.join(fiber);
 				expect(error._tag).toBe("FieldNotFound");
@@ -882,11 +883,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -912,12 +913,12 @@ describe("subscribe", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
 				);
-				yield* mailbox.offer(publishFrame(1));
+				yield* Queue.offer(queue, publishFrame(1));
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([1])),
 				);
 
-				yield* mailbox.offer(rejectedFrame("forbidden"));
+				yield* Queue.offer(queue, rejectedFrame("forbidden"));
 				const error = yield* Fiber.join(consumer);
 				expect(error).toEqual(
 					new FieldPermissionDenied({ namespace: "root", name: "count" }),
@@ -932,11 +933,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -961,19 +962,20 @@ describe("subscribe", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
 				);
-				yield* mailbox.offer(publishFrame(1));
+				yield* Queue.offer(queue, publishFrame(1));
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([1])),
 				);
 
-				yield* mailbox.offer(
+				yield* Queue.offer(
+					queue,
 					ReplicantSnapshotMessage.make({
 						field: { type: "replicant", namespace: "root", name: "count" },
 						value: "not a number",
 						revision: 2,
 					}),
 				);
-				yield* mailbox.offer(publishFrame(7, 3));
+				yield* Queue.offer(queue, publishFrame(7, 3));
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(received).toEqual([1, 7])),
 				);
@@ -986,11 +988,11 @@ describe("subscribe", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const manifest = defineNamespace("root", {
 					replicant: { count: { schema: Schema.Number } },
@@ -1004,13 +1006,13 @@ describe("subscribe", () => {
 				const scope1 = yield* Scope.make();
 				const fiber1 = yield* loaded.replicant.count
 					.subscribe()
-					.pipe(Effect.flip, Scope.extend(scope1), Effect.fork);
+					.pipe(Effect.flip, Scope.provide(scope1), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
 					}),
 				);
-				yield* mailbox.offer(rejectedFrame("forbidden"));
+				yield* Queue.offer(queue, rejectedFrame("forbidden"));
 				const firstError = yield* Fiber.join(fiber1);
 				expect(firstError._tag).toBe("FieldPermissionDenied");
 				yield* Scope.close(scope1, Exit.void);
@@ -1020,8 +1022,8 @@ describe("subscribe", () => {
 					.subscribe()
 					.pipe(
 						Effect.flatMap(Stream.runHead),
-						Scope.extend(scope2),
-						Effect.fork,
+						Scope.provide(scope2),
+						Effect.forkChild,
 					);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
@@ -1031,7 +1033,7 @@ describe("subscribe", () => {
 						expect(subscribeCount).toBe(2);
 					}),
 				);
-				yield* mailbox.offer(publishFrame(5));
+				yield* Queue.offer(queue, publishFrame(5));
 				const result = yield* Fiber.join(head);
 				assert(Option.isSome(result));
 				expect(result.value).toBe(5);
@@ -1099,7 +1101,8 @@ describe("computed", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+					receive: () =>
+						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 				};
 
 				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
@@ -1109,7 +1112,7 @@ describe("computed", () => {
 
 				const head = yield* loaded.computed.firstGameId
 					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
+					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith({
@@ -1123,7 +1126,8 @@ describe("computed", () => {
 					}),
 				);
 
-				yield* pubsub.publish(
+				yield* PubSub.publish(
+					pubsub,
 					FieldValueMessage.make({
 						field: { type: "computed", namespace: "root", name: "firstGameId" },
 						value: "z",
@@ -1214,7 +1218,8 @@ describe("topic", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+					receive: () =>
+						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 					Effect.provideService(FieldTransportService, transportStub),
@@ -1223,7 +1228,7 @@ describe("topic", () => {
 
 				const head = yield* loaded.topic.chat
 					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.fork);
+					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
@@ -1251,11 +1256,11 @@ describe("topic", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 					Effect.provideService(FieldTransportService, transportStub),
@@ -1265,7 +1270,7 @@ describe("topic", () => {
 				const scope1 = yield* Scope.make();
 				const sub1 = yield* loaded.topic.chat
 					.subscribe()
-					.pipe(Effect.asVoid, Scope.extend(scope1), Effect.fork);
+					.pipe(Effect.asVoid, Scope.provide(scope1), Effect.forkChild);
 				yield* Fiber.join(sub1);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
@@ -1276,7 +1281,7 @@ describe("topic", () => {
 				const scope2 = yield* Scope.make();
 				const sub2 = yield* loaded.topic.chat
 					.subscribe()
-					.pipe(Effect.asVoid, Scope.extend(scope2), Effect.fork);
+					.pipe(Effect.asVoid, Scope.provide(scope2), Effect.forkChild);
 				yield* Fiber.join(sub2);
 
 				const subscribeCount = send.mock.calls.filter(
@@ -1309,7 +1314,8 @@ describe("topic", () => {
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+					receive: () =>
+						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 					Effect.provideService(FieldTransportService, transportStub),
@@ -1320,7 +1326,7 @@ describe("topic", () => {
 				const stream1 = yield* loaded.topic.chat.subscribe();
 				yield* Stream.runForEach(stream1, (v) =>
 					Effect.sync(() => seen1.push(v)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(send).toHaveBeenCalledWith(subscribeFrame);
@@ -1338,7 +1344,7 @@ describe("topic", () => {
 				const stream2 = yield* loaded.topic.chat.subscribe();
 				yield* Stream.runForEach(stream2, (v) =>
 					Effect.sync(() => seen2.push(v)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* PubSub.publish(pubsub, publishFrame(2));
 				yield* Effect.promise(() =>
@@ -1356,11 +1362,11 @@ describe("topic", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const transportStub = createTransportStub();
-				const mailbox = yield* Mailbox.make<ServerMessage>();
+				const queue = yield* Queue.unbounded<ServerMessage>();
 				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 				const messageChannelStub: MessageChannel = {
 					send,
-					receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+					receive: () => Effect.succeed(Stream.fromQueue(queue)),
 				};
 				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 					Effect.provideService(FieldTransportService, transportStub),
@@ -1382,12 +1388,13 @@ describe("topic", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
 				);
-				yield* mailbox.offer(publishFrame(1));
+				yield* Queue.offer(queue, publishFrame(1));
 				yield* Effect.promise(() =>
 					vi.waitFor(() => expect(seen).toEqual([1])),
 				);
 
-				yield* mailbox.offer(
+				yield* Queue.offer(
+					queue,
 					SubscribeRejectedMessage.make({
 						field: { type: "topic", namespace: "root", name: "chat" },
 						reason: "forbidden",
@@ -1564,11 +1571,11 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 	test("calls onError when the subscribe is rejected after the first value", async () => {
 		const transportStub = createTransportStub();
-		const mailbox = Effect.runSync(Mailbox.make<ServerMessage>());
+		const queue = Effect.runSync(Queue.unbounded<ServerMessage>());
 		const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 		const messageChannelStub: MessageChannel = {
 			send,
-			receive: () => Effect.succeed(Mailbox.toStream(mailbox)),
+			receive: () => Effect.succeed(Stream.fromQueue(queue)),
 		};
 		const manifest = defineNamespace("root", {
 			replicant: { count: { schema: Schema.Number } },
@@ -1592,14 +1599,16 @@ describe("loadNamespace (Promise wrapper)", () => {
 		await vi.waitFor(() =>
 			expect(send).toHaveBeenCalledWith({ _tag: "subscribe", field }),
 		);
-		mailbox.unsafeOffer(
+		Queue.offerUnsafe(
+			queue,
 			ReplicantSnapshotMessage.make({ field, value: 1, revision: 1 }),
 		);
 		const cancel = await subscribed;
 		onTestFinished(() => cancel());
 		expect(received).toEqual([1]);
 
-		mailbox.unsafeOffer(
+		Queue.offerUnsafe(
+			queue,
 			SubscribeRejectedMessage.make({ field, reason: "forbidden" }),
 		);
 		await vi.waitFor(() =>
@@ -1614,8 +1623,8 @@ describe("loadNamespace (Promise wrapper)", () => {
 describe("derivation over loaded fields", () => {
 	const manifest = defineNamespace("match", {
 		replicant: {
-			scoreLeft: { schema: Schema.NumberFromString },
-			scoreRight: { schema: Schema.NumberFromString },
+			scoreLeft: { schema: Schema.FiniteFromString },
+			scoreRight: { schema: Schema.FiniteFromString },
 		},
 	});
 
@@ -1624,7 +1633,8 @@ describe("derivation over loaded fields", () => {
 		const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
 		const channel: MessageChannel = {
 			send,
-			receive: () => Stream.fromPubSub(pubsub, { scoped: true }),
+			receive: () =>
+				PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 		};
 		return { channel, pubsub, send };
 	});
@@ -1711,7 +1721,7 @@ describe("derivation over loaded fields", () => {
 				const scope = yield* Scope.make();
 				yield* loaded.replicant.scoreLeft
 					.subscribe()
-					.pipe(Scope.extend(scope), Effect.fork);
+					.pipe(Scope.provide(scope), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(
@@ -1757,12 +1767,10 @@ describe("derivation over loaded fields", () => {
 					Effect.provideService(MessageChannelService, channel),
 				);
 
-				const runtime = yield* Effect.runtime();
-
 				const scope = yield* Scope.make();
 				yield* loaded.replicant.scoreLeft
 					.subscribe()
-					.pipe(Scope.extend(scope), Effect.fork);
+					.pipe(Scope.provide(scope), Effect.forkChild);
 				yield* Effect.promise(() =>
 					vi.waitFor(() => {
 						expect(
@@ -1774,9 +1782,7 @@ describe("derivation over loaded fields", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(async () => {
 						expect(
-							await Runtime.runPromise(runtime)(
-								loaded.replicant.scoreLeft.get(),
-							),
+							await Effect.runPromise(loaded.replicant.scoreLeft.get()),
 						).toBe(0);
 					}),
 				);
@@ -1788,9 +1794,7 @@ describe("derivation over loaded fields", () => {
 				yield* Effect.promise(() =>
 					vi.waitFor(async () => {
 						expect(
-							await Runtime.runPromise(runtime)(
-								loaded.replicant.scoreLeft.get(),
-							),
+							await Effect.runPromise(loaded.replicant.scoreLeft.get()),
 						).toBe(10);
 					}),
 				);

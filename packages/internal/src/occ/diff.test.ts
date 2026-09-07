@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import type { JsonValue } from "type-fest";
 import { assert, describe, expect, test } from "vitest";
 
@@ -7,15 +7,15 @@ import { diffPatch, diffSignedPatch } from "./diff.ts";
 import { computeTestHash } from "./hash.ts";
 
 const ops = (base: JsonValue, next: JsonValue) =>
-	diffPatch(base, next).pipe(Either.getOrThrow);
+	diffPatch(base, next).pipe(Result.getOrThrow);
 
 const signedOps = (base: JsonValue, next: JsonValue) =>
-	diffSignedPatch(base, next).pipe(Either.getOrThrow);
+	diffSignedPatch(base, next).pipe(Result.getOrThrow);
 
 const roundTrip = (base: JsonValue, next: JsonValue) => {
 	const result = applyPatch(base, ops(base, next));
-	assert(Either.isRight(result));
-	expect(result.right).toEqual(next);
+	assert(Result.isSuccess(result));
+	expect(result.success).toEqual(next);
 };
 
 describe("diffPatch", () => {
@@ -212,21 +212,21 @@ describe("diffSignedPatch", () => {
 		const base = { a: { b: 1 }, list: [1, 2] };
 		const next = { a: { b: 2 }, list: [1, 2, 3] };
 		const result = applyPatch(base, signedOps(base, next));
-		assert(Either.isRight(result));
-		expect(result.right).toEqual(next);
+		assert(Result.isSuccess(result));
+		expect(result.success).toEqual(next);
 	});
 
 	test("the signed patch is refused by a document that moved on", () => {
 		const patch = signedOps({ a: 1 }, { a: 2 });
 		const result = applyPatch({ a: 5 }, patch);
-		assert(Either.isLeft(result));
-		expect(result.left.cause._tag).toBe("HashMismatch");
+		assert(Result.isFailure(result));
+		expect(result.failure.cause._tag).toBe("HashMismatch");
 	});
 
 	test("a write to another field still applies to a document that moved on", () => {
 		const patch = signedOps({ a: 1, b: 1 }, { a: 2, b: 1 });
 		const result = applyPatch({ a: 1, b: 9 }, patch);
-		assert(Either.isRight(result));
-		expect(result.right).toEqual({ a: 2, b: 9 });
+		assert(Result.isSuccess(result));
+		expect(result.success).toEqual({ a: 2, b: 9 });
 	});
 });

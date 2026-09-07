@@ -1,10 +1,9 @@
 import { realpathSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 
-import { FileSystem } from "@effect/platform";
 import { NodeFileSystem } from "@effect/platform-node";
 import { testEffect } from "@nodecg-next/internal/test-utils";
-import { Effect } from "effect";
+import { Effect, FileSystem } from "effect";
 import { afterAll, describe, expect, test, vi } from "vitest";
 
 import { buildViteServer } from "./vite-dev-server.ts";
@@ -29,7 +28,7 @@ const startDevServer = Effect.gen(function* () {
 		spa: false,
 	});
 	const server = yield* Effect.acquireRelease(
-		Effect.async<Server>((resume) => {
+		Effect.callback<Server>((resume) => {
 			const server = createServer((req, res) => {
 				devServer.middlewares(req, res, () => {
 					res.statusCode = 404;
@@ -41,7 +40,7 @@ const startDevServer = Effect.gen(function* () {
 			});
 		}),
 		(server) =>
-			Effect.async<void>((resume) => {
+			Effect.callback<void>((resume) => {
 				server.close(() => {
 					resume(Effect.void);
 				});

@@ -94,7 +94,7 @@ type SchemaKeys<In> = {
 
 export type AddedSchemas<In> = {
 	readonly [K in SchemaKeys<In>]: In[K] extends {
-		readonly schema: infer S extends Schema.Schema<any, any, never>;
+		readonly schema: infer S extends Schema.Codec<any>;
 	}
 		? S
 		: never;
@@ -102,15 +102,15 @@ export type AddedSchemas<In> = {
 
 export const mapSchemaValues =
 	<
-		Option extends { readonly schema?: Schema.Schema<any, any, never> },
+		Option extends { readonly schema?: Schema.Codec<any> },
 		G extends HKT.TypeLambda,
 	>() =>
 	<In extends Record<string, Option>>(
 		obj: In | undefined,
 		transform: (
-			value: Option & { readonly schema: Schema.Schema<any, any, never> },
+			value: Option & { readonly schema: Schema.Codec<any> },
 			key: string,
-		) => HKT.Kind<G, unknown, never, never, Schema.Schema<any, any, never>>,
+		) => HKT.Kind<G, unknown, never, never, Schema.Codec<any>>,
 	): ApplyLambdaToObjectValues<G, AddedSchemas<In>> => {
 		const result: any = {};
 		if (typeof obj !== "undefined") {
@@ -130,15 +130,15 @@ export const mapSchemaValues =
 	};
 
 type RpcSchemaSlot = {
-	readonly request: Schema.Schema<any, any, never>;
-	readonly response: Schema.Schema<any, any, never>;
+	readonly request: Schema.Codec<any>;
+	readonly response: Schema.Codec<any>;
 };
 
 export type AddedRpcSchemas<In> = {
 	readonly [K in SchemaKeys<In>]: In[K] extends {
 		readonly schema: {
-			readonly request: infer Req extends Schema.Schema<any, any, never>;
-			readonly response: infer Res extends Schema.Schema<any, any, never>;
+			readonly request: infer Req extends Schema.Codec<any>;
+			readonly response: infer Res extends Schema.Codec<any>;
 		};
 	}
 		? { readonly request: Req; readonly response: Res }

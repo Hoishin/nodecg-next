@@ -5,18 +5,18 @@ import {
 	type ServerResponse,
 } from "node:http";
 
-import { Cookies, HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import { baseUrlCookieName } from "@nodecg-next/internal";
 import { Effect, Layer } from "effect";
+import { Cookies } from "effect/unstable/http";
 
 import { config } from "../server-config.ts";
 
 const baseUrlCookieListener = Effect.gen(function* () {
 	const { pathname: basePath } = yield* config.baseUrl;
-	const cookie = yield* Cookies.makeCookie(baseUrlCookieName, basePath, {
-		path: basePath,
-	});
+	const cookie = yield* Effect.fromResult(
+		Cookies.makeCookie(baseUrlCookieName, basePath, { path: basePath }),
+	);
 	const setCookieHeader = Cookies.serializeCookie(cookie);
 	return (_: IncomingMessage, response: ServerResponse) => {
 		response.setHeader("set-cookie", setCookieHeader);
@@ -35,8 +35,8 @@ const forceShutdownServer = Effect.fn("forceShutdownServer")(function* (
 });
 
 const boundedClose = (server: Server) =>
-	Layer.scopedDiscard(
-		Effect.addFinalizer(() => Effect.forkDaemon(forceShutdownServer(server))),
+	Layer.effectDiscard(
+		Effect.addFinalizer(() => Effect.forkDetach(forceShutdownServer(server))),
 	);
 
 export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
@@ -62,6 +62,5 @@ export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
 	const port = yield* config.port;
 	return boundedClose(server).pipe(
 		Layer.provideMerge(NodeHttpServer.layer(() => server, { port })),
-		HttpServer.withLogAddress,
 	);
 });

@@ -1,10 +1,3 @@
-import {
-	HttpApiBuilder,
-	HttpRouter,
-	HttpServerRequest,
-	HttpServerResponse,
-	type Socket,
-} from "@effect/platform";
 import type { FieldEncodeError } from "@nodecg-next/core";
 import {
 	ClientMessage,
@@ -28,11 +21,17 @@ import {
 	HashMap,
 	Match,
 	Option,
-	type ParseResult,
 	Schema,
+	SchemaGetter,
 	Stream,
 	SynchronizedRef,
 } from "effect";
+import {
+	HttpRouter,
+	HttpServerRequest,
+	HttpServerResponse,
+} from "effect/unstable/http";
+import type { Socket } from "effect/unstable/socket";
 
 import { resolveMachineIdentity } from "../auth/resolve-machine-identity.ts";
 import {
@@ -60,13 +59,21 @@ import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
 
-const decodeClientMessage = Schema.decode(Schema.parseJson(ClientMessage));
-const encodeServerMessage = Schema.encode(Schema.parseJson(ServerMessage));
+const decodeClientMessage = Schema.decodeEffect(
+	Schema.fromJsonString(ClientMessage),
+);
+const encodeServerMessage = Schema.encodeEffect(
+	Schema.fromJsonString(ServerMessage),
+);
+const BearerTokenSchema = Schema.String.check(
+	Schema.isNonEmpty(),
+	Schema.isTrimmed(),
+);
 const decodeBearerToken = Schema.decodeUnknownOption(
-	Schema.TemplateLiteralParser("Bearer ", Schema.NonEmptyTrimmedString).pipe(
-		Schema.transform(Schema.NonEmptyTrimmedString, {
-			decode: ([, token]) => token,
-			encode: (token) => ["Bearer ", token],
+	Schema.TemplateLiteralParser(["Bearer ", BearerTokenSchema]).pipe(
+		Schema.decodeTo(BearerTokenSchema, {
+			decode: SchemaGetter.transform(([, token]) => token),
+			encode: SchemaGetter.transform((token: string) => ["Bearer ", token]),
 		}),
 	),
 );
@@ -78,7 +85,7 @@ type SubscribeFailure =
 	| UnknownReplicant
 	| FieldEncodeError
 	| ComputedNotFound
-	| ParseResult.ParseError
+	| Schema.SchemaError
 	| Socket.SocketError;
 
 type ResolvedField = Data.TaggedEnum<{
@@ -97,16 +104,16 @@ type ResolvedField = Data.TaggedEnum<{
 }>;
 const ResolvedField = Data.taggedEnum<ResolvedField>();
 
-const fieldKey = (field: FieldIdentifier) => Data.struct(field);
+const fieldKey = (field: FieldIdentifier) => ({ ...field });
 
-export const websocketRoute = HttpApiBuilder.Router.use((router) =>
+export const websocketRoute = HttpRouter.use((router) =>
 	Effect.gen(function* () {
 		const registry = yield* FieldRegistryService;
 
 		const resolveField = (field: FieldIdentifier) =>
 			Match.value(field).pipe(
 				Match.when({ type: "replicant" }, (replicantField) =>
-					Option.fromNullable(
+					Option.fromNullishOr(
 						registry.replicant
 							.get(replicantField.namespace)
 							?.get(replicantField.name),
@@ -117,7 +124,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					),
 				),
 				Match.when({ type: "computed" }, (computedField) =>
-					Option.fromNullable(
+					Option.fromNullishOr(
 						registry.computed
 							.get(computedField.namespace)
 							?.get(computedField.name),
@@ -128,7 +135,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 					),
 				),
 				Match.when({ type: "topic" }, (topicField) =>
-					Option.fromNullable(
+					Option.fromNullishOr(
 						registry.topic.get(topicField.namespace)?.get(topicField.name),
 					).pipe(
 						Option.map((internal) =>
@@ -140,7 +147,8 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 			);
 
 		const wsHandler = Effect.fn(function* (identity: Identity) {
-			const socket = yield* HttpServerRequest.upgrade;
+			const request = yield* HttpServerRequest.HttpServerRequest;
+			const socket = yield* request.upgrade;
 			const write = yield* socket.writer;
 
 			const send = (msg: ServerMessage) =>
@@ -244,7 +252,7 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 			const subscriptions = yield* SynchronizedRef.make(
 				HashMap.empty<
 					FieldIdentifier,
-					Fiber.RuntimeFiber<void, ParseResult.ParseError | Socket.SocketError>
+					Fiber.Fiber<void, Schema.SchemaError | Socket.SocketError>
 				>(),
 			);
 
@@ -329,44 +337,45 @@ export const websocketRoute = HttpApiBuilder.Router.use((router) =>
 		const resolveSession = resolveSessionIdentity({ sessions, roleStore });
 		const resolveMachine = resolveMachineIdentity({ machines });
 
-		const ws = HttpRouter.empty.pipe(
-			HttpRouter.get(
-				"/ws/internal",
-				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest;
-					const cookie = Option.fromNullable(
-						request.cookies[sessionCookieName],
-					);
-					const resolved = Option.isSome(cookie)
-						? yield* resolveSession(cookie.value)
-						: Option.none();
-					if (Option.isNone(resolved) && requireAuth) {
-						return HttpServerResponse.empty({ status: 401 });
-					}
-					const identity = Option.getOrElse(resolved, () => anonymousIdentity);
-					return yield* wsHandler(identity);
-				}),
-			),
-			HttpRouter.get(
-				"/ws/v0",
-				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest;
-					const bearer = Option.fromNullable(
-						request.headers["authorization"],
-					).pipe(Option.flatMap(decodeBearerToken));
-					const resolved = Option.isSome(bearer)
-						? yield* resolveMachine(bearer.value)
-						: Option.none();
-					if (Option.isNone(resolved)) {
-						return HttpServerResponse.empty({ status: 401 });
-					}
-					return yield* wsHandler(resolved.value);
-				}),
-			),
-			HttpRouter.provideService(TopicBrokerService, broker),
-			HttpRouter.provideService(DerivationEngineService, engine),
+		const serveWebsocket = (identity: Identity) =>
+			wsHandler(identity).pipe(
+				Effect.provideService(TopicBrokerService, broker),
+				Effect.provideService(DerivationEngineService, engine),
+			);
+
+		yield* router.add(
+			"GET",
+			"/ws/internal",
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest;
+				const cookie = Option.fromNullishOr(request.cookies[sessionCookieName]);
+				const resolved = Option.isSome(cookie)
+					? yield* resolveSession(cookie.value)
+					: Option.none();
+				if (Option.isNone(resolved) && requireAuth) {
+					return HttpServerResponse.empty({ status: 401 });
+				}
+				const identity = Option.getOrElse(resolved, () => anonymousIdentity);
+				return yield* serveWebsocket(identity);
+			}),
 		);
 
-		yield* router.concat(ws);
+		yield* router.add(
+			"GET",
+			"/ws/v0",
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest;
+				const bearer = Option.fromNullishOr(
+					request.headers["authorization"],
+				).pipe(Option.flatMap(decodeBearerToken));
+				const resolved = Option.isSome(bearer)
+					? yield* resolveMachine(bearer.value)
+					: Option.none();
+				if (Option.isNone(resolved)) {
+					return HttpServerResponse.empty({ status: 401 });
+				}
+				return yield* serveWebsocket(resolved.value);
+			}),
+		);
 	}),
 );

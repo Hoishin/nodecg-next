@@ -1,5 +1,5 @@
 import type { RoleName } from "@nodecg-next/internal";
-import { Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { type BuiltNamespace } from "./build-fields.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
@@ -57,10 +57,10 @@ export interface RegisteredNamespace {
 }
 
 // transport lookup on single field by name, encoded types only
-export class FieldRegistryService extends Effect.Service<FieldRegistryService>()(
+export class FieldRegistryService extends Context.Service<FieldRegistryService>()(
 	"FieldRegistry",
 	{
-		effect: (namespaces: ReadonlyArray<RegisteredNamespace>) =>
+		make: (namespaces: ReadonlyArray<RegisteredNamespace>) =>
 			Effect.sync((): FieldRegistry => {
 				const replicant = new Map<
 					string,
@@ -97,4 +97,7 @@ export class FieldRegistryService extends Effect.Service<FieldRegistryService>()
 				return { replicant, computed, topic, rpc, declaredRoles };
 			}),
 	},
-) {}
+) {
+	static readonly layer = (namespaces: ReadonlyArray<RegisteredNamespace>) =>
+		Layer.effect(this, this.make(namespaces));
+}

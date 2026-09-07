@@ -25,7 +25,7 @@ const registered = (
 });
 
 const provideRegistry = Effect.provide(
-	FieldRegistryService.Default([
+	FieldRegistryService.layer([
 		registered("fixture", new Set([RoleName("producer"), RoleName("viewer")])),
 		registered("other", new Set([RoleName("moderator")])),
 	]),
@@ -67,8 +67,8 @@ describe("listPermissions", () => {
 		testEffect(
 			Effect.gen(function* () {
 				const identities: ReadonlyArray<Identity> = [
-					AnonymousIdentitySchema.make(),
-					ServerIdentitySchema.make(),
+					AnonymousIdentitySchema.make({}),
+					ServerIdentitySchema.make({}),
 					human("superadmin"),
 				];
 				for (const identity of identities) {

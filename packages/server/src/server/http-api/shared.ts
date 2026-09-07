@@ -1,7 +1,7 @@
-import { HttpApiError } from "@effect/platform";
 import { RpcCallError } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { Effect, Match } from "effect";
+import { HttpApiError } from "effect/unstable/httpapi";
 import type { JsonValue } from "type-fest";
 
 import { FieldRegistryService } from "../../field-registry.ts";

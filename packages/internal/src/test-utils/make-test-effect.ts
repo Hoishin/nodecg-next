@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, ManagedRuntime, Match, Scope } from "effect";
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
 
 export function makeTestEffect<ROut>(layer: Layer.Layer<ROut, never, never>) {
 	return <A, E>(self: Effect.Effect<A, E, ROut | Scope.Scope>) =>
@@ -10,24 +10,6 @@ export function makeTestEffect<ROut>(layer: Layer.Layer<ROut, never, never>) {
 			if (Exit.isSuccess(exit)) {
 				return;
 			}
-			const error = Match.value(exit.cause).pipe(
-				Match.tag("Die", ({ defect }) => defect),
-				Match.tag("Fail", ({ error }) => error),
-				Match.tag("Interrupt", () => new Error("test interrupted")),
-				Match.tag(
-					"Parallel",
-					() => new Error("test failed with parallel causes", { cause: exit }),
-				),
-				Match.tag(
-					"Sequential",
-					() => new Error("test failed with parallel causes", { cause: exit }),
-				),
-				Match.tag(
-					"Empty",
-					() => new Error("test failed with empty causes", { cause: exit }),
-				),
-				Match.exhaustive,
-			);
-			throw error;
+			throw Cause.squash(exit.cause);
 		};
 }

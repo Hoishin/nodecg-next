@@ -25,7 +25,7 @@ export interface ReplicantStorage {
 	) => Effect.Effect<void, ReplicantNotFound>;
 }
 
-export class ReplicantStorageService extends Context.Tag("ReplicantStorage")<
+export class ReplicantStorageService extends Context.Service<
 	ReplicantStorageService,
 	ReplicantStorage
->() {}
+>()("ReplicantStorage") {}

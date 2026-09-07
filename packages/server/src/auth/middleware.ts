@@ -1,9 +1,10 @@
-import { HttpApiError } from "@effect/platform";
 import {
+	CurrentIdentity,
 	HumanAuthenticationMiddleware,
 	MachineAuthenticationMiddleware,
 } from "@nodecg-next/internal";
 import { Effect, Layer, Option, Redacted } from "effect";
+import { HttpApiError } from "effect/unstable/httpapi";
 
 import { config } from "../server-config.ts";
 import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
@@ -24,18 +25,19 @@ export const HumanAuthenticationMiddlewareLive = Layer.effect(
 		const resolve = resolveSessionIdentity({ sessions, roleStore });
 
 		return {
-			cookie: (cookie: Redacted.Redacted<string>) =>
+			cookie: (httpEffect, { credential }) =>
 				Effect.gen(function* () {
-					const value = Redacted.value(cookie);
+					const value = Redacted.value(credential);
 					const resolved =
 						value.length > 0 ? yield* resolve(value) : Option.none();
-					if (Option.isSome(resolved)) {
-						return resolved.value;
-					}
-					if (requireAuth) {
+					if (Option.isNone(resolved) && requireAuth) {
 						return yield* new HttpApiError.Unauthorized();
 					}
-					return anonymousIdentity;
+					return yield* Effect.provideService(
+						httpEffect,
+						CurrentIdentity,
+						Option.getOrElse(resolved, () => anonymousIdentity),
+					);
 				}),
 		};
 	}),
@@ -48,15 +50,19 @@ export const MachineAuthenticationMiddlewareLive = Layer.effect(
 		const resolve = resolveMachineIdentity({ machines });
 
 		return {
-			bearer: (token: Redacted.Redacted<string>) =>
+			bearer: (httpEffect, { credential }) =>
 				Effect.gen(function* () {
-					const value = Redacted.value(token);
+					const value = Redacted.value(credential);
 					const resolved =
 						value.length > 0 ? yield* resolve(value) : Option.none();
-					if (Option.isSome(resolved)) {
-						return resolved.value;
+					if (Option.isNone(resolved)) {
+						return yield* new HttpApiError.Unauthorized();
 					}
-					return yield* new HttpApiError.Unauthorized();
+					return yield* Effect.provideService(
+						httpEffect,
+						CurrentIdentity,
+						resolved.value,
+					);
 				}),
 		};
 	}),

@@ -1,6 +1,6 @@
 // Apply patch produced from diff.ts
 
-import { Data, Either, Match, Option } from "effect";
+import { Data, Match, Option, Result } from "effect";
 import type { JsonValue } from "type-fest";
 
 import { cloneJson, type MutableJson } from "../utils/clone.ts";
@@ -54,40 +54,40 @@ export const isDrift = ApplyFailure.$match({
 const getChild = (
 	parent: MutableJson,
 	token: string,
-): Either.Either<MutableJson, ApplyFailure> => {
+): Result.Result<MutableJson, ApplyFailure> => {
 	// Primitive
 	if (parent === null || typeof parent !== "object") {
-		return Either.left(ApplyFailure.NonContainer({ token }));
+		return Result.fail(ApplyFailure.NonContainer({ token }));
 	}
 
 	if (Array.isArray(parent)) {
 		const idx = parseIndex(token);
 		if (Option.isNone(idx)) {
-			return Either.left(ApplyFailure.InvalidIndex({ token }));
+			return Result.fail(ApplyFailure.InvalidIndex({ token }));
 		}
 		const element = parent[idx.value];
 		if (typeof element === "undefined") {
-			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
+			return Result.fail(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
 		}
-		return Either.right(element);
+		return Result.succeed(element);
 	}
 
 	// hasOwn to avoid "constructor" and other prototype properties
 	if (!Object.hasOwn(parent, token)) {
-		return Either.left(ApplyFailure.MissingKey({ key: token }));
+		return Result.fail(ApplyFailure.MissingKey({ key: token }));
 	}
 	const value = parent[token];
 	if (typeof value === "undefined") {
-		return Either.left(ApplyFailure.MissingKey({ key: token }));
+		return Result.fail(ApplyFailure.MissingKey({ key: token }));
 	}
-	return Either.right(value);
+	return Result.succeed(value);
 };
 
 const navigate = (root: MutableJson, tokens: ReadonlyArray<string>) =>
-	tokens.reduce<Either.Either<MutableJson, ApplyFailure>>(
+	tokens.reduce<Result.Result<MutableJson, ApplyFailure>>(
 		(cur, token) =>
-			cur.pipe(Either.flatMap((currentValue) => getChild(currentValue, token))),
-		Either.right(root),
+			cur.pipe(Result.flatMap((currentValue) => getChild(currentValue, token))),
+		Result.succeed(root),
 	);
 
 export const getAtPointer = (root: MutableJson, pointer: Pointer) =>
@@ -103,44 +103,44 @@ const add = (
 	root: MutableJson,
 	pointer: Pointer,
 	value: MutableJson,
-): Either.Either<MutableJson, ApplyFailure> => {
+): Result.Result<MutableJson, ApplyFailure> => {
 	const tokens = parsePointer(pointer);
 	const targetToken = tokens.pop();
 
 	// Replace the whole document for empty pointer
 	if (typeof targetToken === "undefined") {
-		return Either.right(value);
+		return Result.succeed(value);
 	}
 
 	const parentNavigateResult = navigate(root, tokens);
-	if (Either.isLeft(parentNavigateResult)) {
+	if (Result.isFailure(parentNavigateResult)) {
 		return parentNavigateResult;
 	}
-	const parent = parentNavigateResult.right;
+	const parent = parentNavigateResult.success;
 	if (Array.isArray(parent)) {
 		if (targetToken === "-") {
 			parent.push(value);
-			return Either.right(root);
+			return Result.succeed(root);
 		}
 		const idx = parseIndex(targetToken);
 		if (Option.isNone(idx)) {
-			return Either.left(ApplyFailure.InvalidIndex({ token: targetToken }));
+			return Result.fail(ApplyFailure.InvalidIndex({ token: targetToken }));
 		}
 		if (idx.value > parent.length) {
-			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
+			return Result.fail(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
 		}
 		parent.splice(idx.value, 0, value);
-		return Either.right(root);
+		return Result.succeed(root);
 	}
 	if (parent !== null && typeof parent === "object") {
 		// Assigning __proto__ would fire the inherited setter instead of adding a key
 		if (targetToken === "__proto__") {
-			return Either.left(ApplyFailure.ForbiddenKey({ key: targetToken }));
+			return Result.fail(ApplyFailure.ForbiddenKey({ key: targetToken }));
 		}
 		parent[targetToken] = value;
-		return Either.right(root);
+		return Result.succeed(root);
 	}
-	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
+	return Result.fail(ApplyFailure.NonContainer({ token: targetToken }));
 };
 
 /**
@@ -151,43 +151,43 @@ const add = (
 const remove = (
 	root: MutableJson,
 	pointer: Pointer,
-): Either.Either<MutableJson, ApplyFailure> => {
+): Result.Result<MutableJson, ApplyFailure> => {
 	const tokens = parsePointer(pointer);
 	const targetToken = tokens.pop();
 
 	// Cannot remove the whole document
 	if (typeof targetToken === "undefined") {
-		return Either.left(ApplyFailure.ImmovableRoot());
+		return Result.fail(ApplyFailure.ImmovableRoot());
 	}
 
 	const parentNavigateResult = navigate(root, tokens);
-	if (Either.isLeft(parentNavigateResult)) {
+	if (Result.isFailure(parentNavigateResult)) {
 		return parentNavigateResult;
 	}
-	const parent = parentNavigateResult.right;
+	const parent = parentNavigateResult.success;
 	if (Array.isArray(parent)) {
 		const idx = parseIndex(targetToken);
 		if (Option.isNone(idx)) {
-			return Either.left(ApplyFailure.InvalidIndex({ token: targetToken }));
+			return Result.fail(ApplyFailure.InvalidIndex({ token: targetToken }));
 		}
 		const removed = parent.splice(idx.value, 1)[0];
 		if (typeof removed === "undefined") {
-			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
+			return Result.fail(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
 		}
-		return Either.right(removed);
+		return Result.succeed(removed);
 	}
 	if (parent !== null && typeof parent === "object") {
 		if (!Object.hasOwn(parent, targetToken)) {
-			return Either.left(ApplyFailure.MissingKey({ key: targetToken }));
+			return Result.fail(ApplyFailure.MissingKey({ key: targetToken }));
 		}
 		const removed = parent[targetToken];
 		if (typeof removed === "undefined") {
-			return Either.left(ApplyFailure.MissingKey({ key: targetToken }));
+			return Result.fail(ApplyFailure.MissingKey({ key: targetToken }));
 		}
 		delete parent[targetToken];
-		return Either.right(removed);
+		return Result.succeed(removed);
 	}
-	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
+	return Result.fail(ApplyFailure.NonContainer({ token: targetToken }));
 };
 
 /**
@@ -200,39 +200,39 @@ const replace = (
 	root: MutableJson,
 	pointer: Pointer,
 	value: MutableJson,
-): Either.Either<MutableJson, ApplyFailure> => {
+): Result.Result<MutableJson, ApplyFailure> => {
 	const tokens = parsePointer(pointer);
 	const targetToken = tokens.pop();
 
 	// Replace the whole document for empty pointer
 	if (typeof targetToken === "undefined") {
-		return Either.right(value);
+		return Result.succeed(value);
 	}
 
 	const parentNavigateResult = navigate(root, tokens);
-	if (Either.isLeft(parentNavigateResult)) {
+	if (Result.isFailure(parentNavigateResult)) {
 		return parentNavigateResult;
 	}
-	const parent = parentNavigateResult.right;
+	const parent = parentNavigateResult.success;
 	if (Array.isArray(parent)) {
 		const idx = parseIndex(targetToken);
 		if (Option.isNone(idx)) {
-			return Either.left(ApplyFailure.InvalidIndex({ token: targetToken }));
+			return Result.fail(ApplyFailure.InvalidIndex({ token: targetToken }));
 		}
 		if (idx.value >= parent.length) {
-			return Either.left(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
+			return Result.fail(ApplyFailure.IndexOutOfBounds({ index: idx.value }));
 		}
 		parent[idx.value] = value;
-		return Either.right(root);
+		return Result.succeed(root);
 	}
 	if (parent !== null && typeof parent === "object") {
 		if (!Object.hasOwn(parent, targetToken)) {
-			return Either.left(ApplyFailure.MissingKey({ key: targetToken }));
+			return Result.fail(ApplyFailure.MissingKey({ key: targetToken }));
 		}
 		parent[targetToken] = value;
-		return Either.right(root);
+		return Result.succeed(root);
 	}
-	return Either.left(ApplyFailure.NonContainer({ token: targetToken }));
+	return Result.fail(ApplyFailure.NonContainer({ token: targetToken }));
 };
 
 /**
@@ -244,18 +244,18 @@ const move = (
 	root: MutableJson,
 	from: Pointer,
 	path: Pointer,
-): Either.Either<MutableJson, ApplyFailure> => {
+): Result.Result<MutableJson, ApplyFailure> => {
 	if (from === path) {
-		return Either.right(root);
+		return Result.succeed(root);
 	}
 	if (from === "") {
-		return Either.left(ApplyFailure.ImmovableRoot());
+		return Result.fail(ApplyFailure.ImmovableRoot());
 	}
 	if (path.startsWith(`${from}/`)) {
-		return Either.left(ApplyFailure.MoveIntoSelf({ from, path }));
+		return Result.fail(ApplyFailure.MoveIntoSelf({ from, path }));
 	}
 	return remove(root, from).pipe(
-		Either.flatMap((removed) => add(root, path, removed)),
+		Result.flatMap((removed) => add(root, path, removed)),
 	);
 };
 
@@ -266,16 +266,16 @@ const testHash = (
 	root: MutableJson,
 	pointer: Pointer,
 	hash: string,
-): Either.Either<MutableJson, ApplyFailure> =>
+): Result.Result<MutableJson, ApplyFailure> =>
 	getAtPointer(root, pointer).pipe(
-		Either.flatMap((seen) => {
+		Result.flatMap((seen) => {
 			const actual = computeTestHash(seen);
 			if (actual !== hash) {
-				return Either.left(
+				return Result.fail(
 					ApplyFailure.HashMismatch({ expected: hash, actual }),
 				);
 			}
-			return Either.right(root);
+			return Result.succeed(root);
 		}),
 	);
 
@@ -286,25 +286,25 @@ const test = (
 	root: MutableJson,
 	pointer: Pointer,
 	expected: JsonValue,
-): Either.Either<MutableJson, ApplyFailure> =>
+): Result.Result<MutableJson, ApplyFailure> =>
 	getAtPointer(root, pointer).pipe(
-		Either.flatMap((seen) =>
+		Result.flatMap((seen) =>
 			stableStringify(seen) === stableStringify(expected)
-				? Either.right(root)
-				: Either.left(ApplyFailure.ValueMismatch()),
+				? Result.succeed(root)
+				: Result.fail(ApplyFailure.ValueMismatch()),
 		),
 	);
 
 export const applyChangeOp = (
 	root: MutableJson,
 	op: ChangeOp,
-): Either.Either<MutableJson, ApplyFailure> =>
+): Result.Result<MutableJson, ApplyFailure> =>
 	Match.value(op).pipe(
 		Match.when({ op: "add" }, ({ path, value }) =>
 			add(root, path, cloneJson(value)),
 		),
 		Match.when({ op: "remove" }, ({ path }) =>
-			remove(root, path).pipe(Either.map(() => root)),
+			remove(root, path).pipe(Result.map(() => root)),
 		),
 		Match.when({ op: "replace" }, ({ path, value }) =>
 			replace(root, path, cloneJson(value)),
@@ -321,7 +321,7 @@ export interface PatchFailure {
 export const applyPatch = (
 	current: JsonValue,
 	patch: ReadonlyArray<PatchOp>,
-): Either.Either<MutableJson, PatchFailure> => {
+): Result.Result<MutableJson, PatchFailure> => {
 	let doc = cloneJson(current);
 	for (const op of patch) {
 		const result = Match.value(op).pipe(
@@ -331,10 +331,10 @@ export const applyPatch = (
 			Match.when({ op: "test" }, ({ path, value }) => test(doc, path, value)),
 			Match.orElse((changeOp) => applyChangeOp(doc, changeOp)),
 		);
-		if (Either.isLeft(result)) {
-			return Either.left({ op, cause: result.left });
+		if (Result.isFailure(result)) {
+			return Result.fail({ op, cause: result.failure });
 		}
-		doc = result.right;
+		doc = result.success;
 	}
-	return Either.right(doc);
+	return Result.succeed(doc);
 };

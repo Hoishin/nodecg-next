@@ -1,55 +1,63 @@
-import { Config, Duration, Redacted, Schema, Option } from "effect";
+import { Config, Duration, Option, Schema, SchemaGetter } from "effect";
 
-const SuperadminEntrySchema = Schema.TemplateLiteralParser(
-	Schema.Trim.pipe(Schema.compose(Schema.NonEmptyString)),
+const NonEmptyTrimmedString = Schema.String.check(
+	Schema.isNonEmpty(),
+	Schema.isTrimmed(),
+);
+
+const SuperadminEntrySchema = Schema.TemplateLiteralParser([
+	Schema.Trim.pipe(Schema.decodeTo(Schema.NonEmptyString)),
 	":",
-	Schema.Trim.pipe(Schema.compose(Schema.NonEmptyString)),
-).pipe(
-	Schema.transform(
+	Schema.Trim.pipe(Schema.decodeTo(Schema.NonEmptyString)),
+]).pipe(
+	Schema.decodeTo(
 		Schema.Struct({
-			provider: Schema.NonEmptyTrimmedString,
-			subject: Schema.NonEmptyTrimmedString,
+			provider: NonEmptyTrimmedString,
+			subject: NonEmptyTrimmedString,
 		}),
 		{
-			strict: true,
-			decode: ([provider, , subject]) => ({ provider, subject }),
-			encode: ({ provider, subject }) => [provider, ":", subject] as const,
+			decode: SchemaGetter.transform(([provider, _colon, subject]) => ({
+				provider,
+				subject,
+			})),
+			encode: SchemaGetter.forbidden(() => "decodeOnly"),
 		},
 	),
 );
 
-const SuperadminsSchema = Schema.Union(
-	Schema.transform(Schema.Literal(""), Schema.Array(SuperadminEntrySchema), {
-		strict: true,
-		decode: () => [],
-		encode: () => "" as const,
+const SuperadminsSchema = Schema.String.pipe(
+	Schema.decodeTo(Schema.Array(Schema.String), {
+		decode: SchemaGetter.split({ separator: "," }),
+		encode: SchemaGetter.forbidden(() => "decodeOnly"),
 	}),
-	Schema.split(",").pipe(Schema.compose(Schema.Array(SuperadminEntrySchema))),
+	Schema.decodeTo(Schema.Array(SuperadminEntrySchema)),
 );
 
-const port = Config.integer("PORT").pipe(Config.withDefault(3000));
+const port = Config.int("PORT").pipe(Config.withDefault(3000));
 
-const Pathname = Schema.transform(Schema.String, Schema.String, {
-	strict: true,
-	decode: (path) => (path === "/" ? "/" : path.replace(/\/+$/, "")),
-	encode: (path) => path,
-}).pipe(
-	Schema.compose(Schema.TemplateLiteral("/", Schema.String), { strict: false }),
+const Pathname = Schema.String.pipe(
+	Schema.decode({
+		decode: SchemaGetter.transform((path) =>
+			path === "/" ? "/" : path.replace(/\/+$/, ""),
+		),
+		encode: SchemaGetter.forbidden(() => "decodeOnly"),
+	}),
+	Schema.decodeTo(Schema.TemplateLiteral(["/", Schema.String])),
 );
 
-const BaseUrlSchema = Schema.transform(
-	Schema.URL,
-	Schema.Struct({ href: Schema.String, pathname: Pathname }),
-	{
-		strict: true,
-		decode: (url) => ({ href: url.href, pathname: url.pathname }),
-		encode: ({ href }) => new URL(href),
-	},
+const BaseUrlSchema = Schema.URLFromString.pipe(
+	Schema.decodeTo(Schema.Struct({ href: Schema.String, pathname: Pathname }), {
+		decode: SchemaGetter.transform((url) => ({
+			href: url.href,
+			pathname: url.pathname,
+		})),
+		encode: SchemaGetter.forbidden(() => "decodeOnly"),
+	}),
 );
 
 const baseUrl = Config.all([
 	port,
-	Config.option(Schema.Config("NODECG_BASE_URL", BaseUrlSchema)),
+	Config.option(Config.schema(BaseUrlSchema, "NODECG_BASE_URL")),
 ]).pipe(
 	Config.map(([port, baseUrl]) =>
 		baseUrl.pipe(
@@ -66,16 +74,13 @@ export const config = {
 	baseUrl,
 	requireAuth: Config.boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
 	sessionTtl: Config.duration("SESSION_TTL").pipe(
-		Config.withDefault(Duration.decode("7 days")),
+		Config.withDefault(Duration.days(7)),
 	),
 	superadminClaimToken: Config.option(
-		Config.redacted("SUPERADMIN_CLAIM_TOKEN").pipe(
-			// TODO: Use schema
-			Config.validate({
-				message: "SUPERADMIN_CLAIM_TOKEN must be at least 16 characters",
-				validation: (token) => Redacted.value(token).length >= 16,
-			}),
+		Config.schema(
+			Schema.RedactedFromValue(Schema.String.check(Schema.isMinLength(16))),
+			"SUPERADMIN_CLAIM_TOKEN",
 		),
 	),
-	superadmins: Config.option(Schema.Config("SUPERADMINS", SuperadminsSchema)),
+	superadmins: Config.option(Config.schema(SuperadminsSchema, "SUPERADMINS")),
 };

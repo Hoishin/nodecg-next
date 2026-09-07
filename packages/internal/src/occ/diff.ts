@@ -1,8 +1,7 @@
 // Diff producer of the OCC mechanism, turning a base and a next document into
 // the RFC 6902 ops that carry the change.
 
-import { Data, Either, Schema } from "effect";
-import type { ParseResult } from "effect";
+import { Data, Result, Schema } from "effect";
 import stringify from "fast-json-stable-stringify";
 import { create } from "jsondiffpatch";
 import { format } from "jsondiffpatch/formatters/jsonpatch";
@@ -20,7 +19,7 @@ import {
 } from "./schema.ts";
 
 export type DiffFailure = Data.TaggedEnum<{
-	UnknownOp: { readonly cause: ParseResult.ParseError };
+	UnknownOp: { readonly cause: Schema.SchemaError };
 	ReplayDisagreement: {
 		readonly op: ChangeOp;
 		readonly cause: ApplyFailure;
@@ -28,7 +27,9 @@ export type DiffFailure = Data.TaggedEnum<{
 }>;
 export const DiffFailure = Data.taggedEnum<DiffFailure>();
 
-const validateChanges = Schema.validateEither(Schema.Array(ChangeOp));
+const validateChanges = Schema.decodeUnknownResult(
+	Schema.toType(Schema.Array(ChangeOp)),
+);
 const isPointer = Schema.is(Pointer);
 
 const differ = create({
@@ -47,10 +48,10 @@ const toAppendForm = (doc: MutableJson, op: AddOp) => {
 		return op;
 	}
 	const parent = getAtPointer(doc, parentPath);
-	if (Either.isLeft(parent) || !Array.isArray(parent.right)) {
+	if (Result.isFailure(parent) || !Array.isArray(parent.success)) {
 		return op;
 	}
-	if (String(parent.right.length) !== op.path.slice(cut + 1)) {
+	if (String(parent.success.length) !== op.path.slice(cut + 1)) {
 		return op;
 	}
 	return { op: op.op, path: `${parentPath}/-` as const, value: op.value };
@@ -60,13 +61,13 @@ const toAppendForm = (doc: MutableJson, op: AddOp) => {
 const signOp = (doc: MutableJson, op: ChangeOp) => {
 	const target = op.op === "move" ? op.from : op.path;
 	const seen = getAtPointer(doc, target);
-	if (Either.isLeft(seen)) {
+	if (Result.isFailure(seen)) {
 		return [];
 	}
 	const signature: TestHashOp = {
 		op: "test-hash",
 		path: target,
-		hash: computeTestHash(seen.right),
+		hash: computeTestHash(seen.success),
 	};
 	return [signature];
 };
@@ -74,25 +75,25 @@ const signOp = (doc: MutableJson, op: ChangeOp) => {
 const signChanges = (
 	base: JsonValue,
 	changes: ReadonlyArray<ChangeOp>,
-): Either.Either<ReadonlyArray<PatchOp>, DiffFailure> => {
+): Result.Result<ReadonlyArray<PatchOp>, DiffFailure> => {
 	const signed: PatchOp[] = [];
 	let doc = cloneJson(base);
 	for (const change of changes) {
 		const op = change.op === "add" ? toAppendForm(doc, change) : change;
 		signed.push(...signOp(doc, op), op);
 		const applied = applyChangeOp(doc, op);
-		if (Either.isLeft(applied)) {
-			return Either.left(
-				DiffFailure.ReplayDisagreement({ op, cause: applied.left }),
+		if (Result.isFailure(applied)) {
+			return Result.fail(
+				DiffFailure.ReplayDisagreement({ op, cause: applied.failure }),
 			);
 		}
-		doc = applied.right;
+		doc = applied.success;
 	}
-	return Either.right(signed);
+	return Result.succeed(signed);
 };
 
 export const diffSignedPatch = (base: JsonValue, next: JsonValue) =>
 	diffPatch(base, next).pipe(
-		Either.mapLeft((cause) => DiffFailure.UnknownOp({ cause })),
-		Either.flatMap((changes) => signChanges(base, changes)),
+		Result.mapError((cause) => DiffFailure.UnknownOp({ cause })),
+		Result.flatMap((changes) => signChanges(base, changes)),
 	);

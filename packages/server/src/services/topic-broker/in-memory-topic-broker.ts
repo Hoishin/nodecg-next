@@ -8,17 +8,13 @@ export const InMemoryTopicBroker = Layer.effect(
 	Effect.gen(function* () {
 		const messages = yield* PubSub.unbounded<TopicMessage>();
 
-		const publish = Effect.fn("TopicBroker.publish")(function* (
-			namespace: string,
-			name: string,
-			value: JsonValue,
-		) {
-			yield* messages.publish({ namespace, name, value });
-		});
-
 		return {
-			publish,
-			subscribe: () => Stream.fromPubSub(messages, { scoped: true }),
+			publish: (namespace: string, name: string, value: JsonValue) =>
+				PubSub.publish(messages, { namespace, name, value }).pipe(
+					Effect.asVoid,
+				),
+			subscribe: () =>
+				PubSub.subscribe(messages).pipe(Effect.map(Stream.fromSubscription)),
 		};
 	}),
 );

@@ -110,7 +110,7 @@ describe("public /api/v0 bearer authentication", () => {
 
 describe("duplicate subscribe over the raw wire", () => {
 	const decodeServerMessage = Schema.decodeOption(
-		Schema.parseJson(ServerMessage),
+		Schema.fromJsonString(ServerMessage),
 	);
 
 	test("restarts the subscription: a fresh seed arrives and later writes deliver once", async () => {

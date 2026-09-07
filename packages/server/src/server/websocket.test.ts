@@ -1,5 +1,5 @@
-import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { HashMap, Layer } from "effect";
+import { HttpRouter, HttpServer } from "effect/unstable/http";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -22,15 +22,18 @@ import { RootApiLive } from "./http-api/build-root-api.ts";
 import { websocketRoute } from "./websocket.ts";
 
 const handler = () => {
-	const { handler } = HttpApiBuilder.toWebHandler(
-		Layer.mergeAll(RootApiLive, websocketRoute, HttpServer.layerContext).pipe(
+	const { handler } = HttpRouter.toWebHandler(
+		Layer.mergeAll(RootApiLive, websocketRoute).pipe(
+			HttpRouter.provideRequest(
+				Layer.mergeAll(FieldRegistryService.layer([]), InMemoryTopicBroker),
+			),
 			Layer.provide(HumanAuthenticationMiddlewareLive),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
-			Layer.provide(FieldRegistryService.Default([])),
+			Layer.provide(FieldRegistryService.layer([])),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(
-				DerivationEngineService.Default.pipe(
+				DerivationEngineService.layer.pipe(
 					Layer.provide(InMemoryReplicantStorage),
 				),
 			),
@@ -44,6 +47,7 @@ const handler = () => {
 					HashMap.empty<string, AuthProvider>(),
 				),
 			),
+			Layer.provide(HttpServer.layerServices),
 		),
 	);
 	return handler;

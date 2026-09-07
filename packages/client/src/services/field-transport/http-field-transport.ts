@@ -1,8 +1,9 @@
-import { FetchHttpClient, HttpApiClient } from "@effect/platform";
 import { InternalApi } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { toError } from "@nodecg-next/internal/utils";
 import { Effect, Layer, Match } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { HttpApiClient } from "effect/unstable/httpapi";
 import type { JsonValue } from "type-fest";
 
 import {
@@ -26,7 +27,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 				name: string,
 			) {
 				return yield* client.Field.replicantGet({
-					path: { namespace, fieldName: name },
+					params: { namespace, fieldName: name },
 				}).pipe(
 					Effect.mapError((error) =>
 						Match.value(error).pipe(
@@ -52,7 +53,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 				name: string,
 			) {
 				return yield* client.Field.computedGet({
-					path: { namespace, fieldName: name },
+					params: { namespace, fieldName: name },
 				}).pipe(
 					Effect.mapError((error) =>
 						Match.value(error).pipe(
@@ -76,7 +77,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 			const updateReplicant = Effect.fn("FieldTransport.updateReplicant")(
 				function* (namespace: string, name: string, patch: Patch) {
 					yield* client.Field.replicantUpdate({
-						path: { namespace, fieldName: name },
+						params: { namespace, fieldName: name },
 						payload: patch,
 					}).pipe(
 						Effect.mapError((error) =>
@@ -106,7 +107,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 				value: JsonValue,
 			) {
 				yield* client.Field.topicPublish({
-					path: { namespace, fieldName: name },
+					params: { namespace, fieldName: name },
 					payload: value,
 				}).pipe(
 					Effect.mapError((error) =>
@@ -138,7 +139,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 				request: JsonValue,
 			) {
 				return yield* client.Field.rpcCall({
-					path: { namespace, fieldName: name },
+					params: { namespace, fieldName: name },
 					payload: request,
 				}).pipe(
 					Effect.mapError((error) =>

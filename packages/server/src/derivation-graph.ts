@@ -19,19 +19,17 @@ import {
 } from "@preact/signals-core";
 import {
 	Array,
-	Data,
+	Context,
 	Effect,
-	Either,
 	Equal,
 	Exit,
 	Hash,
 	HashMap,
-	Mailbox,
+	Layer,
 	Option,
 	PubSub,
 	Queue,
-	Ref,
-	Runtime,
+	Result,
 	Schema,
 	Stream,
 	SynchronizedRef,
@@ -74,8 +72,7 @@ export class ComputedAlreadyRegistered extends Schema.TaggedError<ComputedAlread
 	override readonly message = `Computed "${this.name}" in "${this.namespace}" is already registered`;
 }
 
-const fieldKey = (namespace: string, name: string) =>
-	Data.struct({ namespace, name });
+const fieldKey = (namespace: string, name: string) => ({ namespace, name });
 type FieldKey = ReturnType<typeof fieldKey>;
 
 export class DerivationReadValueError extends Schema.TaggedError<DerivationReadValueError>()(
@@ -168,11 +165,11 @@ export type ComputedResult = Exit.Exit<
 /**
  * Implements `computed` reactivity with signals
  */
-export class DerivationEngineService extends Effect.Service<DerivationEngineService>()(
+export class DerivationEngineService extends Context.Service<DerivationEngineService>()(
 	"DerivationEngine",
 	{
-		scoped: Effect.gen(function* () {
-			const runtime = yield* Effect.runtime<never>();
+		make: Effect.gen(function* () {
+			const context = yield* Effect.context<never>();
 			const storage = yield* ReplicantStorageService;
 			const replicants = yield* SynchronizedRef.make(
 				HashMap.empty<FieldKey, ReplicantNode>(),
@@ -222,7 +219,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			});
 
 			const lookupNode = Effect.fn(function* (namespace: string, name: string) {
-				const map = yield* Ref.get(replicants);
+				const map = yield* SynchronizedRef.get(replicants);
 				const existing = HashMap.get(map, fieldKey(namespace, name));
 				if (Option.isNone(existing)) {
 					return yield* new UnknownReplicant({ namespace, name });
@@ -233,11 +230,11 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			const readLeaf = (node: ReplicantNode, namespace: string, name: string) =>
 				readSignal(node).pipe(
 					Effect.mapError(
-						(cause) =>
+						(error) =>
 							new DerivationReadValueError({
 								namespace,
 								name,
-								cause: toError(cause.error),
+								cause: toError(error.cause),
 							}),
 					),
 					Effect.orDie,
@@ -247,7 +244,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				storage
 					.write(namespace, name, value)
 					.pipe(
-						Effect.catchAll((error) =>
+						Effect.catch((error) =>
 							Effect.logError(
 								`Persisting replicant "${namespace}/${name}" failed`,
 								error,
@@ -257,7 +254,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 
 			yield* Effect.addFinalizer(() =>
 				Effect.gen(function* () {
-					const map = yield* Ref.get(replicants);
+					const map = yield* SynchronizedRef.get(replicants);
 					yield* Effect.forEach(HashMap.toEntries(map), ([key, node]) =>
 						readLeaf(node, key.namespace, key.name).pipe(
 							Effect.flatMap((stored) =>
@@ -348,8 +345,8 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
 				const applied = applyPatch(stored.value, patch);
-				if (Either.isLeft(applied)) {
-					const { op, cause } = applied.left;
+				if (Result.isFailure(applied)) {
+					const { op, cause } = applied.failure;
 					if (isDrift(cause)) {
 						return yield* new RevisionConflict({
 							value: stored.value,
@@ -364,19 +361,19 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				}
 				const changeOps = patch.filter(isChangeOp);
 				if (
-					!Array.isNonEmptyReadonlyArray(changeOps) ||
-					sameValue(stored, applied.right)
+					!Array.isReadonlyArrayNonEmpty(changeOps) ||
+					sameValue(stored, applied.success)
 				) {
 					return { value: stored.value, revision: stored.revision };
 				}
-				yield* validate(applied.right);
+				yield* validate(applied.success);
 				return yield* finishCommit(node, namespace, name, stored, {
-					value: applied.right,
+					value: applied.success,
 					revision: stored.revision + 1,
 					delta: Option.some({
 						ops: changeOps,
 						baseRevision: stored.revision,
-						hash: computeFingerprint(applied.right),
+						hash: computeFingerprint(applied.success),
 					}),
 				});
 			});
@@ -392,7 +389,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					revision: stored.revision,
 					delta: Option.none(),
 				};
-				const updates = Stream.fromQueue(dequeue).pipe(
+				const updates = Stream.fromSubscription(dequeue).pipe(
 					Stream.filter(
 						(event) =>
 							event.namespace === namespace &&
@@ -451,18 +448,18 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 
 			const readComputed = Effect.fn("DerivationEngine.readComputed")(
 				function* (namespace: string, name: string) {
-					const map = yield* Ref.get(computedResults);
+					const map = yield* SynchronizedRef.get(computedResults);
 					const existing = HashMap.get(map, fieldKey(namespace, name));
 					if (Option.isNone(existing)) {
 						return yield* new ComputedNotFound({ namespace, name });
 					}
 					const stored = yield* readSignal(existing.value).pipe(
 						Effect.mapError(
-							(cause) =>
+							(error) =>
 								new DerivationReadValueError({
 									namespace,
 									name,
-									cause: toError(cause.error),
+									cause: toError(error.cause),
 								}),
 						),
 						Effect.orDie,
@@ -475,22 +472,22 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 				function* (namespace: string, name: string) {
 					const result = Option.getOrUndefined(
 						HashMap.get(
-							yield* Ref.get(computedResults),
+							yield* SynchronizedRef.get(computedResults),
 							fieldKey(namespace, name),
 						),
 					);
 					if (typeof result === "undefined") {
 						return yield* new ComputedNotFound({ namespace, name });
 					}
-					const mailbox = yield* Mailbox.make<JsonValue>();
+					const updates = yield* Queue.make<JsonValue>();
 					const readNode = Effect.gen(function* () {
 						const evaluation = yield* readSignal(result).pipe(
 							Effect.mapError(
-								(cause) =>
+								(error) =>
 									new ComputedComputeError({
 										namespace,
 										name,
-										cause: toError(cause.error),
+										cause: toError(error.cause),
 									}),
 							),
 						);
@@ -499,11 +496,10 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					yield* Effect.acquireRelease(
 						Effect.sync(() =>
 							effect(() =>
-								Runtime.runSync(
-									runtime,
+								Effect.runSyncWith(context)(
 									readNode.pipe(
-										Effect.flatMap((encoded) => mailbox.offer(encoded)),
-										Effect.catchAll((error) =>
+										Effect.flatMap((encoded) => Queue.offer(updates, encoded)),
+										Effect.catch((error) =>
 											Effect.logError(
 												`Failed to compute "${namespace}/${name}"`,
 												error,
@@ -518,7 +514,7 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 					);
 					// Gate: reject the subscribe if the current value can't be produced.
 					yield* readNode;
-					return Mailbox.toStream(mailbox);
+					return Stream.fromQueue(updates);
 				},
 			);
 
@@ -534,4 +530,6 @@ export class DerivationEngineService extends Effect.Service<DerivationEngineServ
 			};
 		}),
 	},
-) {}
+) {
+	static readonly layer = Layer.effect(this, this.make);
+}

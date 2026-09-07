@@ -1,23 +1,22 @@
-import {
-	HttpApp,
-	HttpServerRequest,
-	HttpServerResponse,
-} from "@effect/platform";
 import { testEffect } from "@nodecg-next/internal/test-utils";
 import { ConfigProvider, Effect } from "effect";
+import {
+	HttpEffect,
+	HttpServerRequest,
+	HttpServerResponse,
+} from "effect/unstable/http";
 import { describe, expect, test } from "vitest";
 
 import { basePathMiddleware } from "./base-path.ts";
 
-const echo: HttpApp.Default = Effect.map(
-	HttpServerRequest.HttpServerRequest,
-	(request) => HttpServerResponse.text(request.url),
+const echo = Effect.map(HttpServerRequest.HttpServerRequest, (request) =>
+	HttpServerResponse.text(request.url),
 );
 
 const respond = (baseUrl: string, path: string) =>
 	Effect.gen(function* () {
 		const middleware = yield* basePathMiddleware;
-		const handler = HttpApp.toWebHandler(middleware(echo));
+		const handler = HttpEffect.toWebHandler(middleware(echo));
 		const response = yield* Effect.promise(() =>
 			handler(new Request(`http://server${path}`)),
 		);
@@ -26,8 +25,10 @@ const respond = (baseUrl: string, path: string) =>
 			body: yield* Effect.promise(() => response.text()),
 		};
 	}).pipe(
-		Effect.withConfigProvider(
-			ConfigProvider.fromMap(new Map([["NODECG_BASE_URL", baseUrl]])),
+		Effect.provide(
+			ConfigProvider.layer(
+				ConfigProvider.fromEnvRecord({ NODECG_BASE_URL: baseUrl }),
+			),
 		),
 	);
 

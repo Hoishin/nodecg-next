@@ -7,7 +7,6 @@ import {
 	Exit,
 	Layer,
 	Option,
-	Runtime,
 	Schema,
 	Scope,
 	Stream,
@@ -28,7 +27,7 @@ import {
 } from "./services/replicant-storage/replicant-storage.ts";
 
 const testEngine = makeTestEffect(
-	DerivationEngineService.Default.pipe(Layer.provide(InMemoryReplicantStorage)),
+	DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
 );
 
 const { stub: storage, reset } = createStorageStub();
@@ -42,9 +41,9 @@ const waitFor = (assertion: () => void) =>
 	Effect.promise(() => vi.waitFor(assertion));
 
 const engineIn = (scope: Scope.Scope) =>
-	Layer.build(DerivationEngineService.Default).pipe(
+	Layer.build(DerivationEngineService.layer).pipe(
 		Effect.map((context) => Context.get(context, DerivationEngineService)),
-		Scope.extend(scope),
+		Scope.provide(scope),
 	);
 
 describe("readReplicant", () => {
@@ -184,13 +183,12 @@ describe("commit", () => {
 		testEngine(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
-				const runtime = yield* Effect.runtime<never>();
+				const context = yield* Effect.context<never>();
 				yield* engine.initializeReplicant("ns", "a", 1);
 				yield* engine.initializeReplicant("ns", "b", 1);
 				const committed = yield* engine.commit("ns", "a", ({ value }) =>
 					Effect.sync(() => {
-						Runtime.runSync(
-							runtime,
+						Effect.runSyncWith(context)(
 							engine.commit("ns", "b", () => Effect.succeed(5)),
 						);
 						return typeof value === "number" ? value + 1 : 0;
@@ -207,13 +205,12 @@ describe("commit", () => {
 		testEngine(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
-				const runtime = yield* Effect.runtime<never>();
+				const context = yield* Effect.context<never>();
 				yield* engine.initializeReplicant("ns", "a", 1);
 				const error = yield* engine
 					.commit("ns", "a", ({ value }) =>
 						Effect.sync(() => {
-							Runtime.runSync(
-								runtime,
+							Effect.runSyncWith(context)(
 								engine.commit("ns", "a", () => Effect.succeed(100)),
 							);
 							return typeof value === "number" ? value + 1 : 0;
@@ -468,7 +465,7 @@ describe("subscribeReplicant", () => {
 				const frames: ReplicantFrame[] = [];
 				yield* Stream.runForEach(stream, (frame) =>
 					Effect.sync(() => frames.push(frame)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* waitFor(() =>
 					expect(frames).toEqual([
@@ -496,7 +493,7 @@ describe("subscribeReplicant", () => {
 				const frames: ReplicantFrame[] = [];
 				yield* Stream.runForEach(stream, (frame) =>
 					Effect.sync(() => frames.push(frame)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* waitFor(() =>
 					expect(frames).toEqual([
@@ -526,7 +523,7 @@ describe("subscribeReplicant", () => {
 				const frames: ReplicantFrame[] = [];
 				yield* Stream.runForEach(stream, (frame) =>
 					Effect.sync(() => frames.push(frame)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* waitFor(() =>
 					expect(frames).toEqual([
@@ -555,7 +552,7 @@ describe("subscribeReplicant", () => {
 				const frames: ReplicantFrame[] = [];
 				yield* Stream.runForEach(stream, (frame) =>
 					Effect.sync(() => frames.push(frame)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* waitFor(() =>
 					expect(frames).toEqual([
@@ -799,7 +796,9 @@ describe("subscribeComputed", () => {
 					Effect.runSync(
 						Effect.gen(function* () {
 							const { value } = yield* engine.readReplicant("ns", "a");
-							const number = yield* Schema.decodeUnknown(Schema.Number)(value);
+							const number = yield* Schema.decodeUnknownEffect(Schema.Number)(
+								value,
+							);
 							return Math.floor(number / 10);
 						}).pipe(Effect.orDie, Effect.exit),
 					),
@@ -808,7 +807,7 @@ describe("subscribeComputed", () => {
 				const received: JsonValue[] = [];
 				yield* Stream.runForEach(stream, (value) =>
 					Effect.sync(() => received.push(value)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
 				yield* engine.commit("ns", "a", () => Effect.succeed(15));
@@ -845,7 +844,7 @@ describe("subscribeComputed", () => {
 				const received: JsonValue[] = [];
 				yield* Stream.runForEach(stream, (value) =>
 					Effect.sync(() => received.push(value)),
-				).pipe(Effect.fork);
+				).pipe(Effect.forkChild);
 
 				yield* waitFor(() => expect(received).toEqual([1]));
 				yield* engine.commit("ns", "a", () => Effect.succeed(2));

@@ -74,6 +74,6 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 	};
 });
 
-export type ComputedFieldEffect<Decoded> = Effect.Effect.Success<
+export type ComputedFieldEffect<Decoded> = Effect.Success<
 	ReturnType<typeof buildComputed<Decoded>>
 >;

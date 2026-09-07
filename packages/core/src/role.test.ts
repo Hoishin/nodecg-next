@@ -32,8 +32,8 @@ const machine = (...roles: RoleName[]) =>
 		displayName: "Bot",
 		roles: new Set(roles),
 	});
-const anonymous = AnonymousIdentitySchema.make();
-const server = ServerIdentitySchema.make();
+const anonymous = AnonymousIdentitySchema.make({});
+const server = ServerIdentitySchema.make({});
 
 const manifest = defineNamespace("match", {
 	roles: {

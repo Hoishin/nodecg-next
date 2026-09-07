@@ -1,5 +1,5 @@
-import { Cookies } from "@effect/platform";
 import { baseUrlCookieName } from "@nodecg-next/internal";
+import { Cookies } from "effect/unstable/http";
 
 const cookieBase = (): string | undefined =>
 	Cookies.parseHeader(document.cookie)[baseUrlCookieName];

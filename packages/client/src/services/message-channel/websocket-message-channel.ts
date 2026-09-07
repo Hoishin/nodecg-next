@@ -1,5 +1,5 @@
-import { Path, Socket } from "@effect/platform";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Path } from "effect";
+import { Socket } from "effect/unstable/socket";
 
 import { SocketMessageChannel } from "./socket-message-channel.ts";
 

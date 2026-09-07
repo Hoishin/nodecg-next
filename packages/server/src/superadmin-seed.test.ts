@@ -27,9 +27,7 @@ const registry = (providers: ReadonlyArray<AuthProvider>) =>
 	);
 
 const env = (vars: Record<string, string>) =>
-	Layer.setConfigProvider(
-		ConfigProvider.fromMap(new Map(Object.entries(vars))),
-	);
+	ConfigProvider.layer(ConfigProvider.fromEnvRecord(vars));
 
 const seeded = (
 	vars: Record<string, string>,
@@ -153,8 +151,10 @@ describe("seededRoleStore", () => {
 					]),
 				).pipe(Effect.exit);
 				assert(Exit.isFailure(exit));
-				expect(Cause.pretty(exit.cause)).toContain(
-					'Expected `${string}:${string}`, actual "rootonly"',
+				const pretty = Cause.pretty(exit.cause);
+				expect(pretty).toContain('["SUPERADMINS"]');
+				expect(pretty).toContain(
+					"Expected a string matching template literal parts",
 				);
 			}),
 		),

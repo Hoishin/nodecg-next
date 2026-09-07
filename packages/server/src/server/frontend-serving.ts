@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
-import { HttpApiBuilder } from "@effect/platform";
 import { Effect } from "effect";
+import { HttpRouter } from "effect/unstable/http";
 import sirv from "sirv";
 
 import { type WidenedImplementedNamespace } from "../implement-namespace.ts";
@@ -36,7 +36,7 @@ export const frontendRoutes = (options: {
 	namespaces: ReadonlyArray<WidenedImplementedNamespace>;
 	dev: boolean;
 }) =>
-	HttpApiBuilder.Router.use((router) =>
+	HttpRouter.use((router) =>
 		Effect.gen(function* () {
 			for (const { manifest, impl } of options.namespaces) {
 				const name = manifest.namespace;
@@ -51,10 +51,9 @@ export const frontendRoutes = (options: {
 						prefix: frontendPrefix(name),
 						spa,
 					});
-					yield* router.mountApp(
-						frontendPrefix(name),
-						nodeMiddlewareToHttpApp(devServer.middlewares),
-					);
+					yield* router
+						.prefixed(frontendPrefix(name))
+						.add("*", "/*", nodeMiddlewareToHttpApp(devServer.middlewares));
 				} else {
 					const apps = frontend.dir.map((dirPath) =>
 						sirvHttpApp(dirPath, false),
@@ -64,8 +63,9 @@ export const frontendRoutes = (options: {
 							...frontend.dir.map((dirPath) => sirvHttpApp(dirPath, true)),
 						);
 					}
-					yield* router.mountApp(
-						frontendPrefix(name),
+					yield* router.prefixed(frontendPrefix(name)).add(
+						"*",
+						"/*",
 						apps.reduce((acc, next) =>
 							acc.pipe(Effect.catchTag("RouteNotFound", () => next)),
 						),

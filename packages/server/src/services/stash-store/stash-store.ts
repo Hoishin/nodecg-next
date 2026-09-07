@@ -14,7 +14,7 @@ export interface StashStore {
 	readonly revoke: (id: string) => Effect.Effect<void>;
 }
 
-export class StashStoreService extends Context.Tag("StashStore")<
+export class StashStoreService extends Context.Service<
 	StashStoreService,
 	StashStore
->() {}
+>()("StashStore") {}

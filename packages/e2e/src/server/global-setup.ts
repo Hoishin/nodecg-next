@@ -13,14 +13,14 @@ const BackendSchema = Schema.Struct({
 export type Backend = typeof BackendSchema.Type;
 
 const decodeBackends = Schema.decodeUnknownSync(
-	Schema.parseJson(Schema.Array(BackendSchema)),
+	Schema.fromJsonString(Schema.Array(BackendSchema)),
 );
 
 const exited = (child: ChildProcess) =>
 	child.exitCode !== null || child.signalCode !== null;
 
 const onceExit = (child: ChildProcess): Effect.Effect<void> =>
-	Effect.async((resume) => {
+	Effect.callback((resume) => {
 		if (exited(child)) {
 			resume(Effect.void);
 			return;
@@ -31,7 +31,7 @@ const onceExit = (child: ChildProcess): Effect.Effect<void> =>
 	});
 
 const forkServer = (backend: Backend): Effect.Effect<ChildProcess, Error> =>
-	Effect.async((resume) => {
+	Effect.callback((resume) => {
 		const child = fork(backend.serverEntry, {
 			env: {
 				PORT: String(backend.port),
@@ -68,16 +68,14 @@ const stopChild = (child: ChildProcess): Effect.Effect<void> =>
 		}
 		child.kill();
 		yield* onceExit(child).pipe(
-			Effect.timeoutTo({
+			Effect.timeoutOrElse({
 				duration: Duration.seconds(2),
-				onSuccess: () => Effect.void,
-				onTimeout: () =>
+				orElse: () =>
 					Effect.gen(function* () {
 						child.kill("SIGKILL");
 						yield* onceExit(child);
 					}),
 			}),
-			Effect.flatten,
 		);
 	});
 

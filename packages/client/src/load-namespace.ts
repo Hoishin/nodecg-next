@@ -1,4 +1,3 @@
-import { FetchHttpClient, Path } from "@effect/platform";
 import type {
 	NamespaceManifest,
 	FieldManifest,
@@ -17,18 +16,21 @@ import {
 import { effect } from "@preact/signals-core";
 import {
 	Array,
+	Cause,
 	Deferred,
 	Effect,
 	Exit,
 	type HKT,
 	Layer,
-	Mailbox,
 	ManagedRuntime,
 	Match,
+	Path,
+	Queue,
 	Ref,
 	Scope,
 	Stream,
 } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import type { JsonValue, Promisable } from "type-fest";
 
 import { type FieldSource, fieldSource } from "./derive.ts";
@@ -66,7 +68,7 @@ const defaultResends = 9;
 const subscribeCell = Effect.fn(function* <Decoded>(
 	cell: ReplicantCell<Decoded> | ComputedCell<Decoded>,
 ) {
-	const mailbox = yield* Mailbox.make<Decoded, TerminalFieldFailure>();
+	const queue = yield* Queue.make<Decoded, TerminalFieldFailure>();
 	const ready = yield* Deferred.make<void, FieldFailure>();
 	yield* Effect.acquireRelease(
 		Effect.sync(() => {
@@ -75,12 +77,12 @@ const subscribeCell = Effect.fn(function* <Decoded>(
 				Match.value(cell.signal.value).pipe(
 					Match.tag("Ready", ({ value }) => {
 						settled = true;
-						mailbox.unsafeOffer(value.decoded);
-						Deferred.unsafeDone(ready, Effect.void);
+						Queue.offerUnsafe(queue, value.decoded);
+						Deferred.doneUnsafe(ready, Effect.void);
 					}),
 					Match.tag("Failure", ({ error }) => {
 						if (!settled) {
-							Deferred.unsafeDone(ready, Effect.fail(error));
+							Deferred.doneUnsafe(ready, Effect.fail(error));
 							return;
 						}
 						Match.value(error).pipe(
@@ -89,7 +91,7 @@ const subscribeCell = Effect.fn(function* <Decoded>(
 								"FieldNotFound",
 								"FieldPermissionDenied",
 								(terminal) => {
-									mailbox.unsafeDone(Exit.fail(terminal));
+									Queue.failCauseUnsafe(queue, Cause.fail(terminal));
 								},
 							),
 							Match.exhaustive,
@@ -104,14 +106,14 @@ const subscribeCell = Effect.fn(function* <Decoded>(
 		(dispose) => Effect.sync(dispose),
 	);
 	yield* Deferred.await(ready);
-	return Mailbox.toStream(mailbox);
+	return Stream.fromQueue(queue);
 });
 
 // Topic doesn't have to wait for first value
 const subscribeTopicCell = Effect.fn(function* <Decoded>(
 	cell: TopicCell<Decoded>,
 ) {
-	const mailbox = yield* Mailbox.make<Decoded, TerminalFieldFailure>();
+	const queue = yield* Queue.make<Decoded, TerminalFieldFailure>();
 	yield* Effect.acquireRelease(
 		Effect.sync(() => {
 			let initial = true;
@@ -119,7 +121,7 @@ const subscribeTopicCell = Effect.fn(function* <Decoded>(
 				Match.value(cell.signal.value).pipe(
 					Match.tag("Ready", ({ value }) => {
 						if (!initial) {
-							mailbox.unsafeOffer(value.decoded);
+							Queue.offerUnsafe(queue, value.decoded);
 						}
 					}),
 					Match.tag("Failure", ({ error }) => {
@@ -129,7 +131,7 @@ const subscribeTopicCell = Effect.fn(function* <Decoded>(
 								"FieldNotFound",
 								"FieldPermissionDenied",
 								(terminal) => {
-									mailbox.unsafeDone(Exit.fail(terminal));
+									Queue.failCauseUnsafe(queue, Cause.fail(terminal));
 								},
 							),
 							Match.exhaustive,
@@ -145,7 +147,7 @@ const subscribeTopicCell = Effect.fn(function* <Decoded>(
 		}),
 		(dispose) => Effect.sync(dispose),
 	);
-	return Mailbox.toStream(mailbox);
+	return Stream.fromQueue(queue);
 });
 
 const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
@@ -206,7 +208,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 				new FieldSetError({ namespace, name, cause: toError(error) }),
 		});
 		const encoded = yield* manifest.encode(next);
-		const patch = yield* diffSignedPatch(base, encoded).pipe(
+		const patch = yield* Effect.fromResult(diffSignedPatch(base, encoded)).pipe(
 			Effect.mapError(
 				(failure) =>
 					new Error(
@@ -215,7 +217,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 			),
 			Effect.orDie,
 		);
-		if (!Array.isNonEmptyReadonlyArray(patch)) {
+		if (!Array.isReadonlyArrayNonEmpty(patch)) {
 			return;
 		}
 		yield* transport.updateReplicant(namespace, name, patch);
@@ -256,7 +258,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	return { get, set, update, subscribe, [fieldSource]: cell.signal };
 });
 
-type ReplicantFieldEffect<Decoded> = Effect.Effect.Success<
+type ReplicantFieldEffect<Decoded> = Effect.Success<
 	ReturnType<typeof implementReplicant<Decoded>>
 >;
 export type ReplicantField<Decoded> = ApplyLambdaToObject<
@@ -298,7 +300,7 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 	return { get, subscribe, [fieldSource]: cell.signal };
 });
 
-type ComputedFieldEffect<Decoded> = Effect.Effect.Success<
+type ComputedFieldEffect<Decoded> = Effect.Success<
 	ReturnType<typeof implementComputed<Decoded>>
 >;
 export type ComputedField<Decoded> = ApplyLambdaToObject<
@@ -329,7 +331,7 @@ const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	return { publish, subscribe };
 });
 
-type TopicFieldEffect<Decoded> = Effect.Effect.Success<
+type TopicFieldEffect<Decoded> = Effect.Success<
 	ReturnType<typeof implementTopic<Decoded>>
 >;
 export type TopicField<Decoded> = ApplyLambdaToObject<
@@ -356,7 +358,7 @@ const implementRpc = Effect.fn("implementRpc")(function* <Request, Response>(
 	return { call };
 });
 
-type RpcFieldEffect<Request, Response> = Effect.Effect.Success<
+type RpcFieldEffect<Request, Response> = Effect.Success<
 	ReturnType<typeof implementRpc<Request, Response>>
 >;
 export type RpcField<Request, Response> = ApplyLambdaToObject<
@@ -426,7 +428,7 @@ const buildNamespace = <
 >(
 	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
 ) =>
-	Layer.build(FieldCellsService.Default).pipe(
+	Layer.build(FieldCellsService.layer).pipe(
 		Effect.flatMap((context) =>
 			Effect.gen(function* () {
 				const fields = yield* mapEffectValues<
@@ -537,7 +539,6 @@ export async function loadNamespace<
 			transportLayer,
 			messageChannelLayer,
 			FetchHttpClient.layer,
-			Layer.scope,
 		).pipe(Layer.provide(Path.layer)),
 	);
 
@@ -546,7 +547,9 @@ export async function loadNamespace<
 		computedFields: effectComputedFields,
 		topicFields: effectTopicFields,
 		rpcFields: effectRpcFields,
-	} = await runtime.runPromise(buildNamespace(manifest));
+	} = await runtime.runPromise(
+		buildNamespace(manifest).pipe(Scope.provide(runtime.scope)),
+	);
 
 	const subscribeEffectToPromise =
 		<Decoded, E>(
@@ -565,13 +568,13 @@ export async function loadNamespace<
 				Effect.gen(function* () {
 					const scope = yield* Scope.make();
 					const stream = yield* subscribe().pipe(
-						Scope.extend(scope),
+						Scope.provide(scope),
 						Effect.onError(() => Scope.close(scope, Exit.void)),
 					);
 					yield* stream.pipe(
 						Stream.runForEach((value) =>
 							Effect.tryPromise(async () => callback(value)).pipe(
-								Effect.catchAll((error) =>
+								Effect.catch((error) =>
 									Effect.logError(
 										`Subscription handler for "${manifest.namespace}/${name}" threw`,
 										error,
@@ -579,10 +582,11 @@ export async function loadNamespace<
 								),
 							),
 						),
-						Effect.catchTag("FieldNotFound", "FieldPermissionDenied", (error) =>
-							Effect.sync(() => onError?.(error)),
+						Effect.catchTag(
+							["FieldNotFound", "FieldPermissionDenied"],
+							(error) => Effect.sync(() => onError?.(error)),
 						),
-						Effect.forkIn(scope),
+						Effect.forkIn(scope, { startImmediately: true }),
 					);
 					return () => runtime.runPromise(Scope.close(scope, Exit.void));
 				}),

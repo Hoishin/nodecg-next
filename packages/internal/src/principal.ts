@@ -3,17 +3,20 @@ import { Brand, Schema } from "effect";
 export type Principal = string & Brand.Brand<"Principal">;
 export const Principal = Brand.nominal<Principal>();
 
-export const DeclarablePrincipalNameSchema = Schema.Literal(
+export const DeclarablePrincipalNameSchema = Schema.Literals([
 	"everyone",
 	"client",
-);
+]);
 
-export const UndeniablePrincipalNameSchema = Schema.Literal("server", "admin");
+export const UndeniablePrincipalNameSchema = Schema.Literals([
+	"server",
+	"admin",
+]);
 
-export const PrincipalNameSchema = Schema.Literal(
+export const PrincipalNameSchema = Schema.Literals([
 	...DeclarablePrincipalNameSchema.literals,
 	...UndeniablePrincipalNameSchema.literals,
-);
+]);
 
 export const PRINCIPAL: Record<typeof PrincipalNameSchema.Type, Principal> = {
 	// Unauthenticated users and users with no role

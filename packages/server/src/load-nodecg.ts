@@ -1,4 +1,3 @@
-import { HttpApiBuilder } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
 import { declaredRoleNames } from "@nodecg-next/core";
 import type { RoleName } from "@nodecg-next/internal";
@@ -15,10 +14,10 @@ import {
 	Layer,
 	Logger,
 	ManagedRuntime,
-	Runtime,
 	Schema,
-	type Scope,
+	Scope,
 } from "effect";
+import { HttpRouter } from "effect/unstable/http";
 
 import {
 	type AuthProvider,
@@ -181,13 +180,13 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 	}
 
 	return yield* Effect.gen(function* () {
-		const runtime = yield* Effect.runtime<
+		const context = yield* Effect.context<
 			TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
 		>();
 		const engine = yield* DerivationEngineService;
 		const useCross = <S extends BaseNamespaceShape>(
 			implemented: ImplementedNamespace<S>,
-		) => Runtime.runSync(runtime, makeUseCross(implemented));
+		) => Effect.runSyncWith(context)(makeUseCross(implemented));
 
 		const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 			Target,
@@ -221,7 +220,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 									Effect.tryPromise(async () => {
 										await cleanup();
 									}).pipe(
-										Effect.catchAll((error) =>
+										Effect.catch((error) =>
 											Effect.logError(
 												`onLoad cleanup for namespace "${implemented.manifest.namespace}" threw`,
 												error,
@@ -283,17 +282,17 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			const httpServer = yield* makeNodeHttpServer({
 				onReady: options.onReady,
 			});
-			const serveUnderBasePath = yield* basePathMiddleware;
-			const ServerLive = HttpApiBuilder.serve(serveUnderBasePath).pipe(
-				Layer.provide(websocketRoute),
-				Layer.provide(
-					frontendRoutes({
-						namespaces: Object.values(widenedNamespaces),
-						dev: options.dev ?? false,
-					}),
-				),
-				Layer.provide(RootApiLive),
-				Layer.provide(FieldRegistryService.Default(registered)),
+			const AppLive = Layer.mergeAll(
+				RootApiLive,
+				websocketRoute,
+				frontendRoutes({
+					namespaces: Object.values(widenedNamespaces),
+					dev: options.dev ?? false,
+				}),
+				HttpRouter.middleware(yield* basePathMiddleware, { global: true }),
+			);
+			const ServerLive = HttpRouter.serve(AppLive).pipe(
+				Layer.provide(FieldRegistryService.layer(registered)),
 				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
 				Layer.provide(HumanAuthenticationMiddlewareLive),
 				Layer.provide(MachineAuthenticationMiddlewareLive),
@@ -321,7 +320,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		return { namespaces, start };
 	}).pipe(
 		Effect.provideService(LoadedNamespacesService, loaded),
-		Effect.provide(BuiltNamespaceRegistry.Default),
+		Effect.provide(BuiltNamespaceRegistry.layer),
 	);
 });
 
@@ -337,12 +336,12 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 ): Promise<LoadedNodeCG<Shapes>> => {
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
-			DerivationEngineService.Default.pipe(
+			DerivationEngineService.layer.pipe(
 				Layer.provide(replicantStorage(options.storage)),
 			),
 			InMemoryTopicBroker,
-			Layer.scope,
-			Logger.pretty,
+			Layer.effect(Scope.Scope, Effect.scope),
+			Logger.layer([Logger.consolePretty()]),
 		),
 	);
 	return runtime
@@ -350,15 +349,20 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 		.then(({ namespaces, start }) => ({
 			namespaces,
 			start: () =>
-				NodeRuntime.runMain(Effect.provide(start, runtime), {
-					teardown: (exit, onExit) =>
-						void runtime
-							.dispose()
-							.finally(() =>
-								onExit(
-									Exit.isFailure(exit) && !Exit.isInterrupted(exit) ? 1 : 0,
+				NodeRuntime.runMain(
+					Effect.flatMap(runtime.contextEffect, (context) =>
+						Effect.provide(start, context),
+					),
+					{
+						teardown: (exit, onExit) =>
+							void runtime
+								.dispose()
+								.finally(() =>
+									onExit(
+										Exit.isFailure(exit) && !Exit.hasInterrupts(exit) ? 1 : 0,
+									),
 								),
-							),
-				}),
+					},
+				),
 		}));
 };

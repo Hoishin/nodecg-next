@@ -19,33 +19,33 @@ import { fieldInternal } from "./field-internal-key.ts";
 
 const serverIdentity = Layer.succeed(
 	CurrentIdentity,
-	ServerIdentitySchema.make(),
+	ServerIdentitySchema.make({}),
 );
 const anonymousIdentity = Layer.succeed(
 	CurrentIdentity,
-	AnonymousIdentitySchema.make(),
+	AnonymousIdentitySchema.make({}),
 );
 
 const testGraph = makeTestEffect(
 	Layer.merge(
-		DerivationEngineService.Default.pipe(
-			Layer.provide(InMemoryReplicantStorage),
-		),
+		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
 		serverIdentity,
 	),
 );
 
 const manifest = defineNamespace("ns", {
 	replicant: {
-		count: { schema: Schema.NumberFromString },
+		count: { schema: Schema.FiniteFromString },
 	},
 	computed: {
-		doubled: { schema: Schema.NumberFromString },
+		doubled: { schema: Schema.FiniteFromString },
 		open: {
-			schema: Schema.NumberFromString,
+			schema: Schema.FiniteFromString,
 			permission: { read: { everyone: "allow" } },
 		},
-		positive: { schema: Schema.NumberFromString.pipe(Schema.positive()) },
+		positive: {
+			schema: Schema.FiniteFromString.check(Schema.isGreaterThan(0)),
+		},
 	},
 });
 
@@ -196,7 +196,7 @@ describe("subscribe", () => {
 							Effect.sync(() => received.push(value)),
 						),
 					),
-					Effect.fork,
+					Effect.forkChild,
 				);
 
 				yield* waitFor(() => expect(received).toEqual([6]));
@@ -223,7 +223,7 @@ describe("subscribe", () => {
 							Effect.sync(() => received.push(value)),
 						),
 					),
-					Effect.fork,
+					Effect.forkChild,
 				);
 
 				yield* waitFor(() => expect(received).toEqual([6]));

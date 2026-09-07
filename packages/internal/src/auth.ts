@@ -1,9 +1,9 @@
+import { Context, Schema } from "effect";
 import {
 	HttpApiError,
 	HttpApiMiddleware,
 	HttpApiSecurity,
-} from "@effect/platform";
-import { Context, Schema } from "effect";
+} from "effect/unstable/httpapi";
 
 import { RoleNameSchema } from "./role.ts";
 
@@ -32,18 +32,18 @@ export type MachineIdentity = typeof MachineIdentitySchema.Type;
 export const ServerIdentitySchema = Schema.TaggedStruct("server", {});
 export type ServerIdentity = typeof ServerIdentitySchema.Type;
 
-export const IdentitySchema = Schema.Union(
+export const IdentitySchema = Schema.Union([
 	AnonymousIdentitySchema,
 	HumanIdentitySchema,
 	MachineIdentitySchema,
 	ServerIdentitySchema,
-);
+]);
 export type Identity = typeof IdentitySchema.Type;
 
-export class CurrentIdentity extends Context.Tag("CurrentIdentity")<
+export class CurrentIdentity extends Context.Service<
 	CurrentIdentity,
 	Identity
->() {}
+>()("CurrentIdentity") {}
 
 export const sessionCookieName = "nodecg.sid";
 
@@ -52,20 +52,18 @@ export const sessionCookieSecurity = HttpApiSecurity.apiKey({
 	in: "cookie",
 });
 
-export class HumanAuthenticationMiddleware extends HttpApiMiddleware.Tag<HumanAuthenticationMiddleware>()(
-	"Authentication",
-	{
-		provides: CurrentIdentity,
-		failure: HttpApiError.Unauthorized,
-		security: { cookie: sessionCookieSecurity },
-	},
-) {}
+export class HumanAuthenticationMiddleware extends HttpApiMiddleware.Service<
+	HumanAuthenticationMiddleware,
+	{ provides: CurrentIdentity }
+>()("Authentication", {
+	error: HttpApiError.Unauthorized,
+	security: { cookie: sessionCookieSecurity },
+}) {}
 
-export class MachineAuthenticationMiddleware extends HttpApiMiddleware.Tag<MachineAuthenticationMiddleware>()(
-	"MachineAuthentication",
-	{
-		provides: CurrentIdentity,
-		failure: HttpApiError.Unauthorized,
-		security: { bearer: HttpApiSecurity.bearer },
-	},
-) {}
+export class MachineAuthenticationMiddleware extends HttpApiMiddleware.Service<
+	MachineAuthenticationMiddleware,
+	{ provides: CurrentIdentity }
+>()("MachineAuthentication", {
+	error: HttpApiError.Unauthorized,
+	security: { bearer: HttpApiSecurity.bearer },
+}) {}

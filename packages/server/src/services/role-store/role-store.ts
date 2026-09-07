@@ -32,7 +32,7 @@ export interface RoleStore {
 	) => Effect.Effect<ReadonlySet<RoleName>>;
 }
 
-export class RoleStoreService extends Context.Tag("RoleStore")<
+export class RoleStoreService extends Context.Service<
 	RoleStoreService,
 	RoleStore
->() {}
+>()("RoleStore") {}

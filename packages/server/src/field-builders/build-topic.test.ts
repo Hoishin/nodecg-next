@@ -5,7 +5,7 @@ import {
 	ServerIdentitySchema,
 } from "@nodecg-next/internal";
 import { makeTestEffect } from "@nodecg-next/internal/test-utils";
-import { Chunk, Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { createBrokerStub } from "../services/topic-broker/topic-broker.stub.ts";
@@ -16,10 +16,10 @@ import {
 import { buildTopic } from "./build-topic.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
-const server = ServerIdentitySchema.make();
+const server = ServerIdentitySchema.make({});
 const anonymous = Layer.succeed(
 	CurrentIdentity,
-	AnonymousIdentitySchema.make(),
+	AnonymousIdentitySchema.make({}),
 );
 const identity = Layer.succeed(CurrentIdentity, server);
 
@@ -33,13 +33,13 @@ const testStubbed = makeTestEffect(
 const manifest = defineNamespace("ns", {
 	topic: {
 		open: {
-			schema: Schema.NumberFromString,
+			schema: Schema.FiniteFromString,
 			permission: {
 				read: { everyone: "allow" },
 				write: { everyone: "allow" },
 			},
 		},
-		locked: { schema: Schema.NumberFromString },
+		locked: { schema: Schema.FiniteFromString },
 	},
 });
 
@@ -85,7 +85,7 @@ describe("subscribe", () => {
 				const field = yield* buildTopic("ns", "open", manifest.topic.open);
 				const stream = yield* field.subscribe();
 				const events = yield* stream.pipe(Stream.runCollect);
-				expect(Chunk.toArray(events)).toEqual([7]);
+				expect(events).toEqual([7]);
 			}),
 		),
 	);
@@ -106,7 +106,7 @@ describe("subscribe", () => {
 				const field = yield* buildTopic("ns", "open", manifest.topic.open);
 				const stream = yield* field[fieldInternal].subscribeEncoded();
 				const events = yield* stream.pipe(Stream.runCollect);
-				expect(Chunk.toArray(events)).toEqual(["2"]);
+				expect(events).toEqual(["2"]);
 			}),
 		),
 	);

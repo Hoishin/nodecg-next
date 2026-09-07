@@ -12,24 +12,22 @@ import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
-const server = ServerIdentitySchema.make();
+const server = ServerIdentitySchema.make({});
 const identity = Layer.succeed(CurrentIdentity, server);
 
 const testInMemory = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
-		DerivationEngineService.Default.pipe(
-			Layer.provide(InMemoryReplicantStorage),
-		),
-		BuiltNamespaceRegistry.Default,
+		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		BuiltNamespaceRegistry.layer,
 		identity,
 	),
 );
 
 // Different encoded and decoded
 const countManifest = defineNamespace("ns", {
-	replicant: { count: { schema: Schema.NumberFromString } },
+	replicant: { count: { schema: Schema.FiniteFromString } },
 });
 
 describe("seeding", () => {
@@ -85,14 +83,14 @@ describe("seeding", () => {
 
 describe("adaptNamespace", () => {
 	const manifest = defineNamespace("ns", {
-		replicant: { count: { schema: Schema.NumberFromString } },
-		computed: { doubled: { schema: Schema.NumberFromString } },
+		replicant: { count: { schema: Schema.FiniteFromString } },
+		computed: { doubled: { schema: Schema.FiniteFromString } },
 		topic: { cheer: { schema: Schema.String } },
 		rpc: {
 			echo: {
 				schema: {
-					request: Schema.NumberFromString,
-					response: Schema.NumberFromString,
+					request: Schema.FiniteFromString,
+					response: Schema.FiniteFromString,
 				},
 				permission: { write: { everyone: "allow" } },
 			},

@@ -117,10 +117,10 @@ export const declaredRoleNames = (
 ): ReadonlySet<RoleName> => new Set(manifest[manifestRolesKey].roles.keys());
 
 interface FieldOption<
-	S extends Schema.Schema<any, any, never>,
+	S extends Schema.Codec<any>,
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema: [Schema.Schema.Encoded<S>] extends [JsonValue] ? S : never;
+	readonly schema: [S["Encoded"]] extends [JsonValue] ? S : never;
 	readonly permission?: P;
 }
 
@@ -128,11 +128,11 @@ interface FieldOptionLambda<
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 >
 	extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
+	readonly Target: Schema.Codec<any>;
 	readonly type: FieldOption<this["Target"], P>;
 }
 interface FieldManifestFromSchemaLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Schema<any, any, never>;
+	readonly Target: Schema.Codec<any>;
 	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
 }
 interface FieldManifestLambda extends HKT.TypeLambda {
@@ -140,8 +140,8 @@ interface FieldManifestLambda extends HKT.TypeLambda {
 }
 
 type RpcSchemaPair = {
-	readonly request: Schema.Schema<any, any, never>;
-	readonly response: Schema.Schema<any, any, never>;
+	readonly request: Schema.Codec<any>;
+	readonly response: Schema.Codec<any>;
 };
 
 interface RpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
@@ -166,12 +166,12 @@ interface RpcFieldManifestLambda extends HKT.TypeLambda {
 
 function makeCodec<D, E extends JsonValue>(
 	name: string,
-	schema: Schema.Schema<D, E>,
+	schema: Schema.Codec<D, E>,
 ) {
 	const decode = Effect.fn("decode")(function* (value: E) {
-		return yield* Schema.decode(schema)(value).pipe(
+		return yield* Schema.decodeEffect(schema)(value).pipe(
 			Effect.catchTag(
-				"ParseError",
+				"SchemaError",
 				(error) =>
 					new FieldDecodeError({ fieldName: name, value, cause: error }),
 			),
@@ -179,9 +179,9 @@ function makeCodec<D, E extends JsonValue>(
 	});
 	return {
 		encode: Effect.fn("encode")(function* (value: D) {
-			return yield* Schema.encode(schema)(value).pipe(
+			return yield* Schema.encodeEffect(schema)(value).pipe(
 				Effect.catchTag(
-					"ParseError",
+					"SchemaError",
 					(error) =>
 						new FieldEncodeError({ fieldName: name, value, cause: error }),
 				),
@@ -197,7 +197,7 @@ function makeCodec<D, E extends JsonValue>(
 
 function implementCodec<D, E extends JsonValue>(
 	name: string,
-	schema: Schema.Schema<D, E>,
+	schema: Schema.Codec<D, E>,
 ) {
 	return { name, ...makeCodec(name, schema) };
 }
@@ -402,9 +402,9 @@ const declareRoles = (
 
 export function defineNamespace<
 	const Roles extends Record<string, RoleArg> = {},
-	Replicant extends Record<string, Schema.Schema<any, any, never>> = {},
-	Computed extends Record<string, Schema.Schema<any, any, never>> = {},
-	Topic extends Record<string, Schema.Schema<any, any, never>> = {},
+	Replicant extends Record<string, Schema.Codec<any>> = {},
+	Computed extends Record<string, Schema.Codec<any>> = {},
+	Topic extends Record<string, Schema.Codec<any>> = {},
 	Rpc extends Record<
 		string,
 		RpcFieldOption<WriteOnlyPermissionArg<keyof Roles & string>>
@@ -521,7 +521,7 @@ export function defineNamespace<
 interface ExtendFieldOption<
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema?: Schema.Schema<any, any, never>;
+	readonly schema?: Schema.Codec<any>;
 	readonly permission?: P;
 }
 

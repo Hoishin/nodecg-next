@@ -9,16 +9,7 @@ import {
 } from "@nodecg-next/internal";
 import { computeTestHash } from "@nodecg-next/internal/occ";
 import { makeTestEffect } from "@nodecg-next/internal/test-utils";
-import {
-	Cause,
-	Chunk,
-	Effect,
-	Layer,
-	Option,
-	Runtime,
-	Schema,
-	Stream,
-} from "effect";
+import { Cause, Effect, Layer, Option, Result, Schema, Stream } from "effect";
 import { afterEach, assert, describe, expect, test } from "vitest";
 
 import { DerivationEngineService } from "../derivation-graph.ts";
@@ -30,9 +21,9 @@ import { fieldInternal } from "./field-internal-key.ts";
 
 const anonymous = Layer.succeed(
 	CurrentIdentity,
-	AnonymousIdentitySchema.make(),
+	AnonymousIdentitySchema.make({}),
 );
-const identity = Layer.succeed(CurrentIdentity, ServerIdentitySchema.make());
+const identity = Layer.succeed(CurrentIdentity, ServerIdentitySchema.make({}));
 
 const { stub: storage, reset } = createStorageStub();
 afterEach(reset);
@@ -42,7 +33,7 @@ const stubbedStorage = Layer.succeed(ReplicantStorageService, storage);
 const testStubbed = makeTestEffect(
 	Layer.mergeAll(
 		stubbedStorage,
-		DerivationEngineService.Default.pipe(Layer.provide(stubbedStorage)),
+		DerivationEngineService.layer.pipe(Layer.provide(stubbedStorage)),
 		identity,
 	),
 );
@@ -50,9 +41,7 @@ const testStubbed = makeTestEffect(
 const testInMemory = makeTestEffect(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
-		DerivationEngineService.Default.pipe(
-			Layer.provide(InMemoryReplicantStorage),
-		),
+		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
 		identity,
 	),
 );
@@ -61,10 +50,10 @@ const testInMemory = makeTestEffect(
 const manifest = defineNamespace("ns", {
 	roles: { scorer: { permission: ["replicant-read", "replicant-write"] } },
 	replicant: {
-		count: { schema: Schema.NumberFromString },
-		other: { schema: Schema.NumberFromString },
+		count: { schema: Schema.FiniteFromString },
+		other: { schema: Schema.FiniteFromString },
 		locked: {
-			schema: Schema.NumberFromString,
+			schema: Schema.FiniteFromString,
 			permission: { write: { deny: ["scorer"] } },
 		},
 	},
@@ -113,10 +102,10 @@ describe("get", () => {
 					Effect.succeed("not a number"),
 				);
 				const cause = yield* field.get().pipe(Effect.sandbox, Effect.flip);
-				const defect = Cause.dieOption(cause);
-				assert(Option.isSome(defect));
-				assert(typeof defect.value === "string");
-				expect(defect.value).toContain("Migration is not supported yet");
+				const defect = Cause.findDefect(cause);
+				assert(Result.isSuccess(defect));
+				assert(typeof defect.success === "string");
+				expect(defect.success).toContain("Migration is not supported yet");
 			}),
 		),
 	);
@@ -228,7 +217,7 @@ describe("update", () => {
 			Effect.gen(function* () {
 				const box = defineNamespace("ns", {
 					replicant: {
-						box: { schema: Schema.Struct({ n: Schema.NumberFromString }) },
+						box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
 					},
 				});
 				const engine = yield* DerivationEngineService;
@@ -250,7 +239,7 @@ describe("update", () => {
 		testStubbed(
 			Effect.gen(function* () {
 				const engine = yield* DerivationEngineService;
-				const runtime = yield* Effect.runtime<never>();
+				const context = yield* Effect.context<never>();
 				const field = yield* buildReplicant(
 					"ns",
 					"count",
@@ -261,8 +250,7 @@ describe("update", () => {
 				yield* field.update((v) => {
 					if (!raced) {
 						raced = true;
-						Runtime.runSync(
-							runtime,
+						Effect.runSyncWith(context)(
 							engine.commit("ns", "count", () => Effect.succeed("100")),
 						);
 					}
@@ -314,7 +302,7 @@ describe("subscribe", () => {
 				yield* field.set(7);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
-				expect(Chunk.toArray(events)).toEqual([0, 7]);
+				expect(events).toEqual([0, 7]);
 			}),
 		),
 	);
@@ -344,7 +332,7 @@ describe("subscribe", () => {
 				yield* count.set(3);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
-				expect(Chunk.toArray(events)).toEqual([0, 3]);
+				expect(events).toEqual([0, 3]);
 			}),
 		),
 	);
@@ -366,7 +354,7 @@ describe("subscribe", () => {
 				yield* field.set(42);
 
 				const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
-				expect(Chunk.toArray(events)).toEqual([
+				expect(events).toEqual([
 					{ value: "0", revision: 0, delta: Option.none() },
 					{ value: "42", revision: 1, delta: Option.none() },
 				]);
@@ -541,8 +529,8 @@ describe("commitPatch", () => {
 		replicant: {
 			doc: {
 				schema: Schema.Struct({
-					a: Schema.NumberFromString,
-					b: Schema.NumberFromString,
+					a: Schema.FiniteFromString,
+					b: Schema.FiniteFromString,
 				}),
 			},
 		},

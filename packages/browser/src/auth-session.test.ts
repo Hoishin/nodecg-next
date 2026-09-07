@@ -80,6 +80,6 @@ describe("logout", () => {
 		await session.logout();
 
 		expect(logout).toHaveBeenCalled();
-		expect(session.identity.get()).toEqual(AnonymousIdentitySchema.make());
+		expect(session.identity.get()).toEqual(AnonymousIdentitySchema.make({}));
 	});
 });

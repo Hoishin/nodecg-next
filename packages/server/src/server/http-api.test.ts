@@ -1,4 +1,3 @@
-import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
 	HumanAuthenticationMiddleware,
@@ -23,6 +22,7 @@ import {
 	Schema,
 	Stream,
 } from "effect";
+import { HttpRouter, HttpServer } from "effect/unstable/http";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -159,7 +159,8 @@ function registeredNamespace(
 
 const asIdentity = (identity: Identity) =>
 	Layer.succeed(HumanAuthenticationMiddleware, {
-		cookie: () => Effect.succeed(identity),
+		cookie: (httpEffect) =>
+			Effect.provideService(httpEffect, CurrentIdentity, identity),
 	});
 
 function webHandler(
@@ -170,19 +171,23 @@ function webHandler(
 		providers?: HashMap.HashMap<string, AuthProvider>;
 	},
 ) {
-	const { handler } = HttpApiBuilder.toWebHandler(
-		Layer.mergeAll(RootApiLive, HttpServer.layerContext).pipe(
+	const { handler } = HttpRouter.toWebHandler(
+		RootApiLive.pipe(
+			HttpRouter.provideRequest(
+				Layer.mergeAll(
+					FieldRegistryService.layer(namespaces),
+					InMemoryTopicBroker,
+				),
+			),
 			Layer.provide(middleware),
-			Layer.provide(FieldRegistryService.Default(namespaces)),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryMachineClientStore),
 			Layer.provide(InMemoryReplicantStorage),
-			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(
-				DerivationEngineService.Default.pipe(
+				DerivationEngineService.layer.pipe(
 					Layer.provide(InMemoryReplicantStorage),
 				),
 			),
@@ -193,6 +198,7 @@ function webHandler(
 				),
 			),
 			Layer.provide(environment),
+			Layer.provide(HttpServer.layerServices),
 		),
 	);
 	return handler;
@@ -291,10 +297,10 @@ describe("login and callback", () => {
 		return match[1];
 	};
 
-	const subPathEnv = Layer.setConfigProvider(
-		ConfigProvider.fromMap(
-			new Map([["NODECG_BASE_URL", "http://x/s/nodecg"]]),
-		).pipe(ConfigProvider.orElse(() => ConfigProvider.fromEnv())),
+	const subPathEnv = ConfigProvider.layer(
+		ConfigProvider.fromEnvRecord({
+			NODECG_BASE_URL: "http://x/s/nodecg",
+		}).pipe(ConfigProvider.orElse(ConfigProvider.fromEnv())),
 	);
 
 	test("providers lists each registered provider with its login URL", async () => {
@@ -565,10 +571,10 @@ describe("claim superadmin", () => {
 		}),
 	);
 
-	const withClaimToken = Layer.setConfigProvider(
-		ConfigProvider.fromMap(
-			new Map([["SUPERADMIN_CLAIM_TOKEN", "super-secret-claim-token"]]),
-		),
+	const withClaimToken = ConfigProvider.layer(
+		ConfigProvider.fromEnvRecord({
+			SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+		}),
 	);
 
 	test("grants superadmin to the logged-in human presenting the token", async () => {
@@ -626,9 +632,11 @@ describe("claim superadmin", () => {
 
 	test("an anonymous flood does not consume the claim budget", async () => {
 		const bySid = Layer.succeed(HumanAuthenticationMiddleware, {
-			cookie: (sid: Redacted.Redacted<string>) =>
-				Effect.succeed(
-					Redacted.value(sid) === "founder"
+			cookie: (httpEffect, { credential }) =>
+				Effect.provideService(
+					httpEffect,
+					CurrentIdentity,
+					Redacted.value(credential) === "founder"
 						? HumanIdentitySchema.make({
 								account: {
 									issuer: "dev",
@@ -637,7 +645,7 @@ describe("claim superadmin", () => {
 								},
 								roles: new Set(),
 							})
-						: AnonymousIdentitySchema.make(),
+						: AnonymousIdentitySchema.make({}),
 				),
 		});
 		const handler = webHandler([], bySid, withClaimToken);
@@ -673,9 +681,12 @@ describe("roles export/import", () => {
 
 	const identityBySubject = (identities: Record<string, Identity>) =>
 		Layer.succeed(HumanAuthenticationMiddleware, {
-			cookie: (sid: Redacted.Redacted<string>) =>
-				Effect.succeed(
-					identities[Redacted.value(sid)] ?? AnonymousIdentitySchema.make(),
+			cookie: (httpEffect, { credential }) =>
+				Effect.provideService(
+					httpEffect,
+					CurrentIdentity,
+					identities[Redacted.value(credential)] ??
+						AnonymousIdentitySchema.make({}),
 				),
 		});
 
@@ -685,10 +696,10 @@ describe("roles export/import", () => {
 		boss: adminIdentity,
 	});
 
-	const withClaimToken = Layer.setConfigProvider(
-		ConfigProvider.fromMap(
-			new Map([["SUPERADMIN_CLAIM_TOKEN", "super-secret-claim-token"]]),
-		),
+	const withClaimToken = ConfigProvider.layer(
+		ConfigProvider.fromEnvRecord({
+			SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+		}),
 	);
 
 	const claimRequest = () =>

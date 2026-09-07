@@ -1,16 +1,15 @@
 // Schema contracts for the replicant patch wire between client and server
 // based on RFC 6901 and RFC 6902, extended with a non-standard test-hash precondition
 
-import { HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
 import { JsonValueSchema } from "../utils/json-value-schema.ts";
 
 // RFC 6901: JSON path pointers
-export const Pointer = Schema.Union(
+export const Pointer = Schema.Union([
 	Schema.Literal(""),
-	Schema.TemplateLiteral("/", Schema.String),
-);
+	Schema.TemplateLiteral(["/", Schema.String]),
+]);
 export type Pointer = typeof Pointer.Type;
 
 // RFC 6902: JSON patch ops
@@ -41,7 +40,7 @@ export const MoveOp = Schema.Struct({
 });
 export type MoveOp = typeof MoveOp.Type;
 
-export const ChangeOp = Schema.Union(AddOp, RemoveOp, ReplaceOp, MoveOp);
+export const ChangeOp = Schema.Union([AddOp, RemoveOp, ReplaceOp, MoveOp]);
 export type ChangeOp = typeof ChangeOp.Type;
 
 // Non-standard precondition
@@ -59,7 +58,7 @@ export const TestOp = Schema.Struct({
 });
 export type TestOp = typeof TestOp.Type;
 
-export const PatchOp = Schema.Union(ChangeOp, TestHashOp, TestOp);
+export const PatchOp = Schema.Union([ChangeOp, TestHashOp, TestOp]);
 export type PatchOp = typeof PatchOp.Type;
 
 // Patch is a collection of ops
@@ -69,7 +68,6 @@ export type Patch = typeof Patch.Type;
 export class PatchNotApplicable extends Schema.TaggedError<PatchNotApplicable>()(
 	"PatchNotApplicable",
 	{ path: Pointer, reason: Schema.String },
-	HttpApiSchema.annotations({ status: 422 }),
 ) {
 	override readonly message = `Patch operation at "${this.path}" cannot apply: ${this.reason}`;
 }
@@ -77,7 +75,6 @@ export class PatchNotApplicable extends Schema.TaggedError<PatchNotApplicable>()
 export class RevisionConflict extends Schema.TaggedError<RevisionConflict>()(
 	"RevisionConflict",
 	{ value: JsonValueSchema, revision: Schema.Number, reason: Schema.String },
-	HttpApiSchema.annotations({ status: 409 }),
 ) {
 	override readonly message = `Patch conflicts with a newer revision ${this.revision}: ${this.reason}`;
 }

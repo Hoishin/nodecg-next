@@ -1,6 +1,6 @@
-import { FetchHttpClient } from "@effect/platform";
 import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { FieldTransportService } from "../field-transport/field-transport.ts";
@@ -10,6 +10,12 @@ const HttpFieldTransport = httpFieldTransport();
 
 const mockFetch = (respond: () => Response) =>
 	vi.fn<typeof globalThis.fetch>(async () => respond());
+
+const errorResponse = (tag: string, status: number) =>
+	new Response(JSON.stringify({ _tag: tag }), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
 
 const requestOf = (fetch: ReturnType<typeof mockFetch>) => {
 	const call = fetch.mock.calls[0];
@@ -50,7 +56,7 @@ describe("get", () => {
 				const error = yield* transport.getReplicant("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
-						mockFetch(() => new Response(null, { status: 404 })),
+						mockFetch(() => errorResponse("NotFound", 404)),
 					),
 					Effect.flip,
 				);
@@ -69,7 +75,7 @@ describe("get", () => {
 				const error = yield* transport.getReplicant("root", "count").pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
-						mockFetch(() => new Response(null, { status: 403 })),
+						mockFetch(() => errorResponse("Forbidden", 403)),
 					),
 					Effect.flip,
 				);
@@ -120,7 +126,7 @@ describe("update", () => {
 					.pipe(
 						Effect.provideService(
 							FetchHttpClient.Fetch,
-							mockFetch(() => new Response(null, { status: 403 })),
+							mockFetch(() => errorResponse("Forbidden", 403)),
 						),
 						Effect.flip,
 					);
@@ -201,7 +207,7 @@ describe("publishTopic", () => {
 				const error = yield* transport.publishTopic("root", "chat", 7).pipe(
 					Effect.provideService(
 						FetchHttpClient.Fetch,
-						mockFetch(() => new Response(null, { status: 403 })),
+						mockFetch(() => errorResponse("Forbidden", 403)),
 					),
 					Effect.flip,
 				);

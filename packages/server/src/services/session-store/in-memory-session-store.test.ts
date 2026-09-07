@@ -1,13 +1,7 @@
 import { HumanAccountSchema } from "@nodecg-next/internal";
 import { testEffect } from "@nodecg-next/internal/test-utils";
-import {
-	ConfigProvider,
-	Effect,
-	Layer,
-	Option,
-	TestClock,
-	TestContext,
-} from "effect";
+import { ConfigProvider, Effect, Layer, Option } from "effect";
+import { TestClock } from "effect/testing";
 import { assert, describe, expect, test } from "vitest";
 
 import { InMemorySessionStore } from "./in-memory-session-store.ts";
@@ -19,13 +13,13 @@ const alice = HumanAccountSchema.make({
 	displayName: "Alice",
 });
 
-const config = Layer.setConfigProvider(
-	ConfigProvider.fromJson({ SESSION_TTL: "1 hour" }),
+const config = ConfigProvider.layer(
+	ConfigProvider.fromEnvRecord({ SESSION_TTL: "1 hour" }),
 );
 
 const layer = InMemorySessionStore.pipe(
 	Layer.provide(config),
-	Layer.merge(TestContext.TestContext),
+	Layer.merge(TestClock.layer()),
 );
 
 describe("create / lookup", () => {

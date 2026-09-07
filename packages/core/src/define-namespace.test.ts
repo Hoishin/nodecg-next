@@ -25,7 +25,7 @@ describe("defineNamespace", () => {
 								}),
 							},
 							count: {
-								schema: Schema.BigInt,
+								schema: Schema.BigIntFromString,
 							},
 						},
 					});
@@ -116,7 +116,7 @@ describe("defineNamespace", () => {
 				},
 			},
 			computed: {
-				winning: { schema: Schema.NullOr(Schema.Literal("l", "r")) },
+				winning: { schema: Schema.NullOr(Schema.Literals(["l", "r"])) },
 			},
 		});
 
@@ -447,9 +447,18 @@ describe("defineNamespace", () => {
 
 		test("decoded type flows into the field codec per group", () => {
 			const manifest = defineNamespace("match", {
-				replicant: { label: { schema: Schema.NonEmptyTrimmedString } },
+				replicant: {
+					label: {
+						schema: Schema.String.check(
+							Schema.isNonEmpty(),
+							Schema.isTrimmed(),
+						),
+					},
+				},
 				computed: {
-					winning: { schema: Schema.NullOr(Schema.Literal("left", "right")) },
+					winning: {
+						schema: Schema.NullOr(Schema.Literals(["left", "right"])),
+					},
 				},
 				topic: { start: { schema: Schema.Boolean } },
 				rpc: {
@@ -995,7 +1004,14 @@ describe("extendNamespace", () => {
 	describe("types", () => {
 		test("merges added field types into the manifest", () => {
 			const extended = extendNamespace(base, {
-				replicant: { pinned: { schema: Schema.NonEmptyTrimmedString } },
+				replicant: {
+					pinned: {
+						schema: Schema.String.check(
+							Schema.isNonEmpty(),
+							Schema.isTrimmed(),
+						),
+					},
+				},
 				computed: { ratio: { schema: Schema.Number } },
 			});
 

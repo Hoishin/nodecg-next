@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import type { JsonValue } from "type-fest";
 import { assert, describe, expect, test } from "vitest";
 
@@ -7,11 +7,11 @@ import { computeTestHash } from "./hash.ts";
 import type { Patch } from "./schema.ts";
 
 const applied = (value: JsonValue, patch: Patch) => {
-	return applyPatch(value, patch).pipe(Either.getOrThrow);
+	return applyPatch(value, patch).pipe(Result.getOrThrow);
 };
 
 const failure = (value: JsonValue, patch: Patch) => {
-	return applyPatch(value, patch).pipe(Either.flip, Either.getOrThrow);
+	return applyPatch(value, patch).pipe(Result.flip, Result.getOrThrow);
 };
 
 describe("applyPatch", () => {
@@ -328,7 +328,7 @@ describe("applyPatch", () => {
 			const result = applyPatch(input, [
 				{ op: "replace", path: "/a/b", value: 2 },
 			]);
-			assert(Either.isRight(result));
+			assert(Result.isSuccess(result));
 			expect(input).toEqual({ a: { b: 1 } });
 		});
 
@@ -338,7 +338,7 @@ describe("applyPatch", () => {
 				{ op: "replace", path: "/a", value: 9 },
 				{ op: "replace", path: "/missing", value: 1 },
 			]);
-			assert(Either.isLeft(result));
+			assert(Result.isFailure(result));
 			expect(input).toEqual({ a: 1, b: 1 });
 		});
 
@@ -347,9 +347,9 @@ describe("applyPatch", () => {
 			const result = applyPatch({ v: 0 }, [
 				{ op: "replace", path: "/v", value },
 			]);
-			assert(Either.isRight(result));
+			assert(Result.isSuccess(result));
 			value.nested = 2;
-			expect(result.right).toEqual({ v: { nested: 1 } });
+			expect(result.success).toEqual({ v: { nested: 1 } });
 		});
 
 		test("prototype members are not addressable", () => {
