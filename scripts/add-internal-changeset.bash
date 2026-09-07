@@ -8,5 +8,5 @@ pnpm --filter @nodecg-next/internal pack --pack-destination "$RUNNER_TEMP/intern
 local_shasum="$(sha1sum "$RUNNER_TEMP"/internal/*.tgz | cut -d' ' -f1)"
 
 if [ "$local_shasum" != "$published" ]; then
-	printf -- '---\n"@nodecg-next/internal": patch\n---\n' > .changeset/internal-auto.md
+	printf -- '---\n"@nodecg-next/internal": patch\n---\n\nInternal updates\n' > .changeset/internal-auto.md
 fi
