@@ -25,4 +25,4 @@ if [[ "$tag" == *-* ]]; then
 	prerelease="--prerelease"
 fi
 
-gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file "$notes" $prerelease
+gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$tag" --notes-file "$notes" $prerelease
