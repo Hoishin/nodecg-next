@@ -10,7 +10,7 @@ import {
 	type ReplicantFieldIdentifier,
 	ReplicantSnapshotMessage,
 	ServerMessage,
-	sessionCookieName,
+	sessionCookieSecurity,
 	SubscribeRejectedMessage,
 	type TopicFieldIdentifier,
 } from "@nodecg-next/internal";
@@ -21,8 +21,8 @@ import {
 	HashMap,
 	Match,
 	Option,
+	Redacted,
 	Schema,
-	SchemaGetter,
 	Stream,
 	SynchronizedRef,
 } from "effect";
@@ -31,6 +31,7 @@ import {
 	HttpServerRequest,
 	HttpServerResponse,
 } from "effect/unstable/http";
+import { HttpApiBuilder, HttpApiSecurity } from "effect/unstable/httpapi";
 import type { Socket } from "effect/unstable/socket";
 
 import { resolveMachineIdentity } from "../auth/resolve-machine-identity.ts";
@@ -65,19 +66,6 @@ const decodeClientMessage = Schema.decodeEffect(
 const encodeServerMessage = Schema.encodeEffect(
 	Schema.fromJsonString(ServerMessage),
 );
-const BearerTokenSchema = Schema.String.check(
-	Schema.isNonEmpty(),
-	Schema.isTrimmed(),
-);
-const decodeBearerToken = Schema.decodeUnknownOption(
-	Schema.TemplateLiteralParser(["Bearer ", BearerTokenSchema]).pipe(
-		Schema.decodeTo(BearerTokenSchema, {
-			decode: SchemaGetter.transform(([, token]) => token),
-			encode: SchemaGetter.transform((token: string) => ["Bearer ", token]),
-		}),
-	),
-);
-
 type SubscribeFailure =
 	| FieldPermissionDenied
 	| ComputedComputeError
@@ -342,11 +330,12 @@ export const websocketRoute = HttpRouter.use((router) =>
 			"GET",
 			"/ws/internal",
 			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest;
-				const cookie = Option.fromNullishOr(request.cookies[sessionCookieName]);
-				const resolved = Option.isSome(cookie)
-					? yield* resolveSession(cookie.value)
-					: Option.none();
+				const credential = yield* HttpApiBuilder.securityDecode(
+					sessionCookieSecurity,
+				);
+				const value = Redacted.value(credential);
+				const resolved =
+					value.length > 0 ? yield* resolveSession(value) : Option.none();
 				if (Option.isNone(resolved) && requireAuth) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
@@ -359,13 +348,12 @@ export const websocketRoute = HttpRouter.use((router) =>
 			"GET",
 			"/ws/v0",
 			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest;
-				const bearer = Option.fromNullishOr(
-					request.headers["authorization"],
-				).pipe(Option.flatMap(decodeBearerToken));
-				const resolved = Option.isSome(bearer)
-					? yield* resolveMachine(bearer.value)
-					: Option.none();
+				const credential = yield* HttpApiBuilder.securityDecode(
+					HttpApiSecurity.bearer,
+				);
+				const value = Redacted.value(credential);
+				const resolved =
+					value.length > 0 ? yield* resolveMachine(value) : Option.none();
 				if (Option.isNone(resolved)) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
