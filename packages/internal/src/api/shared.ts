@@ -7,14 +7,13 @@ import {
 } from "effect/unstable/httpapi";
 
 import { Patch, PatchNotApplicable, RevisionConflict } from "../occ/schema.ts";
-import { JsonValueSchema } from "../utils/json-value-schema.ts";
 
 const replicantGet = HttpApiEndpoint.get(
 	"replicantGet",
 	"/namespaces/:namespace/replicant/:fieldName",
 	{
 		params: { namespace: Schema.String, fieldName: Schema.String },
-		success: JsonValueSchema,
+		success: Schema.Json,
 		error: [
 			HttpApiError.NotFound,
 			HttpApiError.Forbidden,
@@ -45,7 +44,7 @@ const computedGet = HttpApiEndpoint.get(
 	"/namespaces/:namespace/computed/:fieldName",
 	{
 		params: { namespace: Schema.String, fieldName: Schema.String },
-		success: JsonValueSchema,
+		success: Schema.Json,
 		error: [
 			HttpApiError.NotFound,
 			HttpApiError.Forbidden,
@@ -59,7 +58,7 @@ const topicPublish = HttpApiEndpoint.post(
 	"/namespaces/:namespace/topic/:fieldName",
 	{
 		params: { namespace: Schema.String, fieldName: Schema.String },
-		payload: JsonValueSchema,
+		payload: Schema.Json,
 		error: [
 			HttpApiError.NotFound,
 			HttpApiError.Forbidden,
@@ -78,8 +77,8 @@ const rpcCall = HttpApiEndpoint.post(
 	"/namespaces/:namespace/rpc/:fieldName",
 	{
 		params: { namespace: Schema.String, fieldName: Schema.String },
-		payload: JsonValueSchema,
-		success: JsonValueSchema,
+		payload: Schema.Json,
+		success: Schema.Json,
 		error: [
 			HttpApiError.NotFound,
 			HttpApiError.Forbidden,

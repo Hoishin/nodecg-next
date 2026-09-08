@@ -3,8 +3,6 @@
 
 import { Schema } from "effect";
 
-import { JsonValueSchema } from "../utils/json-value-schema.ts";
-
 // RFC 6901: JSON path pointers
 export const Pointer = Schema.Union([
 	Schema.Literal(""),
@@ -16,7 +14,7 @@ export type Pointer = typeof Pointer.Type;
 export const AddOp = Schema.Struct({
 	op: Schema.Literal("add"),
 	path: Pointer,
-	value: JsonValueSchema,
+	value: Schema.Json,
 });
 export type AddOp = typeof AddOp.Type;
 
@@ -29,7 +27,7 @@ export type RemoveOp = typeof RemoveOp.Type;
 export const ReplaceOp = Schema.Struct({
 	op: Schema.Literal("replace"),
 	path: Pointer,
-	value: JsonValueSchema,
+	value: Schema.Json,
 });
 export type ReplaceOp = typeof ReplaceOp.Type;
 
@@ -54,7 +52,7 @@ export type TestHashOp = typeof TestHashOp.Type;
 export const TestOp = Schema.Struct({
 	op: Schema.Literal("test"),
 	path: Pointer,
-	value: JsonValueSchema,
+	value: Schema.Json,
 });
 export type TestOp = typeof TestOp.Type;
 
@@ -74,7 +72,7 @@ export class PatchNotApplicable extends Schema.TaggedError<PatchNotApplicable>()
 
 export class RevisionConflict extends Schema.TaggedError<RevisionConflict>()(
 	"RevisionConflict",
-	{ value: JsonValueSchema, revision: Schema.Number, reason: Schema.String },
+	{ value: Schema.Json, revision: Schema.Number, reason: Schema.String },
 ) {
 	override readonly message = `Patch conflicts with a newer revision ${this.revision}: ${this.reason}`;
 }

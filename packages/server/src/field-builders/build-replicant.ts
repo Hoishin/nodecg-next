@@ -3,7 +3,6 @@ import type { Updater } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { toError } from "@nodecg-next/internal/utils";
 import { Effect, Schema, Stream } from "effect";
-import type { JsonValue } from "type-fest";
 
 import {
 	CommitContended,
@@ -57,7 +56,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		);
 
 	const commit = <E>(
-		produce: (current: RevisionedValue) => Effect.Effect<JsonValue, E>,
+		produce: (current: RevisionedValue) => Effect.Effect<Schema.Json, E>,
 	) => retryContention(engine.commit(namespace, name, produce));
 
 	const get = Effect.fn("get")(function* () {

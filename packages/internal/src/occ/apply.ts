@@ -1,9 +1,8 @@
 // Apply patch produced from diff.ts
 
-import { Data, Match, Option, Result } from "effect";
-import type { JsonValue } from "type-fest";
+import { Data, Match, Option, Result, type Schema } from "effect";
 
-import { cloneJson, type MutableJson } from "../utils/clone.ts";
+import { cloneJson } from "../utils/clone.ts";
 import { stableStringify, computeTestHash } from "./hash.ts";
 import type { ChangeOp, PatchOp, Pointer } from "./schema.ts";
 
@@ -52,9 +51,9 @@ export const isDrift = ApplyFailure.$match({
 });
 
 const getChild = (
-	parent: MutableJson,
+	parent: Schema.MutableJson,
 	token: string,
-): Result.Result<MutableJson, ApplyFailure> => {
+): Result.Result<Schema.MutableJson, ApplyFailure> => {
 	// Primitive
 	if (parent === null || typeof parent !== "object") {
 		return Result.fail(ApplyFailure.NonContainer({ token }));
@@ -83,14 +82,14 @@ const getChild = (
 	return Result.succeed(value);
 };
 
-const navigate = (root: MutableJson, tokens: ReadonlyArray<string>) =>
-	tokens.reduce<Result.Result<MutableJson, ApplyFailure>>(
+const navigate = (root: Schema.MutableJson, tokens: ReadonlyArray<string>) =>
+	tokens.reduce<Result.Result<Schema.MutableJson, ApplyFailure>>(
 		(cur, token) =>
 			cur.pipe(Result.flatMap((currentValue) => getChild(currentValue, token))),
 		Result.succeed(root),
 	);
 
-export const getAtPointer = (root: MutableJson, pointer: Pointer) =>
+export const getAtPointer = (root: Schema.MutableJson, pointer: Pointer) =>
 	navigate(root, parsePointer(pointer));
 
 /**
@@ -100,10 +99,10 @@ export const getAtPointer = (root: MutableJson, pointer: Pointer) =>
  * - "" replaces the whole document
  */
 const add = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	pointer: Pointer,
-	value: MutableJson,
-): Result.Result<MutableJson, ApplyFailure> => {
+	value: Schema.MutableJson,
+): Result.Result<Schema.MutableJson, ApplyFailure> => {
 	const tokens = parsePointer(pointer);
 	const targetToken = tokens.pop();
 
@@ -149,9 +148,9 @@ const add = (
  * - object: remove the key
  */
 const remove = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	pointer: Pointer,
-): Result.Result<MutableJson, ApplyFailure> => {
+): Result.Result<Schema.MutableJson, ApplyFailure> => {
 	const tokens = parsePointer(pointer);
 	const targetToken = tokens.pop();
 
@@ -197,10 +196,10 @@ const remove = (
  * - "" replaces the whole document
  */
 const replace = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	pointer: Pointer,
-	value: MutableJson,
-): Result.Result<MutableJson, ApplyFailure> => {
+	value: Schema.MutableJson,
+): Result.Result<Schema.MutableJson, ApplyFailure> => {
 	const tokens = parsePointer(pointer);
 	const targetToken = tokens.pop();
 
@@ -241,10 +240,10 @@ const replace = (
  * - moving the root out and moving into the moved subtree are rejected
  */
 const move = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	from: Pointer,
 	path: Pointer,
-): Result.Result<MutableJson, ApplyFailure> => {
+): Result.Result<Schema.MutableJson, ApplyFailure> => {
 	if (from === path) {
 		return Result.succeed(root);
 	}
@@ -263,10 +262,10 @@ const move = (
  * Non-standard test-hash: the value at the pointer must still hash to `hash`, document unchanged
  */
 const testHash = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	pointer: Pointer,
 	hash: string,
-): Result.Result<MutableJson, ApplyFailure> =>
+): Result.Result<Schema.MutableJson, ApplyFailure> =>
 	getAtPointer(root, pointer).pipe(
 		Result.flatMap((seen) => {
 			const actual = computeTestHash(seen);
@@ -283,10 +282,10 @@ const testHash = (
  * RFC 6902 test: the value at the pointer must still equal `expected`
  */
 const test = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	pointer: Pointer,
-	expected: JsonValue,
-): Result.Result<MutableJson, ApplyFailure> =>
+	expected: Schema.Json,
+): Result.Result<Schema.MutableJson, ApplyFailure> =>
 	getAtPointer(root, pointer).pipe(
 		Result.flatMap((seen) =>
 			stableStringify(seen) === stableStringify(expected)
@@ -296,9 +295,9 @@ const test = (
 	);
 
 export const applyChangeOp = (
-	root: MutableJson,
+	root: Schema.MutableJson,
 	op: ChangeOp,
-): Result.Result<MutableJson, ApplyFailure> =>
+): Result.Result<Schema.MutableJson, ApplyFailure> =>
 	Match.value(op).pipe(
 		Match.when({ op: "add" }, ({ path, value }) =>
 			add(root, path, cloneJson(value)),
@@ -319,9 +318,9 @@ export interface PatchFailure {
 }
 
 export const applyPatch = (
-	current: JsonValue,
+	current: Schema.Json,
 	patch: ReadonlyArray<PatchOp>,
-): Result.Result<MutableJson, PatchFailure> => {
+): Result.Result<Schema.MutableJson, PatchFailure> => {
 	let doc = cloneJson(current);
 	for (const op of patch) {
 		const result = Match.value(op).pipe(

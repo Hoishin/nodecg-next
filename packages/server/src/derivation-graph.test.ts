@@ -11,7 +11,6 @@ import {
 	Scope,
 	Stream,
 } from "effect";
-import type { JsonValue } from "type-fest";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
 import {
@@ -804,7 +803,7 @@ describe("subscribeComputed", () => {
 					),
 				);
 				const stream = yield* engine.subscribeComputed("ns", "tens");
-				const received: JsonValue[] = [];
+				const received: Schema.Json[] = [];
 				yield* Stream.runForEach(stream, (value) =>
 					Effect.sync(() => received.push(value)),
 				).pipe(Effect.forkChild);
@@ -841,7 +840,7 @@ describe("subscribeComputed", () => {
 					),
 				);
 				const stream = yield* engine.subscribeComputed("ns", "c");
-				const received: JsonValue[] = [];
+				const received: Schema.Json[] = [];
 				yield* Stream.runForEach(stream, (value) =>
 					Effect.sync(() => received.push(value)),
 				).pipe(Effect.forkChild);

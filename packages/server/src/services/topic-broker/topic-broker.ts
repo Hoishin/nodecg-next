@@ -1,17 +1,22 @@
-import { Context, type Effect, type Scope, type Stream } from "effect";
-import type { JsonValue } from "type-fest";
+import {
+	Context,
+	type Effect,
+	type Schema,
+	type Scope,
+	type Stream,
+} from "effect";
 
 export interface TopicMessage {
 	readonly namespace: string;
 	readonly name: string;
-	readonly value: JsonValue;
+	readonly value: Schema.Json;
 }
 
 export interface TopicBroker {
 	publish: (
 		namespace: string,
 		name: string,
-		value: JsonValue,
+		value: Schema.Json,
 	) => Effect.Effect<void>;
 
 	subscribe: () => Effect.Effect<

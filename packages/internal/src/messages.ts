@@ -1,7 +1,6 @@
 import { Schema } from "effect";
 
 import { ChangeOp } from "./occ/schema.ts";
-import { JsonValueSchema } from "./utils/json-value-schema.ts";
 
 const ReplicantFieldIdentifier = Schema.Struct({
 	type: Schema.Literal("replicant"),
@@ -55,7 +54,7 @@ export type ClientMessage = typeof ClientMessage.Type;
 
 export const ReplicantSnapshotMessage = Schema.TaggedStruct("snapshot", {
 	field: ReplicantFieldIdentifier,
-	value: JsonValueSchema,
+	value: Schema.Json,
 	revision: Schema.Number,
 });
 export type ReplicantSnapshotMessage = typeof ReplicantSnapshotMessage.Type;
@@ -71,7 +70,7 @@ export type ReplicantDeltaMessage = typeof ReplicantDeltaMessage.Type;
 
 export const FieldValueMessage = Schema.TaggedStruct("value", {
 	field: Schema.Union([ComputedFieldIdentifier, TopicFieldIdentifier]),
-	value: JsonValueSchema,
+	value: Schema.Json,
 });
 export type FieldValueMessage = typeof FieldValueMessage.Type;
 

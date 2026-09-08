@@ -26,9 +26,9 @@ import {
 	Queue,
 	Ref,
 	Result,
+	type Schema,
 	Stream,
 } from "effect";
-import type { JsonValue } from "type-fest";
 
 import {
 	Cold,
@@ -178,7 +178,7 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 					yield* Queue.offer(outbound, ResyncMessage.make({ field }));
 				});
 
-				const decodeIntoCell = (encoded: JsonValue, revision: number) =>
+				const decodeIntoCell = (encoded: Schema.Json, revision: number) =>
 					manifest.decode(encoded).pipe(
 						Effect.flatMap((decoded) =>
 							setSignal(

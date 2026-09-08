@@ -1,10 +1,9 @@
-import { Data } from "effect";
-import type { JsonValue } from "type-fest";
+import { Data, type Schema } from "effect";
 
 export type ReadyLoadableValue<Decoded> = Data.TaggedEnum<{
 	Replicant: {
 		readonly decoded: Decoded;
-		readonly encoded: JsonValue;
+		readonly encoded: Schema.Json;
 		readonly revision: number;
 	};
 	Computed: { readonly decoded: Decoded };

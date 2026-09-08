@@ -1,18 +1,17 @@
-import { Result } from "effect";
-import type { JsonValue } from "type-fest";
+import { Result, type Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 
 import { applyPatch } from "./apply.ts";
 import { diffPatch, diffSignedPatch } from "./diff.ts";
 import { computeTestHash } from "./hash.ts";
 
-const ops = (base: JsonValue, next: JsonValue) =>
+const ops = (base: Schema.Json, next: Schema.Json) =>
 	diffPatch(base, next).pipe(Result.getOrThrow);
 
-const signedOps = (base: JsonValue, next: JsonValue) =>
+const signedOps = (base: Schema.Json, next: Schema.Json) =>
 	diffSignedPatch(base, next).pipe(Result.getOrThrow);
 
-const roundTrip = (base: JsonValue, next: JsonValue) => {
+const roundTrip = (base: Schema.Json, next: Schema.Json) => {
 	const result = applyPatch(base, ops(base, next));
 	assert(Result.isSuccess(result));
 	expect(result.success).toEqual(next);

@@ -1,5 +1,4 @@
 import { Context, type Effect, Schema } from "effect";
-import type { JsonValue } from "type-fest";
 
 export class ReplicantNotFound extends Schema.TaggedError<ReplicantNotFound>()(
 	"ReplicantNotFound",
@@ -15,12 +14,12 @@ export interface ReplicantStorage {
 	read: (
 		namespace: string,
 		name: string,
-	) => Effect.Effect<JsonValue, ReplicantNotFound>;
+	) => Effect.Effect<Schema.Json, ReplicantNotFound>;
 
 	write: (
 		namespace: string,
 		name: string,
-		value: JsonValue,
+		value: Schema.Json,
 		createIfNotFound?: boolean,
 	) => Effect.Effect<void, ReplicantNotFound>;
 }

@@ -1,5 +1,4 @@
-import { Effect, Layer } from "effect";
-import type { JsonValue } from "type-fest";
+import { Effect, Layer, type Schema } from "effect";
 
 import {
 	ReplicantNotFound,
@@ -9,12 +8,12 @@ import {
 export const InMemoryReplicantStorage = Layer.sync(
 	ReplicantStorageService,
 	() => {
-		const map = new Map<string, Map<string, JsonValue>>();
+		const map = new Map<string, Map<string, Schema.Json>>();
 
 		const read = (
 			namespace: string,
 			name: string,
-		): Effect.Effect<JsonValue, ReplicantNotFound> => {
+		): Effect.Effect<Schema.Json, ReplicantNotFound> => {
 			const value = map.get(namespace)?.get(name);
 			// JavaScript `undefined` is not a valid JSON value, thus means value not defined
 			if (typeof value === "undefined") {
@@ -26,7 +25,7 @@ export const InMemoryReplicantStorage = Layer.sync(
 		const write = Effect.fn("ReplicantStorage.write")(function* (
 			namespace: string,
 			name: string,
-			value: JsonValue,
+			value: Schema.Json,
 			createIfNotFound = false,
 		) {
 			const ns = map.get(namespace);

@@ -5,9 +5,8 @@ import { Data, Result, Schema } from "effect";
 import stringify from "fast-json-stable-stringify";
 import { create } from "jsondiffpatch";
 import { format } from "jsondiffpatch/formatters/jsonpatch";
-import type { JsonValue } from "type-fest";
 
-import { cloneJson, type MutableJson } from "../utils/clone.ts";
+import { cloneJson } from "../utils/clone.ts";
 import { type ApplyFailure, applyChangeOp, getAtPointer } from "./apply.ts";
 import { computeTestHash } from "./hash.ts";
 import {
@@ -37,11 +36,11 @@ const differ = create({
 	arrays: { detectMove: true },
 });
 
-export const diffPatch = (base: JsonValue, next: JsonValue) =>
+export const diffPatch = (base: Schema.Json, next: Schema.Json) =>
 	validateChanges(format(differ.diff(base, next)));
 
 // Diff formatter does not use the append form "-"
-const toAppendForm = (doc: MutableJson, op: AddOp) => {
+const toAppendForm = (doc: Schema.MutableJson, op: AddOp) => {
 	const cut = op.path.lastIndexOf("/");
 	const parentPath = op.path.slice(0, cut);
 	if (!isPointer(parentPath)) {
@@ -58,7 +57,7 @@ const toAppendForm = (doc: MutableJson, op: AddOp) => {
 };
 
 // Only an existing target gets a precondition, so concurrent adds of different new keys cannot false-conflict
-const signOp = (doc: MutableJson, op: ChangeOp) => {
+const signOp = (doc: Schema.MutableJson, op: ChangeOp) => {
 	const target = op.op === "move" ? op.from : op.path;
 	const seen = getAtPointer(doc, target);
 	if (Result.isFailure(seen)) {
@@ -73,7 +72,7 @@ const signOp = (doc: MutableJson, op: ChangeOp) => {
 };
 
 const signChanges = (
-	base: JsonValue,
+	base: Schema.Json,
 	changes: ReadonlyArray<ChangeOp>,
 ): Result.Result<ReadonlyArray<PatchOp>, DiffFailure> => {
 	const signed: PatchOp[] = [];
@@ -92,7 +91,7 @@ const signChanges = (
 	return Result.succeed(signed);
 };
 
-export const diffSignedPatch = (base: JsonValue, next: JsonValue) =>
+export const diffSignedPatch = (base: Schema.Json, next: Schema.Json) =>
 	diffPatch(base, next).pipe(
 		Result.mapError((cause) => DiffFailure.UnknownOp({ cause })),
 		Result.flatMap((changes) => signChanges(base, changes)),

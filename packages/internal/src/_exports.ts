@@ -69,4 +69,3 @@ export {
 	type UndeclarableRoleName,
 } from "./role.ts";
 export { type Updater } from "./updater-types.ts";
-export { JsonValueSchema } from "./utils/json-value-schema.ts";

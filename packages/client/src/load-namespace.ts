@@ -27,11 +27,12 @@ import {
 	Path,
 	Queue,
 	Ref,
+	type Schema,
 	Scope,
 	Stream,
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import type { JsonValue, Promisable } from "type-fest";
+import type { Promisable } from "type-fest";
 
 import { type FieldSource, fieldSource } from "./derive.ts";
 import {
@@ -193,7 +194,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 
 	const send = Effect.fn(function* (
 		updater: Updater<Decoded>,
-		base: JsonValue,
+		base: Schema.Json,
 	) {
 		const current = yield* manifest.mutableDecode(base);
 		const next = yield* Effect.try({

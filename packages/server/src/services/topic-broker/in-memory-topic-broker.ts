@@ -1,5 +1,4 @@
-import { Effect, Layer, PubSub, Stream } from "effect";
-import type { JsonValue } from "type-fest";
+import { Effect, Layer, PubSub, type Schema, Stream } from "effect";
 
 import { type TopicMessage, TopicBrokerService } from "./topic-broker.ts";
 
@@ -9,7 +8,7 @@ export const InMemoryTopicBroker = Layer.effect(
 		const messages = yield* PubSub.unbounded<TopicMessage>();
 
 		return {
-			publish: (namespace: string, name: string, value: JsonValue) =>
+			publish: (namespace: string, name: string, value: Schema.Json) =>
 				PubSub.publish(messages, { namespace, name, value }).pipe(
 					Effect.asVoid,
 				),

@@ -1,7 +1,7 @@
 import type { RpcFieldManifest } from "@nodecg-next/core";
 import { toError } from "@nodecg-next/internal/utils";
 import { Effect, Schema } from "effect";
-import type { JsonValue, Promisable } from "type-fest";
+import type { Promisable } from "type-fest";
 
 import { fieldInternal } from "./field-internal-key.ts";
 import { requirePermission } from "./permission.ts";
@@ -39,7 +39,7 @@ export const buildRpc = Effect.fn("buildRpc")(
 			});
 
 			const callEncoded = Effect.fn("callEncoded")(function* (
-				payload: JsonValue,
+				payload: Schema.Json,
 			) {
 				yield* requirePermission(manifest.permission, namespace, name, "write");
 				const request = yield* manifest.request.decode(payload);

@@ -1,8 +1,7 @@
 import { RpcCallError } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
-import { Effect, Match } from "effect";
+import { Effect, Match, type Schema } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
-import type { JsonValue } from "type-fest";
 
 import { FieldRegistryService } from "../../field-registry.ts";
 
@@ -71,7 +70,7 @@ export const getComputed = (namespace: string, name: string) =>
 export const publishTopic = (
 	namespace: string,
 	name: string,
-	payload: JsonValue,
+	payload: Schema.Json,
 ) =>
 	Effect.gen(function* () {
 		const registry = yield* FieldRegistryService;
@@ -87,7 +86,11 @@ export const publishTopic = (
 		);
 	});
 
-export const callRpc = (namespace: string, name: string, payload: JsonValue) =>
+export const callRpc = (
+	namespace: string,
+	name: string,
+	payload: Schema.Json,
+) =>
 	Effect.gen(function* () {
 		const registry = yield* FieldRegistryService;
 		const field = registry.rpc.get(namespace)?.get(name);

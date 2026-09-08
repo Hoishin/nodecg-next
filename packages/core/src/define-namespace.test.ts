@@ -1,6 +1,5 @@
 import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect, Schema } from "effect";
-import type { JsonValue } from "type-fest";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 import {
@@ -495,24 +494,24 @@ describe("defineNamespace", () => {
 
 			expectTypeOf(manifest.namespace).toEqualTypeOf<string>();
 			expectTypeOf(manifest.replicant.count.encode).returns.toEqualTypeOf<
-				Effect.Effect<JsonValue, FieldEncodeError>
+				Effect.Effect<Schema.Json, FieldEncodeError>
 			>();
 			expectTypeOf(manifest.replicant.count.decode)
 				.parameter(0)
-				.toEqualTypeOf<JsonValue>();
+				.toEqualTypeOf<Schema.Json>();
 		});
 
-		describe("rejects schemas whose Encoded is not JsonValue-compatible", () => {
+		describe("rejects schemas whose Encoded is not Schema.Json-compatible", () => {
 			test("DateFromSelf (Encoded = Date)", () => {
 				defineNamespace("match", {
-					// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not JsonValue
+					// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not Schema.Json
 					replicant: { when: { schema: Schema.DateFromSelf } },
 				});
 			});
 
 			test("BigIntFromSelf (Encoded = bigint)", () => {
 				defineNamespace("match", {
-					// @ts-expect-error bigint is not assignable to JsonValue
+					// @ts-expect-error bigint is not assignable to Schema.Json
 					replicant: { count: { schema: Schema.BigIntFromSelf } },
 				});
 			});

@@ -17,7 +17,7 @@ import {
 	mergeRecords,
 } from "@nodecg-next/internal/utils";
 import { Effect, type HKT, Schema } from "effect";
-import type { JsonValue, WritableDeep } from "type-fest";
+import type { WritableDeep } from "type-fest";
 
 import {
 	computedPermission,
@@ -62,10 +62,10 @@ export class FieldDecodeError extends Schema.TaggedError<FieldDecodeError>()(
 export interface FieldCodec<D> {
 	readonly encode: (
 		value: D | WritableDeep<D>,
-	) => Effect.Effect<JsonValue, FieldEncodeError>;
-	readonly decode: (value: JsonValue) => Effect.Effect<D, FieldDecodeError>;
+	) => Effect.Effect<Schema.Json, FieldEncodeError>;
+	readonly decode: (value: Schema.Json) => Effect.Effect<D, FieldDecodeError>;
 	readonly mutableDecode: (
-		value: JsonValue,
+		value: Schema.Json,
 	) => Effect.Effect<WritableDeep<D>, FieldDecodeError>;
 }
 
@@ -120,7 +120,7 @@ interface FieldOption<
 	S extends Schema.Codec<any>,
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema: [S["Encoded"]] extends [JsonValue] ? S : never;
+	readonly schema: [S["Encoded"]] extends [Schema.Json] ? S : never;
 	readonly permission?: P;
 }
 
@@ -164,7 +164,7 @@ interface RpcFieldManifestLambda extends HKT.TypeLambda {
 	>;
 }
 
-function makeCodec<D, E extends JsonValue>(
+function makeCodec<D, E extends Schema.Json>(
 	name: string,
 	schema: Schema.Codec<D, E>,
 ) {
@@ -195,7 +195,7 @@ function makeCodec<D, E extends JsonValue>(
 	};
 }
 
-function implementCodec<D, E extends JsonValue>(
+function implementCodec<D, E extends Schema.Json>(
 	name: string,
 	schema: Schema.Codec<D, E>,
 ) {

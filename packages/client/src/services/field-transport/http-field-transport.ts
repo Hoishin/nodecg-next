@@ -1,10 +1,9 @@
 import { InternalApi } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { toError } from "@nodecg-next/internal/utils";
-import { Effect, Layer, Match } from "effect";
+import { Effect, Layer, Match, type Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { HttpApiClient } from "effect/unstable/httpapi";
-import type { JsonValue } from "type-fest";
 
 import {
 	RpcCallError,
@@ -104,7 +103,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 			const publishTopic = Effect.fn("FieldTransport.publishTopic")(function* (
 				namespace: string,
 				name: string,
-				value: JsonValue,
+				value: Schema.Json,
 			) {
 				yield* client.Field.topicPublish({
 					params: { namespace, fieldName: name },
@@ -136,7 +135,7 @@ export const httpFieldTransport = (baseUrl?: string) =>
 			const callRpc = Effect.fn("FieldTransport.callRpc")(function* (
 				namespace: string,
 				name: string,
-				request: JsonValue,
+				request: Schema.Json,
 			) {
 				return yield* client.Field.rpcCall({
 					params: { namespace, fieldName: name },

@@ -34,7 +34,6 @@ import {
 	Stream,
 	SynchronizedRef,
 } from "effect";
-import type { JsonValue } from "type-fest";
 
 import {
 	type ReplicantNotFound,
@@ -121,17 +120,17 @@ export class CommitContended extends Schema.TaggedError<CommitContended>()(
 
 interface LeafValue {
 	readonly hash: number;
-	readonly value: JsonValue;
+	readonly value: Schema.Json;
 	readonly revision: number;
 }
 
 export interface RevisionedValue {
-	readonly value: JsonValue;
+	readonly value: Schema.Json;
 	readonly revision: number;
 }
 
 export interface ReplicantFrame {
-	readonly value: JsonValue;
+	readonly value: Schema.Json;
 	readonly revision: number;
 	readonly delta: Option.Option<{
 		readonly ops: Array.NonEmptyReadonlyArray<ChangeOp>;
@@ -141,13 +140,13 @@ export interface ReplicantFrame {
 }
 
 // Cheap hash for quick deduplication, can collide
-const makeLeafValue = (value: JsonValue, revision: number): LeafValue => ({
+const makeLeafValue = (value: Schema.Json, revision: number): LeafValue => ({
 	hash: Hash.string(stableStringify(value)),
 	value,
 	revision,
 });
 
-const sameValue = (current: LeafValue, value: JsonValue) => {
+const sameValue = (current: LeafValue, value: Schema.Json) => {
 	const serialized = stableStringify(value);
 	return (
 		current.hash === Hash.string(serialized) &&
@@ -158,7 +157,7 @@ const sameValue = (current: LeafValue, value: JsonValue) => {
 type ReplicantNode = Signal<LeafValue>;
 
 export type ComputedResult = Exit.Exit<
-	JsonValue,
+	Schema.Json,
 	ComputedComputeError | ReplicantNotFound | FieldEncodeError
 >;
 
@@ -181,7 +180,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 			const pendingWrites = yield* Queue.unbounded<{
 				readonly namespace: string;
 				readonly name: string;
-				readonly value: JsonValue;
+				readonly value: Schema.Json;
 			}>();
 
 			const changes = yield* PubSub.unbounded<{
@@ -192,7 +191,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 
 			const initializeReplicant = Effect.fn(
 				"DerivationEngine.initializeReplicant",
-			)(function* (namespace: string, name: string, seed: JsonValue) {
+			)(function* (namespace: string, name: string, seed: Schema.Json) {
 				const persisted = yield* storage.read(namespace, name).pipe(
 					Effect.asSome,
 					Effect.catchTag("ReplicantNotFound", () => Effect.succeedNone),
@@ -240,7 +239,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 					Effect.orDie,
 				);
 
-			const persist = (namespace: string, name: string, value: JsonValue) =>
+			const persist = (namespace: string, name: string, value: Schema.Json) =>
 				storage
 					.write(namespace, name, value)
 					.pipe(
@@ -314,7 +313,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 			const commit = Effect.fn("DerivationEngine.commit")(function* <E>(
 				namespace: string,
 				name: string,
-				produce: (current: RevisionedValue) => Effect.Effect<JsonValue, E>,
+				produce: (current: RevisionedValue) => Effect.Effect<Schema.Json, E>,
 			) {
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
@@ -340,7 +339,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				namespace: string,
 				name: string,
 				patch: Patch,
-				validate: (applied: JsonValue) => Effect.Effect<unknown, E>,
+				validate: (applied: Schema.Json) => Effect.Effect<unknown, E>,
 			) {
 				const node = yield* lookupNode(namespace, name);
 				const stored = node.peek();
@@ -479,7 +478,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 					if (typeof result === "undefined") {
 						return yield* new ComputedNotFound({ namespace, name });
 					}
-					const updates = yield* Queue.make<JsonValue>();
+					const updates = yield* Queue.make<Schema.Json>();
 					const readNode = Effect.gen(function* () {
 						const evaluation = yield* readSignal(result).pipe(
 							Effect.mapError(

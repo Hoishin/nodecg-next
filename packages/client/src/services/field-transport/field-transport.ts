@@ -1,6 +1,5 @@
 import type { Patch, RevisionConflict } from "@nodecg-next/internal/occ";
 import { Context, Data, type Effect, Schema } from "effect";
-import type { JsonValue } from "type-fest";
 
 export class FieldNotFound extends Schema.TaggedError<FieldNotFound>()(
 	"FieldNotFound",
@@ -90,14 +89,14 @@ export interface FieldTransport {
 		namespace: string,
 		name: string,
 	) => Effect.Effect<
-		JsonValue,
+		Schema.Json,
 		FieldNotFound | FieldPermissionDenied | FieldGetError
 	>;
 	getComputed: (
 		namespace: string,
 		name: string,
 	) => Effect.Effect<
-		JsonValue,
+		Schema.Json,
 		FieldNotFound | FieldPermissionDenied | FieldGetError
 	>;
 	updateReplicant: (
@@ -111,7 +110,7 @@ export interface FieldTransport {
 	publishTopic: (
 		namespace: string,
 		name: string,
-		value: JsonValue,
+		value: Schema.Json,
 	) => Effect.Effect<
 		void,
 		FieldNotFound | FieldPermissionDenied | TopicPublishError
@@ -119,9 +118,9 @@ export interface FieldTransport {
 	callRpc: (
 		namespace: string,
 		name: string,
-		request: JsonValue,
+		request: Schema.Json,
 	) => Effect.Effect<
-		JsonValue,
+		Schema.Json,
 		FieldNotFound | FieldPermissionDenied | RpcCallError
 	>;
 }

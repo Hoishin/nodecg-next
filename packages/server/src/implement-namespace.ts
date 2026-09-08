@@ -1,7 +1,8 @@
 import type { NamespaceManifest } from "@nodecg-next/core";
 import type { Updater } from "@nodecg-next/internal";
 import { mergeRecords } from "@nodecg-next/internal/utils";
-import type { JsonValue, Promisable } from "type-fest";
+import type { Schema } from "effect";
+import type { Promisable } from "type-fest";
 
 export type FrontendConfig = {
 	readonly dir: ReadonlyArray<string | URL>;
@@ -79,7 +80,7 @@ export type ReplicantField<in out Decoded> = {
 	readonly get: () => Decoded;
 	readonly set: (value: Decoded) => void;
 	readonly update: (updater: Updater<Decoded>) => void;
-	readonly validate: (value: Decoded) => Promise<JsonValue>;
+	readonly validate: (value: Decoded) => Promise<Schema.Json>;
 	readonly subscribe: Subscribe<Decoded>;
 };
 

@@ -1,6 +1,5 @@
 import type { FieldManifest } from "@nodecg-next/core";
-import { Effect, Stream } from "effect";
-import type { JsonValue } from "type-fest";
+import { Effect, type Schema, Stream } from "effect";
 
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
 import { fieldInternal } from "./field-internal-key.ts";
@@ -43,7 +42,7 @@ export const buildTopic = Effect.fn("buildTopic")(
 			});
 
 			const publishEncoded = Effect.fn("publishEncoded")(function* (
-				value: JsonValue,
+				value: Schema.Json,
 			) {
 				const broker = yield* TopicBrokerService;
 				yield* requirePermission(manifest.permission, namespace, name, "write");

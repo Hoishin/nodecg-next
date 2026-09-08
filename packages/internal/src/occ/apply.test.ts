@@ -1,16 +1,15 @@
-import { Result } from "effect";
-import type { JsonValue } from "type-fest";
+import { Result, type Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 
 import { ApplyFailure, applyPatch } from "./apply.ts";
 import { computeTestHash } from "./hash.ts";
 import type { Patch } from "./schema.ts";
 
-const applied = (value: JsonValue, patch: Patch) => {
+const applied = (value: Schema.Json, patch: Patch) => {
 	return applyPatch(value, patch).pipe(Result.getOrThrow);
 };
 
-const failure = (value: JsonValue, patch: Patch) => {
+const failure = (value: Schema.Json, patch: Patch) => {
 	return applyPatch(value, patch).pipe(Result.flip, Result.getOrThrow);
 };
 
