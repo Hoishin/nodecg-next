@@ -5,6 +5,5 @@ export default defineConfig({
 		index: "src/_exports.ts",
 		occ: "src/occ/_exports.ts",
 		utils: "src/utils/_exports.ts",
-		"test-utils": "src/test-utils/_exports.ts",
 	},
 });

@@ -6,7 +6,7 @@ import {
 	SubscribeRejectedMessage,
 } from "@nodecg-next/internal";
 import { computeTestHash, RevisionConflict } from "@nodecg-next/internal/occ";
-import { makeTestEffect } from "@nodecg-next/internal/test-utils";
+import { testLayer } from "@nodecg-next/test-utils";
 import {
 	Effect,
 	Exit,
@@ -34,6 +34,8 @@ import {
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
 
+const testFetch = testLayer(FetchHttpClient.layer);
+
 const createTransportStub = () =>
 	({
 		getReplicant: vi.fn<FieldTransport["getReplicant"]>(),
@@ -51,439 +53,411 @@ const createMessageChannelStub = () =>
 		receive: () => Effect.succeed(Stream.never),
 	}) satisfies MessageChannel;
 
-const testEffect = makeTestEffect(FetchHttpClient.layer);
-
 describe("get", () => {
-	test(
+	testFetch(
 		"decodes the value returned by the transport",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				expect(
-					yield* loaded.replicant.count
-						.get()
-						.pipe(Effect.provideService(FieldTransportService, transportStub)),
-				).toBe(42);
-			}),
-		),
+			expect(
+				yield* loaded.replicant.count
+					.get()
+					.pipe(Effect.provideService(FieldTransportService, transportStub)),
+			).toBe(42);
+		}),
 	);
 
-	test(
+	testFetch(
 		"fails when the stored value does not match the schema",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(
-					Effect.succeed("not a number"),
-				);
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(
+				Effect.succeed("not a number"),
+			);
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.replicant.count
+				.get()
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
+					Effect.flip,
 				);
-
-				const error = yield* loaded.replicant.count
-					.get()
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldDecodeError");
-			}),
-		),
+			expect(error._tag).toBe("FieldDecodeError");
+		}),
 	);
 
-	test(
+	testFetch(
 		"propagates FieldNotFound from the transport",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(
-					Effect.fail(new FieldNotFound({ namespace: "root", name: "count" })),
-				);
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(
+				Effect.fail(new FieldNotFound({ namespace: "root", name: "count" })),
+			);
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.replicant.count
+				.get()
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
+					Effect.flip,
 				);
-
-				const error = yield* loaded.replicant.count
-					.get()
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldNotFound");
-			}),
-		),
+			expect(error._tag).toBe("FieldNotFound");
+		}),
 	);
 
-	test(
+	testFetch(
 		"reads a stored string back into a Date",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(
-					Effect.succeed("2030-01-01T00:00:00.000Z"),
-				);
-				const manifest = defineNamespace("root", {
-					replicant: { when: { schema: Schema.DateFromString } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(
+				Effect.succeed("2030-01-01T00:00:00.000Z"),
+			);
+			const manifest = defineNamespace("root", {
+				replicant: { when: { schema: Schema.DateFromString } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				expect(
-					yield* loaded.replicant.when
-						.get()
-						.pipe(Effect.provideService(FieldTransportService, transportStub)),
-				).toEqual(new Date("2030-01-01T00:00:00.000Z"));
-			}),
-		),
+			expect(
+				yield* loaded.replicant.when
+					.get()
+					.pipe(Effect.provideService(FieldTransportService, transportStub)),
+			).toEqual(new Date("2030-01-01T00:00:00.000Z"));
+		}),
 	);
 });
 
 describe("set", () => {
-	test(
+	testFetch(
 		"encodes the value and writes it via the transport",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				yield* loaded.replicant.count
-					.set(7)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenCalledWith(
-					"root",
-					"count",
-					[{ op: "replace", path: "", value: 7 }],
-				);
-			}),
-		),
+			yield* loaded.replicant.count
+				.set(7)
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(transportStub.updateReplicant).toHaveBeenCalledWith(
+				"root",
+				"count",
+				[{ op: "replace", path: "", value: 7 }],
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"fails when the value fails schema validation",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.replicant.count
+				.set("not a number" as unknown as number)
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
+					Effect.flip,
 				);
-
-				const error = yield* loaded.replicant.count
-					.set("not a number" as unknown as number)
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldEncodeError");
-			}),
-		),
+			expect(error._tag).toBe("FieldEncodeError");
+		}),
 	);
 
-	test(
+	testFetch(
 		"sends a Date to the transport as a string",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const manifest = defineNamespace("root", {
-					replicant: { when: { schema: Schema.DateFromString } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const manifest = defineNamespace("root", {
+				replicant: { when: { schema: Schema.DateFromString } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				yield* loaded.replicant.when
-					.set(new Date("2030-01-01T00:00:00.000Z"))
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
-					"root",
-					"when",
-					[{ op: "replace", path: "", value: "2030-01-01T00:00:00.000Z" }],
-				);
-			}),
-		),
+			yield* loaded.replicant.when
+				.set(new Date("2030-01-01T00:00:00.000Z"))
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				"root",
+				"when",
+				[{ op: "replace", path: "", value: "2030-01-01T00:00:00.000Z" }],
+			);
+		}),
 	);
 });
 
 describe("update", () => {
-	test(
+	testFetch(
 		"reads the current value, applies the fn, and writes the result",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				yield* loaded.replicant.count
-					.update((v) => v + 5)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
-					"root",
-					"count",
-					[
-						{ op: "test-hash", path: "", hash: computeTestHash(10) },
-						{ op: "replace", path: "", value: 15 },
-					],
-				);
-			}),
-		),
+			yield* loaded.replicant.count
+				.update((v) => v + 5)
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				"root",
+				"count",
+				[
+					{ op: "test-hash", path: "", hash: computeTestHash(10) },
+					{ op: "replace", path: "", value: 15 },
+				],
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"mutating a draft field ships one replace op for that field alone",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(
-					Effect.succeed({ n: "1", kept: "x" }),
-				);
-				const manifest = defineNamespace("root", {
-					replicant: {
-						box: {
-							schema: Schema.Struct({
-								n: Schema.FiniteFromString,
-								kept: Schema.String,
-							}),
-						},
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(
+				Effect.succeed({ n: "1", kept: "x" }),
+			);
+			const manifest = defineNamespace("root", {
+				replicant: {
+					box: {
+						schema: Schema.Struct({
+							n: Schema.FiniteFromString,
+							kept: Schema.String,
+						}),
 					},
-				});
+				},
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				yield* loaded.replicant.box
-					.update((draft) => {
-						draft.n = 5;
-					})
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
-					"root",
-					"box",
-					[
-						{ op: "test-hash", path: "/n", hash: computeTestHash("1") },
-						{ op: "replace", path: "/n", value: "5" },
-					],
-				);
-			}),
-		),
+			yield* loaded.replicant.box
+				.update((draft) => {
+					draft.n = 5;
+				})
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				"root",
+				"box",
+				[
+					{ op: "test-hash", path: "/n", hash: computeTestHash("1") },
+					{ op: "replace", path: "/n", value: "5" },
+				],
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"an updater that changes nothing writes nothing",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
-				const manifest = defineNamespace("root", {
-					replicant: {
-						box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
-					},
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
+			const manifest = defineNamespace("root", {
+				replicant: {
+					box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
+				},
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				yield* loaded.replicant.box
-					.update((draft) => {
-						draft.n = 1;
-					})
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.updateReplicant).not.toHaveBeenCalled();
-			}),
-		),
+			yield* loaded.replicant.box
+				.update((draft) => {
+					draft.n = 1;
+				})
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(transportStub.updateReplicant).not.toHaveBeenCalled();
+		}),
 	);
 
-	test(
+	testFetch(
 		"surfaces a throwing updater as FieldSetError without writing, preserving the message",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.replicant.count
+				.update(() => {
+					throw new Error("boom");
+				})
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
+					Effect.flip,
 				);
-
-				const error = yield* loaded.replicant.count
-					.update(() => {
-						throw new Error("boom");
-					})
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldSetError");
-				expect(error.message).toContain("boom");
-				expect(transportStub.updateReplicant).not.toHaveBeenCalled();
-			}),
-		),
+			expect(error._tag).toBe("FieldSetError");
+			expect(error.message).toContain("boom");
+			expect(transportStub.updateReplicant).not.toHaveBeenCalled();
+		}),
 	);
 
-	test(
+	testFetch(
 		"{ retry: false } fails fast as ReplicantWriteConflict carrying the decoded current value",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
-				transportStub.updateReplicant.mockReturnValue(
-					new RevisionConflict({
-						value: { n: "7" },
-						revision: 4,
-						reason: "HashMismatch",
-					}),
-				);
-				const manifest = defineNamespace("root", {
-					replicant: {
-						box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(Effect.succeed({ n: "1" }));
+			transportStub.updateReplicant.mockReturnValue(
+				new RevisionConflict({
+					value: { n: "7" },
+					revision: 4,
+					reason: "HashMismatch",
+				}),
+			);
+			const manifest = defineNamespace("root", {
+				replicant: {
+					box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
+				},
+			});
+
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.replicant.box
+				.update(
+					(draft) => {
+						draft.n = 5;
 					},
-				});
-
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+					{ retry: false },
+				)
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
+					Effect.flip,
 				);
-
-				const error = yield* loaded.replicant.box
-					.update(
-						(draft) => {
-							draft.n = 5;
-						},
-						{ retry: false },
-					)
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				assert(error._tag === "ReplicantWriteConflict");
-				expect(error.current).toEqual({ n: 7 });
-				expect(error.revision).toBe(4);
-				expect(transportStub.updateReplicant).toHaveBeenCalledTimes(1);
-			}),
-		),
+			assert(error._tag === "ReplicantWriteConflict");
+			expect(error.current).toEqual({ n: 7 });
+			expect(error.revision).toBe(4);
+			expect(transportStub.updateReplicant).toHaveBeenCalledTimes(1);
+		}),
 	);
 
-	test(
+	testFetch(
 		"{ retry: n } resends n times before rejecting",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
-				transportStub.updateReplicant.mockReturnValue(
-					new RevisionConflict({
-						value: 20,
-						revision: 5,
-						reason: "HashMismatch",
-					}),
-				);
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
+			transportStub.updateReplicant.mockReturnValue(
+				new RevisionConflict({
+					value: 20,
+					revision: 5,
+					reason: "HashMismatch",
+				}),
+			);
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.replicant.count
+				.update((v) => v + 1, { retry: 2 })
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
+					Effect.flip,
 				);
 
-				const error = yield* loaded.replicant.count
-					.update((v) => v + 1, { retry: 2 })
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-
-				assert(error._tag === "ReplicantWriteConflict");
-				expect(transportStub.updateReplicant).toHaveBeenCalledTimes(3);
-			}),
-		),
+			assert(error._tag === "ReplicantWriteConflict");
+			expect(transportStub.updateReplicant).toHaveBeenCalledTimes(3);
+		}),
 	);
 });
 
@@ -503,301 +477,289 @@ describe("subscribe", () => {
 			revision,
 		});
 
-	test(
+	testFetch(
 		"sends server subscribe and emits decoded matching publishes",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const head = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
+			const head = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
 
-				yield* Queue.offer(queue, publishFrame(42));
+			yield* Queue.offer(queue, publishFrame(42));
 
-				const result = yield* Fiber.join(head);
-				assert(Option.isSome(result));
-				expect(result.value).toBe(42);
-			}),
-		),
+			const result = yield* Fiber.join(head);
+			assert(Option.isSome(result));
+			expect(result.value).toBe(42);
+		}),
 	);
 
-	test(
+	testFetch(
 		"ignores publishes for a different name",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: {
-						count: { schema: Schema.Number },
-						other: { schema: Schema.Number },
-					},
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: {
+					count: { schema: Schema.Number },
+					other: { schema: Schema.Number },
+				},
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const head = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
+			const head = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
 
-				yield* Queue.offer(
-					queue,
-					ReplicantSnapshotMessage.make({
-						field: { type: "replicant", namespace: "root", name: "other" },
-						value: 99,
-						revision: 1,
-					}),
-				);
-				yield* Queue.offer(queue, publishFrame(7));
+			yield* Queue.offer(
+				queue,
+				ReplicantSnapshotMessage.make({
+					field: { type: "replicant", namespace: "root", name: "other" },
+					value: 99,
+					revision: 1,
+				}),
+			);
+			yield* Queue.offer(queue, publishFrame(7));
 
-				const result = yield* Fiber.join(head);
-				assert(Option.isSome(result));
-				expect(result.value).toBe(7);
-			}),
-		),
+			const result = yield* Fiber.join(head);
+			assert(Option.isSome(result));
+			expect(result.value).toBe(7);
+		}),
 	);
 
-	test(
+	testFetch(
 		"resolves only after the first publish",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const fiber = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.asVoid, Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				expect(fiber.pollUnsafe()).toBeUndefined();
+			const fiber = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.asVoid, Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			expect(fiber.pollUnsafe()).toBeUndefined();
 
-				yield* Queue.offer(queue, publishFrame(0));
-				yield* Fiber.join(fiber);
-			}),
-		),
+			yield* Queue.offer(queue, publishFrame(0));
+			yield* Fiber.join(fiber);
+		}),
 	);
 
-	test(
+	testFetch(
 		"sends server unsubscribe when the subscription scope closes",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const scope = yield* Scope.make();
-				const fiber = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.asVoid, Scope.provide(scope), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				yield* Queue.offer(queue, publishFrame(0));
-				yield* Fiber.join(fiber);
+			const scope = yield* Scope.make();
+			const fiber = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.asVoid, Scope.provide(scope), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			yield* Queue.offer(queue, publishFrame(0));
+			yield* Fiber.join(fiber);
 
-				yield* Scope.close(scope, Exit.void);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
-					}),
-				);
-			}),
-		),
+			yield* Scope.close(scope, Exit.void);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(unsubscribeFrame);
+				}),
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"refcounts: subscribe sent once, unsubscribe only after the last scope closes",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const scope1 = yield* Scope.make();
-				const sub1 = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.asVoid, Scope.provide(scope1), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				yield* Queue.offer(queue, publishFrame(0));
-				yield* Fiber.join(sub1);
+			const scope1 = yield* Scope.make();
+			const sub1 = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.asVoid, Scope.provide(scope1), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			yield* Queue.offer(queue, publishFrame(0));
+			yield* Fiber.join(sub1);
 
-				const scope2 = yield* Scope.make();
-				const sub2 = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.asVoid, Scope.provide(scope2), Effect.forkChild);
-				yield* Fiber.join(sub2);
+			const scope2 = yield* Scope.make();
+			const sub2 = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.asVoid, Scope.provide(scope2), Effect.forkChild);
+			yield* Fiber.join(sub2);
 
-				const subscribeCount = send.mock.calls.filter(
-					([msg]) => msg._tag === "subscribe",
-				).length;
-				expect(subscribeCount).toBe(1);
+			const subscribeCount = send.mock.calls.filter(
+				([msg]) => msg._tag === "subscribe",
+			).length;
+			expect(subscribeCount).toBe(1);
 
-				yield* Scope.close(scope1, Exit.void);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						const hasUnsubscribe = send.mock.calls.some(
-							([msg]) => msg._tag === "unsubscribe",
-						);
-						expect(hasUnsubscribe).toBe(false);
-					}),
-				);
+			yield* Scope.close(scope1, Exit.void);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					const hasUnsubscribe = send.mock.calls.some(
+						([msg]) => msg._tag === "unsubscribe",
+					);
+					expect(hasUnsubscribe).toBe(false);
+				}),
+			);
 
-				yield* Scope.close(scope2, Exit.void);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
-					}),
-				);
-			}),
-		),
+			yield* Scope.close(scope2, Exit.void);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(unsubscribeFrame);
+				}),
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"a later subscriber receives the current value on subscribe",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const pubsub = yield* PubSub.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () =>
-						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const pubsub = yield* PubSub.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () =>
+					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const received1: number[] = [];
-				const scope1 = yield* Scope.make();
-				const sub1 = yield* loaded.replicant.count.subscribe().pipe(
-					Effect.flatMap((stream) =>
-						Stream.runForEach(stream, (value) =>
-							Effect.sync(() => received1.push(value)),
-						),
+			const received1: number[] = [];
+			const scope1 = yield* Scope.make();
+			const sub1 = yield* loaded.replicant.count.subscribe().pipe(
+				Effect.flatMap((stream) =>
+					Stream.runForEach(stream, (value) =>
+						Effect.sync(() => received1.push(value)),
 					),
-					Scope.provide(scope1),
-					Effect.forkChild,
-				);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				yield* PubSub.publish(pubsub, publishFrame(5));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(received1).toEqual([5]);
-					}),
-				);
+				),
+				Scope.provide(scope1),
+				Effect.forkChild,
+			);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			yield* PubSub.publish(pubsub, publishFrame(5));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(received1).toEqual([5]);
+				}),
+			);
 
-				const received2: number[] = [];
-				const scope2 = yield* Scope.make();
-				const sub2 = yield* loaded.replicant.count.subscribe().pipe(
-					Effect.flatMap((stream) =>
-						Stream.runForEach(stream, (value) =>
-							Effect.sync(() => received2.push(value)),
-						),
+			const received2: number[] = [];
+			const scope2 = yield* Scope.make();
+			const sub2 = yield* loaded.replicant.count.subscribe().pipe(
+				Effect.flatMap((stream) =>
+					Stream.runForEach(stream, (value) =>
+						Effect.sync(() => received2.push(value)),
 					),
-					Scope.provide(scope2),
-					Effect.forkChild,
-				);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(received2).toEqual([5]);
-					}),
-				);
+				),
+				Scope.provide(scope2),
+				Effect.forkChild,
+			);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(received2).toEqual([5]);
+				}),
+			);
 
-				yield* Fiber.interrupt(sub1);
-				yield* Fiber.interrupt(sub2);
-				yield* Scope.close(scope1, Exit.void);
-				yield* Scope.close(scope2, Exit.void);
-			}),
-		),
+			yield* Fiber.interrupt(sub1);
+			yield* Fiber.interrupt(sub2);
+			yield* Scope.close(scope1, Exit.void);
+			yield* Scope.close(scope2, Exit.void);
+		}),
 	);
 
 	const rejectedFrame = (reason: "forbidden" | "not-found"): ServerMessage =>
@@ -806,240 +768,230 @@ describe("subscribe", () => {
 			reason,
 		});
 
-	test(
+	testFetch(
 		"rejects with FieldPermissionDenied on a forbidden frame",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const fiber = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.flip, Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				yield* Queue.offer(queue, rejectedFrame("forbidden"));
+			const fiber = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.flip, Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			yield* Queue.offer(queue, rejectedFrame("forbidden"));
 
-				const error = yield* Fiber.join(fiber);
-				expect(error._tag).toBe("FieldPermissionDenied");
-			}),
-		),
+			const error = yield* Fiber.join(fiber);
+			expect(error._tag).toBe("FieldPermissionDenied");
+		}),
 	);
 
-	test(
+	testFetch(
 		"rejects with FieldNotFound on a not-found frame",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const fiber = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.flip, Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				yield* Queue.offer(queue, rejectedFrame("not-found"));
+			const fiber = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.flip, Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			yield* Queue.offer(queue, rejectedFrame("not-found"));
 
-				const error = yield* Fiber.join(fiber);
-				expect(error._tag).toBe("FieldNotFound");
-			}),
-		),
+			const error = yield* Fiber.join(fiber);
+			expect(error._tag).toBe("FieldNotFound");
+		}),
 	);
 
-	test(
+	testFetch(
 		"ends the stream with the error when the subscribe is rejected after the first value",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const received: number[] = [];
-				const consumer = yield* loaded.replicant.count.subscribe().pipe(
-					Effect.flatMap(
-						Stream.runForEach((value) =>
-							Effect.sync(() => {
-								received.push(value);
-							}),
-						),
+			const received: number[] = [];
+			const consumer = yield* loaded.replicant.count.subscribe().pipe(
+				Effect.flatMap(
+					Stream.runForEach((value) =>
+						Effect.sync(() => {
+							received.push(value);
+						}),
 					),
-					Effect.flip,
-					Effect.forkScoped,
-				);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
-				);
-				yield* Queue.offer(queue, publishFrame(1));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual([1])),
-				);
+				),
+				Effect.flip,
+				Effect.forkScoped,
+			);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
+			);
+			yield* Queue.offer(queue, publishFrame(1));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(received).toEqual([1])),
+			);
 
-				yield* Queue.offer(queue, rejectedFrame("forbidden"));
-				const error = yield* Fiber.join(consumer);
-				expect(error).toEqual(
-					new FieldPermissionDenied({ namespace: "root", name: "count" }),
-				);
-				expect(received).toEqual([1]);
-			}),
-		),
+			yield* Queue.offer(queue, rejectedFrame("forbidden"));
+			const error = yield* Fiber.join(consumer);
+			expect(error).toEqual(
+				new FieldPermissionDenied({ namespace: "root", name: "count" }),
+			);
+			expect(received).toEqual([1]);
+		}),
 	);
 
-	test(
+	testFetch(
 		"keeps the stream open when a publish does not decode after the first value, and delivers the next publish that does",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const received: number[] = [];
-				yield* loaded.replicant.count.subscribe().pipe(
-					Effect.flatMap(
-						Stream.runForEach((value) =>
-							Effect.sync(() => {
-								received.push(value);
-							}),
-						),
+			const received: number[] = [];
+			yield* loaded.replicant.count.subscribe().pipe(
+				Effect.flatMap(
+					Stream.runForEach((value) =>
+						Effect.sync(() => {
+							received.push(value);
+						}),
 					),
-					Effect.forkScoped,
-				);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
-				);
-				yield* Queue.offer(queue, publishFrame(1));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual([1])),
-				);
+				),
+				Effect.forkScoped,
+			);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
+			);
+			yield* Queue.offer(queue, publishFrame(1));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(received).toEqual([1])),
+			);
 
-				yield* Queue.offer(
-					queue,
-					ReplicantSnapshotMessage.make({
-						field: { type: "replicant", namespace: "root", name: "count" },
-						value: "not a number",
-						revision: 2,
-					}),
-				);
-				yield* Queue.offer(queue, publishFrame(7, 3));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(received).toEqual([1, 7])),
-				);
-			}),
-		),
+			yield* Queue.offer(
+				queue,
+				ReplicantSnapshotMessage.make({
+					field: { type: "replicant", namespace: "root", name: "count" },
+					value: "not a number",
+					revision: 2,
+				}),
+			);
+			yield* Queue.offer(queue, publishFrame(7, 3));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(received).toEqual([1, 7])),
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"re-subscribing after a rejection sends a fresh subscribe and heals on the next publish",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const manifest = defineNamespace("root", {
-					replicant: { count: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const manifest = defineNamespace("root", {
+				replicant: { count: { schema: Schema.Number } },
+			});
 
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const scope1 = yield* Scope.make();
-				const fiber1 = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(Effect.flip, Scope.provide(scope1), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-				yield* Queue.offer(queue, rejectedFrame("forbidden"));
-				const firstError = yield* Fiber.join(fiber1);
-				expect(firstError._tag).toBe("FieldPermissionDenied");
-				yield* Scope.close(scope1, Exit.void);
+			const scope1 = yield* Scope.make();
+			const fiber1 = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(Effect.flip, Scope.provide(scope1), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+			yield* Queue.offer(queue, rejectedFrame("forbidden"));
+			const firstError = yield* Fiber.join(fiber1);
+			expect(firstError._tag).toBe("FieldPermissionDenied");
+			yield* Scope.close(scope1, Exit.void);
 
-				const scope2 = yield* Scope.make();
-				const head = yield* loaded.replicant.count
-					.subscribe()
-					.pipe(
-						Effect.flatMap(Stream.runHead),
-						Scope.provide(scope2),
-						Effect.forkChild,
-					);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						const subscribeCount = send.mock.calls.filter(
-							([msg]) => msg._tag === "subscribe",
-						).length;
-						expect(subscribeCount).toBe(2);
-					}),
+			const scope2 = yield* Scope.make();
+			const head = yield* loaded.replicant.count
+				.subscribe()
+				.pipe(
+					Effect.flatMap(Stream.runHead),
+					Scope.provide(scope2),
+					Effect.forkChild,
 				);
-				yield* Queue.offer(queue, publishFrame(5));
-				const result = yield* Fiber.join(head);
-				assert(Option.isSome(result));
-				expect(result.value).toBe(5);
-				yield* Scope.close(scope2, Exit.void);
-			}),
-		),
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					const subscribeCount = send.mock.calls.filter(
+						([msg]) => msg._tag === "subscribe",
+					).length;
+					expect(subscribeCount).toBe(2);
+				}),
+			);
+			yield* Queue.offer(queue, publishFrame(5));
+			const result = yield* Fiber.join(head);
+			assert(Option.isSome(result));
+			expect(result.value).toBe(5);
+			yield* Scope.close(scope2, Exit.void);
+		}),
 	);
 });
 
@@ -1051,94 +1003,88 @@ describe("computed", () => {
 		computed: { firstGameId: { schema: Schema.NullOr(Schema.String) } },
 	});
 
-	test(
+	testFetch(
 		"get decodes the computed value from the transport",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.getComputed.mockReturnValue(Effect.succeed("a"));
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.getComputed.mockReturnValue(Effect.succeed("a"));
 
-				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+			const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				expect(
-					yield* loaded.computed.firstGameId
-						.get()
-						.pipe(Effect.provideService(FieldTransportService, transportStub)),
-				).toBe("a");
-			}),
-		),
+			expect(
+				yield* loaded.computed.firstGameId
+					.get()
+					.pipe(Effect.provideService(FieldTransportService, transportStub)),
+			).toBe("a");
+		}),
 	);
 
-	test(
+	testFetch(
 		"is read-only (no set)",
-		testEffect(
-			Effect.gen(function* () {
-				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
-					Effect.provideService(FieldTransportService, createTransportStub()),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+		Effect.gen(function* () {
+			const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
+				Effect.provideService(FieldTransportService, createTransportStub()),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				expect("set" in loaded.computed.firstGameId).toBe(false);
-			}),
-		),
+			expect("set" in loaded.computed.firstGameId).toBe(false);
+		}),
 	);
 
-	test(
+	testFetch(
 		"subscribe emits decoded matching publishes",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const pubsub = yield* PubSub.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () =>
-						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
-				};
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const pubsub = yield* PubSub.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () =>
+					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+			};
 
-				const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
+			const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
 
-				const head = yield* loaded.computed.firstGameId
-					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith({
-							_tag: "subscribe",
-							field: {
-								type: "computed",
-								namespace: "root",
-								name: "firstGameId",
-							},
-						});
-					}),
-				);
+			const head = yield* loaded.computed.firstGameId
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith({
+						_tag: "subscribe",
+						field: {
+							type: "computed",
+							namespace: "root",
+							name: "firstGameId",
+						},
+					});
+				}),
+			);
 
-				yield* PubSub.publish(
-					pubsub,
-					FieldValueMessage.make({
-						field: { type: "computed", namespace: "root", name: "firstGameId" },
-						value: "z",
-					}),
-				);
+			yield* PubSub.publish(
+				pubsub,
+				FieldValueMessage.make({
+					field: { type: "computed", namespace: "root", name: "firstGameId" },
+					value: "z",
+				}),
+			);
 
-				const result = yield* Fiber.join(head);
-				assert(Option.isSome(result));
-				expect(result.value).toBe("z");
-			}),
-		),
+			const result = yield* Fiber.join(head);
+			assert(Option.isSome(result));
+			expect(result.value).toBe("z");
+		}),
 	);
 });
 
@@ -1160,253 +1106,239 @@ describe("topic", () => {
 			value,
 		});
 
-	test(
+	testFetch(
 		"publish encodes the value and forwards it to the transport",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				yield* loaded.topic.chat
-					.publish(7)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(transportStub.publishTopic).toHaveBeenCalledWith(
-					"root",
-					"chat",
-					7,
-				);
-			}),
-		),
+			yield* loaded.topic.chat
+				.publish(7)
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(transportStub.publishTopic).toHaveBeenCalledWith(
+				"root",
+				"chat",
+				7,
+			);
+		}),
 	);
 
-	test(
+	testFetch(
 		"publish fails when the value fails schema validation",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
+
+			const error = yield* loaded.topic.chat
+				.publish("nope" as unknown as number)
+				.pipe(
 					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
-
-				const error = yield* loaded.topic.chat
-					.publish("nope" as unknown as number)
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldEncodeError");
-			}),
-		),
-	);
-
-	test(
-		"subscribe sends server subscribe and emits decoded matching publishes",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const pubsub = yield* PubSub.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () =>
-						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
-				};
-				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
-
-				const head = yield* loaded.topic.chat
-					.subscribe()
-					.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-
-				yield* PubSub.publish(
-					pubsub,
-					FieldValueMessage.make({
-						field: { type: "topic", namespace: "root", name: "other" },
-						value: 99,
-					}),
-				);
-				yield* PubSub.publish(pubsub, publishFrame(42));
-
-				const result = yield* Fiber.join(head);
-				assert(Option.isSome(result));
-				expect(result.value).toBe(42);
-			}),
-		),
-	);
-
-	test(
-		"refcounts: subscribe sent once, unsubscribe only after the last scope closes",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
-
-				const scope1 = yield* Scope.make();
-				const sub1 = yield* loaded.topic.chat
-					.subscribe()
-					.pipe(Effect.asVoid, Scope.provide(scope1), Effect.forkChild);
-				yield* Fiber.join(sub1);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-
-				const scope2 = yield* Scope.make();
-				const sub2 = yield* loaded.topic.chat
-					.subscribe()
-					.pipe(Effect.asVoid, Scope.provide(scope2), Effect.forkChild);
-				yield* Fiber.join(sub2);
-
-				const subscribeCount = send.mock.calls.filter(
-					([msg]) => msg._tag === "subscribe",
-				).length;
-				expect(subscribeCount).toBe(1);
-
-				yield* Scope.close(scope1, Exit.void);
-				const hasUnsubscribe = send.mock.calls.some(
-					([msg]) => msg._tag === "unsubscribe",
-				);
-				expect(hasUnsubscribe).toBe(false);
-
-				yield* Scope.close(scope2, Exit.void);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(unsubscribeFrame);
-					}),
-				);
-			}),
-		),
-	);
-
-	test(
-		"a late subscriber does not replay the topic's last event",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const pubsub = yield* PubSub.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () =>
-						PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
-				};
-				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
-
-				const seen1: number[] = [];
-				const stream1 = yield* loaded.topic.chat.subscribe();
-				yield* Stream.runForEach(stream1, (v) =>
-					Effect.sync(() => seen1.push(v)),
-				).pipe(Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send).toHaveBeenCalledWith(subscribeFrame);
-					}),
-				);
-
-				yield* PubSub.publish(pubsub, publishFrame(1));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(seen1).toEqual([1]);
-					}),
-				);
-
-				const seen2: number[] = [];
-				const stream2 = yield* loaded.topic.chat.subscribe();
-				yield* Stream.runForEach(stream2, (v) =>
-					Effect.sync(() => seen2.push(v)),
-				).pipe(Effect.forkChild);
-
-				yield* PubSub.publish(pubsub, publishFrame(2));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(seen1).toEqual([1, 2]);
-						expect(seen2).toEqual([2]);
-					}),
-				);
-			}),
-		),
-	);
-
-	test(
-		"ends the stream with the error when the server rejects the subscribe",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				const queue = yield* Queue.unbounded<ServerMessage>();
-				const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
-				const messageChannelStub: MessageChannel = {
-					send,
-					receive: () => Effect.succeed(Stream.fromQueue(queue)),
-				};
-				const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, messageChannelStub),
-				);
-
-				const seen: number[] = [];
-				const consumer = yield* loaded.topic.chat.subscribe().pipe(
-					Effect.flatMap(
-						Stream.runForEach((value) =>
-							Effect.sync(() => {
-								seen.push(value);
-							}),
-						),
-					),
 					Effect.flip,
-					Effect.forkScoped,
 				);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
-				);
-				yield* Queue.offer(queue, publishFrame(1));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => expect(seen).toEqual([1])),
-				);
+			expect(error._tag).toBe("FieldEncodeError");
+		}),
+	);
 
-				yield* Queue.offer(
-					queue,
-					SubscribeRejectedMessage.make({
-						field: { type: "topic", namespace: "root", name: "chat" },
-						reason: "forbidden",
-					}),
-				);
-				const error = yield* Fiber.join(consumer);
-				expect(error).toEqual(
-					new FieldPermissionDenied({ namespace: "root", name: "chat" }),
-				);
-				expect(seen).toEqual([1]);
-			}),
-		),
+	testFetch(
+		"subscribe sends server subscribe and emits decoded matching publishes",
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const pubsub = yield* PubSub.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () =>
+					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+			};
+			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
+
+			const head = yield* loaded.topic.chat
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+
+			yield* PubSub.publish(
+				pubsub,
+				FieldValueMessage.make({
+					field: { type: "topic", namespace: "root", name: "other" },
+					value: 99,
+				}),
+			);
+			yield* PubSub.publish(pubsub, publishFrame(42));
+
+			const result = yield* Fiber.join(head);
+			assert(Option.isSome(result));
+			expect(result.value).toBe(42);
+		}),
+	);
+
+	testFetch(
+		"refcounts: subscribe sent once, unsubscribe only after the last scope closes",
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
+
+			const scope1 = yield* Scope.make();
+			const sub1 = yield* loaded.topic.chat
+				.subscribe()
+				.pipe(Effect.asVoid, Scope.provide(scope1), Effect.forkChild);
+			yield* Fiber.join(sub1);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+
+			const scope2 = yield* Scope.make();
+			const sub2 = yield* loaded.topic.chat
+				.subscribe()
+				.pipe(Effect.asVoid, Scope.provide(scope2), Effect.forkChild);
+			yield* Fiber.join(sub2);
+
+			const subscribeCount = send.mock.calls.filter(
+				([msg]) => msg._tag === "subscribe",
+			).length;
+			expect(subscribeCount).toBe(1);
+
+			yield* Scope.close(scope1, Exit.void);
+			const hasUnsubscribe = send.mock.calls.some(
+				([msg]) => msg._tag === "unsubscribe",
+			);
+			expect(hasUnsubscribe).toBe(false);
+
+			yield* Scope.close(scope2, Exit.void);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(unsubscribeFrame);
+				}),
+			);
+		}),
+	);
+
+	testFetch(
+		"a late subscriber does not replay the topic's last event",
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const pubsub = yield* PubSub.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () =>
+					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+			};
+			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
+
+			const seen1: number[] = [];
+			const stream1 = yield* loaded.topic.chat.subscribe();
+			yield* Stream.runForEach(stream1, (v) =>
+				Effect.sync(() => seen1.push(v)),
+			).pipe(Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send).toHaveBeenCalledWith(subscribeFrame);
+				}),
+			);
+
+			yield* PubSub.publish(pubsub, publishFrame(1));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(seen1).toEqual([1]);
+				}),
+			);
+
+			const seen2: number[] = [];
+			const stream2 = yield* loaded.topic.chat.subscribe();
+			yield* Stream.runForEach(stream2, (v) =>
+				Effect.sync(() => seen2.push(v)),
+			).pipe(Effect.forkChild);
+
+			yield* PubSub.publish(pubsub, publishFrame(2));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(seen1).toEqual([1, 2]);
+					expect(seen2).toEqual([2]);
+				}),
+			);
+		}),
+	);
+
+	testFetch(
+		"ends the stream with the error when the server rejects the subscribe",
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			const queue = yield* Queue.unbounded<ServerMessage>();
+			const send = vi.fn<MessageChannel["send"]>(() => Effect.void);
+			const messageChannelStub: MessageChannel = {
+				send,
+				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			};
+			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, messageChannelStub),
+			);
+
+			const seen: number[] = [];
+			const consumer = yield* loaded.topic.chat.subscribe().pipe(
+				Effect.flatMap(
+					Stream.runForEach((value) =>
+						Effect.sync(() => {
+							seen.push(value);
+						}),
+					),
+				),
+				Effect.flip,
+				Effect.forkScoped,
+			);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(send).toHaveBeenCalledWith(subscribeFrame)),
+			);
+			yield* Queue.offer(queue, publishFrame(1));
+			yield* Effect.promise(() => vi.waitFor(() => expect(seen).toEqual([1])));
+
+			yield* Queue.offer(
+				queue,
+				SubscribeRejectedMessage.make({
+					field: { type: "topic", namespace: "root", name: "chat" },
+					reason: "forbidden",
+				}),
+			);
+			const error = yield* Fiber.join(consumer);
+			expect(error).toEqual(
+				new FieldPermissionDenied({ namespace: "root", name: "chat" }),
+			);
+			expect(seen).toEqual([1]);
+		}),
 	);
 });
 
@@ -1423,105 +1355,97 @@ describe("rpc", () => {
 		},
 	});
 
-	test(
+	testFetch(
 		"call encodes the request, forwards it, and decodes the response",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.callRpc.mockReturnValue(Effect.succeed(84));
-				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.callRpc.mockReturnValue(Effect.succeed(84));
+			const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				const result = yield* loaded.rpc.echo
-					.call(42)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(result).toBe(84);
-				expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
-			}),
-		),
+			const result = yield* loaded.rpc.echo
+				.call(42)
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(result).toBe(84);
+			expect(transportStub.callRpc).toHaveBeenCalledWith("root", "echo", 42);
+		}),
 	);
 
-	test(
+	testFetch(
 		"call decodes a string response into a Date",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.callRpc.mockReturnValue(
-					Effect.succeed("2030-01-01T00:00:00.000Z"),
-				);
-				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.callRpc.mockReturnValue(
+				Effect.succeed("2030-01-01T00:00:00.000Z"),
+			);
+			const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				const result = yield* loaded.rpc.when
-					.call(1)
-					.pipe(Effect.provideService(FieldTransportService, transportStub));
-				expect(result).toEqual(new Date("2030-01-01T00:00:00.000Z"));
-			}),
-		),
+			const result = yield* loaded.rpc.when
+				.call(1)
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(result).toEqual(new Date("2030-01-01T00:00:00.000Z"));
+		}),
 	);
 
-	test(
+	testFetch(
 		"call propagates a typed transport error",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.callRpc.mockReturnValue(
-					Effect.fail(
-						new FieldPermissionDenied({ namespace: "root", name: "echo" }),
-					),
-				);
-				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.callRpc.mockReturnValue(
+				Effect.fail(
+					new FieldPermissionDenied({ namespace: "root", name: "echo" }),
+				),
+			);
+			const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				const error = yield* loaded.rpc.echo
-					.call(42)
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldPermissionDenied");
-			}),
-		),
+			const error = yield* loaded.rpc.echo
+				.call(42)
+				.pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.flip,
+				);
+			expect(error._tag).toBe("FieldPermissionDenied");
+		}),
 	);
 
-	test(
+	testFetch(
 		"call fails when the response does not match the schema",
-		testEffect(
-			Effect.gen(function* () {
-				const transportStub = createTransportStub();
-				transportStub.callRpc.mockReturnValue(Effect.succeed("not a number"));
-				const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(
-						MessageChannelService,
-						createMessageChannelStub(),
-					),
-				);
+		Effect.gen(function* () {
+			const transportStub = createTransportStub();
+			transportStub.callRpc.mockReturnValue(Effect.succeed("not a number"));
+			const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(
+					MessageChannelService,
+					createMessageChannelStub(),
+				),
+			);
 
-				const error = yield* loaded.rpc.echo
-					.call(42)
-					.pipe(
-						Effect.provideService(FieldTransportService, transportStub),
-						Effect.flip,
-					);
-				expect(error._tag).toBe("FieldDecodeError");
-			}),
-		),
+			const error = yield* loaded.rpc.echo
+				.call(42)
+				.pipe(
+					Effect.provideService(FieldTransportService, transportStub),
+					Effect.flip,
+				);
+			expect(error._tag).toBe("FieldDecodeError");
+		}),
 	);
 });
 
@@ -1663,174 +1587,168 @@ describe("derivation over loaded fields", () => {
 			revision,
 		});
 
-	test(
+	testFetch(
 		"derive spans loaded fields and updates as publishes arrive",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel, pubsub, send } = yield* makePubSubChannel;
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, createTransportStub()),
-					Effect.provideService(MessageChannelService, channel),
-				);
+		Effect.gen(function* () {
+			const { channel, pubsub, send } = yield* makePubSubChannel;
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, createTransportStub()),
+				Effect.provideService(MessageChannelService, channel),
+			);
 
-				const leader = derive((get) => {
-					const left = get(loaded.replicant.scoreLeft);
-					const right = get(loaded.replicant.scoreRight);
-					if (left === right) {
-						return "tie";
-					}
-					return left > right ? "left" : "right";
-				});
+			const leader = derive((get) => {
+				const left = get(loaded.replicant.scoreLeft);
+				const right = get(loaded.replicant.scoreRight);
+				if (left === right) {
+					return "tie";
+				}
+				return left > right ? "left" : "right";
+			});
 
-				const seen: string[] = [];
-				const unsubscribe = leader.subscribe((value) => {
-					seen.push(value);
-				});
-				onTestFinished(() => unsubscribe());
+			const seen: string[] = [];
+			const unsubscribe = leader.subscribe((value) => {
+				seen.push(value);
+			});
+			onTestFinished(() => unsubscribe());
 
-				// Synchronous get() suspensions
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(
-							send.mock.calls.filter(([msg]) => msg._tag === "subscribe"),
-						).toHaveLength(1);
-					}),
-				);
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(
-							send.mock.calls.filter(([msg]) => msg._tag === "subscribe"),
-						).toHaveLength(2);
-					}),
-				);
-				yield* PubSub.publish(pubsub, publish("scoreRight", 0));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(seen.at(-1)).toBe("tie");
-					}),
-				);
+			// Synchronous get() suspensions
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(
+						send.mock.calls.filter(([msg]) => msg._tag === "subscribe"),
+					).toHaveLength(1);
+				}),
+			);
+			yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(
+						send.mock.calls.filter(([msg]) => msg._tag === "subscribe"),
+					).toHaveLength(2);
+				}),
+			);
+			yield* PubSub.publish(pubsub, publish("scoreRight", 0));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(seen.at(-1)).toBe("tie");
+				}),
+			);
 
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 3, 2));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(seen.at(-1)).toBe("left");
-					}),
-				);
+			yield* PubSub.publish(pubsub, publish("scoreLeft", 3, 2));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(seen.at(-1)).toBe("left");
+				}),
+			);
 
-				// get() runs the compute directly off the sources' own get()
-				expect(yield* Effect.promise(() => leader.get())).toBe("left");
-			}),
-		),
+			// get() runs the compute directly off the sources' own get()
+			expect(yield* Effect.promise(() => leader.get())).toBe("left");
+		}),
 	);
 
-	test(
+	testFetch(
 		"get reads the live cell without a transport round-trip while subscribed",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel, pubsub, send } = yield* makePubSubChannel;
-				const transportStub = createTransportStub();
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, channel),
-				);
+		Effect.gen(function* () {
+			const { channel, pubsub, send } = yield* makePubSubChannel;
+			const transportStub = createTransportStub();
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, channel),
+			);
 
-				const scope = yield* Scope.make();
-				yield* loaded.replicant.scoreLeft
-					.subscribe()
-					.pipe(Scope.provide(scope), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(
-							send.mock.calls.some(([msg]) => msg._tag === "subscribe"),
-						).toBe(true);
-					}),
-				);
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 7));
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(send.mock.calls.length).toBeGreaterThan(0);
-					}),
-				);
+			const scope = yield* Scope.make();
+			yield* loaded.replicant.scoreLeft
+				.subscribe()
+				.pipe(Scope.provide(scope), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(
+						send.mock.calls.some(([msg]) => msg._tag === "subscribe"),
+					).toBe(true);
+				}),
+			);
+			yield* PubSub.publish(pubsub, publish("scoreLeft", 7));
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(send.mock.calls.length).toBeGreaterThan(0);
+				}),
+			);
 
-				yield* Effect.promise(() =>
-					vi.waitFor(async () => {
-						expect(
-							await Effect.runPromise(
-								loaded.replicant.scoreLeft
-									.get()
-									.pipe(
-										Effect.provideService(FieldTransportService, transportStub),
-									),
-							),
-						).toBe(7);
-					}),
-				);
-				expect(transportStub.getReplicant).not.toHaveBeenCalled();
+			yield* Effect.promise(() =>
+				vi.waitFor(async () => {
+					expect(
+						await Effect.runPromise(
+							loaded.replicant.scoreLeft
+								.get()
+								.pipe(
+									Effect.provideService(FieldTransportService, transportStub),
+								),
+						),
+					).toBe(7);
+				}),
+			);
+			expect(transportStub.getReplicant).not.toHaveBeenCalled();
 
-				yield* Scope.close(scope, Exit.void);
-			}),
-		),
+			yield* Scope.close(scope, Exit.void);
+		}),
 	);
 
-	test(
+	testFetch(
 		"a write lands in the hot cell only as the server echo, which the next update reads as its base",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel, pubsub, send } = yield* makePubSubChannel;
-				const transportStub = createTransportStub();
-				const loaded = yield* loadNamespaceEffect(manifest).pipe(
-					Effect.provideService(FieldTransportService, transportStub),
-					Effect.provideService(MessageChannelService, channel),
-				);
+		Effect.gen(function* () {
+			const { channel, pubsub, send } = yield* makePubSubChannel;
+			const transportStub = createTransportStub();
+			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+				Effect.provideService(FieldTransportService, transportStub),
+				Effect.provideService(MessageChannelService, channel),
+			);
 
-				const scope = yield* Scope.make();
-				yield* loaded.replicant.scoreLeft
-					.subscribe()
-					.pipe(Scope.provide(scope), Effect.forkChild);
-				yield* Effect.promise(() =>
-					vi.waitFor(() => {
-						expect(
-							send.mock.calls.some(([msg]) => msg._tag === "subscribe"),
-						).toBe(true);
-					}),
-				);
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
-				yield* Effect.promise(() =>
-					vi.waitFor(async () => {
-						expect(
-							await Effect.runPromise(loaded.replicant.scoreLeft.get()),
-						).toBe(0);
-					}),
-				);
+			const scope = yield* Scope.make();
+			yield* loaded.replicant.scoreLeft
+				.subscribe()
+				.pipe(Scope.provide(scope), Effect.forkChild);
+			yield* Effect.promise(() =>
+				vi.waitFor(() => {
+					expect(
+						send.mock.calls.some(([msg]) => msg._tag === "subscribe"),
+					).toBe(true);
+				}),
+			);
+			yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
+			yield* Effect.promise(() =>
+				vi.waitFor(async () => {
+					expect(
+						await Effect.runPromise(loaded.replicant.scoreLeft.get()),
+					).toBe(0);
+				}),
+			);
 
-				yield* loaded.replicant.scoreLeft.set(10);
-				expect(yield* loaded.replicant.scoreLeft.get()).toBe(0);
+			yield* loaded.replicant.scoreLeft.set(10);
+			expect(yield* loaded.replicant.scoreLeft.get()).toBe(0);
 
-				yield* PubSub.publish(pubsub, publish("scoreLeft", 10, 2));
-				yield* Effect.promise(() =>
-					vi.waitFor(async () => {
-						expect(
-							await Effect.runPromise(loaded.replicant.scoreLeft.get()),
-						).toBe(10);
-					}),
-				);
+			yield* PubSub.publish(pubsub, publish("scoreLeft", 10, 2));
+			yield* Effect.promise(() =>
+				vi.waitFor(async () => {
+					expect(
+						await Effect.runPromise(loaded.replicant.scoreLeft.get()),
+					).toBe(10);
+				}),
+			);
 
-				transportStub.getReplicant.mockClear();
-				yield* loaded.replicant.scoreLeft.update((v) => v + 1);
+			transportStub.getReplicant.mockClear();
+			yield* loaded.replicant.scoreLeft.update((v) => v + 1);
 
-				expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
-					"match",
-					"scoreLeft",
-					[
-						{ op: "test-hash", path: "", hash: computeTestHash("10") },
-						{ op: "replace", path: "", value: "11" },
-					],
-				);
-				expect(transportStub.getReplicant).not.toHaveBeenCalled();
+			expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
+				"match",
+				"scoreLeft",
+				[
+					{ op: "test-hash", path: "", hash: computeTestHash("10") },
+					{ op: "replace", path: "", value: "11" },
+				],
+			);
+			expect(transportStub.getReplicant).not.toHaveBeenCalled();
 
-				yield* Scope.close(scope, Exit.void);
-			}),
-		),
+			yield* Scope.close(scope, Exit.void);
+		}),
 	);
 });

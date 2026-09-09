@@ -30,6 +30,8 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:",
+		"@nodecg-next/test-utils": "workspace:*",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

@@ -1,11 +1,11 @@
-import { testEffect } from "@nodecg-next/internal/test-utils";
+import { it } from "@effect/vitest";
 import { ConfigProvider, Effect } from "effect";
 import {
 	HttpEffect,
 	HttpServerRequest,
 	HttpServerResponse,
 } from "effect/unstable/http";
-import { describe, expect, test } from "vitest";
+import { describe, expect } from "vitest";
 
 import { basePathMiddleware } from "./base-path.ts";
 
@@ -33,39 +33,30 @@ const respond = (baseUrl: string, path: string) =>
 	);
 
 describe("basePathMiddleware", () => {
-	test(
-		"serves under the sub-path with the prefix stripped",
-		testEffect(
-			Effect.gen(function* () {
-				expect(yield* respond("http://host/foo", "/foo/ping")).toEqual({
-					status: 200,
-					body: "/ping",
-				});
-			}),
-		),
+	it.effect("serves under the sub-path with the prefix stripped", () =>
+		Effect.gen(function* () {
+			expect(yield* respond("http://host/foo", "/foo/ping")).toEqual({
+				status: 200,
+				body: "/ping",
+			});
+		}),
 	);
 
-	test(
-		"404s a request outside the sub-path",
-		testEffect(
-			Effect.gen(function* () {
-				expect(yield* respond("http://host/foo", "/ping")).toEqual({
-					status: 404,
-					body: "",
-				});
-			}),
-		),
+	it.effect("404s a request outside the sub-path", () =>
+		Effect.gen(function* () {
+			expect(yield* respond("http://host/foo", "/ping")).toEqual({
+				status: 404,
+				body: "",
+			});
+		}),
 	);
 
-	test(
-		"serves at the origin unchanged",
-		testEffect(
-			Effect.gen(function* () {
-				expect(yield* respond("http://host", "/ping")).toEqual({
-					status: 200,
-					body: "/ping",
-				});
-			}),
-		),
+	it.effect("serves at the origin unchanged", () =>
+		Effect.gen(function* () {
+			expect(yield* respond("http://host", "/ping")).toEqual({
+				status: 200,
+				body: "/ping",
+			});
+		}),
 	);
 });

@@ -1,4 +1,4 @@
-import { testEffect } from "@nodecg-next/internal/test-utils";
+import { it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { describe, expect, test, vi } from "vitest";
@@ -51,9 +51,9 @@ describe("loginUrl", () => {
 });
 
 describe("providers", () => {
-	test(
+	it.effect(
 		"issues a GET to the provider list and returns the decoded entries",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const fetch = mockFetch(() =>
 					jsonResponse([
@@ -73,70 +73,60 @@ describe("providers", () => {
 				expect(request.method).toBe("GET");
 				expect(request.url).toContain("/api/internal/authentication/providers");
 			}),
-		),
 	);
 
-	test(
-		"fails with AuthRequestFailed when the server errors",
-		testEffect(
-			Effect.gen(function* () {
-				const client = yield* buildClient;
+	it.effect("fails with AuthRequestFailed when the server errors", () =>
+		Effect.gen(function* () {
+			const client = yield* buildClient;
 
-				const error = yield* client.providers().pipe(
-					Effect.provideService(
-						FetchHttpClient.Fetch,
-						mockFetch(() => new Response(null, { status: 500 })),
-					),
-					Effect.flip,
-				);
+			const error = yield* client.providers().pipe(
+				Effect.provideService(
+					FetchHttpClient.Fetch,
+					mockFetch(() => new Response(null, { status: 500 })),
+				),
+				Effect.flip,
+			);
 
-				expect(error._tag).toBe("AuthRequestFailed");
-			}),
-		),
+			expect(error._tag).toBe("AuthRequestFailed");
+		}),
 	);
 });
 
 describe("me", () => {
-	test(
-		"issues a GET to /me and returns the decoded payload",
-		testEffect(
-			Effect.gen(function* () {
-				const fetch = mockFetch(() => jsonResponse(mePayload));
-				const client = yield* buildClient;
+	it.effect("issues a GET to /me and returns the decoded payload", () =>
+		Effect.gen(function* () {
+			const fetch = mockFetch(() => jsonResponse(mePayload));
+			const client = yield* buildClient;
 
-				const payload = yield* client
-					.me()
-					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			const payload = yield* client
+				.me()
+				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
-				expect(payload.identity._tag).toBe("human");
-				expect(payload.namespaces["fixture"]?.roles).toEqual(
-					new Set(["producer"]),
-				);
-				const request = requestOf(fetch);
-				expect(request.method).toBe("GET");
-				expect(request.url).toContain("/api/internal/me");
-			}),
-		),
+			expect(payload.identity._tag).toBe("human");
+			expect(payload.namespaces["fixture"]?.roles).toEqual(
+				new Set(["producer"]),
+			);
+			const request = requestOf(fetch);
+			expect(request.method).toBe("GET");
+			expect(request.url).toContain("/api/internal/me");
+		}),
 	);
 });
 
 describe("logout", () => {
-	test(
-		"issues a POST to the logout endpoint",
-		testEffect(
-			Effect.gen(function* () {
-				const fetch = mockFetch(() => new Response(null, { status: 204 }));
-				const client = yield* buildClient;
+	it.effect("issues a POST to the logout endpoint", () =>
+		Effect.gen(function* () {
+			const fetch = mockFetch(() => new Response(null, { status: 204 }));
+			const client = yield* buildClient;
 
-				yield* client
-					.logout()
-					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			yield* client
+				.logout()
+				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
-				const request = requestOf(fetch);
-				expect(request.method).toBe("POST");
-				expect(request.url).toContain("/api/internal/authentication/logout");
-			}),
-		),
+			const request = requestOf(fetch);
+			expect(request.method).toBe("POST");
+			expect(request.url).toContain("/api/internal/authentication/logout");
+		}),
 	);
 });
 
@@ -151,9 +141,9 @@ describe("base URL", () => {
 			return requestOf(fetch).url;
 		}).pipe(Effect.provide(FetchHttpClient.layer));
 
-	test(
+	it.effect(
 		"prefixes requests with the base URL, with or without a trailing slash",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				expect(yield* requestUrl()).toBe(
 					`${new URL(import.meta.url).origin}/api/internal/authentication/providers`,
@@ -171,6 +161,5 @@ describe("base URL", () => {
 					"https://host/prefix/api/internal/authentication/providers",
 				);
 			}),
-		),
 	);
 });

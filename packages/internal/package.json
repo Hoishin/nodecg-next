@@ -14,14 +14,12 @@
 	"exports": {
 		".": "./src/_exports.ts",
 		"./occ": "./src/occ/_exports.ts",
-		"./test-utils": "./src/test-utils/_exports.ts",
 		"./utils": "./src/utils/_exports.ts"
 	},
 	"publishConfig": {
 		"exports": {
 			".": "./dist/index.js",
 			"./occ": "./dist/occ.js",
-			"./test-utils": "./dist/test-utils.js",
 			"./utils": "./dist/utils.js"
 		}
 	},
@@ -38,6 +36,7 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:",
 		"@types/murmurhash3js-revisited": "^3.0.3",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",

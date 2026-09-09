@@ -1,4 +1,4 @@
-import { testEffect } from "@nodecg-next/internal/test-utils";
+import { it } from "@effect/vitest";
 import { Context, Effect, Schema, type HKT } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
@@ -198,9 +198,9 @@ describe("mapValues", () => {
 });
 
 describe("mapEffectValues", () => {
-	test(
+	it.effect(
 		"collects the resolved values into a record, with E and R never",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const effect = mapEffectValues<IdentityLambda, ArrayLambda>()((value) =>
 					Effect.succeed([value]),
@@ -217,97 +217,84 @@ describe("mapEffectValues", () => {
 				>();
 				expect(yield* effect).toEqual({ a: [1], b: ["two"] });
 			}),
-		),
 	);
 
-	test(
-		"passes the key to the transform",
-		testEffect(
-			Effect.gen(function* () {
-				const keys: string[] = [];
-				yield* mapEffectValues<IdentityLambda, ArrayLambda>()((value, key) => {
-					keys.push(key);
-					return Effect.succeed([value]);
-				})({ a: 1, b: 2 });
-				expect(keys.sort()).toEqual(["a", "b"]);
-			}),
-		),
+	it.effect("passes the key to the transform", () =>
+		Effect.gen(function* () {
+			const keys: string[] = [];
+			yield* mapEffectValues<IdentityLambda, ArrayLambda>()((value, key) => {
+				keys.push(key);
+				return Effect.succeed([value]);
+			})({ a: 1, b: 2 });
+			expect(keys.sort()).toEqual(["a", "b"]);
+		}),
 	);
 
-	test(
-		"reduces a non-identity In lambda on the input side",
-		testEffect(
-			Effect.gen(function* () {
-				const result = yield* mapEffectValues<BoxLambda, IdentityLambda>()(
-					(value) => Effect.succeed(value.value),
-				)({
-					a: { value: 1 },
-					b: { value: "two" },
-				});
-				expect(result).toEqual({ a: 1, b: "two" });
-			}),
-		),
+	it.effect("reduces a non-identity In lambda on the input side", () =>
+		Effect.gen(function* () {
+			const result = yield* mapEffectValues<BoxLambda, IdentityLambda>()(
+				(value) => Effect.succeed(value.value),
+			)({
+				a: { value: 1 },
+				b: { value: "two" },
+			});
+			expect(result).toEqual({ a: 1, b: "two" });
+		}),
 	);
 
-	test(
-		"propagates the transform's error channel",
-		testEffect(
-			Effect.gen(function* () {
-				const effect = mapEffectValues<IdentityLambda, ArrayLambda>()(
-					(value, key) =>
-						key === "b"
-							? Effect.fail(new TransformError({ key }))
-							: Effect.succeed([value]),
-				)({ a: 1, b: 2 });
-				expectTypeOf(effect).toEqualTypeOf<
-					Effect.Effect<
-						{
-							readonly a: ReadonlyArray<number>;
-							readonly b: ReadonlyArray<number>;
-						},
-						TransformError,
-						never
-					>
-				>();
-				const error = yield* effect.pipe(Effect.flip);
-				expect(error._tag).toBe("TransformError");
-			}),
-		),
+	it.effect("propagates the transform's error channel", () =>
+		Effect.gen(function* () {
+			const effect = mapEffectValues<IdentityLambda, ArrayLambda>()(
+				(value, key) =>
+					key === "b"
+						? Effect.fail(new TransformError({ key }))
+						: Effect.succeed([value]),
+			)({ a: 1, b: 2 });
+			expectTypeOf(effect).toEqualTypeOf<
+				Effect.Effect<
+					{
+						readonly a: ReadonlyArray<number>;
+						readonly b: ReadonlyArray<number>;
+					},
+					TransformError,
+					never
+				>
+			>();
+			const error = yield* effect.pipe(Effect.flip);
+			expect(error._tag).toBe("TransformError");
+		}),
 	);
 
-	test(
-		"propagates the transform's context channel",
-		testEffect(
-			Effect.gen(function* () {
-				const effect = mapEffectValues<IdentityLambda, ArrayLambda>()((value) =>
-					Effect.gen(function* () {
-						const service = yield* BoxService;
-						return service.box(value);
-					}),
-				)({ a: 1, b: 2 });
-				expectTypeOf(effect).toEqualTypeOf<
-					Effect.Effect<
-						{
-							readonly a: ReadonlyArray<number>;
-							readonly b: ReadonlyArray<number>;
-						},
-						never,
-						BoxService
-					>
-				>();
-				const result = yield* effect.pipe(
-					Effect.provideService(BoxService, {
-						box: (value) => [value, value],
-					}),
-				);
-				expect(result).toEqual({ a: [1, 1], b: [2, 2] });
-			}),
-		),
+	it.effect("propagates the transform's context channel", () =>
+		Effect.gen(function* () {
+			const effect = mapEffectValues<IdentityLambda, ArrayLambda>()((value) =>
+				Effect.gen(function* () {
+					const service = yield* BoxService;
+					return service.box(value);
+				}),
+			)({ a: 1, b: 2 });
+			expectTypeOf(effect).toEqualTypeOf<
+				Effect.Effect<
+					{
+						readonly a: ReadonlyArray<number>;
+						readonly b: ReadonlyArray<number>;
+					},
+					never,
+					BoxService
+				>
+			>();
+			const result = yield* effect.pipe(
+				Effect.provideService(BoxService, {
+					box: (value) => [value, value],
+				}),
+			);
+			expect(result).toEqual({ a: [1, 1], b: [2, 2] });
+		}),
 	);
 
-	test(
+	it.effect(
 		"maps into a mapped-object shape carrying both the error and context channels",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const effect = mapEffectValues<IdentityLambda, HeadTailLambda>()(
 					(value, key) =>
@@ -336,26 +323,22 @@ describe("mapEffectValues", () => {
 				);
 				expect(error._tag).toBe("TransformError");
 			}),
-		),
 	);
 
-	test(
-		"returns an empty object for an empty input",
-		testEffect(
-			Effect.gen(function* () {
-				const result = yield* mapEffectValues<IdentityLambda, ArrayLambda>()(
-					(value) => Effect.succeed([value]),
-				)({});
-				expect(result).toEqual({});
-			}),
-		),
+	it.effect("returns an empty object for an empty input", () =>
+		Effect.gen(function* () {
+			const result = yield* mapEffectValues<IdentityLambda, ArrayLambda>()(
+				(value) => Effect.succeed([value]),
+			)({});
+			expect(result).toEqual({});
+		}),
 	);
 });
 
 describe("zipEffectValues", () => {
-	test(
+	it.effect(
 		"correlates obj and ctx by key, threading the shared In into each context",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const shareds: string[] = [];
 				const effect = zipEffectValues<
@@ -385,120 +368,107 @@ describe("zipEffectValues", () => {
 				expect(yield* effect).toEqual({ a: [1, 10], b: ["two", "twenty"] });
 				expect(shareds).toEqual(["v1", "v1"]);
 			}),
-		),
 	);
 
-	test(
-		"returns an empty object when ctx is undefined, ignoring obj",
-		testEffect(
-			Effect.gen(function* () {
-				const effect = zipEffectValues<
-					IdentityLambda,
-					SharedContextLambda,
-					ArrayLambda,
-					"v1",
-					{ a: number; b: string }
-				>()({ a: 1, b: "two" }, undefined, (value) => Effect.succeed([value]));
-				expect(yield* effect).toEqual({});
-			}),
-		),
+	it.effect("returns an empty object when ctx is undefined, ignoring obj", () =>
+		Effect.gen(function* () {
+			const effect = zipEffectValues<
+				IdentityLambda,
+				SharedContextLambda,
+				ArrayLambda,
+				"v1",
+				{ a: number; b: string }
+			>()({ a: 1, b: "two" }, undefined, (value) => Effect.succeed([value]));
+			expect(yield* effect).toEqual({});
+		}),
 	);
 
-	test(
-		"passes the key to the transform",
-		testEffect(
-			Effect.gen(function* () {
-				const keys: string[] = [];
-				yield* zipEffectValues<
-					IdentityLambda,
-					SharedContextLambda,
-					ArrayLambda,
-					"v1",
-					{ a: number; b: number }
-				>()(
-					{ a: 1, b: 2 },
-					{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
-					(value, _context, key) => {
-						keys.push(key);
-						return Effect.succeed([value]);
+	it.effect("passes the key to the transform", () =>
+		Effect.gen(function* () {
+			const keys: string[] = [];
+			yield* zipEffectValues<
+				IdentityLambda,
+				SharedContextLambda,
+				ArrayLambda,
+				"v1",
+				{ a: number; b: number }
+			>()(
+				{ a: 1, b: 2 },
+				{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
+				(value, _context, key) => {
+					keys.push(key);
+					return Effect.succeed([value]);
+				},
+			);
+			expect(keys.sort()).toEqual(["a", "b"]);
+		}),
+	);
+
+	it.effect("propagates the transform's error channel", () =>
+		Effect.gen(function* () {
+			const effect = zipEffectValues<
+				IdentityLambda,
+				SharedContextLambda,
+				ArrayLambda,
+				"v1",
+				{ a: number; b: number }
+			>()(
+				{ a: 1, b: 2 },
+				{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
+				(value, _context, key) =>
+					key === "b"
+						? Effect.fail(new TransformError({ key }))
+						: Effect.succeed([value]),
+			);
+			expectTypeOf(effect).toEqualTypeOf<
+				Effect.Effect<
+					{
+						readonly a: ReadonlyArray<number>;
+						readonly b: ReadonlyArray<number>;
 					},
-				);
-				expect(keys.sort()).toEqual(["a", "b"]);
-			}),
-		),
+					TransformError,
+					never
+				>
+			>();
+			const error = yield* effect.pipe(Effect.flip);
+			expect(error._tag).toBe("TransformError");
+		}),
 	);
 
-	test(
-		"propagates the transform's error channel",
-		testEffect(
-			Effect.gen(function* () {
-				const effect = zipEffectValues<
-					IdentityLambda,
-					SharedContextLambda,
-					ArrayLambda,
-					"v1",
-					{ a: number; b: number }
-				>()(
-					{ a: 1, b: 2 },
-					{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
-					(value, _context, key) =>
-						key === "b"
-							? Effect.fail(new TransformError({ key }))
-							: Effect.succeed([value]),
-				);
-				expectTypeOf(effect).toEqualTypeOf<
-					Effect.Effect<
-						{
-							readonly a: ReadonlyArray<number>;
-							readonly b: ReadonlyArray<number>;
-						},
-						TransformError,
-						never
-					>
-				>();
-				const error = yield* effect.pipe(Effect.flip);
-				expect(error._tag).toBe("TransformError");
-			}),
-		),
-	);
-
-	test(
-		"propagates the transform's context channel",
-		testEffect(
-			Effect.gen(function* () {
-				const effect = zipEffectValues<
-					IdentityLambda,
-					SharedContextLambda,
-					ArrayLambda,
-					"v1",
-					{ a: number; b: number }
-				>()(
-					{ a: 1, b: 2 },
-					{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
-					(value) =>
-						Effect.gen(function* () {
-							const service = yield* BoxService;
-							return service.box(value);
-						}),
-				);
-				expectTypeOf(effect).toEqualTypeOf<
-					Effect.Effect<
-						{
-							readonly a: ReadonlyArray<number>;
-							readonly b: ReadonlyArray<number>;
-						},
-						never,
-						BoxService
-					>
-				>();
-				const result = yield* effect.pipe(
-					Effect.provideService(BoxService, {
-						box: (value) => [value, value],
+	it.effect("propagates the transform's context channel", () =>
+		Effect.gen(function* () {
+			const effect = zipEffectValues<
+				IdentityLambda,
+				SharedContextLambda,
+				ArrayLambda,
+				"v1",
+				{ a: number; b: number }
+			>()(
+				{ a: 1, b: 2 },
+				{ a: { shared: "v1", own: 1 }, b: { shared: "v1", own: 2 } },
+				(value) =>
+					Effect.gen(function* () {
+						const service = yield* BoxService;
+						return service.box(value);
 					}),
-				);
-				expect(result).toEqual({ a: [1, 1], b: [2, 2] });
-			}),
-		),
+			);
+			expectTypeOf(effect).toEqualTypeOf<
+				Effect.Effect<
+					{
+						readonly a: ReadonlyArray<number>;
+						readonly b: ReadonlyArray<number>;
+					},
+					never,
+					BoxService
+				>
+			>();
+			const result = yield* effect.pipe(
+				Effect.provideService(BoxService, {
+					box: (value) => [value, value],
+				}),
+			);
+			expect(result).toEqual({ a: [1, 1], b: [2, 2] });
+		}),
 	);
 });
 

@@ -1,5 +1,5 @@
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
-import { makeTestEffect } from "@nodecg-next/internal/test-utils";
+import { testLayer } from "@nodecg-next/test-utils";
 import { Cause, Effect, Layer, Result, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
@@ -16,7 +16,7 @@ import {
 } from "./services/replicant-storage/replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
-const testEffect = makeTestEffect(
+const testInMemory = testLayer(
 	Layer.mergeAll(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
@@ -53,36 +53,32 @@ const settings = implementNamespace(
 );
 
 describe("namespaces", () => {
-	test(
+	testInMemory(
 		"returns a concretely-typed plain handle per loaded namespace",
-		testEffect(
-			Effect.gen(function* () {
-				const { namespaces } = yield* loadNodeCGEffect({
-					namespaces: { counter },
-				});
+		Effect.gen(function* () {
+			const { namespaces } = yield* loadNodeCGEffect({
+				namespaces: { counter },
+			});
 
-				const handle = namespaces.counter;
-				expect(handle.replicant.count.get()).toBe(1);
-				handle.replicant.count.set(5);
-				expect(handle.replicant.count.get()).toBe(5);
-				expect(yield* Effect.promise(() => handle.rpc.bump(2))).toBe(7);
-			}),
-		),
+			const handle = namespaces.counter;
+			expect(handle.replicant.count.get()).toBe(1);
+			handle.replicant.count.set(5);
+			expect(handle.replicant.count.get()).toBe(5);
+			expect(yield* Effect.promise(() => handle.rpc.bump(2))).toBe(7);
+		}),
 	);
 
-	test(
+	testInMemory(
 		"a namespace that was not aggregated does not exist on the return",
-		testEffect(
-			Effect.gen(function* () {
-				const { namespaces } = yield* loadNodeCGEffect({
-					namespaces: { counter },
-				});
+		Effect.gen(function* () {
+			const { namespaces } = yield* loadNodeCGEffect({
+				namespaces: { counter },
+			});
 
-				// @ts-expect-error settings was not passed to loadNodeCG
-				void namespaces.settings;
-				expect("settings" in namespaces).toBe(false);
-			}),
-		),
+			// @ts-expect-error settings was not passed to loadNodeCG
+			void namespaces.settings;
+			expect("settings" in namespaces).toBe(false);
+		}),
 	);
 });
 
@@ -92,251 +88,233 @@ describe("computed validation", () => {
 		computed: { derived: { schema: Schema.FiniteFromString } },
 	});
 
-	test(
+	testInMemory(
 		"fails the load when a compute fn throws",
-		testEffect(
-			Effect.gen(function* () {
-				const implemented = implementNamespace(manifest, {
-					seedReplicant: { value: () => 0 },
-					implementComputed: {
-						derived: () => {
-							throw new Error("boom");
-						},
+		Effect.gen(function* () {
+			const implemented = implementNamespace(manifest, {
+				seedReplicant: { value: () => 0 },
+				implementComputed: {
+					derived: () => {
+						throw new Error("boom");
 					},
-				});
+				},
+			});
 
-				const error = yield* loadNodeCGEffect({
-					namespaces: { broken: implemented },
-				}).pipe(Effect.flip);
+			const error = yield* loadNodeCGEffect({
+				namespaces: { broken: implemented },
+			}).pipe(Effect.flip);
 
-				expect(error._tag).toBe("ComputedComputeError");
-			}),
-		),
+			expect(error._tag).toBe("ComputedComputeError");
+		}),
 	);
 
-	test(
+	testInMemory(
 		"fails the load when a computed value fails its schema",
-		testEffect(
-			Effect.gen(function* () {
-				const implemented = implementNamespace(manifest, {
-					seedReplicant: { value: () => 0 },
-					implementComputed: {
-						derived: () => "nope" as unknown as number,
-					},
-				});
+		Effect.gen(function* () {
+			const implemented = implementNamespace(manifest, {
+				seedReplicant: { value: () => 0 },
+				implementComputed: {
+					derived: () => "nope" as unknown as number,
+				},
+			});
 
-				const error = yield* loadNodeCGEffect({
-					namespaces: { broken: implemented },
-				}).pipe(Effect.flip);
+			const error = yield* loadNodeCGEffect({
+				namespaces: { broken: implemented },
+			}).pipe(Effect.flip);
 
-				expect(error._tag).toBe("FieldEncodeError");
-			}),
-		),
+			expect(error._tag).toBe("FieldEncodeError");
+		}),
 	);
 
-	test(
+	testInMemory(
 		"validates a cross-namespace computed listed before its source",
-		testEffect(
-			Effect.gen(function* () {
-				const scoreboard = implementNamespace(
-					defineNamespace("scoreboard", {
-						replicant: { total: { schema: Schema.FiniteFromString } },
-						computed: { weighted: { schema: Schema.FiniteFromString } },
-					}),
-					{
-						seedReplicant: { total: () => 10 },
-						implementComputed: {
-							weighted: (ctx) =>
-								ctx.replicant.total.get() *
-								ctx.use(settings).replicant.multiplier.get(),
-						},
+		Effect.gen(function* () {
+			const scoreboard = implementNamespace(
+				defineNamespace("scoreboard", {
+					replicant: { total: { schema: Schema.FiniteFromString } },
+					computed: { weighted: { schema: Schema.FiniteFromString } },
+				}),
+				{
+					seedReplicant: { total: () => 10 },
+					implementComputed: {
+						weighted: (ctx) =>
+							ctx.replicant.total.get() *
+							ctx.use(settings).replicant.multiplier.get(),
 					},
-				);
+				},
+			);
 
-				const { namespaces } = yield* loadNodeCGEffect({
-					namespaces: { scoreboard, settings },
-				});
+			const { namespaces } = yield* loadNodeCGEffect({
+				namespaces: { scoreboard, settings },
+			});
 
-				expect(namespaces.scoreboard.computed.weighted.get()).toBe(30);
-			}),
-		),
+			expect(namespaces.scoreboard.computed.weighted.get()).toBe(30);
+		}),
 	);
 
-	test(
+	testInMemory(
 		"fails the load when computed fields form a cycle",
-		testEffect(
-			Effect.gen(function* () {
-				const cyclic = implementNamespace(
-					defineNamespace("cyclic", {
-						computed: {
-							a: { schema: Schema.Number },
-							b: { schema: Schema.Number },
-						},
-					}),
-					{
-						implementComputed: {
-							a: (ctx) => ctx.computed.b.get() + 1,
-							b: (ctx) => ctx.computed.a.get() + 1,
-						},
+		Effect.gen(function* () {
+			const cyclic = implementNamespace(
+				defineNamespace("cyclic", {
+					computed: {
+						a: { schema: Schema.Number },
+						b: { schema: Schema.Number },
 					},
-				);
+				}),
+				{
+					implementComputed: {
+						a: (ctx) => ctx.computed.b.get() + 1,
+						b: (ctx) => ctx.computed.a.get() + 1,
+					},
+				},
+			);
 
-				const error = yield* loadNodeCGEffect({
-					namespaces: { cyclic },
-				}).pipe(Effect.flip);
+			const error = yield* loadNodeCGEffect({
+				namespaces: { cyclic },
+			}).pipe(Effect.flip);
 
-				expect(error._tag).toBe("ComputedComputeError");
-				expect(error.message).toContain("Cycle detected");
-			}),
-		),
+			expect(error._tag).toBe("ComputedComputeError");
+			expect(error.message).toContain("Cycle detected");
+		}),
 	);
 });
 
 describe("onLoad", () => {
-	test(
+	testInMemory(
 		"runs with the plain handle after every namespace is built",
-		testEffect(
-			Effect.gen(function* () {
-				const stats = implementNamespace(
-					defineNamespace("stats", {
-						replicant: { viewers: { schema: Schema.FiniteFromString } },
-					}),
-					{
-						seedReplicant: { viewers: () => 0 },
-						onLoad: (ctx) => {
-							ctx.replicant.viewers.set(
-								ctx.use(settings).replicant.multiplier.get() * 100,
-							);
-						},
+		Effect.gen(function* () {
+			const stats = implementNamespace(
+				defineNamespace("stats", {
+					replicant: { viewers: { schema: Schema.FiniteFromString } },
+				}),
+				{
+					seedReplicant: { viewers: () => 0 },
+					onLoad: (ctx) => {
+						ctx.replicant.viewers.set(
+							ctx.use(settings).replicant.multiplier.get() * 100,
+						);
 					},
-				);
+				},
+			);
 
-				const { namespaces } = yield* loadNodeCGEffect({
-					namespaces: { stats, settings },
-				});
+			const { namespaces } = yield* loadNodeCGEffect({
+				namespaces: { stats, settings },
+			});
 
-				expect(namespaces.stats.replicant.viewers.get()).toBe(300);
-			}),
-		),
+			expect(namespaces.stats.replicant.viewers.get()).toBe(300);
+		}),
 	);
 
-	test(
+	testInMemory(
 		"runs the returned cleanup when the load scope closes",
-		testEffect(
-			Effect.gen(function* () {
-				const cleanup = vi.fn();
-				const stats = implementNamespace(
-					defineNamespace("stats", {
-						replicant: { viewers: { schema: Schema.FiniteFromString } },
-					}),
-					{
-						seedReplicant: { viewers: () => 0 },
-						onLoad: () => cleanup,
-					},
-				);
+		Effect.gen(function* () {
+			const cleanup = vi.fn();
+			const stats = implementNamespace(
+				defineNamespace("stats", {
+					replicant: { viewers: { schema: Schema.FiniteFromString } },
+				}),
+				{
+					seedReplicant: { viewers: () => 0 },
+					onLoad: () => cleanup,
+				},
+			);
 
-				yield* Effect.scoped(loadNodeCGEffect({ namespaces: { stats } }));
+			yield* Effect.scoped(loadNodeCGEffect({ namespaces: { stats } }));
 
-				expect(cleanup).toHaveBeenCalledTimes(1);
-			}),
-		),
+			expect(cleanup).toHaveBeenCalledTimes(1);
+		}),
 	);
 
-	test(
+	testInMemory(
 		"runs both the base and the extension onLoad, cleaning up in reverse",
-		testEffect(
-			Effect.gen(function* () {
-				const calls: string[] = [];
-				const baseNs = implementNamespace(
-					defineNamespace("composed", {
-						replicant: { a: { schema: Schema.FiniteFromString } },
-					}),
-					{
-						seedReplicant: { a: () => 0 },
-						onLoad: () => {
-							calls.push("base:setup");
-							return () => {
-								calls.push("base:cleanup");
-							};
-						},
+		Effect.gen(function* () {
+			const calls: string[] = [];
+			const baseNs = implementNamespace(
+				defineNamespace("composed", {
+					replicant: { a: { schema: Schema.FiniteFromString } },
+				}),
+				{
+					seedReplicant: { a: () => 0 },
+					onLoad: () => {
+						calls.push("base:setup");
+						return () => {
+							calls.push("base:cleanup");
+						};
 					},
-				);
-				const extended = implementExtendedNamespace(
-					extendNamespace(baseNs.manifest, {
-						replicant: { b: { schema: Schema.FiniteFromString } },
-					}),
-					baseNs,
-					{
-						seedReplicant: { b: () => 0 },
-						onLoad: () => {
-							calls.push("extension:setup");
-							return () => {
-								calls.push("extension:cleanup");
-							};
-						},
+				},
+			);
+			const extended = implementExtendedNamespace(
+				extendNamespace(baseNs.manifest, {
+					replicant: { b: { schema: Schema.FiniteFromString } },
+				}),
+				baseNs,
+				{
+					seedReplicant: { b: () => 0 },
+					onLoad: () => {
+						calls.push("extension:setup");
+						return () => {
+							calls.push("extension:cleanup");
+						};
 					},
-				);
+				},
+			);
 
-				yield* Effect.scoped(
-					Effect.gen(function* () {
-						yield* loadNodeCGEffect({ namespaces: { composed: extended } });
-						expect(calls).toEqual(["base:setup", "extension:setup"]);
-					}),
-				);
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					yield* loadNodeCGEffect({ namespaces: { composed: extended } });
+					expect(calls).toEqual(["base:setup", "extension:setup"]);
+				}),
+			);
 
-				expect(calls).toEqual([
-					"base:setup",
-					"extension:setup",
-					"extension:cleanup",
-					"base:cleanup",
-				]);
-			}),
-		),
+			expect(calls).toEqual([
+				"base:setup",
+				"extension:setup",
+				"extension:cleanup",
+				"base:cleanup",
+			]);
+		}),
 	);
 
-	test(
+	testInMemory(
 		"a rejecting onLoad fails the whole load as OnLoadError",
-		testEffect(
-			Effect.gen(function* () {
-				const stats = implementNamespace(
-					defineNamespace("stats", {
-						replicant: { viewers: { schema: Schema.FiniteFromString } },
-					}),
-					{
-						seedReplicant: { viewers: () => 0 },
-						onLoad: async () => {
-							throw new Error("no connection");
-						},
+		Effect.gen(function* () {
+			const stats = implementNamespace(
+				defineNamespace("stats", {
+					replicant: { viewers: { schema: Schema.FiniteFromString } },
+				}),
+				{
+					seedReplicant: { viewers: () => 0 },
+					onLoad: async () => {
+						throw new Error("no connection");
 					},
-				);
+				},
+			);
 
-				const error = yield* loadNodeCGEffect({ namespaces: { stats } }).pipe(
-					Effect.flip,
-				);
+			const error = yield* loadNodeCGEffect({ namespaces: { stats } }).pipe(
+				Effect.flip,
+			);
 
-				expect(error._tag).toBe("OnLoadError");
-				expect(error.message).toContain('"stats"');
-				expect(error.message).toContain("no connection");
-			}),
-		),
+			expect(error._tag).toBe("OnLoadError");
+			expect(error.message).toContain('"stats"');
+			expect(error.message).toContain("no connection");
+		}),
 	);
 });
 
 describe("duplicate namespaces", () => {
-	test(
+	testInMemory(
 		"dies when the same namespace is listed under two keys",
-		testEffect(
-			Effect.gen(function* () {
-				const cause = yield* loadNodeCGEffect({
-					namespaces: { first: counter, second: counter },
-				}).pipe(Effect.sandbox, Effect.flip);
+		Effect.gen(function* () {
+			const cause = yield* loadNodeCGEffect({
+				namespaces: { first: counter, second: counter },
+			}).pipe(Effect.sandbox, Effect.flip);
 
-				const defect = Cause.findDefect(cause);
-				assert(Result.isSuccess(defect));
-				assert(defect.success instanceof Error);
-				expect(defect.success.message).toContain('"counter" was loaded twice');
-			}),
-		),
+			const defect = Cause.findDefect(cause);
+			assert(Result.isSuccess(defect));
+			assert(defect.success instanceof Error);
+			expect(defect.success.message).toContain('"counter" was loaded twice');
+		}),
 	);
 });
 

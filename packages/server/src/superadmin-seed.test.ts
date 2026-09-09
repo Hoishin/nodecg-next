@@ -1,7 +1,7 @@
+import { it } from "@effect/vitest";
 import { ADMIN_ROLE } from "@nodecg-next/internal";
-import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Cause, ConfigProvider, Effect, Exit, HashMap, Layer } from "effect";
-import { assert, describe, expect, test } from "vitest";
+import { assert, describe, expect } from "vitest";
 
 import {
 	type AuthProvider,
@@ -39,9 +39,9 @@ const seeded = (
 	);
 
 describe("seededRoleStore", () => {
-	test(
+	it.effect(
 		"grants superadmin to each SUPERADMINS entry via its provider's issuer",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const roles = yield* RoleStoreService;
 				expect(
@@ -60,90 +60,75 @@ describe("seededRoleStore", () => {
 					]),
 				),
 			),
+	);
+
+	it.effect("seeds nothing when SUPERADMINS is unset", () =>
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			expect(yield* roles.list()).toEqual([]);
+		}).pipe(
+			Effect.provide(seeded({}, [stubProvider("dev", "https://idp.test")])),
 		),
 	);
 
-	test(
-		"seeds nothing when SUPERADMINS is unset",
-		testEffect(
-			Effect.gen(function* () {
-				const roles = yield* RoleStoreService;
-				expect(yield* roles.list()).toEqual([]);
-			}).pipe(
-				Effect.provide(seeded({}, [stubProvider("dev", "https://idp.test")])),
+	it.effect("seeds nothing when SUPERADMINS is an empty string", () =>
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			expect(yield* roles.list()).toEqual([]);
+		}).pipe(
+			Effect.provide(
+				seeded({ SUPERADMINS: "" }, [stubProvider("dev", "https://idp.test")]),
 			),
 		),
 	);
 
-	test(
-		"seeds nothing when SUPERADMINS is an empty string",
-		testEffect(
-			Effect.gen(function* () {
-				const roles = yield* RoleStoreService;
-				expect(yield* roles.list()).toEqual([]);
-			}).pipe(
-				Effect.provide(
-					seeded({ SUPERADMINS: "" }, [
-						stubProvider("dev", "https://idp.test"),
-					]),
-				),
-			),
-		),
-	);
-
-	test(
-		"skips seeding when a superadmin already exists",
-		testEffect(
-			Effect.gen(function* () {
-				const roles = yield* RoleStoreService;
-				expect(
-					yield* roles.get({ issuer: "https://idp.test", subject: "root" }),
-				).toEqual(new Set());
-				expect(
-					yield* roles.get({ issuer: "https://idp.test", subject: "existing" }),
-				).toEqual(new Set([ADMIN_ROLE.superadmin]));
-			}).pipe(
-				Effect.provide(
-					seedSuperadmins.pipe(
-						Layer.provideMerge(
-							Layer.effectDiscard(
-								Effect.gen(function* () {
-									const roles = yield* RoleStoreService;
-									yield* roles.grant(
-										{ issuer: "https://idp.test", subject: "existing" },
-										ADMIN_ROLE.superadmin,
-									);
-								}),
-							).pipe(Layer.provideMerge(InMemoryRoleStore)),
-						),
-						Layer.provide(registry([stubProvider("dev", "https://idp.test")])),
-						Layer.provide(env({ SUPERADMINS: "dev:root" })),
+	it.effect("skips seeding when a superadmin already exists", () =>
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			expect(
+				yield* roles.get({ issuer: "https://idp.test", subject: "root" }),
+			).toEqual(new Set());
+			expect(
+				yield* roles.get({ issuer: "https://idp.test", subject: "existing" }),
+			).toEqual(new Set([ADMIN_ROLE.superadmin]));
+		}).pipe(
+			Effect.provide(
+				seedSuperadmins.pipe(
+					Layer.provideMerge(
+						Layer.effectDiscard(
+							Effect.gen(function* () {
+								const roles = yield* RoleStoreService;
+								yield* roles.grant(
+									{ issuer: "https://idp.test", subject: "existing" },
+									ADMIN_ROLE.superadmin,
+								);
+							}),
+						).pipe(Layer.provideMerge(InMemoryRoleStore)),
 					),
+					Layer.provide(registry([stubProvider("dev", "https://idp.test")])),
+					Layer.provide(env({ SUPERADMINS: "dev:root" })),
 				),
 			),
 		),
 	);
 
-	test(
-		"dies when an entry names an unknown provider",
-		testEffect(
-			Effect.gen(function* () {
-				const exit = yield* Layer.build(
-					seeded({ SUPERADMINS: "ghost:root" }, [
-						stubProvider("dev", "https://idp.test"),
-					]),
-				).pipe(Effect.exit);
-				assert(Exit.isFailure(exit));
-				expect(Cause.pretty(exit.cause)).toContain(
-					'SUPERADMINS entry "ghost:root" names an unknown authentication provider',
-				);
-			}),
-		),
+	it.effect("dies when an entry names an unknown provider", () =>
+		Effect.gen(function* () {
+			const exit = yield* Layer.build(
+				seeded({ SUPERADMINS: "ghost:root" }, [
+					stubProvider("dev", "https://idp.test"),
+				]),
+			).pipe(Effect.exit);
+			assert(Exit.isFailure(exit));
+			expect(Cause.pretty(exit.cause)).toContain(
+				'SUPERADMINS entry "ghost:root" names an unknown authentication provider',
+			);
+		}),
 	);
 
-	test(
+	it.effect(
 		"fails config parsing when an entry is not of the form <provider>:<subject>",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const exit = yield* Layer.build(
 					seeded({ SUPERADMINS: "rootonly" }, [
@@ -157,6 +142,5 @@ describe("seededRoleStore", () => {
 					"Expected a string matching template literal parts",
 				);
 			}),
-		),
 	);
 });

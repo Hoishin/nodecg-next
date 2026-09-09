@@ -4,6 +4,7 @@ packages:
 
 catalog:
   "@effect/platform-node": 4.0.0-rc.112
+  "@effect/vitest": 4.0.0-rc.112
   "@preact/signals-core": ^1.14.4
   "@types/node": "^24.13.3"
   "@types/react-dom": ^19.2.3

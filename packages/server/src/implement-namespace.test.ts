@@ -1,6 +1,6 @@
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
 import { CurrentIdentity, ServerIdentitySchema } from "@nodecg-next/internal";
-import { makeTestEffect } from "@nodecg-next/internal/test-utils";
+import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
@@ -14,7 +14,7 @@ import {
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
-const testEffect = makeTestEffect(
+const testInMemory = testLayer(
 	Layer.mergeAll(
 		Layer.succeed(CurrentIdentity, ServerIdentitySchema.make({})),
 		InMemoryReplicantStorage,
@@ -80,34 +80,32 @@ describe("implementExtendedNamespace", () => {
 		seedReplicant: { score: () => 10, label: () => "m1" },
 	});
 
-	test(
+	testInMemory(
 		"merges the base impl with the supplement, then builds once",
-		testEffect(
-			Effect.gen(function* () {
-				const extended = extendNamespace(base, {
-					replicant: { round: { schema: Schema.Number } },
-					computed: { total: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const extended = extendNamespace(base, {
+				replicant: { round: { schema: Schema.Number } },
+				computed: { total: { schema: Schema.Number } },
+			});
 
-				const implemented = implementExtendedNamespace(
-					extended,
-					baseImplemented,
-					{
-						seedReplicant: { round: () => 3 },
-						implementComputed: {
-							total: (ctx) =>
-								ctx.replicant.score.get() + ctx.replicant.round.get(),
-						},
+			const implemented = implementExtendedNamespace(
+				extended,
+				baseImplemented,
+				{
+					seedReplicant: { round: () => 3 },
+					implementComputed: {
+						total: (ctx) =>
+							ctx.replicant.score.get() + ctx.replicant.round.get(),
 					},
-				);
+				},
+			);
 
-				const built = yield* buildNamespace(implemented);
+			const built = yield* buildNamespace(implemented);
 
-				expect(yield* built.replicant.score.get()).toBe(10);
-				expect(yield* built.replicant.round.get()).toBe(3);
-				expect(yield* built.computed.total.get()).toBe(13);
-			}),
-		),
+			expect(yield* built.replicant.score.get()).toBe(10);
+			expect(yield* built.replicant.round.get()).toBe(3);
+			expect(yield* built.computed.total.get()).toBe(13);
+		}),
 	);
 
 	test("merges the base and extension frontend dirs, deduplicated", () => {
@@ -158,27 +156,25 @@ describe("implementExtendedNamespace", () => {
 		expect(composed.impl?.onLoad).toBeTypeOf("function");
 	});
 
-	test(
+	testInMemory(
 		"omitting impl for a newly-added field is a type error",
-		testEffect(
-			Effect.gen(function* () {
-				const extended = extendNamespace(base, {
-					replicant: { round: { schema: Schema.Number } },
-				});
+		Effect.gen(function* () {
+			const extended = extendNamespace(base, {
+				replicant: { round: { schema: Schema.Number } },
+			});
 
-				const implemented = implementExtendedNamespace(
-					extended,
-					baseImplemented,
-					{
-						// @ts-expect-error missing seedReplicant for the newly-added "round"
-						seedReplicant: {},
-					},
-				);
-				const failure = yield* buildNamespace(implemented).pipe(Effect.flip);
-				expect(failure.message).toMatch(
-					/Missing seed value for replicant "round"/,
-				);
-			}),
-		),
+			const implemented = implementExtendedNamespace(
+				extended,
+				baseImplemented,
+				{
+					// @ts-expect-error missing seedReplicant for the newly-added "round"
+					seedReplicant: {},
+				},
+			);
+			const failure = yield* buildNamespace(implemented).pipe(Effect.flip);
+			expect(failure.message).toMatch(
+				/Missing seed value for replicant "round"/,
+			);
+		}),
 	);
 });

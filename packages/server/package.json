@@ -33,6 +33,8 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:",
+		"@nodecg-next/test-utils": "workspace:*",
 		"@types/node": "catalog:",
 		"oauth2-mock-server": "catalog:",
 		"typescript": "catalog:",

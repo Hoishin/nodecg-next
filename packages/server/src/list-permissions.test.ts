@@ -1,3 +1,4 @@
+import { it } from "@effect/vitest";
 import {
 	AnonymousIdentitySchema,
 	HumanIdentitySchema,
@@ -5,9 +6,8 @@ import {
 	ServerIdentitySchema,
 	type Identity,
 } from "@nodecg-next/internal";
-import { testEffect } from "@nodecg-next/internal/test-utils";
 import { Effect } from "effect";
-import { describe, expect, test } from "vitest";
+import { describe, expect } from "vitest";
 
 import {
 	FieldRegistryService,
@@ -38,9 +38,9 @@ const human = (...roles: ReadonlyArray<string>) =>
 	});
 
 describe("listPermissions", () => {
-	test(
+	it.effect(
 		"reports each namespace's declared roles intersected with the held ones",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				expect(
 					yield* listPermissions(human("producer", "moderator", "unrelated")),
@@ -49,35 +49,28 @@ describe("listPermissions", () => {
 					other: { roles: new Set([RoleName("moderator")]) },
 				});
 			}).pipe(provideRegistry),
-		),
 	);
 
-	test(
-		"a held capability-less declared role still reports",
-		testEffect(
-			Effect.gen(function* () {
-				const report = yield* listPermissions(human("viewer"));
-				expect(report["fixture"]?.roles).toEqual(new Set([RoleName("viewer")]));
-			}).pipe(provideRegistry),
-		),
+	it.effect("a held capability-less declared role still reports", () =>
+		Effect.gen(function* () {
+			const report = yield* listPermissions(human("viewer"));
+			expect(report["fixture"]?.roles).toEqual(new Set([RoleName("viewer")]));
+		}).pipe(provideRegistry),
 	);
 
-	test(
-		"anonymous, server, and the admin tier hold no declared role",
-		testEffect(
-			Effect.gen(function* () {
-				const identities: ReadonlyArray<Identity> = [
-					AnonymousIdentitySchema.make({}),
-					ServerIdentitySchema.make({}),
-					human("superadmin"),
-				];
-				for (const identity of identities) {
-					expect(yield* listPermissions(identity)).toEqual({
-						fixture: { roles: new Set() },
-						other: { roles: new Set() },
-					});
-				}
-			}).pipe(provideRegistry),
-		),
+	it.effect("anonymous, server, and the admin tier hold no declared role", () =>
+		Effect.gen(function* () {
+			const identities: ReadonlyArray<Identity> = [
+				AnonymousIdentitySchema.make({}),
+				ServerIdentitySchema.make({}),
+				human("superadmin"),
+			];
+			for (const identity of identities) {
+				expect(yield* listPermissions(identity)).toEqual({
+					fixture: { roles: new Set() },
+					other: { roles: new Set() },
+				});
+			}
+		}).pipe(provideRegistry),
 	);
 });

@@ -2,9 +2,9 @@ import { realpathSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 
 import { NodeFileSystem } from "@effect/platform-node";
-import { testEffect } from "@nodecg-next/internal/test-utils";
+import { it } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
-import { afterAll, describe, expect, test, vi } from "vitest";
+import { afterAll, describe, expect, vi } from "vitest";
 
 import { buildViteServer } from "./vite-dev-server.ts";
 
@@ -60,29 +60,23 @@ const request = (origin: string, path: string) =>
 	});
 
 describe("buildViteServer", () => {
-	test(
-		"serves the index under the configured base",
-		testEffect(
-			Effect.gen(function* () {
-				const origin = yield* startDevServer;
-				const response = yield* request(origin, "/sub/frontend/namespaces/ns/");
-				expect(response.status).toBe(200);
-				expect(response.body).toContain("dev");
-			}),
-		),
+	it.effect("serves the index under the configured base", () =>
+		Effect.gen(function* () {
+			const origin = yield* startDevServer;
+			const response = yield* request(origin, "/sub/frontend/namespaces/ns/");
+			expect(response.status).toBe(200);
+			expect(response.body).toContain("dev");
+		}),
 	);
 
-	test(
-		"serves an asset under the configured base",
-		testEffect(
-			Effect.gen(function* () {
-				const origin = yield* startDevServer;
-				const response = yield* request(
-					origin,
-					"/sub/frontend/namespaces/ns/app.js",
-				);
-				expect(response.status).toBe(200);
-			}),
-		),
+	it.effect("serves an asset under the configured base", () =>
+		Effect.gen(function* () {
+			const origin = yield* startDevServer;
+			const response = yield* request(
+				origin,
+				"/sub/frontend/namespaces/ns/app.js",
+			);
+			expect(response.status).toBe(200);
+		}),
 	);
 });

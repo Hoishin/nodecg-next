@@ -1,4 +1,4 @@
-import { testEffect } from "@nodecg-next/internal/test-utils";
+import { it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
@@ -11,37 +11,34 @@ import {
 
 describe("defineNamespace", () => {
 	describe("runtime", () => {
-		test(
-			"replicant fields encode/decode round-trip",
-			testEffect(
-				Effect.gen(function* () {
-					const manifest = defineNamespace("match", {
-						replicant: {
-							score: {
-								schema: Schema.Struct({
-									left: Schema.Number,
-									right: Schema.Number,
-								}),
-							},
-							count: {
-								schema: Schema.BigIntFromString,
-							},
+		it.effect("replicant fields encode/decode round-trip", () =>
+			Effect.gen(function* () {
+				const manifest = defineNamespace("match", {
+					replicant: {
+						score: {
+							schema: Schema.Struct({
+								left: Schema.Number,
+								right: Schema.Number,
+							}),
 						},
-					});
+						count: {
+							schema: Schema.BigIntFromString,
+						},
+					},
+				});
 
-					const encoded = yield* manifest.replicant.score.encode({
-						left: 1,
-						right: 2,
-					});
-					expect(encoded).toEqual({ left: 1, right: 2 });
+				const encoded = yield* manifest.replicant.score.encode({
+					left: 1,
+					right: 2,
+				});
+				expect(encoded).toEqual({ left: 1, right: 2 });
 
-					const decoded = yield* manifest.replicant.score.decode({
-						left: 3,
-						right: 4,
-					});
-					expect(decoded).toEqual({ left: 3, right: 4 });
-				}),
-			),
+				const decoded = yield* manifest.replicant.score.decode({
+					left: 3,
+					right: 4,
+				});
+				expect(decoded).toEqual({ left: 3, right: 4 });
+			}),
 		);
 
 		test("decode surfaces FieldDecodeError on bad wire input", () => {
@@ -55,9 +52,9 @@ describe("defineNamespace", () => {
 			expect(error).toBeInstanceOf(FieldDecodeError);
 		});
 
-		test(
+		it.effect(
 			"rpc request and response encode/decode round-trip independently",
-			testEffect(
+			() =>
 				Effect.gen(function* () {
 					const manifest = defineNamespace("match", {
 						rpc: {
@@ -84,7 +81,6 @@ describe("defineNamespace", () => {
 						false,
 					);
 				}),
-			),
 		);
 	});
 
@@ -652,30 +648,27 @@ describe("extendNamespace", () => {
 			});
 		});
 
-		test(
-			"adds a new field with a schema, keeping existing fields",
-			testEffect(
-				Effect.gen(function* () {
-					const extended = extendNamespace(base, {
-						replicant: {
-							pinned: {
-								schema: Schema.String,
-								permission: { write: { allow: ["judge"] } },
-							},
+		it.effect("adds a new field with a schema, keeping existing fields", () =>
+			Effect.gen(function* () {
+				const extended = extendNamespace(base, {
+					replicant: {
+						pinned: {
+							schema: Schema.String,
+							permission: { write: { allow: ["judge"] } },
 						},
-					});
+					},
+				});
 
-					expect(yield* extended.replicant.pinned.encode("hi")).toBe("hi");
-					expect(extended.replicant.pinned.permission.write).toEqual({
-						roles: new Set(["judge"]),
-						rolesDenied: new Set(),
-					});
-					expect(extended.replicant.score.permission.read).toEqual({
-						roles: new Set(["judge", "viewer"]),
-						rolesDenied: new Set(),
-					});
-				}),
-			),
+				expect(yield* extended.replicant.pinned.encode("hi")).toBe("hi");
+				expect(extended.replicant.pinned.permission.write).toEqual({
+					roles: new Set(["judge"]),
+					rolesDenied: new Set(),
+				});
+				expect(extended.replicant.score.permission.read).toEqual({
+					roles: new Set(["judge", "viewer"]),
+					rolesDenied: new Set(),
+				});
+			}),
 		);
 
 		test("role-level grant retroactively adds to existing lists, including pinned", () => {
@@ -736,58 +729,52 @@ describe("extendNamespace", () => {
 			});
 		});
 
-		test(
-			"adds fields across computed and topic groups",
-			testEffect(
-				Effect.gen(function* () {
-					const extended = extendNamespace(base, {
-						computed: { ratio: { schema: Schema.Number } },
-						topic: { ping: { schema: Schema.String } },
-					});
+		it.effect("adds fields across computed and topic groups", () =>
+			Effect.gen(function* () {
+				const extended = extendNamespace(base, {
+					computed: { ratio: { schema: Schema.Number } },
+					topic: { ping: { schema: Schema.String } },
+				});
 
-					expect(yield* extended.computed.ratio.encode(0.5)).toBe(0.5);
-					expect(yield* extended.topic.ping.encode("x")).toBe("x");
-					expect(extended.computed.ratio.permission.read).toEqual({
-						roles: new Set(["judge", "viewer"]),
-						rolesDenied: new Set(),
-					});
-					expect(extended.topic.ping.permission.read).toEqual({
-						roles: new Set(),
-						rolesDenied: new Set(),
-					});
-				}),
-			),
+				expect(yield* extended.computed.ratio.encode(0.5)).toBe(0.5);
+				expect(yield* extended.topic.ping.encode("x")).toBe("x");
+				expect(extended.computed.ratio.permission.read).toEqual({
+					roles: new Set(["judge", "viewer"]),
+					rolesDenied: new Set(),
+				});
+				expect(extended.topic.ping.permission.read).toEqual({
+					roles: new Set(),
+					rolesDenied: new Set(),
+				});
+			}),
 		);
 
-		test(
-			"adds an rpc field with request/response and permission",
-			testEffect(
-				Effect.gen(function* () {
-					const extended = extendNamespace(base, {
-						roles: { operator: { permission: ["rpc-call"] } },
-						rpc: {
-							restart: {
-								schema: {
-									request: Schema.String,
-									response: Schema.Boolean,
-								},
-								permission: { write: { allow: ["operator"] } },
+		it.effect("adds an rpc field with request/response and permission", () =>
+			Effect.gen(function* () {
+				const extended = extendNamespace(base, {
+					roles: { operator: { permission: ["rpc-call"] } },
+					rpc: {
+						restart: {
+							schema: {
+								request: Schema.String,
+								response: Schema.Boolean,
 							},
+							permission: { write: { allow: ["operator"] } },
 						},
-					});
+					},
+				});
 
-					expect(yield* extended.rpc.restart.request.encode("go")).toBe("go");
-					expect(yield* extended.rpc.restart.response.decode(true)).toBe(true);
-					expect(extended.rpc.restart.permission.write).toEqual({
-						roles: new Set(["operator"]),
-						rolesDenied: new Set(),
-					});
-					expect(extended.rpc.restart.permission.read).toEqual({
-						roles: new Set(),
-						rolesDenied: new Set(),
-					});
-				}),
-			),
+				expect(yield* extended.rpc.restart.request.encode("go")).toBe("go");
+				expect(yield* extended.rpc.restart.response.decode(true)).toBe(true);
+				expect(extended.rpc.restart.permission.write).toEqual({
+					roles: new Set(["operator"]),
+					rolesDenied: new Set(),
+				});
+				expect(extended.rpc.restart.permission.read).toEqual({
+					roles: new Set(),
+					rolesDenied: new Set(),
+				});
+			}),
 		);
 
 		test("re-lists a role to re-bake rpc write, and grants retroactively", () => {

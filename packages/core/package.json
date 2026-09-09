@@ -28,6 +28,7 @@
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",

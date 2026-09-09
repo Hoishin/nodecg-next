@@ -1,3 +1,4 @@
+import { it } from "@effect/vitest";
 import { defineNamespace } from "@nodecg-next/core";
 import {
 	ReplicantDeltaMessage,
@@ -6,10 +7,9 @@ import {
 	SubscribeRejectedMessage,
 } from "@nodecg-next/internal";
 import { computeFingerprint } from "@nodecg-next/internal/occ";
-import { testEffect } from "@nodecg-next/internal/test-utils";
 import { effect, type Signal } from "@preact/signals-core";
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect";
-import { describe, expect, onTestFinished, test, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 import { FieldCellsService } from "./field-cells.ts";
 import { Loadable, Pending, ReadyLoadableValue } from "./loadable.ts";
@@ -100,9 +100,9 @@ const ready = (decoded: number, encoded: string, revision: number) =>
 	});
 
 describe("FieldCellsService", () => {
-	test(
+	it.effect(
 		"subscribes on the first watcher and goes Ready when a publish arrives",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -128,65 +128,58 @@ describe("FieldCellsService", () => {
 					expect(seen).toEqual([Pending, ready(5, "5", 1)]);
 				});
 			}),
-		),
 	);
 
-	test(
-		"unsubscribes when the last watcher goes away",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel, sent } = yield* makeFakeChannel;
-				const cells = yield* makeCells.pipe(
-					Effect.provideService(MessageChannelService, channel),
-				);
-				const cell = yield* cells.replicant(
-					"match",
-					"scoreLeft",
-					namespace.replicant.scoreLeft,
-				);
+	it.effect("unsubscribes when the last watcher goes away", () =>
+		Effect.gen(function* () {
+			const { channel, sent } = yield* makeFakeChannel;
+			const cells = yield* makeCells.pipe(
+				Effect.provideService(MessageChannelService, channel),
+			);
+			const cell = yield* cells.replicant(
+				"match",
+				"scoreLeft",
+				namespace.replicant.scoreLeft,
+			);
 
-				const first = observe(cell.signal);
-				const second = observe(cell.signal);
-				yield* waitFor(() => {
-					expect(sent.filter((m) => m._tag === "subscribe")).toHaveLength(1);
-				});
-				expect(first.seen).toEqual([Pending]);
-				expect(second.seen).toEqual([Pending]);
+			const first = observe(cell.signal);
+			const second = observe(cell.signal);
+			yield* waitFor(() => {
+				expect(sent.filter((m) => m._tag === "subscribe")).toHaveLength(1);
+			});
+			expect(first.seen).toEqual([Pending]);
+			expect(second.seen).toEqual([Pending]);
 
-				first.dispose();
-				expect(sent.some((m) => m._tag === "unsubscribe")).toBe(false);
-				second.dispose();
-				yield* waitFor(() => {
-					expect(
-						sent.some(
-							(m) => m._tag === "unsubscribe" && m.field.name === "scoreLeft",
-						),
-					).toBe(true);
-				});
-				expect(cell.peek()._tag).toBe("Cold");
-			}),
-		),
+			first.dispose();
+			expect(sent.some((m) => m._tag === "unsubscribe")).toBe(false);
+			second.dispose();
+			yield* waitFor(() => {
+				expect(
+					sent.some(
+						(m) => m._tag === "unsubscribe" && m.field.name === "scoreLeft",
+					),
+				).toBe(true);
+			});
+			expect(cell.peek()._tag).toBe("Cold");
+		}),
 	);
 
-	test(
-		"does not collide fields whose space-joined key would match",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel } = yield* makeFakeChannel;
-				const cells = yield* makeCells.pipe(
-					Effect.provideService(MessageChannelService, channel),
-				);
-				cells.replicant("a", "b c", namespace.replicant.scoreLeft);
-				expect(() =>
-					cells.replicant("a b", "c", namespace.replicant.scoreLeft),
-				).not.toThrow();
-			}),
-		),
+	it.effect("does not collide fields whose space-joined key would match", () =>
+		Effect.gen(function* () {
+			const { channel } = yield* makeFakeChannel;
+			const cells = yield* makeCells.pipe(
+				Effect.provideService(MessageChannelService, channel),
+			);
+			cells.replicant("a", "b c", namespace.replicant.scoreLeft);
+			expect(() =>
+				cells.replicant("a b", "c", namespace.replicant.scoreLeft),
+			).not.toThrow();
+		}),
 	);
 
-	test(
+	it.effect(
 		"fails the cell with FieldPermissionDenied when the subscribe is forbidden",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -223,12 +216,11 @@ describe("FieldCellsService", () => {
 					]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"fails the cell with FieldNotFound when the field does not exist",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -265,12 +257,11 @@ describe("FieldCellsService", () => {
 					]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"fails the cell with FieldUnavailable when a computed subscribe is unavailable",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -306,12 +297,11 @@ describe("FieldCellsService", () => {
 					]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"re-arms a rejected field to Pending on a fresh subscribe so a later publish heals it",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -354,12 +344,11 @@ describe("FieldCellsService", () => {
 					expect(second.seen).toEqual([Pending, ready(5, "5", 1)]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"fails the cell with FieldUnavailable when a publish does not decode, and goes Ready again on the next publish that does",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -397,49 +386,45 @@ describe("FieldCellsService", () => {
 					]);
 				});
 			}),
-		),
 	);
 
-	test(
-		"drops a publish that lands after the field went cold",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel, pubsub, sent } = yield* makeFakeChannel;
-				const cells = yield* makeCells.pipe(
-					Effect.provideService(MessageChannelService, channel),
-				);
-				const left = yield* cells.replicant(
-					"match",
-					"scoreLeft",
-					namespace.replicant.scoreLeft,
-				);
-				const right = yield* cells.replicant(
-					"match",
-					"scoreRight",
-					namespace.replicant.scoreRight,
-				);
+	it.effect("drops a publish that lands after the field went cold", () =>
+		Effect.gen(function* () {
+			const { channel, pubsub, sent } = yield* makeFakeChannel;
+			const cells = yield* makeCells.pipe(
+				Effect.provideService(MessageChannelService, channel),
+			);
+			const left = yield* cells.replicant(
+				"match",
+				"scoreLeft",
+				namespace.replicant.scoreLeft,
+			);
+			const right = yield* cells.replicant(
+				"match",
+				"scoreRight",
+				namespace.replicant.scoreRight,
+			);
 
-				const leftObserved = observe(left.signal);
-				const rightObserved = observe(right.signal);
-				yield* waitFor(() => {
-					expect(sent.filter((m) => m._tag === "subscribe")).toHaveLength(2);
-				});
+			const leftObserved = observe(left.signal);
+			const rightObserved = observe(right.signal);
+			yield* waitFor(() => {
+				expect(sent.filter((m) => m._tag === "subscribe")).toHaveLength(2);
+			});
 
-				leftObserved.dispose();
-				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7));
-				yield* PubSub.publish(pubsub, snapshot("scoreRight", 9));
-				yield* waitFor(() => {
-					expect(rightObserved.seen).toEqual([Pending, ready(9, "9", 1)]);
-				});
-				expect(leftObserved.seen).toEqual([Pending]);
-				expect(left.peek()._tag).toBe("Cold");
-			}),
-		),
+			leftObserved.dispose();
+			yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7));
+			yield* PubSub.publish(pubsub, snapshot("scoreRight", 9));
+			yield* waitFor(() => {
+				expect(rightObserved.seen).toEqual([Pending, ready(9, "9", 1)]);
+			});
+			expect(leftObserved.seen).toEqual([Pending]);
+			expect(left.peek()._tag).toBe("Cold");
+		}),
 	);
 
-	test(
+	it.effect(
 		"applies an op-delta on the held revision, and resyncs on a revision gap",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -474,44 +459,40 @@ describe("FieldCellsService", () => {
 				});
 				expect(seen).toEqual([Pending, ready(0, "0", 0), ready(5, "5", 1)]);
 			}),
-		),
 	);
 
-	test(
-		"a delta arriving before the seed is dropped, not resynced",
-		testEffect(
-			Effect.gen(function* () {
-				const { channel, pubsub, sent } = yield* makeFakeChannel;
-				const cells = yield* makeCells.pipe(
-					Effect.provideService(MessageChannelService, channel),
-				);
-				const cell = yield* cells.replicant(
-					"match",
-					"scoreLeft",
-					namespace.replicant.scoreLeft,
-				);
+	it.effect("a delta arriving before the seed is dropped, not resynced", () =>
+		Effect.gen(function* () {
+			const { channel, pubsub, sent } = yield* makeFakeChannel;
+			const cells = yield* makeCells.pipe(
+				Effect.provideService(MessageChannelService, channel),
+			);
+			const cell = yield* cells.replicant(
+				"match",
+				"scoreLeft",
+				namespace.replicant.scoreLeft,
+			);
 
-				const { seen } = observe(cell.signal);
-				yield* waitFor(() => {
-					expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
-				});
+			const { seen } = observe(cell.signal);
+			yield* waitFor(() => {
+				expect(sent.some((m) => m._tag === "subscribe")).toBe(true);
+			});
 
-				yield* PubSub.publish(
-					pubsub,
-					delta("scoreLeft", "5", 0, 1, computeFingerprint("5")),
-				);
-				yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7, 7));
-				yield* waitFor(() => {
-					expect(seen).toEqual([Pending, ready(7, "7", 7)]);
-				});
-				expect(sent).not.toContainEqual(resync);
-			}),
-		),
+			yield* PubSub.publish(
+				pubsub,
+				delta("scoreLeft", "5", 0, 1, computeFingerprint("5")),
+			);
+			yield* PubSub.publish(pubsub, snapshot("scoreLeft", 7, 7));
+			yield* waitFor(() => {
+				expect(seen).toEqual([Pending, ready(7, "7", 7)]);
+			});
+			expect(sent).not.toContainEqual(resync);
+		}),
 	);
 
-	test(
+	it.effect(
 		"resyncs on a delta at or below the held revision, and the answering snapshot replaces the held value",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -552,12 +533,11 @@ describe("FieldCellsService", () => {
 					]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"resyncs when an applied delta's fingerprint mismatches the server's",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -590,12 +570,11 @@ describe("FieldCellsService", () => {
 					expect(seen).toEqual([Pending, ready(0, "0", 0), ready(9, "9", 1)]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"requests another resync when the snapshot answering the previous one does not decode",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -650,12 +629,11 @@ describe("FieldCellsService", () => {
 					]);
 				});
 			}),
-		),
 	);
 
-	test(
+	it.effect(
 		"requests one resync however many gapped deltas arrive before the snapshot",
-		testEffect(
+		() =>
 			Effect.gen(function* () {
 				const { channel, pubsub, sent } = yield* makeFakeChannel;
 				const cells = yield* makeCells.pipe(
@@ -700,6 +678,5 @@ describe("FieldCellsService", () => {
 				});
 				expect(resyncs()).toBe(1);
 			}),
-		),
 	);
 });

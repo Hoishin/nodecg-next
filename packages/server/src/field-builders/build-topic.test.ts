@@ -4,9 +4,9 @@ import {
 	CurrentIdentity,
 	ServerIdentitySchema,
 } from "@nodecg-next/internal";
-import { makeTestEffect } from "@nodecg-next/internal/test-utils";
+import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect } from "vitest";
 
 import { createBrokerStub } from "../services/topic-broker/topic-broker.stub.ts";
 import {
@@ -26,7 +26,7 @@ const identity = Layer.succeed(CurrentIdentity, server);
 const { stub: broker, reset } = createBrokerStub();
 afterEach(reset);
 
-const testStubbed = makeTestEffect(
+const test = testLayer(
 	Layer.merge(Layer.succeed(TopicBrokerService, broker), identity),
 );
 
@@ -46,111 +46,97 @@ const manifest = defineNamespace("ns", {
 describe("publish", () => {
 	test(
 		"encodes the value and forwards it to the broker",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* buildTopic("ns", "open", manifest.topic.open);
-				yield* field.publish(42);
-				expect(broker.publish).toHaveBeenCalledWith("ns", "open", "42");
-			}),
-		),
+		Effect.gen(function* () {
+			const field = yield* buildTopic("ns", "open", manifest.topic.open);
+			yield* field.publish(42);
+			expect(broker.publish).toHaveBeenCalledWith("ns", "open", "42");
+		}),
 	);
 
 	test(
 		"fails FieldPermissionDenied for a denied caller without publishing",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* buildTopic("ns", "locked", manifest.topic.locked);
-				const error = yield* field
-					.publish(1)
-					.pipe(Effect.provide(anonymous), Effect.flip);
-				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(broker.publish).not.toHaveBeenCalled();
-			}),
-		),
+		Effect.gen(function* () {
+			const field = yield* buildTopic("ns", "locked", manifest.topic.locked);
+			const error = yield* field
+				.publish(1)
+				.pipe(Effect.provide(anonymous), Effect.flip);
+			expect(error._tag).toBe("FieldPermissionDenied");
+			expect(broker.publish).not.toHaveBeenCalled();
+		}),
 	);
 });
 
 describe("subscribe", () => {
 	test(
 		"decodes the matching messages",
-		testStubbed(
-			Effect.gen(function* () {
-				broker.subscribe.mockReturnValue(
-					Effect.succeed(
-						Stream.fromIterable<TopicMessage>([
-							{ namespace: "ns", name: "open", value: "7" },
-						]),
-					),
-				);
-				const field = yield* buildTopic("ns", "open", manifest.topic.open);
-				const stream = yield* field.subscribe();
-				const events = yield* stream.pipe(Stream.runCollect);
-				expect(events).toEqual([7]);
-			}),
-		),
+		Effect.gen(function* () {
+			broker.subscribe.mockReturnValue(
+				Effect.succeed(
+					Stream.fromIterable<TopicMessage>([
+						{ namespace: "ns", name: "open", value: "7" },
+					]),
+				),
+			);
+			const field = yield* buildTopic("ns", "open", manifest.topic.open);
+			const stream = yield* field.subscribe();
+			const events = yield* stream.pipe(Stream.runCollect);
+			expect(events).toEqual([7]);
+		}),
 	);
 
 	test(
 		"[fieldInternal].subscribeEncoded streams only the matching field's messages",
-		testStubbed(
-			Effect.gen(function* () {
-				broker.subscribe.mockReturnValue(
-					Effect.succeed(
-						Stream.fromIterable<TopicMessage>([
-							{ namespace: "ns", name: "locked", value: "1" },
-							{ namespace: "ns", name: "open", value: "2" },
-							{ namespace: "other", name: "open", value: "3" },
-						]),
-					),
-				);
-				const field = yield* buildTopic("ns", "open", manifest.topic.open);
-				const stream = yield* field[fieldInternal].subscribeEncoded();
-				const events = yield* stream.pipe(Stream.runCollect);
-				expect(events).toEqual(["2"]);
-			}),
-		),
+		Effect.gen(function* () {
+			broker.subscribe.mockReturnValue(
+				Effect.succeed(
+					Stream.fromIterable<TopicMessage>([
+						{ namespace: "ns", name: "locked", value: "1" },
+						{ namespace: "ns", name: "open", value: "2" },
+						{ namespace: "other", name: "open", value: "3" },
+					]),
+				),
+			);
+			const field = yield* buildTopic("ns", "open", manifest.topic.open);
+			const stream = yield* field[fieldInternal].subscribeEncoded();
+			const events = yield* stream.pipe(Stream.runCollect);
+			expect(events).toEqual(["2"]);
+		}),
 	);
 });
 
 describe("publishEncoded", () => {
 	test(
 		"forwards the value for an allowed caller",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* buildTopic("ns", "open", manifest.topic.open);
-				yield* field[fieldInternal]
-					.publishEncoded("5")
-					.pipe(Effect.provide(anonymous));
-				expect(broker.publish).toHaveBeenCalledWith("ns", "open", "5");
-			}),
-		),
+		Effect.gen(function* () {
+			const field = yield* buildTopic("ns", "open", manifest.topic.open);
+			yield* field[fieldInternal]
+				.publishEncoded("5")
+				.pipe(Effect.provide(anonymous));
+			expect(broker.publish).toHaveBeenCalledWith("ns", "open", "5");
+		}),
 	);
 
 	test(
 		"fails FieldPermissionDenied and does not publish for a denied caller",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* buildTopic("ns", "locked", manifest.topic.locked);
-				const error = yield* field[fieldInternal]
-					.publishEncoded("5")
-					.pipe(Effect.provide(anonymous), Effect.flip);
-				expect(error._tag).toBe("FieldPermissionDenied");
-				expect(broker.publish).not.toHaveBeenCalled();
-			}),
-		),
+		Effect.gen(function* () {
+			const field = yield* buildTopic("ns", "locked", manifest.topic.locked);
+			const error = yield* field[fieldInternal]
+				.publishEncoded("5")
+				.pipe(Effect.provide(anonymous), Effect.flip);
+			expect(error._tag).toBe("FieldPermissionDenied");
+			expect(broker.publish).not.toHaveBeenCalled();
+		}),
 	);
 
 	test(
 		"fails when the value fails schema validation",
-		testStubbed(
-			Effect.gen(function* () {
-				const field = yield* buildTopic("ns", "open", manifest.topic.open);
-				const error = yield* field[fieldInternal]
-					.publishEncoded(42)
-					.pipe(Effect.provide(anonymous), Effect.flip);
-				expect(error._tag).toBe("FieldDecodeError");
-				expect(broker.publish).not.toHaveBeenCalled();
-			}),
-		),
+		Effect.gen(function* () {
+			const field = yield* buildTopic("ns", "open", manifest.topic.open);
+			const error = yield* field[fieldInternal]
+				.publishEncoded(42)
+				.pipe(Effect.provide(anonymous), Effect.flip);
+			expect(error._tag).toBe("FieldDecodeError");
+			expect(broker.publish).not.toHaveBeenCalled();
+		}),
 	);
 });
