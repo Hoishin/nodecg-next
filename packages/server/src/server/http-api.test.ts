@@ -1,3 +1,4 @@
+import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
 	HumanAuthenticationMiddleware,
@@ -22,8 +23,8 @@ import {
 	Schema,
 	Stream,
 } from "effect";
-import { HttpRouter, HttpServer } from "effect/unstable/http";
-import { describe, expect, test, vi } from "vitest";
+import { HttpEffect, HttpRouter, HttpServer } from "effect/unstable/http";
+import { describe, expect, vi } from "vitest";
 
 import {
 	type AuthProvider,
@@ -163,7 +164,7 @@ const asIdentity = (identity: Identity) =>
 			Effect.provideService(httpEffect, CurrentIdentity, identity),
 	});
 
-function webHandler(
+const webHandler = Effect.fn(function* (
 	namespaces: ReadonlyArray<RegisteredNamespace>,
 	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
 	environment: Layer.Layer<never> = Layer.empty,
@@ -171,7 +172,7 @@ function webHandler(
 		providers?: HashMap.HashMap<string, AuthProvider>;
 	},
 ) {
-	const { handler } = HttpRouter.toWebHandler(
+	const handler = yield* HttpRouter.toHttpEffect(
 		RootApiLive.pipe(
 			HttpRouter.provideRequest(
 				Layer.mergeAll(
@@ -201,8 +202,11 @@ function webHandler(
 			Layer.provide(HttpServer.layerServices),
 		),
 	);
-	return handler;
-}
+	const web = HttpEffect.toWebHandler(handler);
+	return (request: Request) => Effect.promise(() => web(request));
+});
+
+const json = (res: Response) => Effect.promise(() => res.json());
 
 const getUrl = "http://x/api/internal/namespaces/root/replicant/count";
 const computedUrl = "http://x/api/internal/namespaces/root/computed/count";
@@ -226,48 +230,52 @@ const postRequest = (url: string, value: unknown) =>
 	});
 
 describe("me", () => {
-	test("resolves an anonymous request to the anonymous identity", async () => {
-		const handler = webHandler([]);
-		const res = await handler(new Request("http://x/api/internal/me"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			identity: { _tag: "anonymous" },
-			namespaces: {},
-		});
-	});
+	it.effect("resolves an anonymous request to the anonymous identity", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			const res = yield* handler(new Request("http://x/api/internal/me"));
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({
+				identity: { _tag: "anonymous" },
+				namespaces: {},
+			});
+		}),
+	);
 
-	test("reports the held declared roles per namespace", async () => {
-		const handler = webHandler(
-			[
-				registeredNamespace(
-					"perms",
-					{},
-					{},
-					{},
-					{},
-					new Set([RoleName("producer"), RoleName("viewer")]),
+	it.effect("reports the held declared roles per namespace", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler(
+				[
+					registeredNamespace(
+						"perms",
+						{},
+						{},
+						{},
+						{},
+						new Set([RoleName("producer"), RoleName("viewer")]),
+					),
+				],
+				asIdentity(
+					HumanIdentitySchema.make({
+						account: { issuer: "dev", subject: "op", displayName: "Op" },
+						roles: new Set([RoleName("producer")]),
+					}),
 				),
-			],
-			asIdentity(
-				HumanIdentitySchema.make({
+			);
+			const res = yield* handler(new Request("http://x/api/internal/me"));
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({
+				identity: {
+					_tag: "human",
 					account: { issuer: "dev", subject: "op", displayName: "Op" },
-					roles: new Set([RoleName("producer")]),
-				}),
-			),
-		);
-		const res = await handler(new Request("http://x/api/internal/me"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			identity: {
-				_tag: "human",
-				account: { issuer: "dev", subject: "op", displayName: "Op" },
-				roles: ["producer"],
-			},
-			namespaces: {
-				perms: { roles: ["producer"] },
-			},
-		});
-	});
+					roles: ["producer"],
+				},
+				namespaces: {
+					perms: { roles: ["producer"] },
+				},
+			});
+		}),
+	);
 });
 
 describe("login and callback", () => {
@@ -303,97 +311,124 @@ describe("login and callback", () => {
 		}).pipe(ConfigProvider.orElse(ConfigProvider.fromEnv())),
 	);
 
-	test("providers lists each registered provider with its login URL", async () => {
-		const res = await loginHandler()(
-			new Request("http://x/api/internal/authentication/providers"),
-		);
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual([
-			{ name: "dev", url: "/api/internal/authentication/login/dev" },
-		]);
-	});
+	it.effect("providers lists each registered provider with its login URL", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			const res = yield* handler(
+				new Request("http://x/api/internal/authentication/providers"),
+			);
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual([
+				{ name: "dev", url: "/api/internal/authentication/login/dev" },
+			]);
+		}),
+	);
 
-	test("a callback with a stashed returnTo redirects there", async () => {
-		const handler = loginHandler();
-		const login = await handler(
-			new Request(
-				"http://x/api/internal/authentication/login/dev?returnTo=%2Fdashboard",
-			),
-		);
-		expect(login.status).toBe(302);
-		const callback = await handler(
-			new Request("http://x/api/internal/authentication/callback/dev?state=s", {
-				headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
-			}),
-		);
-		expect(callback.status).toBe(302);
-		expect(callback.headers.get("location")).toBe("/dashboard");
-		expect(callback.headers.get("set-cookie")).toContain("nodecg.sid=");
-	});
-
-	test("a callback without a returnTo still renders the success page", async () => {
-		const handler = loginHandler();
-		const login = await handler(
-			new Request("http://x/api/internal/authentication/login/dev"),
-		);
-		expect(login.status).toBe(302);
-		const callback = await handler(
-			new Request("http://x/api/internal/authentication/callback/dev?state=s", {
-				headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
-			}),
-		);
-		expect(callback.status).toBe(200);
-		expect(await callback.text()).toBe("Success");
-	});
-
-	test("400 at request decode for a non-relative returnTo", async () => {
-		const handler = loginHandler();
-		for (const returnTo of [
-			"https://evil.example",
-			"//evil.example",
-			"/\\evil.example",
-		]) {
-			const res = await handler(
+	it.effect("a callback with a stashed returnTo redirects there", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			const login = yield* handler(
 				new Request(
-					`http://x/api/internal/authentication/login/dev?returnTo=${encodeURIComponent(returnTo)}`,
+					"http://x/api/internal/authentication/login/dev?returnTo=%2Fdashboard",
 				),
 			);
-			expect(res.status).toBe(400);
-		}
-	});
+			expect(login.status).toBe(302);
+			const callback = yield* handler(
+				new Request(
+					"http://x/api/internal/authentication/callback/dev?state=s",
+					{
+						headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
+					},
+				),
+			);
+			expect(callback.status).toBe(302);
+			expect(callback.headers.get("location")).toBe("/dashboard");
+			expect(callback.headers.get("set-cookie")).toContain("nodecg.sid=");
+		}),
+	);
 
-	test("providers prefixes each login URL with the base path", async () => {
-		const res = await webHandler([], undefined, subPathEnv, { providers })(
-			new Request("http://x/api/internal/authentication/providers"),
-		);
-		expect(await res.json()).toEqual([
-			{ name: "dev", url: "/s/nodecg/api/internal/authentication/login/dev" },
-		]);
-	});
+	it.effect(
+		"a callback without a returnTo still renders the success page",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* loginHandler();
+				const login = yield* handler(
+					new Request("http://x/api/internal/authentication/login/dev"),
+				);
+				expect(login.status).toBe(302);
+				const callback = yield* handler(
+					new Request(
+						"http://x/api/internal/authentication/callback/dev?state=s",
+						{
+							headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
+						},
+					),
+				);
+				expect(callback.status).toBe(200);
+				expect(yield* Effect.promise(() => callback.text())).toBe("Success");
+			}),
+	);
 
-	test("login builds the callback redirect_uri under the base path", async () => {
-		let captured: string | undefined;
-		const capturing: AuthProvider = {
-			name: "dev",
-			issuer: "dev",
-			authorize: ({ redirectUri }) => {
-				captured = redirectUri;
-				return Effect.succeed({
-					url: "/done",
-					stash: { provider: "dev", state: "s" },
-				});
-			},
-			callback: () =>
-				Effect.succeed({ issuer: "dev", subject: "a", displayName: "A" }),
-		};
-		const res = await webHandler([], undefined, subPathEnv, {
-			providers: HashMap.make(["dev", capturing] as const),
-		})(new Request("http://x/api/internal/authentication/login/dev"));
-		expect(res.status).toBe(302);
-		expect(captured).toBe(
-			"http://x/s/nodecg/api/internal/authentication/callback/dev",
-		);
-	});
+	it.effect("400 at request decode for a non-relative returnTo", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			for (const returnTo of [
+				"https://evil.example",
+				"//evil.example",
+				"/\\evil.example",
+			]) {
+				const res = yield* handler(
+					new Request(
+						`http://x/api/internal/authentication/login/dev?returnTo=${encodeURIComponent(returnTo)}`,
+					),
+				);
+				expect(res.status).toBe(400);
+			}
+		}),
+	);
+
+	it.effect("providers prefixes each login URL with the base path", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], undefined, subPathEnv, {
+				providers,
+			});
+			const res = yield* handler(
+				new Request("http://x/api/internal/authentication/providers"),
+			);
+			expect(yield* json(res)).toEqual([
+				{ name: "dev", url: "/s/nodecg/api/internal/authentication/login/dev" },
+			]);
+		}),
+	);
+
+	it.effect("login builds the callback redirect_uri under the base path", () =>
+		Effect.gen(function* () {
+			let captured: string | undefined;
+			const capturing: AuthProvider = {
+				name: "dev",
+				issuer: "dev",
+				authorize: ({ redirectUri }) => {
+					captured = redirectUri;
+					return Effect.succeed({
+						url: "/done",
+						stash: { provider: "dev", state: "s" },
+					});
+				},
+				callback: () =>
+					Effect.succeed({ issuer: "dev", subject: "a", displayName: "A" }),
+			};
+			const handler = yield* webHandler([], undefined, subPathEnv, {
+				providers: HashMap.make(["dev", capturing] as const),
+			});
+			const res = yield* handler(
+				new Request("http://x/api/internal/authentication/login/dev"),
+			);
+			expect(res.status).toBe(302);
+			expect(captured).toBe(
+				"http://x/s/nodecg/api/internal/authentication/callback/dev",
+			);
+		}),
+	);
 });
 
 describe("roles", () => {
@@ -412,50 +447,62 @@ describe("roles", () => {
 		}),
 	);
 
-	test("403 for an anonymous caller", async () => {
-		const handler = webHandler([]);
-		expect((await handler(rolesRequest("grant", "superadmin"))).status).toBe(
-			403,
-		);
-		expect((await handler(rolesRequest("revoke", "superadmin"))).status).toBe(
-			403,
-		);
-	});
+	it.effect("403 for an anonymous caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(rolesRequest("grant", "superadmin"))).status).toBe(
+				403,
+			);
+			expect(
+				(yield* handler(rolesRequest("revoke", "superadmin"))).status,
+			).toBe(403);
+		}),
+	);
 
-	test("403 for a named-role caller without the admin tier", async () => {
-		const handler = webHandler(
-			[],
-			asIdentity(
-				HumanIdentitySchema.make({
-					account: { issuer: "dev", subject: "op", displayName: "Op" },
-					roles: new Set([RoleName("producer")]),
-				}),
-			),
-		);
-		expect((await handler(rolesRequest("grant", "superadmin"))).status).toBe(
-			403,
-		);
-	});
+	it.effect("403 for a named-role caller without the admin tier", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler(
+				[],
+				asIdentity(
+					HumanIdentitySchema.make({
+						account: { issuer: "dev", subject: "op", displayName: "Op" },
+						roles: new Set([RoleName("producer")]),
+					}),
+				),
+			);
+			expect((yield* handler(rolesRequest("grant", "superadmin"))).status).toBe(
+				403,
+			);
+		}),
+	);
 
-	test("grant returns the updated set, revoke removes it for an admin", async () => {
-		const handler = webHandler([], admin);
-		const grant = await handler(rolesRequest("grant", "producer"));
-		expect(grant.status).toBe(200);
-		expect(await grant.json()).toEqual({ roles: ["producer"] });
+	it.effect(
+		"grant returns the updated set, revoke removes it for an admin",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], admin);
+				const grant = yield* handler(rolesRequest("grant", "producer"));
+				expect(grant.status).toBe(200);
+				expect(yield* json(grant)).toEqual({ roles: ["producer"] });
 
-		const revoke = await handler(rolesRequest("revoke", "producer"));
-		expect(revoke.status).toBe(200);
-		expect(await revoke.json()).toEqual({ roles: [] });
-	});
+				const revoke = yield* handler(rolesRequest("revoke", "producer"));
+				expect(revoke.status).toBe(200);
+				expect(yield* json(revoke)).toEqual({ roles: [] });
+			}),
+	);
 
-	test("403 when an admin grants an undeclarable role", async () => {
-		const handler = webHandler([], admin);
-		expect((await handler(rolesRequest("grant", "superadmin"))).status).toBe(
-			403,
-		);
-		expect((await handler(rolesRequest("grant", "admin"))).status).toBe(403);
-		expect((await handler(rolesRequest("grant", "server"))).status).toBe(403);
-	});
+	it.effect("403 when an admin grants an undeclarable role", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect((yield* handler(rolesRequest("grant", "superadmin"))).status).toBe(
+				403,
+			);
+			expect((yield* handler(rolesRequest("grant", "admin"))).status).toBe(403);
+			expect((yield* handler(rolesRequest("grant", "server"))).status).toBe(
+				403,
+			);
+		}),
+	);
 });
 
 describe("admin roles", () => {
@@ -489,75 +536,91 @@ describe("admin roles", () => {
 		Schema.Struct({ id: Schema.String }),
 	);
 
-	const createMachine = (handler: ReturnType<typeof webHandler>) =>
-		handler(
+	const createMachine = Effect.fn(function* (
+		handler: (request: Request) => Effect.Effect<Response>,
+	) {
+		const res = yield* handler(
 			postRequest("http://x/api/internal/machines", { displayName: "bot" }),
-		)
-			.then((res) => res.json())
-			.then(decodeId);
-
-	test("403 for an anonymous caller", async () => {
-		const handler = webHandler([]);
-		expect(
-			(await handler(adminRoleRequest("grant", human, "admin"))).status,
-		).toBe(403);
-		expect(
-			(await handler(adminRoleRequest("revoke", human, "admin"))).status,
-		).toBe(403);
-	});
-
-	test("403 for an admin-tier caller who is not a superadmin", async () => {
-		const handler = webHandler([], admin);
-		expect(
-			(await handler(adminRoleRequest("grant", human, "admin"))).status,
-		).toBe(403);
-	});
-
-	test("superadmin grants and revokes the admin tier for a human", async () => {
-		const handler = webHandler([], superadmin);
-		const grant = await handler(adminRoleRequest("grant", human, "admin"));
-		expect(grant.status).toBe(200);
-		expect(await grant.json()).toEqual({ roles: ["admin"] });
-
-		const revoke = await handler(adminRoleRequest("revoke", human, "admin"));
-		expect(revoke.status).toBe(200);
-		expect(await revoke.json()).toEqual({ roles: [] });
-	});
-
-	test("superadmin grants superadmin to a human", async () => {
-		const handler = webHandler([], superadmin);
-		const res = await handler(adminRoleRequest("grant", human, "superadmin"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ roles: ["superadmin"] });
-	});
-
-	test("400 for a payload role outside the admin tier", async () => {
-		const handler = webHandler([], superadmin);
-		expect(
-			(await handler(adminRoleRequest("grant", human, "producer"))).status,
-		).toBe(400);
-	});
-
-	test("superadmin grants the admin tier to a machine", async () => {
-		const handler = webHandler([], superadmin);
-		const { id } = await createMachine(handler);
-		const res = await handler(
-			adminRoleRequest("grant", { _tag: "machine", id }, "admin"),
 		);
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ roles: ["admin"] });
+		return decodeId(yield* json(res));
 	});
 
-	test("404 when granting the admin tier to an unknown machine", async () => {
-		const handler = webHandler([], superadmin);
-		expect(
-			(
-				await handler(
+	it.effect("403 for an anonymous caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect(
+				(yield* handler(adminRoleRequest("grant", human, "admin"))).status,
+			).toBe(403);
+			expect(
+				(yield* handler(adminRoleRequest("revoke", human, "admin"))).status,
+			).toBe(403);
+		}),
+	);
+
+	it.effect("403 for an admin-tier caller who is not a superadmin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect(
+				(yield* handler(adminRoleRequest("grant", human, "admin"))).status,
+			).toBe(403);
+		}),
+	);
+
+	it.effect("superadmin grants and revokes the admin tier for a human", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], superadmin);
+			const grant = yield* handler(adminRoleRequest("grant", human, "admin"));
+			expect(grant.status).toBe(200);
+			expect(yield* json(grant)).toEqual({ roles: ["admin"] });
+
+			const revoke = yield* handler(adminRoleRequest("revoke", human, "admin"));
+			expect(revoke.status).toBe(200);
+			expect(yield* json(revoke)).toEqual({ roles: [] });
+		}),
+	);
+
+	it.effect("superadmin grants superadmin to a human", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], superadmin);
+			const res = yield* handler(
+				adminRoleRequest("grant", human, "superadmin"),
+			);
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({ roles: ["superadmin"] });
+		}),
+	);
+
+	it.effect("400 for a payload role outside the admin tier", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], superadmin);
+			expect(
+				(yield* handler(adminRoleRequest("grant", human, "producer"))).status,
+			).toBe(400);
+		}),
+	);
+
+	it.effect("superadmin grants the admin tier to a machine", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], superadmin);
+			const { id } = yield* createMachine(handler);
+			const res = yield* handler(
+				adminRoleRequest("grant", { _tag: "machine", id }, "admin"),
+			);
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({ roles: ["admin"] });
+		}),
+	);
+
+	it.effect("404 when granting the admin tier to an unknown machine", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], superadmin);
+			expect(
+				(yield* handler(
 					adminRoleRequest("grant", { _tag: "machine", id: "ghost" }, "admin"),
-				)
-			).status,
-		).toBe(404);
-	});
+				)).status,
+			).toBe(404);
+		}),
+	);
 });
 
 describe("claim superadmin", () => {
@@ -577,95 +640,109 @@ describe("claim superadmin", () => {
 		}),
 	);
 
-	test("grants superadmin to the logged-in human presenting the token", async () => {
-		const handler = webHandler([], human, withClaimToken);
-		const res = await handler(claimRequest("super-secret-claim-token"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ roles: ["superadmin"] });
-	});
+	it.effect(
+		"grants superadmin to the logged-in human presenting the token",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], human, withClaimToken);
+				const res = yield* handler(claimRequest("super-secret-claim-token"));
+				expect(res.status).toBe(200);
+				expect(yield* json(res)).toEqual({ roles: ["superadmin"] });
+			}),
+	);
 
-	test("403 for a wrong token, without closing the window", async () => {
-		const handler = webHandler([], human, withClaimToken);
-		expect(
-			(await handler(claimRequest("wrong-token-of-real-length"))).status,
-		).toBe(403);
-		expect(
-			(await handler(claimRequest("super-secret-claim-token"))).status,
-		).toBe(200);
-	});
-
-	test("403 for an anonymous caller", async () => {
-		const handler = webHandler([], undefined, withClaimToken);
-		expect(
-			(await handler(claimRequest("super-secret-claim-token"))).status,
-		).toBe(403);
-	});
-
-	test("403 when no claim token is configured", async () => {
-		const handler = webHandler([], human);
-		expect(
-			(await handler(claimRequest("super-secret-claim-token"))).status,
-		).toBe(403);
-	});
-
-	test("the first successful claim closes the window", async () => {
-		const handler = webHandler([], human, withClaimToken);
-		expect(
-			(await handler(claimRequest("super-secret-claim-token"))).status,
-		).toBe(200);
-		expect(
-			(await handler(claimRequest("super-secret-claim-token"))).status,
-		).toBe(403);
-	});
-
-	test("429 after too many attempts in the window", async () => {
-		const handler = webHandler([], human, withClaimToken);
-		for (let attempt = 0; attempt < 5; attempt++) {
+	it.effect("403 for a wrong token, without closing the window", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], human, withClaimToken);
 			expect(
-				(await handler(claimRequest("wrong-token-of-real-length"))).status,
+				(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
 			).toBe(403);
-		}
-		expect(
-			(await handler(claimRequest("super-secret-claim-token"))).status,
-		).toBe(429);
-	});
-
-	test("an anonymous flood does not consume the claim budget", async () => {
-		const bySid = Layer.succeed(HumanAuthenticationMiddleware, {
-			cookie: (httpEffect, { credential }) =>
-				Effect.provideService(
-					httpEffect,
-					CurrentIdentity,
-					Redacted.value(credential) === "founder"
-						? HumanIdentitySchema.make({
-								account: {
-									issuer: "dev",
-									subject: "founder",
-									displayName: "Founder",
-								},
-								roles: new Set(),
-							})
-						: AnonymousIdentitySchema.make({}),
-				),
-		});
-		const handler = webHandler([], bySid, withClaimToken);
-		const withSid = (request: Request, sid: string) => {
-			request.headers.set("cookie", `nodecg.sid=${sid}`);
-			return request;
-		};
-		for (let attempt = 0; attempt < 10; attempt++) {
 			expect(
-				(await handler(claimRequest("super-secret-claim-token"))).status,
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(200);
+		}),
+	);
+
+	it.effect("403 for an anonymous caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], undefined, withClaimToken);
+			expect(
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
 			).toBe(403);
-		}
-		expect(
-			(
-				await handler(
+		}),
+	);
+
+	it.effect("403 when no claim token is configured", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], human);
+			expect(
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(403);
+		}),
+	);
+
+	it.effect("the first successful claim closes the window", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], human, withClaimToken);
+			expect(
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(200);
+			expect(
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(403);
+		}),
+	);
+
+	it.effect("429 after too many attempts in the window", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], human, withClaimToken);
+			for (let attempt = 0; attempt < 5; attempt++) {
+				expect(
+					(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
+				).toBe(403);
+			}
+			expect(
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(429);
+		}),
+	);
+
+	it.effect("an anonymous flood does not consume the claim budget", () =>
+		Effect.gen(function* () {
+			const bySid = Layer.succeed(HumanAuthenticationMiddleware, {
+				cookie: (httpEffect, { credential }) =>
+					Effect.provideService(
+						httpEffect,
+						CurrentIdentity,
+						Redacted.value(credential) === "founder"
+							? HumanIdentitySchema.make({
+									account: {
+										issuer: "dev",
+										subject: "founder",
+										displayName: "Founder",
+									},
+									roles: new Set(),
+								})
+							: AnonymousIdentitySchema.make({}),
+					),
+			});
+			const handler = yield* webHandler([], bySid, withClaimToken);
+			const withSid = (request: Request, sid: string) => {
+				request.headers.set("cookie", `nodecg.sid=${sid}`);
+				return request;
+			};
+			for (let attempt = 0; attempt < 10; attempt++) {
+				expect(
+					(yield* handler(claimRequest("super-secret-claim-token"))).status,
+				).toBe(403);
+			}
+			expect(
+				(yield* handler(
 					withSid(claimRequest("super-secret-claim-token"), "founder"),
-				)
-			).status,
-		).toBe(200);
-	});
+				)).status,
+			).toBe(200);
+		}),
+	);
 });
 
 describe("roles export/import", () => {
@@ -751,153 +828,169 @@ describe("roles export/import", () => {
 		Schema.Struct({ message: Schema.String }),
 	);
 
-	test("403 for an anonymous caller", async () => {
-		const handler = webHandler([]);
-		expect((await handler(exportRequest())).status).toBe(403);
-		expect((await handler(importRequest("merge", []))).status).toBe(403);
-	});
+	it.effect("403 for an anonymous caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(exportRequest())).status).toBe(403);
+			expect((yield* handler(importRequest("merge", []))).status).toBe(403);
+		}),
+	);
 
-	test("403 for a named-role caller without the admin tier", async () => {
-		const handler = webHandler(
-			[],
-			asIdentity(
-				HumanIdentitySchema.make({
-					account: { issuer: "dev", subject: "op", displayName: "Op" },
-					roles: new Set([RoleName("producer")]),
-				}),
-			),
-		);
-		expect((await handler(exportRequest())).status).toBe(403);
-		expect((await handler(importRequest("merge", []))).status).toBe(403);
-	});
-
-	test("exports human and machine assignments for an admin", async () => {
-		const handler = webHandler([], admin);
-		await handler(grantRequest("operator", "producer"));
-		const { id } = decodeId(
-			await (await handler(createMachineRequest("scoreboard"))).json(),
-		);
-		await handler(machineRoleRequest(id, "viewer"));
-		await handler(createMachineRequest("idle"));
-		const res = await handler(exportRequest());
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			version: 0,
-			assignments: [
-				{
-					_tag: "human",
-					issuer: "dev",
-					subject: "operator",
-					roles: ["producer"],
-				},
-				{ _tag: "machine", id, roles: ["viewer"] },
-			],
-		});
-	});
-
-	test("merge adds roles to the named identities and leaves others alone", async () => {
-		const handler = webHandler([], admin);
-		await handler(grantRequest("operator", "producer"));
-		await handler(grantRequest("other", "judge"));
-		const res = await handler(
-			importRequest("merge", [
-				{
-					_tag: "human",
-					issuer: "dev",
-					subject: "operator",
-					roles: ["viewer"],
-				},
-			]),
-		);
-		expect(res.status).toBe(204);
-		const doc = Schema.decodeUnknownSync(
-			Schema.Struct({
-				assignments: Schema.Array(
-					Schema.Struct({
-						issuer: Schema.String,
-						subject: Schema.String,
-						roles: Schema.Array(Schema.String),
+	it.effect("403 for a named-role caller without the admin tier", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler(
+				[],
+				asIdentity(
+					HumanIdentitySchema.make({
+						account: { issuer: "dev", subject: "op", displayName: "Op" },
+						roles: new Set([RoleName("producer")]),
 					}),
 				),
+			);
+			expect((yield* handler(exportRequest())).status).toBe(403);
+			expect((yield* handler(importRequest("merge", []))).status).toBe(403);
+		}),
+	);
+
+	it.effect("exports human and machine assignments for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			yield* handler(grantRequest("operator", "producer"));
+			const { id } = decodeId(
+				yield* json(yield* handler(createMachineRequest("scoreboard"))),
+			);
+			yield* handler(machineRoleRequest(id, "viewer"));
+			yield* handler(createMachineRequest("idle"));
+			const res = yield* handler(exportRequest());
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({
+				version: 0,
+				assignments: [
+					{
+						_tag: "human",
+						issuer: "dev",
+						subject: "operator",
+						roles: ["producer"],
+					},
+					{ _tag: "machine", id, roles: ["viewer"] },
+				],
+			});
+		}),
+	);
+
+	it.effect(
+		"merge adds roles to the named identities and leaves others alone",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], admin);
+				yield* handler(grantRequest("operator", "producer"));
+				yield* handler(grantRequest("other", "judge"));
+				const res = yield* handler(
+					importRequest("merge", [
+						{
+							_tag: "human",
+							issuer: "dev",
+							subject: "operator",
+							roles: ["viewer"],
+						},
+					]),
+				);
+				expect(res.status).toBe(204);
+				const doc = Schema.decodeUnknownSync(
+					Schema.Struct({
+						assignments: Schema.Array(
+							Schema.Struct({
+								issuer: Schema.String,
+								subject: Schema.String,
+								roles: Schema.Array(Schema.String),
+							}),
+						),
+					}),
+				)(yield* json(yield* handler(exportRequest())));
+				expect(doc.assignments).toHaveLength(2);
+				const operator = doc.assignments.find((a) => a.subject === "operator");
+				const other = doc.assignments.find((a) => a.subject === "other");
+				expect(operator?.roles).toHaveLength(2);
+				expect(operator?.roles).toEqual(
+					expect.arrayContaining(["producer", "viewer"]),
+				);
+				expect(other?.roles).toEqual(["judge"]);
 			}),
-		)(await (await handler(exportRequest())).json());
-		expect(doc.assignments).toHaveLength(2);
-		const operator = doc.assignments.find((a) => a.subject === "operator");
-		const other = doc.assignments.find((a) => a.subject === "other");
-		expect(operator?.roles).toHaveLength(2);
-		expect(operator?.roles).toEqual(
-			expect.arrayContaining(["producer", "viewer"]),
-		);
-		expect(other?.roles).toEqual(["judge"]);
-	});
+	);
 
-	test("replace overwrites the whole store", async () => {
-		const handler = webHandler([], admin);
-		await handler(grantRequest("operator", "producer"));
-		await handler(grantRequest("other", "judge"));
-		const res = await handler(
-			importRequest("replace", [
-				{
-					_tag: "human",
-					issuer: "dev",
-					subject: "operator",
-					roles: ["viewer"],
-				},
-			]),
-		);
-		expect(res.status).toBe(204);
-		expect(await (await handler(exportRequest())).json()).toEqual({
-			version: 0,
-			assignments: [
-				{
-					_tag: "human",
-					issuer: "dev",
-					subject: "operator",
-					roles: ["viewer"],
-				},
-			],
-		});
-	});
+	it.effect("replace overwrites the whole store", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			yield* handler(grantRequest("operator", "producer"));
+			yield* handler(grantRequest("other", "judge"));
+			const res = yield* handler(
+				importRequest("replace", [
+					{
+						_tag: "human",
+						issuer: "dev",
+						subject: "operator",
+						roles: ["viewer"],
+					},
+				]),
+			);
+			expect(res.status).toBe(204);
+			expect(yield* json(yield* handler(exportRequest()))).toEqual({
+				version: 0,
+				assignments: [
+					{
+						_tag: "human",
+						issuer: "dev",
+						subject: "operator",
+						roles: ["viewer"],
+					},
+				],
+			});
+		}),
+	);
 
-	test("replace clears roles of machines absent from the document", async () => {
-		const handler = webHandler([], admin);
-		const { id } = decodeId(
-			await (await handler(createMachineRequest("scoreboard"))).json(),
-		);
-		await handler(machineRoleRequest(id, "viewer"));
-		expect((await handler(importRequest("replace", []))).status).toBe(204);
-		expect(await (await handler(listMachinesRequest())).json()).toEqual({
-			machines: [{ id, displayName: "scoreboard", roles: [] }],
-		});
-	});
+	it.effect("replace clears roles of machines absent from the document", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const { id } = decodeId(
+				yield* json(yield* handler(createMachineRequest("scoreboard"))),
+			);
+			yield* handler(machineRoleRequest(id, "viewer"));
+			expect((yield* handler(importRequest("replace", []))).status).toBe(204);
+			expect(yield* json(yield* handler(listMachinesRequest()))).toEqual({
+				machines: [{ id, displayName: "scoreboard", roles: [] }],
+			});
+		}),
+	);
 
-	test("excludes the admin tier from the export", async () => {
-		const handler = webHandler([], tiered, withClaimToken);
-		expect((await handler(withSid(claimRequest(), "founder"))).status).toBe(
-			200,
-		);
-		await handler(withSid(grantRequest("founder", "producer"), "boss"));
-		expect(
-			await (await handler(withSid(exportRequest(), "boss"))).json(),
-		).toEqual({
-			version: 0,
-			assignments: [
-				{
-					_tag: "human",
-					issuer: "dev",
-					subject: "founder",
-					roles: ["producer"],
-				},
-			],
-		});
-	});
+	it.effect("excludes the admin tier from the export", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], tiered, withClaimToken);
+			expect((yield* handler(withSid(claimRequest(), "founder"))).status).toBe(
+				200,
+			);
+			yield* handler(withSid(grantRequest("founder", "producer"), "boss"));
+			expect(
+				yield* json(yield* handler(withSid(exportRequest(), "boss"))),
+			).toEqual({
+				version: 0,
+				assignments: [
+					{
+						_tag: "human",
+						issuer: "dev",
+						subject: "founder",
+						roles: ["producer"],
+					},
+				],
+			});
+		}),
+	);
 
-	test("merge keeps an admin tier the document does not mention", async () => {
-		const handler = webHandler([], tiered, withClaimToken);
-		await handler(withSid(claimRequest(), "founder"));
-		expect(
-			(
-				await handler(
+	it.effect("merge keeps an admin tier the document does not mention", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], tiered, withClaimToken);
+			yield* handler(withSid(claimRequest(), "founder"));
+			expect(
+				(yield* handler(
 					withSid(
 						importRequest("merge", [
 							{
@@ -909,58 +1002,67 @@ describe("roles export/import", () => {
 						]),
 						"boss",
 					),
-				)
-			).status,
-		).toBe(204);
-		const { roles } = decodeRoles(
-			await (
-				await handler(withSid(grantRequest("founder", "judge"), "boss"))
-			).json(),
-		);
-		expect(roles).toHaveLength(3);
-		expect(roles).toEqual(
-			expect.arrayContaining(["superadmin", "viewer", "judge"]),
-		);
-	});
+				)).status,
+			).toBe(204);
+			const { roles } = decodeRoles(
+				yield* json(
+					yield* handler(withSid(grantRequest("founder", "judge"), "boss")),
+				),
+			);
+			expect(roles).toHaveLength(3);
+			expect(roles).toEqual(
+				expect.arrayContaining(["superadmin", "viewer", "judge"]),
+			);
+		}),
+	);
 
-	test("replace keeps the admin tier of an identity absent from the document", async () => {
-		const handler = webHandler([], tiered, withClaimToken);
-		await handler(withSid(claimRequest(), "founder"));
-		await handler(withSid(grantRequest("founder", "producer"), "boss"));
-		expect(
-			(await handler(withSid(importRequest("replace", []), "boss"))).status,
-		).toBe(204);
-		const { roles } = decodeRoles(
-			await (
-				await handler(withSid(grantRequest("founder", "judge"), "boss"))
-			).json(),
-		);
-		expect(roles).toEqual(["superadmin", "judge"]);
-	});
+	it.effect(
+		"replace keeps the admin tier of an identity absent from the document",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], tiered, withClaimToken);
+				yield* handler(withSid(claimRequest(), "founder"));
+				yield* handler(withSid(grantRequest("founder", "producer"), "boss"));
+				expect(
+					(yield* handler(withSid(importRequest("replace", []), "boss")))
+						.status,
+				).toBe(204);
+				const { roles } = decodeRoles(
+					yield* json(
+						yield* handler(withSid(grantRequest("founder", "judge"), "boss")),
+					),
+				);
+				expect(roles).toEqual(["superadmin", "judge"]);
+			}),
+	);
 
-	test("400 with a detail message for an admin-tier role on a human entry", async () => {
-		const handler = webHandler([], admin);
-		const res = await handler(
-			importRequest("merge", [
-				{
-					_tag: "human",
-					issuer: "dev",
-					subject: "operator",
-					roles: ["admin"],
-				},
-			]),
-		);
-		expect(res.status).toBe(400);
-		expect(decodeImportError(await res.json()).message).toContain(
-			"cannot be assigned via import",
-		);
-	});
+	it.effect(
+		"400 with a detail message for an admin-tier role on a human entry",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], admin);
+				const res = yield* handler(
+					importRequest("merge", [
+						{
+							_tag: "human",
+							issuer: "dev",
+							subject: "operator",
+							roles: ["admin"],
+						},
+					]),
+				);
+				expect(res.status).toBe(400);
+				expect(decodeImportError(yield* json(res)).message).toContain(
+					"cannot be assigned via import",
+				);
+			}),
+	);
 
-	test("400 for a principal role on a human entry", async () => {
-		const handler = webHandler([], admin);
-		expect(
-			(
-				await handler(
+	it.effect("400 for a principal role on a human entry", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect(
+				(yield* handler(
 					importRequest("merge", [
 						{
 							_tag: "human",
@@ -969,43 +1071,45 @@ describe("roles export/import", () => {
 							roles: ["server"],
 						},
 					]),
-				)
-			).status,
-		).toBe(400);
-	});
+				)).status,
+			).toBe(400);
+		}),
+	);
 
-	test("400 for a reserved role on a machine entry", async () => {
-		const handler = webHandler([], admin);
-		expect(
-			(
-				await handler(
+	it.effect("400 for a reserved role on a machine entry", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect(
+				(yield* handler(
 					importRequest("merge", [
 						{ _tag: "machine", id: "anything", roles: ["admin"] },
 					]),
-				)
-			).status,
-		).toBe(400);
-	});
+				)).status,
+			).toBe(400);
+		}),
+	);
 
-	test("400 with a detail message for an unknown machine id", async () => {
-		const handler = webHandler([], admin);
-		const res = await handler(
-			importRequest("merge", [
-				{ _tag: "machine", id: "ghost", roles: ["viewer"] },
-			]),
-		);
-		expect(res.status).toBe(400);
-		expect(await res.json()).toEqual({
-			_tag: "RoleImportError",
-			message: 'unknown machine id "ghost"',
-		});
-	});
+	it.effect("400 with a detail message for an unknown machine id", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const res = yield* handler(
+				importRequest("merge", [
+					{ _tag: "machine", id: "ghost", roles: ["viewer"] },
+				]),
+			);
+			expect(res.status).toBe(400);
+			expect(yield* json(res)).toEqual({
+				_tag: "RoleImportError",
+				message: 'unknown machine id "ghost"',
+			});
+		}),
+	);
 
-	test("400 for duplicate entries for one identity", async () => {
-		const handler = webHandler([], admin);
-		expect(
-			(
-				await handler(
+	it.effect("400 for duplicate entries for one identity", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect(
+				(yield* handler(
 					importRequest("merge", [
 						{
 							_tag: "human",
@@ -1020,10 +1124,10 @@ describe("roles export/import", () => {
 							roles: ["judge"],
 						},
 					]),
-				)
-			).status,
-		).toBe(400);
-	});
+				)).status,
+			).toBe(400);
+		}),
+	);
 });
 
 describe("machines", () => {
@@ -1041,21 +1145,25 @@ describe("machines", () => {
 		}),
 	);
 
-	test("403 for an anonymous caller", async () => {
-		const handler = webHandler([]);
-		expect((await handler(createRequest())).status).toBe(403);
-	});
+	it.effect("403 for an anonymous caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(createRequest())).status).toBe(403);
+		}),
+	);
 
-	test("mints an api key with an id and prefixed token for an admin", async () => {
-		const handler = webHandler([], admin);
-		const res = await handler(createRequest());
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			id: expect.any(String),
-			displayName: "scoreboard",
-			token: expect.stringMatching(/^ncg_/),
-		});
-	});
+	it.effect("mints an api key with an id and prefixed token for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const res = yield* handler(createRequest());
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({
+				id: expect.any(String),
+				displayName: "scoreboard",
+				token: expect.stringMatching(/^ncg_/),
+			});
+		}),
+	);
 
 	const decodeCreated = Schema.decodeUnknownSync(
 		Schema.Struct({ id: Schema.String }),
@@ -1067,68 +1175,88 @@ describe("machines", () => {
 	const revokeRequest = (id: string) =>
 		new Request(`http://x/api/internal/machines/${id}`, { method: "DELETE" });
 
-	test("403 for an anonymous caller listing keys", async () => {
-		const handler = webHandler([]);
-		expect((await handler(listRequest())).status).toBe(403);
-	});
+	it.effect("403 for an anonymous caller listing keys", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(listRequest())).status).toBe(403);
+		}),
+	);
 
-	test("lists created keys without their token for an admin", async () => {
-		const handler = webHandler([], admin);
-		const { id } = decodeCreated(await (await handler(createRequest())).json());
-		const res = await handler(listRequest());
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			machines: [{ id, displayName: "scoreboard", roles: [] }],
-		});
-	});
+	it.effect("lists created keys without their token for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const { id } = decodeCreated(
+				yield* json(yield* handler(createRequest())),
+			);
+			const res = yield* handler(listRequest());
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({
+				machines: [{ id, displayName: "scoreboard", roles: [] }],
+			});
+		}),
+	);
 
-	test("403 for an anonymous caller revoking a key", async () => {
-		const handler = webHandler([]);
-		expect((await handler(revokeRequest("anything"))).status).toBe(403);
-	});
+	it.effect("403 for an anonymous caller revoking a key", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(revokeRequest("anything"))).status).toBe(403);
+		}),
+	);
 
-	test("revokes a key and drops it from the listing for an admin", async () => {
-		const handler = webHandler([], admin);
-		const { id } = decodeCreated(await (await handler(createRequest())).json());
-		expect((await handler(revokeRequest(id))).status).toBe(204);
-		expect(await (await handler(listRequest())).json()).toEqual({
-			machines: [],
-		});
-	});
+	it.effect("revokes a key and drops it from the listing for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const { id } = decodeCreated(
+				yield* json(yield* handler(createRequest())),
+			);
+			expect((yield* handler(revokeRequest(id))).status).toBe(204);
+			expect(yield* json(yield* handler(listRequest()))).toEqual({
+				machines: [],
+			});
+		}),
+	);
 
-	test("404 when revoking an unknown id for an admin", async () => {
-		const handler = webHandler([], admin);
-		expect((await handler(revokeRequest("ghost"))).status).toBe(404);
-	});
+	it.effect("404 when revoking an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect((yield* handler(revokeRequest("ghost"))).status).toBe(404);
+		}),
+	);
 
 	const refreshRequest = (id: string) =>
 		new Request(`http://x/api/internal/machines/${id}/refresh`, {
 			method: "POST",
 		});
 
-	test("403 for an anonymous caller refreshing a key", async () => {
-		const handler = webHandler([]);
-		expect((await handler(refreshRequest("anything"))).status).toBe(403);
-	});
+	it.effect("403 for an anonymous caller refreshing a key", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(refreshRequest("anything"))).status).toBe(403);
+		}),
+	);
 
-	test("refreshes a key, keeping id and display name, for an admin", async () => {
-		const handler = webHandler([], admin);
-		const created = decodeCreated(
-			await (await handler(createRequest())).json(),
-		);
-		const res = await handler(refreshRequest(created.id));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			id: created.id,
-			displayName: "scoreboard",
-			token: expect.stringMatching(/^ncg_/),
-		});
-	});
+	it.effect("refreshes a key, keeping id and display name, for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const created = decodeCreated(
+				yield* json(yield* handler(createRequest())),
+			);
+			const res = yield* handler(refreshRequest(created.id));
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toEqual({
+				id: created.id,
+				displayName: "scoreboard",
+				token: expect.stringMatching(/^ncg_/),
+			});
+		}),
+	);
 
-	test("404 when refreshing an unknown id for an admin", async () => {
-		const handler = webHandler([], admin);
-		expect((await handler(refreshRequest("ghost"))).status).toBe(404);
-	});
+	it.effect("404 when refreshing an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect((yield* handler(refreshRequest("ghost"))).status).toBe(404);
+		}),
+	);
 
 	const grantRoleRequest = (id: string, role: string) =>
 		new Request(`http://x/api/internal/machines/${id}/roles`, {
@@ -1142,266 +1270,316 @@ describe("machines", () => {
 			method: "DELETE",
 		});
 
-	test("403 for an anonymous caller granting a role", async () => {
-		const handler = webHandler([]);
-		expect((await handler(grantRoleRequest("anything", "viewer"))).status).toBe(
-			403,
-		);
-	});
+	it.effect("403 for an anonymous caller granting a role", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect(
+				(yield* handler(grantRoleRequest("anything", "viewer"))).status,
+			).toBe(403);
+		}),
+	);
 
-	test("grants a named role and returns the updated set for an admin", async () => {
-		const handler = webHandler([], admin);
-		const { id } = decodeCreated(await (await handler(createRequest())).json());
-		const res = await handler(grantRoleRequest(id, "viewer"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ roles: ["viewer"] });
-	});
+	it.effect(
+		"grants a named role and returns the updated set for an admin",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], admin);
+				const { id } = decodeCreated(
+					yield* json(yield* handler(createRequest())),
+				);
+				const res = yield* handler(grantRoleRequest(id, "viewer"));
+				expect(res.status).toBe(200);
+				expect(yield* json(res)).toEqual({ roles: ["viewer"] });
+			}),
+	);
 
-	test("403 when granting a reserved role to a machine", async () => {
-		const handler = webHandler([], admin);
-		const { id } = decodeCreated(await (await handler(createRequest())).json());
-		expect((await handler(grantRoleRequest(id, "admin"))).status).toBe(403);
-	});
+	it.effect("403 when granting a reserved role to a machine", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const { id } = decodeCreated(
+				yield* json(yield* handler(createRequest())),
+			);
+			expect((yield* handler(grantRoleRequest(id, "admin"))).status).toBe(403);
+		}),
+	);
 
-	test("404 when granting to an unknown id for an admin", async () => {
-		const handler = webHandler([], admin);
-		expect((await handler(grantRoleRequest("ghost", "viewer"))).status).toBe(
-			404,
-		);
-	});
+	it.effect("404 when granting to an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect((yield* handler(grantRoleRequest("ghost", "viewer"))).status).toBe(
+				404,
+			);
+		}),
+	);
 
-	test("revokes a named role and returns the remaining set for an admin", async () => {
-		const handler = webHandler([], admin);
-		const { id } = decodeCreated(await (await handler(createRequest())).json());
-		await handler(grantRoleRequest(id, "viewer"));
-		await handler(grantRoleRequest(id, "judge"));
-		const res = await handler(revokeRoleRequest(id, "viewer"));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ roles: ["judge"] });
-	});
+	it.effect(
+		"revokes a named role and returns the remaining set for an admin",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], admin);
+				const { id } = decodeCreated(
+					yield* json(yield* handler(createRequest())),
+				);
+				yield* handler(grantRoleRequest(id, "viewer"));
+				yield* handler(grantRoleRequest(id, "judge"));
+				const res = yield* handler(revokeRoleRequest(id, "viewer"));
+				expect(res.status).toBe(200);
+				expect(yield* json(res)).toEqual({ roles: ["judge"] });
+			}),
+	);
 
-	test("404 when revoking a role from an unknown id for an admin", async () => {
-		const handler = webHandler([], admin);
-		expect((await handler(revokeRoleRequest("ghost", "viewer"))).status).toBe(
-			404,
-		);
-	});
+	it.effect("404 when revoking a role from an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			expect(
+				(yield* handler(revokeRoleRequest("ghost", "viewer"))).status,
+			).toBe(404);
+		}),
+	);
 });
 
 describe("get", () => {
-	test("returns the stored value", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
-					commitPatch: committed,
+	it.effect("returns the stored value", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
+						commitPatch: committed,
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(new Request(getUrl));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toBe(42);
-	});
+			]);
+			const res = yield* handler(new Request(getUrl));
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toBe(42);
+		}),
+	);
 
-	test("404 when the namespace/name is not registered", async () => {
-		const handler = webHandler([]);
-		const res = await handler(new Request(getUrl));
-		expect(res.status).toBe(404);
-	});
+	it.effect("404 when the namespace/name is not registered", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			const res = yield* handler(new Request(getUrl));
+			expect(res.status).toBe(404);
+		}),
+	);
 
-	test("404 when a replicant read reports not-found", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () =>
-						Effect.fail(
-							new UnknownReplicant({ namespace: "root", name: "count" }),
-						),
-					commitPatch: committed,
+	it.effect("404 when a replicant read reports not-found", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () =>
+							Effect.fail(
+								new UnknownReplicant({ namespace: "root", name: "count" }),
+							),
+						commitPatch: committed,
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(new Request(getUrl));
-		expect(res.status).toBe(404);
-	});
+			]);
+			const res = yield* handler(new Request(getUrl));
+			expect(res.status).toBe(404);
+		}),
+	);
 
-	test("returns a computed field's value", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{ count: stubComputed(() => Effect.succeed(84)) },
-			),
-		]);
-		const res = await handler(new Request(computedUrl));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toBe(84);
-	});
+	it.effect("returns a computed field's value", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{ count: stubComputed(() => Effect.succeed(84)) },
+				),
+			]);
+			const res = yield* handler(new Request(computedUrl));
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toBe(84);
+		}),
+	);
 });
 
 describe("update", () => {
-	test("passes a root replace patch through to the field and returns 204", async () => {
-		const commitPatch = vi.fn(committed);
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch,
-				}),
+	it.effect(
+		"passes a root replace patch through to the field and returns 204",
+		() =>
+			Effect.gen(function* () {
+				const commitPatch = vi.fn(committed);
+				const handler = yield* webHandler([
+					registeredNamespace("root", {
+						count: stubField({
+							getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+							commitPatch,
+						}),
+					}),
+				]);
+				const res = yield* handler(
+					putPatch([{ op: "replace", path: "", value: 7 }]),
+				);
+				expect(res.status).toBe(204);
+				expect(commitPatch).toHaveBeenCalledWith([
+					{ op: "replace", path: "", value: 7 },
+				]);
 			}),
-		]);
-		const res = await handler(
-			putPatch([{ op: "replace", path: "", value: 7 }]),
-		);
-		expect(res.status).toBe(204);
-		expect(commitPatch).toHaveBeenCalledWith([
-			{ op: "replace", path: "", value: 7 },
-		]);
-	});
+	);
 
-	test("passes a field-level patch through whole", async () => {
-		const commitPatch = vi.fn(committed);
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch,
+	it.effect("passes a field-level patch through whole", () =>
+		Effect.gen(function* () {
+			const commitPatch = vi.fn(committed);
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+						commitPatch,
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(
-			putPatch([
+			]);
+			const res = yield* handler(
+				putPatch([
+					{ op: "replace", path: "/a", value: 7 },
+					{ op: "replace", path: "/b/0", value: 8 },
+				]),
+			);
+			expect(res.status).toBe(204);
+			expect(commitPatch).toHaveBeenCalledWith([
 				{ op: "replace", path: "/a", value: 7 },
 				{ op: "replace", path: "/b/0", value: 8 },
-			]),
-		);
-		expect(res.status).toBe(204);
-		expect(commitPatch).toHaveBeenCalledWith([
-			{ op: "replace", path: "/a", value: 7 },
-			{ op: "replace", path: "/b/0", value: 8 },
-		]);
-	});
+			]);
+		}),
+	);
 
-	test("400 when the payload is not a patch", async () => {
-		const commitPatch = vi.fn(committed);
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch,
+	it.effect("400 when the payload is not a patch", () =>
+		Effect.gen(function* () {
+			const commitPatch = vi.fn(committed);
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+						commitPatch,
+					}),
 				}),
-			}),
-		]);
-		expect((await handler(putPatch(7))).status).toBe(400);
-		expect((await handler(putPatch([]))).status).toBe(400);
-		expect(
-			(await handler(putPatch([{ op: "replace", path: "a", value: 7 }])))
-				.status,
-		).toBe(400);
-		expect(commitPatch).not.toHaveBeenCalled();
-	});
+			]);
+			expect((yield* handler(putPatch(7))).status).toBe(400);
+			expect((yield* handler(putPatch([]))).status).toBe(400);
+			expect(
+				(yield* handler(putPatch([{ op: "replace", path: "a", value: 7 }])))
+					.status,
+			).toBe(400);
+			expect(commitPatch).not.toHaveBeenCalled();
+		}),
+	);
 
-	test("422 when the field reports PatchNotApplicable", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch: () =>
-						Effect.fail(
-							new PatchNotApplicable({ path: "/a", reason: "MissingKey" }),
-						),
+	it.effect("422 when the field reports PatchNotApplicable", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+						commitPatch: () =>
+							Effect.fail(
+								new PatchNotApplicable({ path: "/a", reason: "MissingKey" }),
+							),
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(
-			putPatch([{ op: "replace", path: "/a", value: 7 }]),
-		);
-		expect(res.status).toBe(422);
-		expect(await res.json()).toEqual({
-			_tag: "PatchNotApplicable",
-			path: "/a",
-			reason: "MissingKey",
-		});
-	});
+			]);
+			const res = yield* handler(
+				putPatch([{ op: "replace", path: "/a", value: 7 }]),
+			);
+			expect(res.status).toBe(422);
+			expect(yield* json(res)).toEqual({
+				_tag: "PatchNotApplicable",
+				path: "/a",
+				reason: "MissingKey",
+			});
+		}),
+	);
 
-	test("409 with the current value when the field reports RevisionConflict", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch: () =>
-						Effect.fail(
-							new RevisionConflict({
-								value: 9,
-								revision: 3,
-								reason: "HashMismatch",
-							}),
-						),
+	it.effect(
+		"409 with the current value when the field reports RevisionConflict",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([
+					registeredNamespace("root", {
+						count: stubField({
+							getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+							commitPatch: () =>
+								Effect.fail(
+									new RevisionConflict({
+										value: 9,
+										revision: 3,
+										reason: "HashMismatch",
+									}),
+								),
+						}),
+					}),
+				]);
+				const res = yield* handler(
+					putPatch([
+						{ op: "test-hash", path: "", hash: computeTestHash(0) },
+						{ op: "replace", path: "", value: 7 },
+					]),
+				);
+				expect(res.status).toBe(409);
+				expect(yield* json(res)).toEqual({
+					_tag: "RevisionConflict",
+					value: 9,
+					revision: 3,
+					reason: "HashMismatch",
+				});
+			}),
+	);
+
+	it.effect("404 when the namespace/name is not registered", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			const res = yield* handler(
+				putPatch([{ op: "replace", path: "", value: 7 }]),
+			);
+			expect(res.status).toBe(404);
+		}),
+	);
+
+	it.effect("400 when the field reports FieldDecodeError", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+						commitPatch: () =>
+							Effect.fail(
+								new FieldDecodeError({
+									fieldName: "count",
+									value: 7,
+									cause: new Error("boom"),
+								}),
+							),
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(
-			putPatch([
-				{ op: "test-hash", path: "", hash: computeTestHash(0) },
-				{ op: "replace", path: "", value: 7 },
-			]),
-		);
-		expect(res.status).toBe(409);
-		expect(await res.json()).toEqual({
-			_tag: "RevisionConflict",
-			value: 9,
-			revision: 3,
-			reason: "HashMismatch",
-		});
-	});
+			]);
+			const res = yield* handler(
+				putPatch([{ op: "replace", path: "", value: 7 }]),
+			);
+			expect(res.status).toBe(400);
+		}),
+	);
 
-	test("404 when the namespace/name is not registered", async () => {
-		const handler = webHandler([]);
-		const res = await handler(
-			putPatch([{ op: "replace", path: "", value: 7 }]),
-		);
-		expect(res.status).toBe(404);
-	});
-
-	test("400 when the field reports FieldDecodeError", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch: () =>
-						Effect.fail(
-							new FieldDecodeError({
-								fieldName: "count",
-								value: 7,
-								cause: new Error("boom"),
-							}),
-						),
+	it.effect("404 when a replicant write reports not-found", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+						commitPatch: () =>
+							Effect.fail(
+								new UnknownReplicant({ namespace: "root", name: "count" }),
+							),
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(
-			putPatch([{ op: "replace", path: "", value: 7 }]),
-		);
-		expect(res.status).toBe(400);
-	});
-
-	test("404 when a replicant write reports not-found", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch: () =>
-						Effect.fail(
-							new UnknownReplicant({ namespace: "root", name: "count" }),
-						),
-				}),
-			}),
-		]);
-		const res = await handler(
-			putPatch([{ op: "replace", path: "", value: 7 }]),
-		);
-		expect(res.status).toBe(404);
-	});
+			]);
+			const res = yield* handler(
+				putPatch([{ op: "replace", path: "", value: 7 }]),
+			);
+			expect(res.status).toBe(404);
+		}),
+	);
 });
 
 describe("permission enforcement", () => {
@@ -1422,208 +1600,239 @@ describe("permission enforcement", () => {
 			}),
 		);
 
-	test("403 when replicant getRevisioned denies the caller", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: readDenied,
-					commitPatch: committed,
+	it.effect("403 when replicant getRevisioned denies the caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: readDenied,
+						commitPatch: committed,
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(new Request(getUrl));
-		expect(res.status).toBe(403);
-	});
+			]);
+			const res = yield* handler(new Request(getUrl));
+			expect(res.status).toBe(403);
+		}),
+	);
 
-	test("403 when replicant commitPatch denies the caller", async () => {
-		const commitPatch = vi.fn(writeDenied);
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({
-					getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-					commitPatch,
+	it.effect("403 when replicant commitPatch denies the caller", () =>
+		Effect.gen(function* () {
+			const commitPatch = vi.fn(writeDenied);
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({
+						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
+						commitPatch,
+					}),
 				}),
-			}),
-		]);
-		const res = await handler(
-			putPatch([{ op: "replace", path: "", value: 7 }]),
-		);
-		expect(res.status).toBe(403);
-	});
-
-	test("403 when computed getEncoded denies the caller", async () => {
-		const handler = webHandler([
-			registeredNamespace("root", {}, { count: stubComputed(readDenied) }),
-		]);
-		const res = await handler(new Request(computedUrl));
-		expect(res.status).toBe(403);
-	});
-
-	test("runs the encoded op with the resolved identity in context", async () => {
-		const getRevisioned = () =>
-			CurrentIdentity.pipe(
-				Effect.map((identity) => ({ value: identity._tag, revision: 0 })),
+			]);
+			const res = yield* handler(
+				putPatch([{ op: "replace", path: "", value: 7 }]),
 			);
-		const handler = webHandler([
-			registeredNamespace("root", {
-				count: stubField({ getRevisioned, commitPatch: committed }),
-			}),
-		]);
-		const res = await handler(new Request(getUrl));
-		expect(await res.json()).toBe("anonymous");
-	});
+			expect(res.status).toBe(403);
+		}),
+	);
+
+	it.effect("403 when computed getEncoded denies the caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace("root", {}, { count: stubComputed(readDenied) }),
+			]);
+			const res = yield* handler(new Request(computedUrl));
+			expect(res.status).toBe(403);
+		}),
+	);
+
+	it.effect("runs the encoded op with the resolved identity in context", () =>
+		Effect.gen(function* () {
+			const getRevisioned = () =>
+				CurrentIdentity.pipe(
+					Effect.map((identity) => ({ value: identity._tag, revision: 0 })),
+				);
+			const handler = yield* webHandler([
+				registeredNamespace("root", {
+					count: stubField({ getRevisioned, commitPatch: committed }),
+				}),
+			]);
+			const res = yield* handler(new Request(getUrl));
+			expect(yield* json(res)).toBe("anonymous");
+		}),
+	);
 });
 
 describe("topic publish", () => {
-	test("forwards an allowed value and returns 204", async () => {
-		const publishEncoded = vi.fn((_value: unknown) => Effect.void);
-		const handler = webHandler([
-			registeredNamespace("root", {}, {}, { chat: stubTopic(publishEncoded) }),
-		]);
-		const res = await handler(postRequest(topicUrl, 5));
-		expect(res.status).toBe(204);
-		expect(publishEncoded).toHaveBeenCalledWith(5);
-	});
+	it.effect("forwards an allowed value and returns 204", () =>
+		Effect.gen(function* () {
+			const publishEncoded = vi.fn((_value: unknown) => Effect.void);
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{ chat: stubTopic(publishEncoded) },
+				),
+			]);
+			const res = yield* handler(postRequest(topicUrl, 5));
+			expect(res.status).toBe(204);
+			expect(publishEncoded).toHaveBeenCalledWith(5);
+		}),
+	);
 
-	test("404 when the namespace/name is not registered", async () => {
-		const handler = webHandler([]);
-		expect((await handler(postRequest(topicUrl, 5))).status).toBe(404);
-	});
+	it.effect("404 when the namespace/name is not registered", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(postRequest(topicUrl, 5))).status).toBe(404);
+		}),
+	);
 
-	test("403 when publishEncoded denies the caller", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{},
-				{
-					chat: stubTopic(() =>
-						Effect.fail(
-							new FieldPermissionDenied({
-								namespace: "root",
-								name: "chat",
-								operation: "write",
-							}),
+	it.effect("403 when publishEncoded denies the caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{
+						chat: stubTopic(() =>
+							Effect.fail(
+								new FieldPermissionDenied({
+									namespace: "root",
+									name: "chat",
+									operation: "write",
+								}),
+							),
 						),
-					),
-				},
-			),
-		]);
-		expect((await handler(postRequest(topicUrl, 5))).status).toBe(403);
-	});
+					},
+				),
+			]);
+			expect((yield* handler(postRequest(topicUrl, 5))).status).toBe(403);
+		}),
+	);
 
-	test("400 when publishEncoded reports FieldDecodeError", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{},
-				{
-					chat: stubTopic(() =>
-						Effect.fail(
-							new FieldDecodeError({
-								fieldName: "chat",
-								value: 5,
-								cause: new Error("boom"),
-							}),
+	it.effect("400 when publishEncoded reports FieldDecodeError", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{
+						chat: stubTopic(() =>
+							Effect.fail(
+								new FieldDecodeError({
+									fieldName: "chat",
+									value: 5,
+									cause: new Error("boom"),
+								}),
+							),
 						),
-					),
-				},
-			),
-		]);
-		expect((await handler(postRequest(topicUrl, 5))).status).toBe(400);
-	});
+					},
+				),
+			]);
+			expect((yield* handler(postRequest(topicUrl, 5))).status).toBe(400);
+		}),
+	);
 });
 
 describe("rpc call", () => {
-	test("returns the encoded handler response", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{},
-				{},
-				{ echo: stubRpc(() => Effect.succeed(84)) },
-			),
-		]);
-		const res = await handler(postRequest(rpcUrl, 42));
-		expect(res.status).toBe(200);
-		expect(await res.json()).toBe(84);
-	});
+	it.effect("returns the encoded handler response", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{},
+					{ echo: stubRpc(() => Effect.succeed(84)) },
+				),
+			]);
+			const res = yield* handler(postRequest(rpcUrl, 42));
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toBe(84);
+		}),
+	);
 
-	test("404 when the proc is not registered", async () => {
-		const handler = webHandler([]);
-		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(404);
-	});
+	it.effect("404 when the proc is not registered", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([]);
+			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(404);
+		}),
+	);
 
-	test("403 when callEncoded denies the caller", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{},
-				{},
-				{
-					echo: stubRpc(() =>
-						Effect.fail(
-							new FieldPermissionDenied({
-								namespace: "root",
-								name: "echo",
-								operation: "write",
-							}),
+	it.effect("403 when callEncoded denies the caller", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{},
+					{
+						echo: stubRpc(() =>
+							Effect.fail(
+								new FieldPermissionDenied({
+									namespace: "root",
+									name: "echo",
+									operation: "write",
+								}),
+							),
 						),
-					),
-				},
-			),
-		]);
-		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(403);
-	});
+					},
+				),
+			]);
+			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(403);
+		}),
+	);
 
-	test("400 when callEncoded reports FieldDecodeError", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{},
-				{},
-				{
-					echo: stubRpc(() =>
-						Effect.fail(
-							new FieldDecodeError({
-								fieldName: "echo",
-								value: 42,
-								cause: new Error("boom"),
-							}),
+	it.effect("400 when callEncoded reports FieldDecodeError", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{},
+					{
+						echo: stubRpc(() =>
+							Effect.fail(
+								new FieldDecodeError({
+									fieldName: "echo",
+									value: 42,
+									cause: new Error("boom"),
+								}),
+							),
 						),
-					),
-				},
-			),
-		]);
-		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(400);
-	});
+					},
+				),
+			]);
+			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(400);
+		}),
+	);
 
-	test("500 when the handler fails", async () => {
-		const handler = webHandler([
-			registeredNamespace(
-				"root",
-				{},
-				{},
-				{},
-				{
-					echo: stubRpc(() =>
-						Effect.fail(
-							new RpcHandlerError({
-								namespace: "root",
-								name: "echo",
-								cause: new Error("boom"),
-							}),
+	it.effect("500 when the handler fails", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([
+				registeredNamespace(
+					"root",
+					{},
+					{},
+					{},
+					{
+						echo: stubRpc(() =>
+							Effect.fail(
+								new RpcHandlerError({
+									namespace: "root",
+									name: "echo",
+									cause: new Error("boom"),
+								}),
+							),
 						),
-					),
-				},
-			),
-		]);
-		expect((await handler(postRequest(rpcUrl, 42))).status).toBe(500);
-	});
+					},
+				),
+			]);
+			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(500);
+		}),
+	);
 });
 
 describe("public surface (v0) with bearer token", () => {
@@ -1644,8 +1853,10 @@ describe("public surface (v0) with bearer token", () => {
 		}),
 	);
 
-	const mintKey = async (handler: (req: Request) => Promise<Response>) => {
-		const res = await handler(
+	const mintKey = Effect.fn(function* (
+		handler: (request: Request) => Effect.Effect<Response>,
+	) {
+		const res = yield* handler(
 			new Request("http://x/api/internal/machines", {
 				method: "POST",
 				body: JSON.stringify({ displayName: "scoreboard" }),
@@ -1654,34 +1865,40 @@ describe("public surface (v0) with bearer token", () => {
 		);
 		const { token } = Schema.decodeUnknownSync(
 			Schema.Struct({ token: Schema.String }),
-		)(await res.json());
+		)(yield* json(res));
 		return token;
-	};
-
-	test("401 for a resource request without a bearer", async () => {
-		const handler = webHandler([countNamespace()]);
-		expect((await handler(new Request(publicGetUrl))).status).toBe(401);
 	});
 
-	test("401 for a resource request with an unknown bearer", async () => {
-		const handler = webHandler([countNamespace()]);
-		const res = await handler(
-			new Request(publicGetUrl, {
-				headers: { authorization: "Bearer anything" },
-			}),
-		);
-		expect(res.status).toBe(401);
-	});
+	it.effect("401 for a resource request without a bearer", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([countNamespace()]);
+			expect((yield* handler(new Request(publicGetUrl))).status).toBe(401);
+		}),
+	);
 
-	test("authenticates a request bearing a provisioned api key", async () => {
-		const handler = webHandler([countNamespace()], admin);
-		const token = await mintKey(handler);
-		const res = await handler(
-			new Request(publicGetUrl, {
-				headers: { authorization: `Bearer ${token}` },
-			}),
-		);
-		expect(res.status).toBe(200);
-		expect(await res.json()).toBe(42);
-	});
+	it.effect("401 for a resource request with an unknown bearer", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([countNamespace()]);
+			const res = yield* handler(
+				new Request(publicGetUrl, {
+					headers: { authorization: "Bearer anything" },
+				}),
+			);
+			expect(res.status).toBe(401);
+		}),
+	);
+
+	it.effect("authenticates a request bearing a provisioned api key", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([countNamespace()], admin);
+			const token = yield* mintKey(handler);
+			const res = yield* handler(
+				new Request(publicGetUrl, {
+					headers: { authorization: `Bearer ${token}` },
+				}),
+			);
+			expect(res.status).toBe(200);
+			expect(yield* json(res)).toBe(42);
+		}),
+	);
 });
