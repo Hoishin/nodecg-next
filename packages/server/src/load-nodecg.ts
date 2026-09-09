@@ -17,7 +17,7 @@ import {
 	Schema,
 	Scope,
 } from "effect";
-import { HttpRouter } from "effect/unstable/http";
+import { HttpMiddleware, HttpRouter } from "effect/unstable/http";
 
 import {
 	type AuthProvider,
@@ -292,6 +292,9 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 					dev: options.dev ?? false,
 				}),
 				HttpRouter.middleware(yield* basePathMiddleware, { global: true }),
+				HttpRouter.middleware(HttpMiddleware.compression(), {
+					global: true,
+				}),
 			);
 			const ServerLive = HttpRouter.serve(AppLive).pipe(
 				Layer.provide(FieldRegistryService.layer(registered)),
