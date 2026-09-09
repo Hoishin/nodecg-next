@@ -383,9 +383,6 @@ importers:
       openid-client:
         specifier: ^6.8.4
         version: 6.8.4
-      sirv:
-        specifier: ^3.0.2
-        version: 3.0.2
       type-fest:
         specifier: 'catalog:'
         version: 5.8.0

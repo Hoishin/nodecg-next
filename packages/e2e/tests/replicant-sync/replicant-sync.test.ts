@@ -333,6 +333,7 @@ describe("extended namespace frontend serving (spa)", () => {
 	test("falls back to the base index for a client-side route", async () => {
 		const response = await fetch(
 			`${base}/frontend/namespaces/e2e-extend/some/route`,
+			{ headers: { accept: "text/html" } },
 		);
 		expect(response.ok).toBe(true);
 		expect(await response.text()).toContain("spa shell");

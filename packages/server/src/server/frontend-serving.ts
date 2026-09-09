@@ -1,8 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { Effect } from "effect";
-import { HttpRouter } from "effect/unstable/http";
-import sirv from "sirv";
+import { HttpRouter, HttpStaticServer } from "effect/unstable/http";
 
 import { type WidenedImplementedNamespace } from "../implement-namespace.ts";
 import { nodeMiddlewareToHttpApp } from "./node-connect-middleware.ts";
@@ -20,17 +19,6 @@ const coerceToPath = (url: string | URL) => {
 	}
 	return url;
 };
-
-const sirvHttpApp = (dirPath: string | URL, single: boolean) =>
-	nodeMiddlewareToHttpApp(
-		sirv(coerceToPath(dirPath), {
-			etag: true,
-			single,
-			// Don't cache files in memory
-			dev: true,
-		}),
-		{ stripUrl: true },
-	);
 
 export const frontendRoutes = (options: {
 	namespaces: ReadonlyArray<WidenedImplementedNamespace>;
@@ -55,19 +43,27 @@ export const frontendRoutes = (options: {
 						.prefixed(frontendPrefix(name))
 						.add("*", "/*", nodeMiddlewareToHttpApp(devServer.middlewares));
 				} else {
-					const apps = frontend.dir.map((dirPath) =>
-						sirvHttpApp(dirPath, false),
+					const roots = frontend.dir.map(coerceToPath);
+					const apps = yield* Effect.forEach(roots, (root) =>
+						HttpStaticServer.make({ root, spa: false }),
 					);
 					if (spa) {
 						apps.push(
-							...frontend.dir.map((dirPath) => sirvHttpApp(dirPath, true)),
+							...(yield* Effect.forEach(roots, (root) =>
+								HttpStaticServer.make({ root, spa: true }),
+							)),
 						);
 					}
 					yield* router.prefixed(frontendPrefix(name)).add(
-						"*",
+						"GET",
 						"/*",
 						apps.reduce((acc, next) =>
-							acc.pipe(Effect.catchTag("RouteNotFound", () => next)),
+							acc.pipe(
+								Effect.catchIf(
+									(error) => error.reason._tag === "RouteNotFound",
+									() => next,
+								),
+							),
 						),
 					);
 				}

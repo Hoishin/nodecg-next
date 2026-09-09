@@ -29,7 +29,6 @@
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
 		"openid-client": "^6.8.4",
-		"sirv": "^3.0.2",
 		"type-fest": "catalog:"
 	},
 	"devDependencies": {

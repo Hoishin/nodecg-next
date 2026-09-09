@@ -14,18 +14,11 @@ export type NodeMiddleware = (
 	next: () => void | Promise<void>,
 ) => void;
 
-export const nodeMiddlewareToHttpApp = (
-	middleware: NodeMiddleware,
-	options?: { readonly stripUrl?: boolean },
-) =>
+export const nodeMiddlewareToHttpApp = (middleware: NodeMiddleware) =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest;
 		const req = NodeHttpServerRequest.toIncomingMessage(request);
 		const res = NodeHttpServerRequest.toServerResponse(request);
-
-		if (options?.stripUrl) {
-			req.url = request.url;
-		}
 
 		return yield* Effect.callback<
 			HttpServerResponse.HttpServerResponse,
