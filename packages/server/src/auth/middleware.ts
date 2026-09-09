@@ -1,7 +1,10 @@
+import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
+	AdminTierMiddleware,
 	CurrentIdentity,
 	HumanAuthenticationMiddleware,
 	MachineAuthenticationMiddleware,
+	SuperadminMiddleware,
 } from "@nodecg-next/internal";
 import { Effect, Layer, Option, Redacted } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
@@ -41,6 +44,30 @@ export const HumanAuthenticationMiddlewareLive = Layer.effect(
 				}),
 		};
 	}),
+);
+
+export const AdminTierMiddlewareLive = Layer.succeed(
+	AdminTierMiddleware,
+	(httpEffect) =>
+		Effect.gen(function* () {
+			const identity = yield* CurrentIdentity;
+			if (!isAdminTier(identity)) {
+				return yield* new HttpApiError.Forbidden();
+			}
+			return yield* httpEffect;
+		}),
+);
+
+export const SuperadminMiddlewareLive = Layer.succeed(
+	SuperadminMiddleware,
+	(httpEffect) =>
+		Effect.gen(function* () {
+			const identity = yield* CurrentIdentity;
+			if (!isSuperadmin(identity)) {
+				return yield* new HttpApiError.Forbidden();
+			}
+			return yield* httpEffect;
+		}),
 );
 
 export const MachineAuthenticationMiddlewareLive = Layer.effect(

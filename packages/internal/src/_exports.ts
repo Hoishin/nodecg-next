@@ -20,6 +20,8 @@ export { PublicApi } from "./api/api-v0.ts";
 export {
 	HumanAuthenticationMiddleware,
 	MachineAuthenticationMiddleware,
+	AdminTierMiddleware,
+	SuperadminMiddleware,
 	CurrentIdentity,
 	type Identity,
 	IdentitySchema,

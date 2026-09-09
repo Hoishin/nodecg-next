@@ -7,7 +7,12 @@ import {
 	HttpApiSchema,
 } from "effect/unstable/httpapi";
 
-import { HumanAuthenticationMiddleware, IdentitySchema } from "../auth.ts";
+import {
+	AdminTierMiddleware,
+	HumanAuthenticationMiddleware,
+	IdentitySchema,
+	SuperadminMiddleware,
+} from "../auth.ts";
 import { AdminRoleNameSchema, RoleNameSchema } from "../role.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
@@ -159,27 +164,25 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 		HttpApiEndpoint.post("createApiKey", "/machines", {
 			payload: CreateApiKeyRequestSchema,
 			success: CreateApiKeyResultSchema,
-			error: HttpApiError.Forbidden,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.get("list", "/machines", {
 			success: ListMachinesResultSchema,
-			error: HttpApiError.Forbidden,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.delete("revoke", "/machines/:id", {
 			params: { id: Schema.String },
 			success: HttpApiSchema.Empty(204),
-			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("refresh", "/machines/:id/refresh", {
 			params: { id: Schema.String },
 			success: CreateApiKeyResultSchema,
-			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
@@ -187,48 +190,44 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 			params: { id: Schema.String },
 			payload: MachineRoleRequestSchema,
 			success: RoleAssignmentResultSchema,
-			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.delete("revokeRole", "/machines/:id/roles/:role", {
 			params: { id: Schema.String, role: RoleNameSchema },
 			success: RoleAssignmentResultSchema,
-			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+			error: HttpApiError.NotFound,
 		}),
-	);
+	)
+	.middleware(AdminTierMiddleware);
 
 const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
 		HttpApiEndpoint.post("grant", "/roles/grant", {
 			payload: RoleAssignmentSchema,
 			success: RoleAssignmentResultSchema,
-			error: HttpApiError.Forbidden,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("revoke", "/roles/revoke", {
 			payload: RoleAssignmentSchema,
 			success: RoleAssignmentResultSchema,
-			error: HttpApiError.Forbidden,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.get("export", "/roles/export", {
 			success: RoleAssignmentsDocumentSchema,
-			error: HttpApiError.Forbidden,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("import", "/roles/import", {
 			payload: ImportAssignmentsRequestSchema,
 			success: HttpApiSchema.Empty(204),
-			error: [
-				HttpApiError.Forbidden,
-				RoleImportError.pipe(HttpApiSchema.status(400)),
-			],
+			error: RoleImportError.pipe(HttpApiSchema.status(400)),
 		}),
-	);
+	)
+	.middleware(AdminTierMiddleware);
 
 export const AdminSubjectSchema = Schema.Union([
 	Schema.TaggedStruct("human", {
@@ -250,16 +249,17 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
 			payload: AdminRoleAssignmentSchema,
 			success: RoleAssignmentResultSchema,
-			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke", {
 			payload: AdminRoleAssignmentSchema,
 			success: RoleAssignmentResultSchema,
-			error: [HttpApiError.Forbidden, HttpApiError.NotFound],
+			error: HttpApiError.NotFound,
 		}),
-	);
+	)
+	.middleware(SuperadminMiddleware);
 
 export const InternalApi = HttpApi.make("InternalApi")
 	.add(fieldGroup("Field"))

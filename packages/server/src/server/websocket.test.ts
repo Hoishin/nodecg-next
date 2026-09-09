@@ -7,8 +7,10 @@ import {
 	AuthProviderRegistry,
 } from "../auth/auth-provider.ts";
 import {
+	AdminTierMiddlewareLive,
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
+	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
@@ -29,6 +31,8 @@ const handler = () => {
 			),
 			Layer.provide(HumanAuthenticationMiddlewareLive),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
+			Layer.provide(AdminTierMiddlewareLive),
+			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(FieldRegistryService.layer([])),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(InMemoryTopicBroker),

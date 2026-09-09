@@ -31,8 +31,10 @@ import {
 	AuthProviderRegistry,
 } from "../auth/auth-provider.ts";
 import {
+	AdminTierMiddlewareLive,
 	HumanAuthenticationMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
+	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
 import { type BuiltNamespace } from "../build-fields.ts";
 import {
@@ -182,6 +184,8 @@ const webHandler = Effect.fn(function* (
 			),
 			Layer.provide(middleware),
 			Layer.provide(MachineAuthenticationMiddlewareLive),
+			Layer.provide(AdminTierMiddlewareLive),
+			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),

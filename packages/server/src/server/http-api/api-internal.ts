@@ -1,6 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	type AdminRoleAssignment,
 	ADMIN_ROLE,
@@ -331,27 +330,12 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 		}),
 );
 
-const requireAdminTier = Effect.gen(function* () {
-	const identity = yield* CurrentIdentity;
-	if (!isAdminTier(identity)) {
-		return yield* new HttpApiError.Forbidden();
-	}
-});
-
-const requireSuperadmin = Effect.gen(function* () {
-	const identity = yield* CurrentIdentity;
-	if (!isSuperadmin(identity)) {
-		return yield* new HttpApiError.Forbidden();
-	}
-});
-
 const mutateAdminRole = (
 	{ subject, role }: AdminRoleAssignment,
 	humanOp: RoleStore["grant"] | RoleStore["revoke"],
 	machineOp: MachineClientStore["grantRole"] | MachineClientStore["revokeRole"],
 ) =>
 	Effect.gen(function* () {
-		yield* requireSuperadmin;
 		const tierRole = ADMIN_ROLE[role];
 		if (subject._tag === "human") {
 			const roles = yield* humanOp(
@@ -400,21 +384,16 @@ const MachinesGroupLive = HttpApiBuilder.group(
 			return (
 				handlers
 					.handle("createApiKey", ({ payload: { displayName } }) =>
-						Effect.gen(function* () {
-							yield* requireAdminTier;
-							return yield* machines.createApiKey({ displayName });
-						}),
+						machines.createApiKey({ displayName }),
 					)
 					.handle("list", () =>
 						Effect.gen(function* () {
-							yield* requireAdminTier;
 							const machineList = yield* machines.list();
 							return { machines: machineList };
 						}),
 					)
 					.handle("revoke", ({ params: { id } }) =>
 						Effect.gen(function* () {
-							yield* requireAdminTier;
 							const revoked = yield* machines.revoke(id);
 							if (Option.isNone(revoked)) {
 								return yield* new HttpApiError.NotFound();
@@ -423,7 +402,6 @@ const MachinesGroupLive = HttpApiBuilder.group(
 					)
 					.handle("refresh", ({ params: { id } }) =>
 						Effect.gen(function* () {
-							yield* requireAdminTier;
 							const refreshed = yield* machines.refreshApiKey(id);
 							if (Option.isNone(refreshed)) {
 								return yield* new HttpApiError.NotFound();
@@ -434,7 +412,6 @@ const MachinesGroupLive = HttpApiBuilder.group(
 					// TODO: has to be scoped into namespace
 					.handle("grantRole", ({ params: { id }, payload: { role } }) =>
 						Effect.gen(function* () {
-							yield* requireAdminTier;
 							// TODO: use the resolved list of roles in the namespace
 							if (isUndeclarableRole(role)) {
 								return yield* new HttpApiError.Forbidden();
@@ -448,7 +425,6 @@ const MachinesGroupLive = HttpApiBuilder.group(
 					)
 					.handle("revokeRole", ({ params: { id, role } }) =>
 						Effect.gen(function* () {
-							yield* requireAdminTier;
 							const roles = yield* machines.revokeRole(id, role);
 							if (Option.isNone(roles)) {
 								return yield* new HttpApiError.NotFound();
@@ -468,7 +444,6 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 		return handlers
 			.handle("grant", ({ payload: { issuer, subject, role } }) =>
 				Effect.gen(function* () {
-					yield* requireAdminTier;
 					if (isUndeclarableRole(role)) {
 						return yield* new HttpApiError.Forbidden();
 					}
@@ -478,14 +453,12 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 			)
 			.handle("revoke", ({ payload: { issuer, subject, role } }) =>
 				Effect.gen(function* () {
-					yield* requireAdminTier;
 					const roles = yield* roleStore.revoke({ issuer, subject }, role);
 					return { roles };
 				}),
 			)
 			.handle("export", () =>
 				Effect.gen(function* () {
-					yield* requireAdminTier;
 					const humans = yield* roleStore.list();
 					const machineClients = yield* machines.list();
 					return {
@@ -519,8 +492,6 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 			.handle("import", ({ payload: { mode, document } }) =>
 				// TODO: role store needs to support abstracted transaction interface (platform agnostic)
 				Effect.gen(function* () {
-					yield* requireAdminTier;
-
 					const seen = new Set<string>();
 					for (const entry of document.assignments) {
 						const key = assignmentKey(entry);

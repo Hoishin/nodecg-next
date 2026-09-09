@@ -60,6 +60,16 @@ export class HumanAuthenticationMiddleware extends HttpApiMiddleware.Service<
 	security: { cookie: sessionCookieSecurity },
 }) {}
 
+export class AdminTierMiddleware extends HttpApiMiddleware.Service<
+	AdminTierMiddleware,
+	{ requires: CurrentIdentity }
+>()("AdminTier", { error: HttpApiError.Forbidden }) {}
+
+export class SuperadminMiddleware extends HttpApiMiddleware.Service<
+	SuperadminMiddleware,
+	{ requires: CurrentIdentity }
+>()("Superadmin", { error: HttpApiError.Forbidden }) {}
+
 export class MachineAuthenticationMiddleware extends HttpApiMiddleware.Service<
 	MachineAuthenticationMiddleware,
 	{ provides: CurrentIdentity }

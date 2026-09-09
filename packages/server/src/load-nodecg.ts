@@ -24,8 +24,10 @@ import {
 	AuthProviderRegistry,
 } from "./auth/auth-provider.ts";
 import {
+	AdminTierMiddlewareLive,
 	MachineAuthenticationMiddlewareLive,
 	HumanAuthenticationMiddlewareLive,
+	SuperadminMiddlewareLive,
 } from "./auth/middleware.ts";
 import {
 	type BuiltNamespace,
@@ -296,6 +298,8 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
 				Layer.provide(HumanAuthenticationMiddlewareLive),
 				Layer.provide(MachineAuthenticationMiddlewareLive),
+				Layer.provide(AdminTierMiddlewareLive),
+				Layer.provide(SuperadminMiddlewareLive),
 				Layer.provide(InMemorySessionStore),
 				Layer.provide(InMemoryStashStore),
 				Layer.provide(InMemoryMachineClientStore),
