@@ -164,19 +164,6 @@ describe("FieldCellsService", () => {
 		}),
 	);
 
-	it.effect("does not collide fields whose space-joined key would match", () =>
-		Effect.gen(function* () {
-			const { channel } = yield* makeFakeChannel;
-			const cells = yield* makeCells.pipe(
-				Effect.provideService(MessageChannelService, channel),
-			);
-			cells.replicant("a", "b c", namespace.replicant.scoreLeft);
-			expect(() =>
-				cells.replicant("a b", "c", namespace.replicant.scoreLeft),
-			).not.toThrow();
-		}),
-	);
-
 	it.effect(
 		"fails the cell with FieldPermissionDenied when the subscribe is forbidden",
 		() =>

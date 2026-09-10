@@ -124,7 +124,7 @@ describe("commit", () => {
 					),
 				);
 			});
-			yield* engine.subscribeComputed("ns", "c");
+			yield* engine.subscribeComputed("ns", "c").pipe(Effect.asVoid);
 			expect(evaluations).toBe(1);
 			yield* engine.commit("ns", "a", () => Effect.succeed({ x: 1 }));
 			expect(evaluations).toBe(1);
@@ -818,7 +818,9 @@ describe("subscribeComputed", () => {
 					),
 				);
 			});
-			yield* Effect.scoped(engine.subscribeComputed("ns", "c"));
+			yield* Effect.scoped(engine.subscribeComputed("ns", "c")).pipe(
+				Effect.asVoid,
+			);
 			expect(evaluations).toBe(1);
 			yield* engine.commit("ns", "a", () => Effect.succeed(2));
 			expect(evaluations).toBe(1);
