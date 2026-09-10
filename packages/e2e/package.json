@@ -3,6 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"effect-check": "effect-tsgo diagnostics --project tsconfig.dom.json && effect-tsgo diagnostics --project tsconfig.node.json",
 		"type-check": "tsc -b --noEmit"
 	},
 	"devDependencies": {
@@ -16,7 +17,6 @@
 		"effect": "catalog:",
 		"get-port": "^7.2.0",
 		"playwright": "catalog:",
-		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
 }

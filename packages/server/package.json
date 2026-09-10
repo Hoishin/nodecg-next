@@ -20,6 +20,7 @@
 		}
 	},
 	"scripts": {
+		"effect-check": "effect-tsgo diagnostics --project tsconfig.json",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -36,7 +37,6 @@
 		"@nodecg-next/test-utils": "workspace:*",
 		"@types/node": "catalog:",
 		"oauth2-mock-server": "catalog:",
-		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"
 	},

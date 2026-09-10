@@ -387,10 +387,25 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 
 - Install: `pnpm install`
 - Type check: `pnpm type-check`
+- Effect diagnostics: `pnpm effect-check`
 - Test: `pnpm vitest`
 - Lint: `pnpm oxlint`
 - Format: `pnpm oxfmt`
 - Start dev server: `pnpm dev`
+
+#### Effect diagnostics in VS Code
+
+1. Get the path to binary for the Effect LSP
+   ```sh
+   dirname $(pnpm exec effect-tsgo get-exe-path)
+   ```
+1. Configure VS Code to use the LSP
+   ```jsonc
+   {
+     "js/ts.experimental.useTsgo": true,
+     "js/ts.tsdk.path": "<relative path to LSP folder>",
+   }
+   ```
 
 ### Architecture
 

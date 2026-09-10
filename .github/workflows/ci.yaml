@@ -20,6 +20,17 @@ jobs:
           cache: pnpm
       - run: pnpm install
       - run: pnpm type-check
+  effect-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: corepack enable pnpm
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm effect-check
   build:
     runs-on: ubuntu-latest
     steps:

@@ -20,6 +20,7 @@
 		}
 	},
 	"scripts": {
+		"effect-check": "effect-tsgo diagnostics --project tsconfig.json",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -32,7 +33,6 @@
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",
-		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
 }

@@ -5,6 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "vite build",
+		"effect-check": "effect-tsgo diagnostics --project src/client/tsconfig.json && effect-tsgo diagnostics --project src/server/tsconfig.json",
 		"start": "node src/server/server.ts",
 		"type-check": "tsc -b --noEmit src/client src/server"
 	},
@@ -21,7 +22,6 @@
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",
 		"@vitejs/plugin-react": "catalog:",
-		"typescript": "catalog:",
 		"vite": "catalog:"
 	}
 }

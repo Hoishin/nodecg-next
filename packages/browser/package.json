@@ -8,6 +8,7 @@
 		".": "./src/_export.ts"
 	},
 	"scripts": {
+		"effect-check": "effect-tsgo diagnostics --project tsconfig.json",
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -16,7 +17,6 @@
 		"effect": "catalog:"
 	},
 	"devDependencies": {
-		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
 }
