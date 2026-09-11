@@ -33,7 +33,7 @@ const SuperadminsSchema = Schema.String.pipe(
 	Schema.decodeTo(Schema.Array(SuperadminEntrySchema)),
 );
 
-const port = Config.int("PORT").pipe(Config.withDefault(3000));
+const port = Config.Int("PORT").pipe(Config.withDefault(3000));
 
 const Pathname = Schema.String.pipe(
 	Schema.decode({
@@ -72,8 +72,8 @@ const baseUrl = Config.all([
 export const config = {
 	port,
 	baseUrl,
-	requireAuth: Config.boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
-	sessionTtl: Config.duration("SESSION_TTL").pipe(
+	requireAuth: Config.Boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
+	sessionTtl: Config.Duration("SESSION_TTL").pipe(
 		Config.withDefault(Duration.days(7)),
 	),
 	superadminClaimToken: Config.option(

@@ -24,9 +24,7 @@ export const webSocketMessageChannel = (baseUrl?: string) => {
 				Socket.Socket,
 				Effect.gen(function* () {
 					const websocketUrl = yield* wsUrl(baseUrl);
-					return yield* Socket.makeWebSocket(websocketUrl, {
-						closeCodeIsError: (code) => code !== 1000 && code !== 1005,
-					});
+					return yield* Socket.makeWebSocket(websocketUrl);
 				}),
 			),
 		),

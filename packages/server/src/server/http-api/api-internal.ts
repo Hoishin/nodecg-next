@@ -122,7 +122,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}),
 						// TODO: is this a correct silencing?
 						Effect.catchTag(
-							"CookieError",
+							"CookiesError",
 							() => new HttpApiError.InternalServerError(),
 						),
 					);

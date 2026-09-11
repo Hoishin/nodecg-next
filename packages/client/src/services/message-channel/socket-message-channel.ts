@@ -30,35 +30,49 @@ export const SocketMessageChannel = Layer.effect(
 		const pubsub = yield* PubSub.unbounded<ServerMessage>();
 		const scope = yield* Effect.scope;
 
+		const handleData = Effect.fn(
+			function* (data: string | Uint8Array) {
+				if (Predicate.isUint8Array(data)) {
+					yield* Effect.logWarning("Received a message in Uint8Array");
+					return;
+				}
+				const message = yield* decodeServerMessage(data);
+				yield* PubSub.publish(pubsub, message);
+			},
+			Effect.catchTag("SchemaError", (error) =>
+				Effect.logError("Failed to decode incoming message:", error),
+			),
+		);
+
 		yield* Effect.forkScoped(
-			socket
-				.runRaw((data) =>
-					Effect.gen(function* () {
-						if (Predicate.isUint8Array(data)) {
-							yield* Effect.logWarning("Received a message in Uint8Array");
-							return;
-						}
-						const message = yield* decodeServerMessage(data);
-						yield* PubSub.publish(pubsub, message);
-					}).pipe(
-						Effect.catchTag("SchemaError", (error) =>
-							Effect.logError("Failed to decode incoming message:", error),
-						),
+			Effect.gen(function* () {
+				const { pull } = yield* socket.reader;
+				return yield* pull.pipe(
+					Effect.flatMap(
+						Effect.forEach((data) => handleData(data), { discard: true }),
 					),
-				)
-				.pipe(
-					Effect.ensuring(PubSub.shutdown(pubsub)),
-					Effect.catchTag("SocketError", (error) =>
-						Effect.logError("Message channel closed:", error),
-					),
-					Effect.satisfiesErrorType<never>(),
+					Effect.forever,
+				);
+			}).pipe(
+				Effect.scoped,
+				Effect.catchReason(
+					"SocketError",
+					"SocketCloseError",
+					({ code }, error) =>
+						code === 1000 || code === 1005
+							? Effect.void
+							: Effect.logError("Message channel closed:", error),
+					(_, error) => Effect.logError("Message channel closed:", error),
 				),
+				Effect.ensuring(PubSub.shutdown(pubsub)),
+				Effect.satisfiesErrorType<never>(),
+			),
 		);
 
 		const send = Effect.fn("WebsocketMessageChannel.send")(function* (
 			message: ClientMessage,
 		) {
-			const write = yield* socket.writer;
+			const { write } = yield* socket.writer;
 			const data = yield* encodeClientMessage(message).pipe(
 				Effect.mapError((error) =>
 					Match.value(error).pipe(

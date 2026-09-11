@@ -3,7 +3,8 @@ import {
 	ReplicantSnapshotMessage,
 	SubscribeMessage,
 } from "@nodecg-next/internal";
-import { Cause, Effect, Layer, Option, Queue, Stream } from "effect";
+import { Effect, Layer, Option, Queue, Stream } from "effect";
+import { TestConsole } from "effect/testing";
 import { Socket } from "effect/unstable/socket";
 import { assert, describe, expect, vi } from "vitest";
 
@@ -11,36 +12,34 @@ import { MessageChannelService } from "./message-channel.ts";
 import { SocketMessageChannel } from "./socket-message-channel.ts";
 
 const makeFakeSocket = Effect.gen(function* () {
-	const incoming = yield* Queue.make<
-		string | Uint8Array,
-		Socket.SocketError | Cause.Done
-	>();
+	const incoming = yield* Queue.make<string | Uint8Array, Socket.SocketError>();
 	const write = vi.fn<
 		(
 			chunk: string | Uint8Array | Socket.CloseEvent,
 		) => Effect.Effect<void, Socket.SocketError>
 	>(() => Effect.void);
 
-	const socket: Socket.Socket = {
-		[Socket.TypeId]: Socket.TypeId,
-		run: vi.fn(() => Effect.die("FakeSocket.run is not used")),
-		runString: vi.fn(() => Effect.die("FakeSocket.runString is not used")),
-		runRaw<_, E, R>(
-			handler: (data: string | Uint8Array) => Effect.Effect<_, E, R> | void,
-		): Effect.Effect<void, Socket.SocketError | E, R> {
-			return Stream.runForEach(Stream.fromQueue(incoming), (data) => {
-				const result = handler(data);
-				return Effect.isEffect(result) ? result : Effect.void;
-			});
-		},
-		writer: Effect.succeed(write),
-	};
+	const socket = Socket.make({
+		reader: Effect.succeed({
+			pull: Queue.takeAll(incoming),
+			upgrade: vi.fn(() => Effect.die("FakeSocket.upgrade is not used")),
+		}),
+		writer: Effect.succeed({
+			write,
+			writeAll: vi.fn(() => Effect.die("FakeSocket.writeAll is not used")),
+		}),
+	});
 
 	return {
 		socket,
 		write,
 		deliver: (data: string | Uint8Array) => Queue.offer(incoming, data),
-		closeClean: Queue.end(incoming),
+		closeClean: Queue.fail(
+			incoming,
+			new Socket.SocketError({
+				reason: new Socket.SocketCloseError({ code: 1000 }),
+			}),
+		),
 		closeWithError: (error: Socket.SocketError) => Queue.fail(incoming, error),
 	};
 });
@@ -105,7 +104,7 @@ describe("receive", () => {
 			}),
 	);
 
-	it.effect("completes the stream on clean socket close", () =>
+	it.effect("completes the stream without logging on clean socket close", () =>
 		Effect.gen(function* () {
 			const { socket, closeClean } = yield* makeFakeSocket;
 
@@ -117,28 +116,31 @@ describe("receive", () => {
 					Effect.timeout("1 second"),
 				);
 				expect(all).toEqual([]);
+				expect(yield* TestConsole.logLines).toEqual([]);
 			}).pipe(Effect.provide(layerFor(socket)));
 		}),
 	);
 
-	it.effect("ends the stream on socket error", () =>
+	it.effect("ends the stream and logs the error on socket error", () =>
 		Effect.gen(function* () {
 			const { socket, closeWithError } = yield* makeFakeSocket;
+			const error = new Socket.SocketError({
+				reason: new Socket.SocketReadError({ cause: new Error("simulated") }),
+			});
 
 			yield* Effect.gen(function* () {
 				const channel = yield* MessageChannelService;
 				const stream = yield* channel.receive();
-				yield* closeWithError(
-					new Socket.SocketError({
-						reason: new Socket.SocketReadError({
-							cause: new Error("simulated"),
-						}),
-					}),
-				);
+				yield* closeWithError(error);
 				const all = yield* Stream.runCollect(stream).pipe(
 					Effect.timeout("1 second"),
 				);
 				expect(all).toEqual([]);
+				expect(yield* TestConsole.logLines).toEqual([
+					expect.stringMatching(/ ERROR \(#\d+\):$/),
+					"Message channel closed:",
+					error,
+				]);
 			}).pipe(Effect.provide(layerFor(socket)));
 		}),
 	);

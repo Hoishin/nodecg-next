@@ -135,7 +135,7 @@ export const websocketRoute = HttpRouter.use((router) =>
 		const wsHandler = Effect.fn(function* (identity: Identity) {
 			const request = yield* HttpServerRequest.HttpServerRequest;
 			const socket = yield* request.upgrade;
-			const write = yield* socket.writer;
+			const { write } = yield* socket.writer;
 
 			const send = (msg: ServerMessage) =>
 				encodeServerMessage(msg).pipe(
@@ -242,71 +242,76 @@ export const websocketRoute = HttpRouter.use((router) =>
 				>(),
 			);
 
-			yield* socket.runRaw(
-				Effect.fn(function* (data: string | Uint8Array) {
-					if (typeof data !== "string") {
-						return;
-					}
-					const message = yield* decodeClientMessage(data);
-					yield* Match.value(message).pipe(
-						Match.tag("ping", (msg) =>
-							Match.value(msg).pipe(
-								Match.when({ kind: "ping" }, () =>
-									Effect.gen(function* () {
-										yield* Effect.logDebug("Received ping");
-										yield* send(PingMessage.make({ kind: "pong" }));
-									}),
-								),
-								Match.when({ kind: "pong" }, () =>
-									Effect.logDebug("Received pong"),
-								),
-								Match.exhaustive,
-							),
-						),
-						Match.tag("subscribe", (msg) =>
-							SynchronizedRef.updateEffect(subscriptions, (map) =>
+			const handleData = Effect.fn(function* (data: string | Uint8Array) {
+				if (typeof data !== "string") {
+					return;
+				}
+				const message = yield* decodeClientMessage(data);
+				yield* Match.value(message).pipe(
+					Match.tag("ping", (msg) =>
+						Match.value(msg).pipe(
+							Match.when({ kind: "ping" }, () =>
 								Effect.gen(function* () {
-									const existing = HashMap.get(map, msg.field);
-									// Restart subscription for fresh reseed if already running
-									if (Option.isSome(existing)) {
-										yield* Fiber.interrupt(existing.value);
-									}
-									const fiber = yield* openSubscription(msg.field);
-									return HashMap.modifyAt(map, msg.field, () => fiber);
+									yield* Effect.logDebug("Received ping");
+									yield* send(PingMessage.make({ kind: "pong" }));
 								}),
 							),
+							Match.when({ kind: "pong" }, () =>
+								Effect.logDebug("Received pong"),
+							),
+							Match.exhaustive,
 						),
-						Match.tag("resync", (msg) =>
-							SynchronizedRef.updateEffect(subscriptions, (map) =>
-								Effect.gen(function* () {
-									const existing = HashMap.get(map, msg.field);
-									// Ignore if not subscribed
-									if (Option.isNone(existing)) {
-										return map;
-									}
+					),
+					Match.tag("subscribe", (msg) =>
+						SynchronizedRef.updateEffect(subscriptions, (map) =>
+							Effect.gen(function* () {
+								const existing = HashMap.get(map, msg.field);
+								// Restart subscription for fresh reseed if already running
+								if (Option.isSome(existing)) {
 									yield* Fiber.interrupt(existing.value);
-									const fiber = yield* openSubscription(msg.field);
-									return HashMap.modifyAt(map, msg.field, () => fiber);
-								}),
-							),
+								}
+								const fiber = yield* openSubscription(msg.field);
+								return HashMap.modifyAt(map, msg.field, () => fiber);
+							}),
 						),
-						Match.tag("unsubscribe", (msg) =>
-							SynchronizedRef.updateEffect(subscriptions, (map) =>
-								Effect.gen(function* () {
-									const existing = HashMap.get(map, msg.field);
-									if (Option.isNone(existing)) {
-										return map;
-									}
-									yield* Fiber.interrupt(existing.value);
-									return HashMap.remove(map, msg.field);
-								}),
-							),
+					),
+					Match.tag("resync", (msg) =>
+						SynchronizedRef.updateEffect(subscriptions, (map) =>
+							Effect.gen(function* () {
+								const existing = HashMap.get(map, msg.field);
+								// Ignore if not subscribed
+								if (Option.isNone(existing)) {
+									return map;
+								}
+								yield* Fiber.interrupt(existing.value);
+								const fiber = yield* openSubscription(msg.field);
+								return HashMap.modifyAt(map, msg.field, () => fiber);
+							}),
 						),
-						Match.exhaustive,
-					);
-				}),
+					),
+					Match.tag("unsubscribe", (msg) =>
+						SynchronizedRef.updateEffect(subscriptions, (map) =>
+							Effect.gen(function* () {
+								const existing = HashMap.get(map, msg.field);
+								if (Option.isNone(existing)) {
+									return map;
+								}
+								yield* Fiber.interrupt(existing.value);
+								return HashMap.remove(map, msg.field);
+							}),
+						),
+					),
+					Match.exhaustive,
+				);
+			});
+
+			const { pull } = yield* socket.reader;
+			return yield* pull.pipe(
+				Effect.flatMap(
+					Effect.forEach((data) => handleData(data), { discard: true }),
+				),
+				Effect.forever,
 			);
-			return HttpServerResponse.empty();
 		});
 
 		const requireAuth = yield* config.requireAuth;
