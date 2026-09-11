@@ -245,7 +245,7 @@ describe("setRoles", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			yield* machines.grantGlobal(created.id, "admin");
+			yield* machines.grantGlobalRole(created.id, "admin");
 			yield* machines.setRoles(created.id, new Set());
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
@@ -352,7 +352,7 @@ describe("setGlobalRoles", () => {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			yield* machines.grantRole(created.id, RoleName("viewer"));
-			yield* machines.grantGlobal(created.id, "admin");
+			yield* machines.grantGlobalRole(created.id, "admin");
 			const result = yield* machines.setGlobalRoles(
 				created.id,
 				new Set(["superadmin"]),
@@ -383,16 +383,16 @@ describe("setGlobalRoles", () => {
 	);
 });
 
-describe("grantGlobal / revokeGlobal", () => {
+describe("grantGlobalRole / revokeGlobalRole", () => {
 	test(
 		"grants and revokes a global role on the client",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			const granted = yield* machines.grantGlobal(created.id, "admin");
+			const granted = yield* machines.grantGlobalRole(created.id, "admin");
 			assert(Option.isSome(granted));
 			expect(granted.value).toEqual(new Set(["admin"]));
-			const revoked = yield* machines.revokeGlobal(created.id, "admin");
+			const revoked = yield* machines.revokeGlobalRole(created.id, "admin");
 			assert(Option.isSome(revoked));
 			expect(revoked.value).toEqual(new Set());
 			const resolved = yield* machines.validateApiKey(
@@ -412,11 +412,11 @@ describe("grantGlobal / revokeGlobal", () => {
 		"return None for an unknown id",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			expect(Option.isNone(yield* machines.grantGlobal("ghost", "admin"))).toBe(
-				true,
-			);
 			expect(
-				Option.isNone(yield* machines.revokeGlobal("ghost", "admin")),
+				Option.isNone(yield* machines.grantGlobalRole("ghost", "admin")),
+			).toBe(true);
+			expect(
+				Option.isNone(yield* machines.revokeGlobalRole("ghost", "admin")),
 			).toBe(true);
 		}),
 	);

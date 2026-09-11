@@ -9,6 +9,12 @@ import { GlobalRoleNameSchema, RoleNameSchema } from "./role.ts";
 
 export const AnonymousIdentitySchema = Schema.TaggedStruct("anonymous", {});
 
+export const Login = Schema.Struct({
+	issuer: Schema.String,
+	subject: Schema.String,
+});
+export type Login = typeof Login.Type;
+
 export const HumanAccountSchema = Schema.Struct({
 	issuer: Schema.String,
 	subject: Schema.String,

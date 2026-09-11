@@ -28,6 +28,7 @@ export {
 	HumanIdentitySchema,
 	type HumanAccount,
 	HumanAccountSchema,
+	type Login,
 	type MachineIdentity,
 	MachineIdentitySchema,
 	AnonymousIdentitySchema,

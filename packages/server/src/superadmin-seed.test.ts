@@ -97,7 +97,7 @@ describe("seededRoleStore", () => {
 						Layer.effectDiscard(
 							Effect.gen(function* () {
 								const roles = yield* RoleStoreService;
-								yield* roles.grantGlobal(
+								yield* roles.grantGlobalRole(
 									{ issuer: "https://idp.test", subject: "existing" },
 									"superadmin",
 								);

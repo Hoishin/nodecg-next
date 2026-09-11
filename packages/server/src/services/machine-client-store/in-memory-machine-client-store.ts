@@ -154,7 +154,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const grantGlobal = Effect.fn("MachineClientStore.grantGlobal")(
+		const grantGlobalRole = Effect.fn("MachineClientStore.grantGlobalRole")(
 			(id: string, role: GlobalRoleName) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -170,7 +170,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const revokeGlobal = Effect.fn("MachineClientStore.revokeGlobal")(
+		const revokeGlobalRole = Effect.fn("MachineClientStore.revokeGlobalRole")(
 			(id: string, role: GlobalRoleName) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -197,8 +197,8 @@ export const InMemoryMachineClientStore = Layer.effect(
 			grantRole,
 			revokeRole,
 			setGlobalRoles,
-			grantGlobal,
-			revokeGlobal,
+			grantGlobalRole,
+			revokeGlobalRole,
 		};
 	}),
 );

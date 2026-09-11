@@ -30,7 +30,7 @@ export const seedSuperadmins = Layer.effectDiscard(
 						),
 					);
 				}
-				yield* roleStore.grantGlobal(
+				yield* roleStore.grantGlobalRole(
 					{ issuer: provider.value.issuer, subject },
 					"superadmin",
 				);

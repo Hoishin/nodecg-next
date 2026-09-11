@@ -321,7 +321,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						if (hasSuperadmin || !tokenEquals(claimToken.value, token)) {
 							return yield* new HttpApiError.Forbidden();
 						}
-						const roles = yield* roleStore.grantGlobal(
+						const roles = yield* roleStore.grantGlobalRole(
 							{
 								issuer: identity.account.issuer,
 								subject: identity.account.subject,
@@ -336,10 +336,10 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 
 const mutateAdminRole = (
 	{ subject, role }: AdminRoleAssignment,
-	humanOp: RoleStore["grantGlobal"] | RoleStore["revokeGlobal"],
+	humanOp: RoleStore["grantGlobalRole"] | RoleStore["revokeGlobalRole"],
 	machineOp:
-		| MachineClientStore["grantGlobal"]
-		| MachineClientStore["revokeGlobal"],
+		| MachineClientStore["grantGlobalRole"]
+		| MachineClientStore["revokeGlobalRole"],
 ) =>
 	Effect.gen(function* () {
 		if (subject._tag === "human") {
@@ -365,13 +365,17 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 			const machines = yield* MachineClientStoreService;
 			return handlers
 				.handle("grantAdmin", ({ payload }) =>
-					mutateAdminRole(payload, roleStore.grantGlobal, machines.grantGlobal),
+					mutateAdminRole(
+						payload,
+						roleStore.grantGlobalRole,
+						machines.grantGlobalRole,
+					),
 				)
 				.handle("revokeAdmin", ({ payload }) =>
 					mutateAdminRole(
 						payload,
-						roleStore.revokeGlobal,
-						machines.revokeGlobal,
+						roleStore.revokeGlobalRole,
+						machines.revokeGlobalRole,
 					),
 				);
 		}),
@@ -460,13 +464,13 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					if (isUndeclarableRole(role)) {
 						return yield* new HttpApiError.Forbidden();
 					}
-					const roles = yield* roleStore.grant({ issuer, subject }, role);
+					const roles = yield* roleStore.grantRole({ issuer, subject }, role);
 					return { roles };
 				}),
 			)
 			.handle("revoke", ({ payload: { issuer, subject, role } }) =>
 				Effect.gen(function* () {
-					const roles = yield* roleStore.revoke({ issuer, subject }, role);
+					const roles = yield* roleStore.revokeRole({ issuer, subject }, role);
 					return { roles };
 				}),
 			)
@@ -558,8 +562,8 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					if (mode === "replace") {
 						for (const assignment of current) {
 							if (!HashSet.has(humanTarget, assignment.key)) {
-								yield* roleStore.set(assignment.key, new Set());
-								yield* roleStore.setGlobal(
+								yield* roleStore.setRoles(assignment.key, new Set());
+								yield* roleStore.setGlobalRoles(
 									assignment.key,
 									assignment.globalRoles.intersection(ADMIN_TIER),
 								);
@@ -571,13 +575,13 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					for (const entry of humanEntries) {
 						const key = { issuer: entry.issuer, subject: entry.subject };
 						const existing = yield* roleStore.get(key);
-						yield* roleStore.set(
+						yield* roleStore.setRoles(
 							key,
 							mode === "merge"
 								? existing.roles.union(entry.roles)
 								: entry.roles,
 						);
-						yield* roleStore.setGlobal(
+						yield* roleStore.setGlobalRoles(
 							key,
 							mode === "merge"
 								? existing.globalRoles.union(entry.globalRoles)

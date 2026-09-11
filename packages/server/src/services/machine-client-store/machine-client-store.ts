@@ -51,12 +51,12 @@ export interface MachineClientStore {
 		globalRoles: ReadonlySet<GlobalRoleName>,
 	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
 
-	readonly grantGlobal: (
+	readonly grantGlobalRole: (
 		id: string,
 		role: GlobalRoleName,
 	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
 
-	readonly revokeGlobal: (
+	readonly revokeGlobalRole: (
 		id: string,
 		role: GlobalRoleName,
 	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
