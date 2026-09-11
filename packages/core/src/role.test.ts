@@ -44,11 +44,11 @@ const manifest = defineNamespace("match", {
 	},
 	replicant: {
 		score: {
-			schema: Schema.Number,
+			schema: Schema.Finite,
 			permission: { write: { allow: ["judge"] } },
 		},
 		open: {
-			schema: Schema.Number,
+			schema: Schema.Finite,
 			permission: { read: { everyone: "allow" } },
 		},
 		config: {
@@ -56,7 +56,7 @@ const manifest = defineNamespace("match", {
 			permission: { write: { allow: [] } },
 		},
 	},
-	computed: { total: { schema: Schema.Number } },
+	computed: { total: { schema: Schema.Finite } },
 });
 
 describe("canRead / canWrite", () => {
@@ -134,7 +134,7 @@ describe("canRead / canWrite", () => {
 			roles: { judge: { permission: [] } },
 			replicant: {
 				lounge: {
-					schema: Schema.Number,
+					schema: Schema.Finite,
 					permission: { read: { client: "allow" } },
 				},
 			},
@@ -158,8 +158,8 @@ describe("principals as capability bases", () => {
 	const based = defineNamespace("match", {
 		principals: { everyone: { permission: ["computed-read"] } },
 		roles: { judge: { permission: ["replicant-read"] } },
-		replicant: { score: { schema: Schema.Number } },
-		computed: { total: { schema: Schema.Number } },
+		replicant: { score: { schema: Schema.Finite } },
+		computed: { total: { schema: Schema.Finite } },
 	});
 
 	test("an everyone base admits every caller without a field rule", () => {
@@ -180,7 +180,7 @@ describe("admin and server are undeniable", () => {
 			const permission = { write: { [principal]: "deny" } };
 			expect(() =>
 				defineNamespace("match", {
-					replicant: { audit: { schema: Schema.Number, permission } },
+					replicant: { audit: { schema: Schema.Finite, permission } },
 				}),
 			).toThrow(
 				new RegExp(`Undeniable principal "${principal}" in replicant "audit"`),
@@ -194,7 +194,7 @@ describe("admin and server are undeniable", () => {
 			expect(() =>
 				defineNamespace("match", {
 					principals,
-					replicant: { score: { schema: Schema.Number } },
+					replicant: { score: { schema: Schema.Finite } },
 				}),
 			).toThrow(new RegExp(`Principal "${principal}" is undeniable`));
 		}
@@ -206,11 +206,11 @@ describe("deny beats a wildcard grant", () => {
 		roles: { viewer: { permission: [] } },
 		replicant: {
 			open: {
-				schema: Schema.Number,
+				schema: Schema.Finite,
 				permission: { read: { everyone: "allow" } },
 			},
 			hidden: {
-				schema: Schema.Number,
+				schema: Schema.Finite,
 				permission: { read: { everyone: "allow", deny: ["viewer"] } },
 			},
 		},
@@ -231,7 +231,7 @@ describe("deny beats a wildcard grant", () => {
 			roles: { viewer: { permission: ["replicant-read"] } },
 			replicant: {
 				audit: {
-					schema: Schema.Number,
+					schema: Schema.Finite,
 					permission: { read: { everyone: "deny" } },
 				},
 			},

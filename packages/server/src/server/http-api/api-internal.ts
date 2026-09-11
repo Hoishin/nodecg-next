@@ -14,7 +14,7 @@ import {
 	sessionCookieSecurity,
 	TooManyRequests,
 } from "@nodecg-next/internal";
-import { parseRelativeUrl } from "@nodecg-next/internal/utils";
+import { MalformedUrl, parseRelativeUrl } from "@nodecg-next/internal/utils";
 import {
 	Clock,
 	type Duration,
@@ -23,7 +23,6 @@ import {
 	Layer,
 	Match,
 	Option,
-	Path,
 	Redacted,
 	Ref,
 	Result,
@@ -33,6 +32,7 @@ import {
 	Cookies,
 	HttpServerRequest,
 	HttpServerResponse,
+	Url,
 } from "effect/unstable/http";
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi";
 
@@ -50,6 +50,7 @@ import {
 import { SessionStoreService } from "../../services/session-store/session-store.ts";
 import { StashStoreService } from "../../services/stash-store/stash-store.ts";
 import { RootApi } from "../root-api.ts";
+import { UrlPath } from "../url-path.ts";
 import {
 	callRpc,
 	getComputed,
@@ -71,23 +72,25 @@ const callbackUrl = Effect.fn("callbackUrl")(function* (
 	baseUrl: string,
 	provider: string,
 ) {
-	const path = yield* Path.Path;
-	const url = new URL(baseUrl);
-	url.pathname = path.join(
-		url.pathname,
-		"api/internal/authentication/callback",
-		provider,
+	const path = yield* UrlPath;
+	const url = yield* Effect.fromResult(Url.fromString(baseUrl)).pipe(
+		Effect.mapError((error) =>
+			MalformedUrl.make({ url: baseUrl, cause: error.cause }),
+		),
 	);
-	return url.href;
-}, Effect.provide(Path.layer));
+	return Url.setPathname(
+		url,
+		path.join(url.pathname, "api/internal/authentication/callback", provider),
+	).href;
+});
 
 const loginPath = Effect.fn("loginPath")(function* (
 	basePath: string,
 	provider: string,
 ) {
-	const path = yield* Path.Path;
+	const path = yield* UrlPath;
 	return path.join(basePath, "api/internal/authentication/login", provider);
-}, Effect.provide(Path.layer));
+});
 
 const digest = (value: string) => createHash("sha256").update(value).digest();
 

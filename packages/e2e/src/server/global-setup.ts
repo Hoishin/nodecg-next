@@ -1,3 +1,4 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off
 import { type ChildProcess, fork } from "node:child_process";
 
 import { Duration, Effect, Schema } from "effect";
@@ -6,7 +7,7 @@ import type { TestProject } from "vitest/node";
 const BackendSchema = Schema.Struct({
 	name: Schema.String,
 	serverEntry: Schema.String,
-	port: Schema.Number,
+	port: Schema.Int,
 	superadmins: Schema.String,
 	baseUrl: Schema.String,
 });
@@ -30,7 +31,16 @@ const onceExit = (child: ChildProcess): Effect.Effect<void> =>
 		return Effect.sync(() => child.removeListener("exit", handler));
 	});
 
-const forkServer = (backend: Backend): Effect.Effect<ChildProcess, Error> =>
+class SuiteServerExited extends Schema.TaggedError<SuiteServerExited>()(
+	"SuiteServerExited",
+	{ name: Schema.String, code: Schema.NullOr(Schema.Int) },
+) {
+	override readonly message = `suite server ${this.name} exited before ready (${this.code})`;
+}
+
+const forkServer = (
+	backend: Backend,
+): Effect.Effect<ChildProcess, SuiteServerExited> =>
 	Effect.callback((resume) => {
 		const child = fork(backend.serverEntry, {
 			env: {
@@ -51,11 +61,7 @@ const forkServer = (backend: Backend): Effect.Effect<ChildProcess, Error> =>
 			if (!settled) {
 				settled = true;
 				resume(
-					Effect.fail(
-						new Error(
-							`suite server ${backend.name} exited before ready (${code})`,
-						),
-					),
+					Effect.fail(new SuiteServerExited({ name: backend.name, code })),
 				);
 			}
 		});

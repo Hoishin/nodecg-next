@@ -166,5 +166,5 @@ export const httpFieldTransport = (baseUrl?: string) =>
 				publishTopic,
 				callRpc,
 			};
-		}).pipe(Effect.provide(FetchHttpClient.layer)),
-	);
+		}),
+	).pipe(Layer.provide(FetchHttpClient.layer));

@@ -1,5 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
 import { NodeHttpServerRequest } from "@effect/platform-node";
 import { Effect } from "effect";
 import {
@@ -9,8 +7,8 @@ import {
 } from "effect/unstable/http";
 
 export type NodeMiddleware = (
-	req: IncomingMessage,
-	res: ServerResponse,
+	req: ReturnType<typeof NodeHttpServerRequest.toIncomingMessage>,
+	res: ReturnType<typeof NodeHttpServerRequest.toServerResponse>,
 	next: () => void | Promise<void>,
 ) => void;
 

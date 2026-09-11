@@ -225,8 +225,8 @@ describe("computed-on-computed via ctx.computed", () => {
 		Effect.gen(function* () {
 			const cyclic = defineNamespace("cyclic", {
 				computed: {
-					a: { schema: Schema.Number },
-					b: { schema: Schema.Number },
+					a: { schema: Schema.Finite },
+					b: { schema: Schema.Finite },
 				},
 			});
 			const built = yield* buildNamespace(
@@ -248,12 +248,12 @@ describe("computed-on-computed via ctx.computed", () => {
 
 describe("rpc ctx", () => {
 	const manifest = defineNamespace("ns", {
-		replicant: { count: { schema: Schema.Number } },
-		computed: { doubled: { schema: Schema.Number } },
+		replicant: { count: { schema: Schema.Finite } },
+		computed: { doubled: { schema: Schema.Finite } },
 		topic: { cheer: { schema: Schema.String } },
 		rpc: {
 			bump: {
-				schema: { request: Schema.Number, response: Schema.Number },
+				schema: { request: Schema.Finite, response: Schema.Finite },
 				permission: { write: { everyone: "allow" } },
 			},
 		},
@@ -317,10 +317,10 @@ describe("rpc ctx runs as the server identity", () => {
 		},
 		rpc: {
 			writeHidden: {
-				schema: { request: Schema.Number, response: Schema.Null },
+				schema: { request: Schema.Finite, response: Schema.Null },
 			},
 			readHidden: {
-				schema: { request: Schema.Null, response: Schema.Number },
+				schema: { request: Schema.Null, response: Schema.Finite },
 			},
 		},
 	});
@@ -458,7 +458,7 @@ describe("cross-namespace rpc via ctx.use", () => {
 			replicant: { total: { schema: Schema.FiniteFromString } },
 			rpc: {
 				award: {
-					schema: { request: Schema.Number, response: Schema.Number },
+					schema: { request: Schema.Finite, response: Schema.Finite },
 					permission: { write: { everyone: "allow" } },
 				},
 				reset: {
@@ -518,7 +518,7 @@ describe("cross-namespace rpc via ctx.use", () => {
 				defineNamespace("relay", {
 					rpc: {
 						relayAward: {
-							schema: { request: Schema.Number, response: Schema.Number },
+							schema: { request: Schema.Finite, response: Schema.Finite },
 							permission: { write: { everyone: "allow" } },
 						},
 					},

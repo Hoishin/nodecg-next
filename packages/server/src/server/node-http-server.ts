@@ -1,11 +1,13 @@
 import {
 	createServer,
-	type IncomingMessage,
 	type Server,
-	type ServerResponse,
+	// @effect-diagnostics-next-line nodeBuiltinImport:off
 } from "node:http";
 
-import { NodeHttpServer } from "@effect/platform-node";
+import {
+	NodeHttpServer,
+	type NodeHttpServerRequest,
+} from "@effect/platform-node";
 import { baseUrlCookieName } from "@nodecg-next/internal";
 import { Effect, Layer } from "effect";
 import { Cookies } from "effect/unstable/http";
@@ -18,7 +20,10 @@ const baseUrlCookieListener = Effect.gen(function* () {
 		Cookies.makeCookie(baseUrlCookieName, basePath, { path: basePath }),
 	);
 	const setCookieHeader = Cookies.serializeCookie(cookie);
-	return (_: IncomingMessage, response: ServerResponse) => {
+	return (
+		_: ReturnType<typeof NodeHttpServerRequest.toIncomingMessage>,
+		response: ReturnType<typeof NodeHttpServerRequest.toServerResponse>,
+	) => {
 		response.setHeader("set-cookie", setCookieHeader);
 	};
 });
@@ -44,6 +49,7 @@ export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
 }: {
 	onReady?: (address?: string) => void;
 }) {
+	// TODO: check if we still need to createServer() manually on v4
 	const server = createServer();
 	server.addListener("request", yield* baseUrlCookieListener);
 	if (onReady) {

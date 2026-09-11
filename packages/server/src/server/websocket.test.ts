@@ -1,5 +1,5 @@
 import { HashMap, Layer } from "effect";
-import { HttpRouter, HttpServer } from "effect/unstable/http";
+import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -21,13 +21,19 @@ import { InMemorySessionStore } from "../services/session-store/in-memory-sessio
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
+import { UrlPath } from "./url-path.ts";
 import { websocketRoute } from "./websocket.ts";
 
 const handler = () => {
 	const { handler } = HttpRouter.toWebHandler(
 		Layer.mergeAll(RootApiLive, websocketRoute).pipe(
 			HttpRouter.provideRequest(
-				Layer.mergeAll(FieldRegistryService.layer([]), InMemoryTopicBroker),
+				Layer.mergeAll(
+					FieldRegistryService.layer([]),
+					InMemoryTopicBroker,
+					UrlPath.layer,
+					FetchHttpClient.layer,
+				),
 			),
 			Layer.provide(HumanAuthenticationMiddlewareLive),
 			Layer.provide(MachineAuthenticationMiddlewareLive),

@@ -5,13 +5,11 @@ import { ApplyFailure, applyPatch } from "./apply.ts";
 import { computeTestHash } from "./hash.ts";
 import type { Patch } from "./schema.ts";
 
-const applied = (value: Schema.Json, patch: Patch) => {
-	return applyPatch(value, patch).pipe(Result.getOrThrow);
-};
+const applied = (value: Schema.Json, patch: Patch) =>
+	applyPatch(value, patch).pipe(Result.getOrThrow);
 
-const failure = (value: Schema.Json, patch: Patch) => {
-	return applyPatch(value, patch).pipe(Result.flip, Result.getOrThrow);
-};
+const failure = (value: Schema.Json, patch: Patch) =>
+	applyPatch(value, patch).pipe(Result.flip, Result.getOrThrow);
 
 describe("applyPatch", () => {
 	describe("replace", () => {

@@ -412,8 +412,8 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 
 						let last: ComputedResult | undefined;
 						let lastHash: number | undefined;
-						const result = computed(() => {
-							return Exit.match(evaluate(), {
+						const result = computed(() =>
+							Exit.match(evaluate(), {
 								onSuccess: (value) => {
 									const hash = Hash.string(JSON.stringify(value));
 									if (
@@ -438,8 +438,8 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 									}
 									return last;
 								},
-							});
-						});
+							}),
+						);
 						return HashMap.set(map, key, result);
 					}),
 				),

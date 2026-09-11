@@ -380,13 +380,13 @@ describe("encoded read/write enforce permission", () => {
 	const permissioned = defineNamespace("ns", {
 		replicant: {
 			open: {
-				schema: Schema.Number,
+				schema: Schema.Finite,
 				permission: {
 					read: { everyone: "allow" },
 					write: { everyone: "allow" },
 				},
 			},
-			locked: { schema: Schema.Number },
+			locked: { schema: Schema.Finite },
 		},
 	});
 

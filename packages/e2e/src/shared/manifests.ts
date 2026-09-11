@@ -14,23 +14,23 @@ export const fixtureManifest = defineNamespace("e2e", {
 		viewer: { permission: [] },
 	},
 	replicant: {
-		count: { schema: Schema.Number, permission: everyoneRead },
+		count: { schema: Schema.Finite, permission: everyoneRead },
 		scoreboard: {
-			schema: Schema.Struct({ home: Schema.Number, away: Schema.Number }),
+			schema: Schema.Struct({ home: Schema.Finite, away: Schema.Finite }),
 			permission: everyoneReadWrite,
 		},
 		tallies: {
-			schema: Schema.Record(Schema.String, Schema.Number),
+			schema: Schema.Record(Schema.String, Schema.Finite),
 			permission: everyoneReadWrite,
 		},
 		roster: {
 			schema: Schema.Array(
-				Schema.Struct({ id: Schema.String, score: Schema.Number }),
+				Schema.Struct({ id: Schema.String, score: Schema.Finite }),
 			),
 			permission: everyoneReadWrite,
 		},
-		mirrorSource: { schema: Schema.Number, permission: everyoneReadWrite },
-		mirror: { schema: Schema.Number, permission: everyoneRead },
+		mirrorSource: { schema: Schema.Finite, permission: everyoneReadWrite },
+		mirror: { schema: Schema.Finite, permission: everyoneRead },
 		label: { schema: Schema.String, permission: everyoneRead },
 		secret: { schema: Schema.String, permission: { write: { allow: [] } } },
 		producerOnly: {
@@ -43,7 +43,7 @@ export const fixtureManifest = defineNamespace("e2e", {
 		},
 	},
 	computed: {
-		doubledCount: { schema: Schema.Number, permission: everyoneRead },
+		doubledCount: { schema: Schema.Finite, permission: everyoneRead },
 		summary: { schema: Schema.String, permission: everyoneRead },
 	},
 	topic: {
@@ -55,7 +55,7 @@ export const fixtureManifest = defineNamespace("e2e", {
 			permission: everyoneWrite,
 		},
 		bump: {
-			schema: { request: Schema.Number, response: Schema.Number },
+			schema: { request: Schema.Finite, response: Schema.Finite },
 			permission: everyoneWrite,
 		},
 	},
@@ -66,42 +66,42 @@ export const baseManifest = defineNamespace("e2e-extend", {
 		producer: { permission: ["replicant-write"] },
 	},
 	replicant: {
-		score: { schema: Schema.Number, permission: everyoneRead },
+		score: { schema: Schema.Finite, permission: everyoneRead },
 	},
 });
 
 export const extendedManifest = extendNamespace(baseManifest, {
 	replicant: {
-		bonus: { schema: Schema.Number, permission: everyoneRead },
+		bonus: { schema: Schema.Finite, permission: everyoneRead },
 	},
 	computed: {
-		total: { schema: Schema.Number, permission: everyoneRead },
+		total: { schema: Schema.Finite, permission: everyoneRead },
 	},
 });
 
 export const chainManifest = defineNamespace("e2e-chain", {
 	replicant: {
-		points: { schema: Schema.Number, permission: everyoneReadWrite },
-		target: { schema: Schema.Number, permission: everyoneReadWrite },
-		denominator: { schema: Schema.Number, permission: everyoneReadWrite },
+		points: { schema: Schema.Finite, permission: everyoneReadWrite },
+		target: { schema: Schema.Finite, permission: everyoneReadWrite },
+		denominator: { schema: Schema.Finite, permission: everyoneReadWrite },
 	},
 	computed: {
-		lead: { schema: Schema.Number, permission: everyoneRead },
+		lead: { schema: Schema.Finite, permission: everyoneRead },
 		status: { schema: Schema.String, permission: everyoneRead },
-		reciprocal: { schema: Schema.Number, permission: everyoneRead },
+		reciprocal: { schema: Schema.Finite, permission: everyoneRead },
 	},
 });
 
 export const crossManifest = defineNamespace("e2e-cross", {
 	replicant: {
-		factor: { schema: Schema.Number, permission: everyoneRead },
+		factor: { schema: Schema.Finite, permission: everyoneRead },
 	},
 	computed: {
-		scaledScore: { schema: Schema.Number, permission: everyoneRead },
+		scaledScore: { schema: Schema.Finite, permission: everyoneRead },
 	},
 	rpc: {
 		addScore: {
-			schema: { request: Schema.Number, response: Schema.Number },
+			schema: { request: Schema.Finite, response: Schema.Finite },
 			permission: everyoneWrite,
 		},
 	},

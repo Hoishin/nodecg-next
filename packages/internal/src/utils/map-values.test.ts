@@ -475,20 +475,20 @@ describe("zipEffectValues", () => {
 describe("mapSchemaValues", () => {
 	test("maps only the entries carrying a schema, keyed by the schema-bearing subset", () => {
 		const result = mapSchemaValues<Option, ArrayLambda>()(
-			{ a: { schema: Schema.Number }, b: { schema: Schema.String }, skip: {} },
+			{ a: { schema: Schema.Finite }, b: { schema: Schema.String }, skip: {} },
 			(value) => [value.schema],
 		);
 		expectTypeOf(result).toEqualTypeOf<{
-			readonly a: ReadonlyArray<typeof Schema.Number>;
+			readonly a: ReadonlyArray<typeof Schema.Finite>;
 			readonly b: ReadonlyArray<typeof Schema.String>;
 		}>();
-		expect(result).toEqual({ a: [Schema.Number], b: [Schema.String] });
+		expect(result).toEqual({ a: [Schema.Finite], b: [Schema.String] });
 	});
 
 	test("passes the key to the transform, skipping schema-less entries", () => {
 		const keys: string[] = [];
 		mapSchemaValues<Option, ArrayLambda>()(
-			{ a: { schema: Schema.Number }, b: { schema: Schema.Number }, skip: {} },
+			{ a: { schema: Schema.Finite }, b: { schema: Schema.Finite }, skip: {} },
 			(value, key) => {
 				keys.push(key);
 				return [value.schema];
@@ -508,13 +508,13 @@ describe("mapSchemaValues", () => {
 
 	test("skips an entry whose schema is explicitly undefined", () => {
 		const result = mapSchemaValues<Option, ArrayLambda>()(
-			{ a: { schema: Schema.Number }, b: { schema: undefined } },
+			{ a: { schema: Schema.Finite }, b: { schema: undefined } },
 			(value) => [value.schema],
 		);
 		expectTypeOf(result).toEqualTypeOf<{
-			readonly a: ReadonlyArray<typeof Schema.Number>;
+			readonly a: ReadonlyArray<typeof Schema.Finite>;
 		}>();
-		expect(result).toEqual({ a: [Schema.Number] });
+		expect(result).toEqual({ a: [Schema.Finite] });
 	});
 
 	test("returns an empty object for an undefined input", () => {

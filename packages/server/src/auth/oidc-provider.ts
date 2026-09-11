@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
 
 import { HumanAccountSchema } from "@nodecg-next/internal";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Function, Schema } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
 	buildAuthorizationUrl,
-	type CustomFetch,
+	Configuration,
 	customFetch,
+	type CustomFetchOptions,
 	discovery,
 	randomNonce,
 	randomPKCECodeVerifier,
@@ -41,32 +43,27 @@ const pickString = (value: unknown): string | undefined =>
 const recordSchema = Schema.Record(Schema.String, Schema.Unknown);
 type UnknownRecord = typeof recordSchema.Type;
 
-const tokenResponseFetch =
-	(transform: (body: UnknownRecord) => UnknownRecord): CustomFetch =>
-	async (url, options) => {
-		const response = await fetch(url, options);
-		const isTokenRequest =
-			options.body instanceof URLSearchParams &&
-			options.body.get("grant_type") === "authorization_code";
-		if (!isTokenRequest) {
-			return response;
-		}
-		const body = await response
-			.clone()
-			.json()
-			.catch(() => undefined);
-		const validatedBody = Schema.decodeUnknownOption(recordSchema)(body);
-		if (Option.isNone(validatedBody)) {
-			return response;
-		}
-		const headers = new Headers(response.headers);
-		headers.delete("content-length");
-		return new Response(JSON.stringify(transform(validatedBody.value)), {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
+const decodeRecord = Schema.decodeUnknownEffect(recordSchema);
+const encodeJsonRecord = Schema.encodeEffect(
+	Schema.fromJsonString(recordSchema),
+);
+
+const clientFetch =
+	(transform: (body: UnknownRecord) => UnknownRecord) =>
+	(url: string, options: CustomFetchOptions) =>
+		Effect.gen(function* () {
+			const client = yield* HttpClient.HttpClient;
+			const response = yield* client.execute(
+				HttpClientRequest.fromWeb(new Request(url, options)),
+			);
+			const body = yield* decodeRecord(yield* response.json);
+			const headers = new Headers(response.headers);
+			headers.delete("content-length");
+			return new Response(yield* encodeJsonRecord(transform(body)), {
+				status: response.status,
+				headers,
+			});
 		});
-	};
 
 const identityFromClaims = (claims: Record<string, unknown>) => {
 	const issuer = pickString(claims["iss"]);
@@ -102,12 +99,6 @@ export const makeOidcProvider = async (
 			execute: config.allowInsecure ? [allowInsecureRequests] : undefined,
 		},
 	);
-	if (typeof config.transformTokenResponse !== "undefined") {
-		configuration[customFetch] = tokenResponseFetch(
-			config.transformTokenResponse,
-		);
-	}
-
 	return {
 		name: config.name,
 		issuer: configuration.serverMetadata().issuer,
@@ -141,10 +132,24 @@ export const makeOidcProvider = async (
 			if (input.searchParams.get("state") !== input.stash.state) {
 				return yield* new ProviderStateMismatch();
 			}
+			const tokenConfiguration = new Configuration(
+				configuration.serverMetadata(),
+				config.clientId,
+				configuration.clientMetadata(),
+			);
+			if (config.allowInsecure) {
+				allowInsecureRequests(tokenConfiguration);
+			}
+			const context = yield* Effect.context<HttpClient.HttpClient>();
+			const fetchThroughClient = clientFetch(
+				config.transformTokenResponse ?? Function.identity,
+			);
+			tokenConfiguration[customFetch] = (url, options) =>
+				Effect.runPromiseWith(context)(fetchThroughClient(url, options));
 			const tokens = yield* Effect.tryPromise({
 				try: () =>
 					authorizationCodeGrant(
-						configuration,
+						tokenConfiguration,
 						callbackUrl(input.redirectUri, input.searchParams),
 						{
 							expectedState: input.stash.state,

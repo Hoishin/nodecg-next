@@ -1,4 +1,5 @@
-import { Effect } from "effect";
+import { Effect, ManagedRuntime } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { type MutableResponse, OAuth2Server } from "oauth2-mock-server";
 import { afterEach, expect, test } from "vitest";
 
@@ -6,6 +7,8 @@ import {
 	makeOAuth2Provider,
 	type OAuth2ProviderConfig,
 } from "./oauth2-provider.ts";
+
+const runtime = ManagedRuntime.make(FetchHttpClient.layer);
 
 const redirectUri =
 	"http://localhost:3000/api/internal/authentication/callback/local";
@@ -72,11 +75,11 @@ test("resolves a human identity from userinfo with the config-pinned issuer", as
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const identity = await Effect.runPromise(
+	const identity = await runtime.runPromise(
 		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
 	);
 
@@ -93,11 +96,11 @@ test("derives the display name from the name claim", async () => {
 	});
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const identity = await Effect.runPromise(
+	const identity = await runtime.runPromise(
 		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
 	);
 
@@ -114,11 +117,11 @@ test("falls back to preferred_username when the name claim is absent", async () 
 	});
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const identity = await Effect.runPromise(
+	const identity = await runtime.runPromise(
 		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
 	);
 
@@ -133,10 +136,10 @@ test("rejects a state mismatch with ProviderStateMismatch", async () => {
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
-	const error = await Effect.runPromise(
+	const error = await runtime.runPromise(
 		provider
 			.callback({
 				redirectUri,
@@ -153,10 +156,10 @@ test("rejects a failed token exchange with CredentialExchangeError", async () =>
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
-	const error = await Effect.runPromise(
+	const error = await runtime.runPromise(
 		provider
 			.callback({
 				redirectUri,
@@ -178,11 +181,11 @@ test("rejects a failed userinfo request with ProviderResponseError", async () =>
 	});
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const error = await Effect.runPromise(
+	const error = await runtime.runPromise(
 		provider
 			.callback({ redirectUri, searchParams, stash: authorized.stash })
 			.pipe(Effect.flip),
@@ -197,11 +200,11 @@ test("rejects a userinfo response without a subject with NoIdentity", async () =
 	});
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const error = await Effect.runPromise(
+	const error = await runtime.runPromise(
 		provider
 			.callback({ redirectUri, searchParams, stash: authorized.stash })
 			.pipe(Effect.flip),
@@ -216,11 +219,11 @@ test("rejects a non-object userinfo response with NoIdentity", async () => {
 	});
 	const provider = makeLocalProvider(serverUrl);
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const error = await Effect.runPromise(
+	const error = await runtime.runPromise(
 		provider
 			.callback({ redirectUri, searchParams, stash: authorized.stash })
 			.pipe(Effect.flip),
@@ -246,11 +249,11 @@ test("maps a provider-specific userinfo shape through identityFromUserinfo", asy
 				: undefined,
 	});
 
-	const authorized = await Effect.runPromise(
+	const authorized = await runtime.runPromise(
 		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
 	);
 	const searchParams = await authorizeCode(authorized.url);
-	const identity = await Effect.runPromise(
+	const identity = await runtime.runPromise(
 		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
 	);
 

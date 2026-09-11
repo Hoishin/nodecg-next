@@ -17,8 +17,8 @@ describe("defineNamespace", () => {
 					replicant: {
 						score: {
 							schema: Schema.Struct({
-								left: Schema.Number,
-								right: Schema.Number,
+								left: Schema.Finite,
+								right: Schema.Finite,
 							}),
 						},
 						count: {
@@ -43,7 +43,7 @@ describe("defineNamespace", () => {
 
 		test("decode surfaces FieldDecodeError on bad wire input", () => {
 			const manifest = defineNamespace("match", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const error = Effect.runSync(
@@ -61,8 +61,8 @@ describe("defineNamespace", () => {
 							setScore: {
 								schema: {
 									request: Schema.Struct({
-										left: Schema.Number,
-										right: Schema.Number,
+										left: Schema.Finite,
+										right: Schema.Finite,
 									}),
 									response: Schema.Boolean,
 								},
@@ -95,7 +95,7 @@ describe("defineNamespace", () => {
 			},
 			replicant: {
 				score: {
-					schema: Schema.Number,
+					schema: Schema.Finite,
 					permission: {
 						read: { deny: ["viewer"] },
 						write: { allow: ["judge"] },
@@ -168,7 +168,7 @@ describe("defineNamespace", () => {
 			const manifest = defineNamespace("match", {
 				principals: { everyone: { permission: ["computed-read"] } },
 				roles: { judge: { permission: ["replicant-read"] } },
-				replicant: { score: { schema: Schema.Number } },
+				replicant: { score: { schema: Schema.Finite } },
 				computed: { winning: { schema: Schema.Boolean } },
 			});
 
@@ -192,7 +192,7 @@ describe("defineNamespace", () => {
 				},
 				replicant: {
 					internal: {
-						schema: Schema.Number,
+						schema: Schema.Finite,
 						permission: { read: { client: "allow" } },
 					},
 				},
@@ -213,7 +213,7 @@ describe("defineNamespace", () => {
 					judge: { permission: ["replicant-write"] },
 					viewer: { permission: [] },
 				},
-				replicant: { score: { schema: Schema.Number } },
+				replicant: { score: { schema: Schema.Finite } },
 			});
 
 			expect(manifest.replicant.score.permission.read).toEqual({
@@ -250,7 +250,7 @@ describe("defineNamespace", () => {
 		test("the write set folds into read, so a write capability carries read", () => {
 			const manifest = defineNamespace("match", {
 				roles: { producer: { permission: ["replicant-write"] } },
-				replicant: { score: { schema: Schema.Number } },
+				replicant: { score: { schema: Schema.Finite } },
 			});
 
 			expect(manifest.replicant.score.permission.write).toEqual({
@@ -333,7 +333,7 @@ describe("defineNamespace", () => {
 				},
 				rpc: {
 					restart: {
-						schema: { request: Schema.Number, response: Schema.Number },
+						schema: { request: Schema.Finite, response: Schema.Finite },
 					},
 				},
 			});
@@ -356,7 +356,7 @@ describe("defineNamespace", () => {
 				},
 				rpc: {
 					restart: {
-						schema: { request: Schema.Number, response: Schema.Number },
+						schema: { request: Schema.Finite, response: Schema.Finite },
 						permission: { write: { deny: ["operator"] } },
 					},
 				},
@@ -396,7 +396,7 @@ describe("defineNamespace", () => {
 		test("options not specified are hidden", () => {
 			const manifest = defineNamespace("match", {
 				replicant: {
-					count: { schema: Schema.Number },
+					count: { schema: Schema.Finite },
 				},
 			});
 			expectTypeOf(manifest.replicant).not.toBeNever();
@@ -406,10 +406,10 @@ describe("defineNamespace", () => {
 
 			const manifest2 = defineNamespace("match", {
 				replicant: {
-					count: { schema: Schema.Number },
+					count: { schema: Schema.Finite },
 				},
 				computed: {
-					double: { schema: Schema.Number },
+					double: { schema: Schema.Finite },
 				},
 			});
 			expectTypeOf(manifest2.replicant).not.toBeNever();
@@ -419,7 +419,7 @@ describe("defineNamespace", () => {
 
 			const manifest3 = defineNamespace("match", {
 				topic: {
-					count: { schema: Schema.Number },
+					count: { schema: Schema.Finite },
 				},
 			});
 			expectTypeOf(manifest3.replicant).toEqualTypeOf({});
@@ -459,7 +459,7 @@ describe("defineNamespace", () => {
 				rpc: {
 					setScore: {
 						schema: {
-							request: Schema.Struct({ home: Schema.Number }),
+							request: Schema.Struct({ home: Schema.Finite }),
 							response: Schema.Boolean,
 						},
 					},
@@ -485,7 +485,7 @@ describe("defineNamespace", () => {
 
 		test("codec signatures and namespace type", () => {
 			const manifest = defineNamespace("match", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			expectTypeOf(manifest.namespace).toEqualTypeOf<string>();
@@ -519,7 +519,7 @@ describe("defineNamespace", () => {
 					roles: { judge: { permission: ["replicant-read"] } },
 					replicant: {
 						score: {
-							schema: Schema.Number,
+							schema: Schema.Finite,
 							permission: {
 								read: { allow: ["judge"], everyone: "allow" },
 								write: { allow: [], client: "allow" },
@@ -546,7 +546,7 @@ describe("defineNamespace", () => {
 					const permission = { read: { [principal]: "deny" } };
 					expect(() =>
 						defineNamespace("match", {
-							replicant: { score: { schema: Schema.Number, permission } },
+							replicant: { score: { schema: Schema.Finite, permission } },
 						}),
 					).toThrow(
 						new RegExp(
@@ -562,7 +562,7 @@ describe("defineNamespace", () => {
 						roles: { judge: { permission: ["replicant-read"] } },
 						replicant: {
 							score: {
-								schema: Schema.Number,
+								schema: Schema.Finite,
 								// @ts-expect-error "everyone" is a slot, not an allow token
 								permission: { read: { allow: ["everyone"] } },
 							},
@@ -575,7 +575,7 @@ describe("defineNamespace", () => {
 				defineNamespace("match", {
 					replicant: {
 						score: {
-							schema: Schema.Number,
+							schema: Schema.Finite,
 							// @ts-expect-error "evryone" is not a principal slot
 							permission: { read: { evryone: "allow" } },
 						},
@@ -589,7 +589,7 @@ describe("defineNamespace", () => {
 						roles: { judge: { permission: ["replicant-read"] } },
 						replicant: {
 							score: {
-								schema: Schema.Number,
+								schema: Schema.Finite,
 								// @ts-expect-error "viewer" is neither a declared nor a reserved role
 								permission: { read: { allow: ["viewer"] } },
 							},
@@ -602,7 +602,7 @@ describe("defineNamespace", () => {
 						roles: { judge: { permission: ["replicant-read"] } },
 						replicant: {
 							score: {
-								schema: Schema.Number,
+								schema: Schema.Finite,
 								// @ts-expect-error "vewer" is a typo, not a known role
 								permission: { read: { deny: ["vewer"] } },
 							},
@@ -623,13 +623,13 @@ describe("extendNamespace", () => {
 			viewer: { permission: ["replicant-read", "computed-read"] },
 		},
 		replicant: {
-			score: { schema: Schema.Number },
+			score: { schema: Schema.Finite },
 			secret: {
 				schema: Schema.String,
 				permission: { read: { allow: ["judge"] } },
 			},
 		},
-		computed: { total: { schema: Schema.Number } },
+		computed: { total: { schema: Schema.Finite } },
 	});
 
 	describe("runtime", () => {
@@ -713,7 +713,7 @@ describe("extendNamespace", () => {
 			const extended = extendNamespace(base, (precedent) => ({
 				replicant: {
 					mirror: {
-						schema: Schema.Number,
+						schema: Schema.Finite,
 						permission: {
 							read: {
 								allow: [...precedent.replicant.score.permission.read.roles],
@@ -732,7 +732,7 @@ describe("extendNamespace", () => {
 		it.effect("adds fields across computed and topic groups", () =>
 			Effect.gen(function* () {
 				const extended = extendNamespace(base, {
-					computed: { ratio: { schema: Schema.Number } },
+					computed: { ratio: { schema: Schema.Finite } },
 					topic: { ping: { schema: Schema.String } },
 				});
 
@@ -782,7 +782,7 @@ describe("extendNamespace", () => {
 				roles: { operator: { permission: ["rpc-call"] } },
 				rpc: {
 					restart: {
-						schema: { request: Schema.Number, response: Schema.Number },
+						schema: { request: Schema.Finite, response: Schema.Finite },
 					},
 				},
 			});
@@ -998,7 +998,7 @@ describe("extendNamespace", () => {
 						),
 					},
 				},
-				computed: { ratio: { schema: Schema.Number } },
+				computed: { ratio: { schema: Schema.Finite } },
 			});
 
 			expectTypeOf(extended.replicant.score.encode)
@@ -1017,7 +1017,7 @@ describe("extendNamespace", () => {
 				rpc: {
 					setScore: {
 						schema: {
-							request: Schema.Struct({ home: Schema.Number }),
+							request: Schema.Struct({ home: Schema.Finite }),
 							response: Schema.Boolean,
 						},
 					},

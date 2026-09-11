@@ -3,6 +3,7 @@ import { testLayer } from "@nodecg-next/test-utils";
 import { Cause, Effect, Layer, Result, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
 import {
 	implementExtendedNamespace,
@@ -21,6 +22,7 @@ const testInMemory = testLayer(
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
 		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		BuiltNamespaceRegistry.layer,
 	),
 );
 
@@ -29,7 +31,7 @@ const counter = implementNamespace(
 		replicant: { count: { schema: Schema.FiniteFromString } },
 		rpc: {
 			bump: {
-				schema: { request: Schema.Number, response: Schema.Number },
+				schema: { request: Schema.Finite, response: Schema.Finite },
 				permission: { write: { everyone: "allow" } },
 			},
 		},
@@ -158,8 +160,8 @@ describe("computed validation", () => {
 			const cyclic = implementNamespace(
 				defineNamespace("cyclic", {
 					computed: {
-						a: { schema: Schema.Number },
-						b: { schema: Schema.Number },
+						a: { schema: Schema.Finite },
+						b: { schema: Schema.Finite },
 					},
 				}),
 				{

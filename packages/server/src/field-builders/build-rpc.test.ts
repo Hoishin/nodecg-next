@@ -72,7 +72,7 @@ describe("callEncoded", () => {
 				"echo",
 				manifest.rpc.echo,
 				async (request: number) => {
-					await new Promise((resolve) => setTimeout(resolve, 1));
+					await Promise.resolve();
 					return request + 1;
 				},
 				context,

@@ -262,6 +262,9 @@ importers:
 
   packages/e2e:
     devDependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.113(effect@4.0.0-rc.113)(redis@6.2.1)
       '@nodecg-next/browser':
         specifier: workspace:*
         version: link:../browser

@@ -27,7 +27,7 @@ const testInMemory = testLayer(
 describe("implementNamespace", () => {
 	test("bundles the manifest with its impl", () => {
 		const manifest = defineNamespace("ns", {
-			replicant: { count: { schema: Schema.Number } },
+			replicant: { count: { schema: Schema.Finite } },
 		});
 		const seedReplicant = { count: () => 7 };
 
@@ -47,7 +47,7 @@ describe("implementNamespace", () => {
 
 	test("bundles onLoad alongside the field impls", () => {
 		const manifest = defineNamespace("ns", {
-			replicant: { count: { schema: Schema.Number } },
+			replicant: { count: { schema: Schema.Finite } },
 		});
 		const onLoad = () => {};
 
@@ -72,7 +72,7 @@ describe("implementNamespace", () => {
 describe("implementExtendedNamespace", () => {
 	const base = defineNamespace("match", {
 		replicant: {
-			score: { schema: Schema.Number },
+			score: { schema: Schema.Finite },
 			label: { schema: Schema.String },
 		},
 	});
@@ -84,8 +84,8 @@ describe("implementExtendedNamespace", () => {
 		"merges the base impl with the supplement, then builds once",
 		Effect.gen(function* () {
 			const extended = extendNamespace(base, {
-				replicant: { round: { schema: Schema.Number } },
-				computed: { total: { schema: Schema.Number } },
+				replicant: { round: { schema: Schema.Finite } },
+				computed: { total: { schema: Schema.Finite } },
 			});
 
 			const implemented = implementExtendedNamespace(
@@ -110,7 +110,7 @@ describe("implementExtendedNamespace", () => {
 
 	test("merges the base and extension frontend dirs, deduplicated", () => {
 		const extended = extendNamespace(base, {
-			replicant: { round: { schema: Schema.Number } },
+			replicant: { round: { schema: Schema.Finite } },
 		});
 		const withFrontend = implementNamespace(base, {
 			seedReplicant: { score: () => 0, label: () => "" },
@@ -133,7 +133,7 @@ describe("implementExtendedNamespace", () => {
 
 	test("carries the base onLoad, and composes both when the supplement adds one", () => {
 		const extended = extendNamespace(base, {
-			replicant: { round: { schema: Schema.Number } },
+			replicant: { round: { schema: Schema.Finite } },
 		});
 		const baseOnLoad = () => {};
 		const extensionOnLoad = () => {};
@@ -160,7 +160,7 @@ describe("implementExtendedNamespace", () => {
 		"omitting impl for a newly-added field is a type error",
 		Effect.gen(function* () {
 			const extended = extendNamespace(base, {
-				replicant: { round: { schema: Schema.Number } },
+				replicant: { round: { schema: Schema.Finite } },
 			});
 
 			const implemented = implementExtendedNamespace(

@@ -23,7 +23,12 @@ import {
 	Schema,
 	Stream,
 } from "effect";
-import { HttpEffect, HttpRouter, HttpServer } from "effect/unstable/http";
+import {
+	FetchHttpClient,
+	HttpEffect,
+	HttpRouter,
+	HttpServer,
+} from "effect/unstable/http";
 import { describe, expect, vi } from "vitest";
 
 import {
@@ -55,6 +60,7 @@ import { InMemorySessionStore } from "../services/session-store/in-memory-sessio
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
+import { UrlPath } from "./url-path.ts";
 
 type ReplicantStub = BuiltNamespace["replicant"][string];
 type Internal = ReplicantStub[typeof fieldInternal];
@@ -180,6 +186,8 @@ const webHandler = Effect.fn(function* (
 				Layer.mergeAll(
 					FieldRegistryService.layer(namespaces),
 					InMemoryTopicBroker,
+					UrlPath.layer,
+					FetchHttpClient.layer,
 				),
 			),
 			Layer.provide(middleware),
@@ -832,6 +840,18 @@ describe("roles export/import", () => {
 		Schema.Struct({ message: Schema.String }),
 	);
 
+	const decodeAssignmentsDocument = Schema.decodeUnknownSync(
+		Schema.Struct({
+			assignments: Schema.Array(
+				Schema.Struct({
+					issuer: Schema.String,
+					subject: Schema.String,
+					roles: Schema.Array(Schema.String),
+				}),
+			),
+		}),
+	);
+
 	it.effect("403 for an anonymous caller", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([]);
@@ -900,17 +920,9 @@ describe("roles export/import", () => {
 					]),
 				);
 				expect(res.status).toBe(204);
-				const doc = Schema.decodeUnknownSync(
-					Schema.Struct({
-						assignments: Schema.Array(
-							Schema.Struct({
-								issuer: Schema.String,
-								subject: Schema.String,
-								roles: Schema.Array(Schema.String),
-							}),
-						),
-					}),
-				)(yield* json(yield* handler(exportRequest())));
+				const doc = decodeAssignmentsDocument(
+					yield* json(yield* handler(exportRequest())),
+				);
 				expect(doc.assignments).toHaveLength(2);
 				const operator = doc.assignments.find((a) => a.subject === "operator");
 				const other = doc.assignments.find((a) => a.subject === "other");
@@ -1857,6 +1869,10 @@ describe("public surface (v0) with bearer token", () => {
 		}),
 	);
 
+	const decodeToken = Schema.decodeUnknownSync(
+		Schema.Struct({ token: Schema.String }),
+	);
+
 	const mintKey = Effect.fn(function* (
 		handler: (request: Request) => Effect.Effect<Response>,
 	) {
@@ -1867,9 +1883,7 @@ describe("public surface (v0) with bearer token", () => {
 				headers: { "content-type": "application/json" },
 			}),
 		);
-		const { token } = Schema.decodeUnknownSync(
-			Schema.Struct({ token: Schema.String }),
-		)(yield* json(res));
+		const { token } = decodeToken(yield* json(res));
 		return token;
 	});
 

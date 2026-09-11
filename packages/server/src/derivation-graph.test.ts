@@ -34,6 +34,8 @@ afterEach(reset);
 
 const testStubbed = testLayer(Layer.succeed(ReplicantStorageService, storage));
 
+class Invalid extends Schema.TaggedError<Invalid>()("Invalid", {}) {}
+
 const waitFor = (assertion: () => void) =>
 	Effect.promise(() => vi.waitFor(assertion));
 
@@ -113,10 +115,11 @@ describe("commit", () => {
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
 			yield* engine.initializeReplicant("ns", "a", { x: 1 });
+			const context = yield* Effect.context();
 			let evaluations = 0;
 			yield* engine.initializeComputed("ns", "c", () => {
 				evaluations += 1;
-				return Effect.runSync(
+				return Effect.runSyncWith(context)(
 					engine.readReplicant("ns", "a").pipe(
 						Effect.map((r) => r.value),
 						Effect.orDie,
@@ -165,7 +168,7 @@ describe("commit", () => {
 		"an updater may synchronously write another replicant mid-produce",
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
-			const context = yield* Effect.context<never>();
+			const context = yield* Effect.context();
 			yield* engine.initializeReplicant("ns", "a", 1);
 			yield* engine.initializeReplicant("ns", "b", 1);
 			const committed = yield* engine.commit("ns", "a", ({ value }) =>
@@ -185,7 +188,7 @@ describe("commit", () => {
 		"a single attempt fails CommitContended when a concurrent commit lands between produce and commit",
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
-			const context = yield* Effect.context<never>();
+			const context = yield* Effect.context();
 			yield* engine.initializeReplicant("ns", "a", 1);
 			const error = yield* engine
 				.commit("ns", "a", ({ value }) =>
@@ -363,11 +366,10 @@ describe("commitPatch", () => {
 			yield* engine.initializeReplicant("ns", "a", { a: 1 });
 			const error = yield* engine
 				.commitPatch("ns", "a", [{ op: "replace", path: "/a", value: 5 }], () =>
-					Effect.fail(new Error("invalid")),
+					Invalid.make(),
 				)
 				.pipe(Effect.flip);
-			assert(error instanceof Error);
-			expect(error.message).toBe("invalid");
+			expect(error).toEqual(Invalid.make());
 			expect(yield* engine.readReplicant("ns", "a")).toEqual({
 				value: { a: 1 },
 				revision: 0,
@@ -596,7 +598,7 @@ describe("persistence", () => {
 			yield* engine.initializeReplicant("ns", "a", 0);
 			storage.write.mockClear();
 			storage.write.mockReturnValue(
-				new ReplicantNotFound({ namespace: "ns", name: "a" }),
+				ReplicantNotFound.make({ namespace: "ns", name: "a" }),
 			);
 
 			yield* engine.commit("ns", "a", () => Effect.succeed(1));
@@ -639,7 +641,7 @@ describe("initializeReplicant", () => {
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
 			storage.write.mockReturnValue(
-				new ReplicantNotFound({ namespace: "ns", name: "a" }),
+				ReplicantNotFound.make({ namespace: "ns", name: "a" }),
 			);
 			const engine = yield* engineIn(scope);
 			const error = yield* engine
@@ -713,11 +715,12 @@ describe("subscribeComputed", () => {
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
 			yield* engine.initializeReplicant("ns", "a", 12);
+			const context = yield* Effect.context();
 			yield* engine.initializeComputed("ns", "tens", () =>
-				Effect.runSync(
+				Effect.runSyncWith(context)(
 					Effect.gen(function* () {
 						const { value } = yield* engine.readReplicant("ns", "a");
-						const number = yield* Schema.decodeUnknownEffect(Schema.Number)(
+						const number = yield* Schema.decodeUnknownEffect(Schema.Finite)(
 							value,
 						);
 						return Math.floor(number / 10);
@@ -742,14 +745,15 @@ describe("subscribeComputed", () => {
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
 			yield* engine.initializeReplicant("ns", "a", 1);
+			const context = yield* Effect.context();
 			yield* engine.initializeComputed("ns", "c", () =>
-				Effect.runSync(
+				Effect.runSyncWith(context)(
 					Effect.gen(function* () {
 						const { value } = yield* engine
 							.readReplicant("ns", "a")
 							.pipe(Effect.orDie);
 						if (value === 2) {
-							return yield* new ComputedComputeError({
+							return yield* ComputedComputeError.make({
 								namespace: "ns",
 								name: "c",
 								cause: new Error("boom"),
@@ -777,14 +781,15 @@ describe("subscribeComputed", () => {
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
 			yield* engine.initializeReplicant("ns", "a", 2);
+			const context = yield* Effect.context();
 			yield* engine.initializeComputed("ns", "c", () =>
-				Effect.runSync(
+				Effect.runSyncWith(context)(
 					Effect.gen(function* () {
 						const { value } = yield* engine
 							.readReplicant("ns", "a")
 							.pipe(Effect.orDie);
 						if (value === 2) {
-							return yield* new ComputedComputeError({
+							return yield* ComputedComputeError.make({
 								namespace: "ns",
 								name: "c",
 								cause: new Error("boom"),
@@ -807,10 +812,11 @@ describe("subscribeComputed", () => {
 		Effect.gen(function* () {
 			const engine = yield* DerivationEngineService;
 			yield* engine.initializeReplicant("ns", "a", 1);
+			const context = yield* Effect.context();
 			let evaluations = 0;
 			yield* engine.initializeComputed("ns", "c", () => {
 				evaluations += 1;
-				return Effect.runSync(
+				return Effect.runSyncWith(context)(
 					engine.readReplicant("ns", "a").pipe(
 						Effect.map((r) => r.value),
 						Effect.orDie,

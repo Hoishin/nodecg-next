@@ -8,7 +8,7 @@ import {
 	type MePayload,
 } from "@nodecg-next/client";
 import { AnonymousIdentitySchema } from "@nodecg-next/internal";
-import { Result, Schema } from "effect";
+import { Duration, Effect, Option, Schedule, Schema } from "effect";
 
 import { nodecgBase } from "./base.ts";
 
@@ -37,30 +37,29 @@ export interface AuthSession {
 	readonly refresh: () => Promise<MePayload>;
 }
 
-const sleep = (millis: number) =>
-	new Promise<void>((resolve) => setTimeout(resolve, millis));
-
 // TODO: use postMessage instead
-const watchLoginSession = async (
-	client: AuthClient,
-	popup: Window,
-): Promise<HumanIdentity> => {
-	const pollInterval = 500;
-	const giveUpAfter = 5 * 60_000;
-	const pollLimit = giveUpAfter / pollInterval;
-	for (let polls = 0; polls < pollLimit; polls++) {
+const watchLoginSession = (client: AuthClient, popup: Window) =>
+	Effect.gen(function* () {
 		const closed = popup.closed;
-		const payload = await client.me();
+		const payload = yield* Effect.promise(() => client.me());
 		if (payload.identity._tag === "human") {
-			return payload.identity;
+			return Option.some(payload.identity);
 		}
 		if (closed) {
-			throw new LoginAbandoned({ reason: "closed" });
+			return yield* LoginAbandoned.make({ reason: "closed" });
 		}
-		await sleep(pollInterval);
-	}
-	throw new LoginAbandoned({ reason: "timeout" });
-};
+		return Option.none();
+	}).pipe(
+		Effect.repeat({
+			schedule: Schedule.spaced(Duration.millis(500)),
+			until: Option.isSome<HumanIdentity>,
+		}),
+		Effect.map((found) => found.value),
+		Effect.timeoutOrElse({
+			duration: Duration.minutes(5),
+			orElse: () => LoginAbandoned.make({ reason: "timeout" }),
+		}),
+	);
 
 export const authSession = (
 	client: AuthClient = loadAuthClient(nodecgBase()),
@@ -81,22 +80,23 @@ export const authSession = (
 	};
 	void refresh().catch(() => undefined);
 
-	const popupLogin = async (provider: LoginProvider) => {
-		const url = loginUrl(provider).pipe(
-			Result.getOrThrowWith((error) => error),
-		);
-		const popup = window.open(url, "nodecg-login");
-		if (popup === null) {
-			throw new LoginWindowBlocked();
-		}
-		try {
-			const human = await watchLoginSession(client, popup);
+	const popupLogin = (provider: LoginProvider) =>
+		Effect.gen(function* () {
+			const url = yield* Effect.fromResult(loginUrl(provider));
+			const popup = yield* Effect.acquireRelease(
+				Effect.gen(function* () {
+					const opened = window.open(url, "nodecg-login");
+					if (opened === null) {
+						return yield* LoginWindowBlocked.make();
+					}
+					return opened;
+				}),
+				(opened) => Effect.sync(() => opened.close()),
+			);
+			const human = yield* watchLoginSession(client, popup);
 			setIdentity(human);
 			return human;
-		} finally {
-			popup.close();
-		}
-	};
+		}).pipe(Effect.scoped, Effect.runPromise);
 
 	const logout = async () => {
 		await client.logout();

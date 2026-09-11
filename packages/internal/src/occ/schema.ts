@@ -72,7 +72,7 @@ export class PatchNotApplicable extends Schema.TaggedError<PatchNotApplicable>()
 
 export class RevisionConflict extends Schema.TaggedError<RevisionConflict>()(
 	"RevisionConflict",
-	{ value: Schema.Json, revision: Schema.Number, reason: Schema.String },
+	{ value: Schema.Json, revision: Schema.Int, reason: Schema.String },
 ) {
 	override readonly message = `Patch conflicts with a newer revision ${this.revision}: ${this.reason}`;
 }

@@ -1,7 +1,7 @@
 import { NodeHttpServer } from "@effect/platform-node";
 import { defineNamespace } from "@nodecg-next/core";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, FileSystem, Path } from "effect";
+import { Effect, FileSystem, Layer, Path } from "effect";
 import { HttpEffect, HttpRouter } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
@@ -10,8 +10,11 @@ import {
 	implementNamespace,
 } from "../implement-namespace.ts";
 import { frontendRoutes } from "./frontend-serving.ts";
+import { UrlPath } from "./url-path.ts";
 
-const test = testLayer(NodeHttpServer.layerHttpServices);
+const test = testLayer(
+	Layer.merge(NodeHttpServer.layerHttpServices, UrlPath.layer),
+);
 
 const manifest = defineNamespace("ns", {});
 

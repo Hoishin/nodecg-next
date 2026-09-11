@@ -36,6 +36,8 @@ import {
 
 const testFetch = testLayer(FetchHttpClient.layer);
 
+const encodedDate = "2030-01-01T00:00:00.000Z";
+
 const createTransportStub = () =>
 	({
 		getReplicant: vi.fn<FieldTransport["getReplicant"]>(),
@@ -60,7 +62,7 @@ describe("get", () => {
 			const transportStub = createTransportStub();
 			transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -87,7 +89,7 @@ describe("get", () => {
 				Effect.succeed("not a number"),
 			);
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -116,7 +118,7 @@ describe("get", () => {
 				Effect.fail(new FieldNotFound({ namespace: "root", name: "count" })),
 			);
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -141,9 +143,7 @@ describe("get", () => {
 		"reads a stored string back into a Date",
 		Effect.gen(function* () {
 			const transportStub = createTransportStub();
-			transportStub.getReplicant.mockReturnValue(
-				Effect.succeed("2030-01-01T00:00:00.000Z"),
-			);
+			transportStub.getReplicant.mockReturnValue(Effect.succeed(encodedDate));
 			const manifest = defineNamespace("root", {
 				replicant: { when: { schema: Schema.DateFromString } },
 			});
@@ -156,11 +156,10 @@ describe("get", () => {
 				),
 			);
 
-			expect(
-				yield* loaded.replicant.when
-					.get()
-					.pipe(Effect.provideService(FieldTransportService, transportStub)),
-			).toEqual(new Date("2030-01-01T00:00:00.000Z"));
+			const value = yield* loaded.replicant.when
+				.get()
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(value.toISOString()).toBe(encodedDate);
 		}),
 	);
 });
@@ -171,7 +170,7 @@ describe("set", () => {
 		Effect.gen(function* () {
 			const transportStub = createTransportStub();
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -198,7 +197,7 @@ describe("set", () => {
 		Effect.gen(function* () {
 			const transportStub = createTransportStub();
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -236,12 +235,12 @@ describe("set", () => {
 			);
 
 			yield* loaded.replicant.when
-				.set(new Date("2030-01-01T00:00:00.000Z"))
+				.set(yield* Schema.decodeEffect(Schema.DateFromString)(encodedDate))
 				.pipe(Effect.provideService(FieldTransportService, transportStub));
 			expect(transportStub.updateReplicant).toHaveBeenLastCalledWith(
 				"root",
 				"when",
-				[{ op: "replace", path: "", value: "2030-01-01T00:00:00.000Z" }],
+				[{ op: "replace", path: "", value: encodedDate }],
 			);
 		}),
 	);
@@ -254,7 +253,7 @@ describe("update", () => {
 			const transportStub = createTransportStub();
 			transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -355,7 +354,7 @@ describe("update", () => {
 			const transportStub = createTransportStub();
 			transportStub.getReplicant.mockReturnValue(Effect.succeed(10));
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -437,7 +436,7 @@ describe("update", () => {
 				}),
 			);
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -488,7 +487,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -525,8 +524,8 @@ describe("subscribe", () => {
 			};
 			const manifest = defineNamespace("root", {
 				replicant: {
-					count: { schema: Schema.Number },
-					other: { schema: Schema.Number },
+					count: { schema: Schema.Finite },
+					other: { schema: Schema.Finite },
 				},
 			});
 
@@ -571,7 +570,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -605,7 +604,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -645,7 +644,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -707,7 +706,7 @@ describe("subscribe", () => {
 					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -779,7 +778,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -813,7 +812,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -847,7 +846,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -895,7 +894,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -948,7 +947,7 @@ describe("subscribe", () => {
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
 			};
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Number } },
+				replicant: { count: { schema: Schema.Finite } },
 			});
 
 			const loaded = yield* loadNamespaceEffect(manifest).pipe(
@@ -1090,7 +1089,7 @@ describe("computed", () => {
 
 describe("topic", () => {
 	const topicManifest = defineNamespace("root", {
-		topic: { chat: { schema: Schema.Number } },
+		topic: { chat: { schema: Schema.Finite } },
 	});
 	const subscribeFrame = {
 		_tag: "subscribe",
@@ -1345,10 +1344,10 @@ describe("topic", () => {
 describe("rpc", () => {
 	const rpcManifest = defineNamespace("root", {
 		rpc: {
-			echo: { schema: { request: Schema.Number, response: Schema.Number } },
+			echo: { schema: { request: Schema.Finite, response: Schema.Finite } },
 			when: {
 				schema: {
-					request: Schema.Number,
+					request: Schema.Finite,
 					response: Schema.DateFromString,
 				},
 			},
@@ -1380,9 +1379,7 @@ describe("rpc", () => {
 		"call decodes a string response into a Date",
 		Effect.gen(function* () {
 			const transportStub = createTransportStub();
-			transportStub.callRpc.mockReturnValue(
-				Effect.succeed("2030-01-01T00:00:00.000Z"),
-			);
+			transportStub.callRpc.mockReturnValue(Effect.succeed(encodedDate));
 			const loaded = yield* loadNamespaceEffect(rpcManifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
 				Effect.provideService(
@@ -1394,7 +1391,7 @@ describe("rpc", () => {
 			const result = yield* loaded.rpc.when
 				.call(1)
 				.pipe(Effect.provideService(FieldTransportService, transportStub));
-			expect(result).toEqual(new Date("2030-01-01T00:00:00.000Z"));
+			expect(result.toISOString()).toBe(encodedDate);
 		}),
 	);
 
@@ -1454,7 +1451,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 		const transportStub = createTransportStub();
 		transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
 		const manifest = defineNamespace("root", {
-			replicant: { count: { schema: Schema.Number } },
+			replicant: { count: { schema: Schema.Finite } },
 		});
 
 		const messageChannelStub = createMessageChannelStub();
@@ -1476,9 +1473,9 @@ describe("loadNamespace (Promise wrapper)", () => {
 		const transportStub = createTransportStub();
 		transportStub.callRpc.mockReturnValue(Effect.succeed(84));
 		const manifest = defineNamespace("root", {
-			topic: { chat: { schema: Schema.Number } },
+			topic: { chat: { schema: Schema.Finite } },
 			rpc: {
-				echo: { schema: { request: Schema.Number, response: Schema.Number } },
+				echo: { schema: { request: Schema.Finite, response: Schema.Finite } },
 			},
 		});
 
@@ -1502,7 +1499,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 			receive: () => Effect.succeed(Stream.fromQueue(queue)),
 		};
 		const manifest = defineNamespace("root", {
-			replicant: { count: { schema: Schema.Number } },
+			replicant: { count: { schema: Schema.Finite } },
 		});
 		const field = {
 			type: "replicant",
@@ -1545,7 +1542,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 	test("topic subscribe resolves before any event is published", async () => {
 		const manifest = defineNamespace("root", {
-			topic: { chat: { schema: Schema.Number } },
+			topic: { chat: { schema: Schema.Finite } },
 		});
 		const loaded = await loadNamespace(manifest, {
 			fieldTransport: () => createTransportStub(),
@@ -1674,10 +1671,11 @@ describe("derivation over loaded fields", () => {
 				}),
 			);
 
+			const context = yield* Effect.context();
 			yield* Effect.promise(() =>
 				vi.waitFor(async () => {
 					expect(
-						await Effect.runPromise(
+						await Effect.runPromiseWith(context)(
 							loaded.replicant.scoreLeft
 								.get()
 								.pipe(
@@ -1715,11 +1713,12 @@ describe("derivation over loaded fields", () => {
 				}),
 			);
 			yield* PubSub.publish(pubsub, publish("scoreLeft", 0));
+			const runPromise = yield* Effect.context().pipe(
+				Effect.map(Effect.runPromiseWith),
+			);
 			yield* Effect.promise(() =>
 				vi.waitFor(async () => {
-					expect(
-						await Effect.runPromise(loaded.replicant.scoreLeft.get()),
-					).toBe(0);
+					expect(await runPromise(loaded.replicant.scoreLeft.get())).toBe(0);
 				}),
 			);
 
@@ -1729,9 +1728,7 @@ describe("derivation over loaded fields", () => {
 			yield* PubSub.publish(pubsub, publish("scoreLeft", 10, 2));
 			yield* Effect.promise(() =>
 				vi.waitFor(async () => {
-					expect(
-						await Effect.runPromise(loaded.replicant.scoreLeft.get()),
-					).toBe(10);
+					expect(await runPromise(loaded.replicant.scoreLeft.get())).toBe(10);
 				}),
 			);
 

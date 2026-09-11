@@ -1,17 +1,25 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import { realpathSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+// @effect-diagnostics nodeBuiltinImport:error
 
 import { NodeFileSystem } from "@effect/platform-node";
-import { it } from "@effect/vitest";
-import { Effect, FileSystem } from "effect";
+import { testLayer } from "@nodecg-next/test-utils";
+import { Effect, FileSystem, Layer } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { afterAll, describe, expect, vi } from "vitest";
 
+import { UrlPath } from "./url-path.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
 
 vi.stubEnv("NODECG_BASE_URL", "http://localhost:3000/sub");
 afterAll(() => {
 	vi.unstubAllEnvs();
 });
+
+const test = testLayer(
+	Layer.mergeAll(NodeFileSystem.layer, UrlPath.layer, FetchHttpClient.layer),
+);
 
 const startDevServer = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem;
@@ -51,16 +59,18 @@ const startDevServer = Effect.gen(function* () {
 		return yield* Effect.die("expected address object");
 	}
 	return `http://localhost:${address.port}`;
-}).pipe(Effect.provide(NodeFileSystem.layer));
+});
 
 const request = (origin: string, path: string) =>
-	Effect.promise(async () => {
-		const response = await fetch(`${origin}${path}`);
-		return { status: response.status, body: await response.text() };
+	Effect.gen(function* () {
+		const client = yield* HttpClient.HttpClient;
+		const response = yield* client.get(`${origin}${path}`);
+		return { status: response.status, body: yield* response.text };
 	});
 
 describe("buildViteServer", () => {
-	it.effect("serves the index under the configured base", () =>
+	test(
+		"serves the index under the configured base",
 		Effect.gen(function* () {
 			const origin = yield* startDevServer;
 			const response = yield* request(origin, "/sub/frontend/namespaces/ns/");
@@ -69,7 +79,8 @@ describe("buildViteServer", () => {
 		}),
 	);
 
-	it.effect("serves an asset under the configured base", () =>
+	test(
+		"serves an asset under the configured base",
 		Effect.gen(function* () {
 			const origin = yield* startDevServer;
 			const response = yield* request(

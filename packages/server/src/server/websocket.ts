@@ -210,27 +210,27 @@ export const websocketRoute = HttpRouter.use((router) =>
 				}
 
 				const fiber = yield* Effect.forkScoped(
-					Match.value(target)
-						.pipe(
-							Match.tag("Replicant", ({ field, internal }) =>
-								Effect.gen(function* () {
-									const frames = yield* internal.subscribeRevisioned();
-									yield* Stream.runForEach(frames, (frame) =>
-										send(replicantFrameMessage(field, frame)),
-									);
-								}),
-							),
-							Match.tag("Computed", "Topic", ({ field, internal }) =>
-								Effect.gen(function* () {
-									const stream = yield* internal.subscribeEncoded();
-									yield* Stream.runForEach(stream, (value) =>
-										send(FieldValueMessage.make({ field, value })),
-									);
-								}),
-							),
-							Match.exhaustive,
-						)
-						.pipe(Effect.scoped, rejectSubscribeFailure(field)),
+					Match.value(target).pipe(
+						Match.tag("Replicant", ({ field, internal }) =>
+							Effect.gen(function* () {
+								const frames = yield* internal.subscribeRevisioned();
+								yield* Stream.runForEach(frames, (frame) =>
+									send(replicantFrameMessage(field, frame)),
+								);
+							}),
+						),
+						Match.tag("Computed", "Topic", ({ field, internal }) =>
+							Effect.gen(function* () {
+								const stream = yield* internal.subscribeEncoded();
+								yield* Stream.runForEach(stream, (value) =>
+									send(FieldValueMessage.make({ field, value })),
+								);
+							}),
+						),
+						Match.exhaustive,
+						Effect.scoped,
+						rejectSubscribeFailure(field),
+					),
 				);
 				return Option.some(fiber);
 			});

@@ -17,7 +17,11 @@ import {
 	Schema,
 	Scope,
 } from "effect";
-import { HttpMiddleware, HttpRouter } from "effect/unstable/http";
+import {
+	FetchHttpClient,
+	HttpMiddleware,
+	HttpRouter,
+} from "effect/unstable/http";
 
 import {
 	type AuthProvider,
@@ -52,6 +56,7 @@ import { basePathMiddleware } from "./server/base-path.ts";
 import { frontendRoutes } from "./server/frontend-serving.ts";
 import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
+import { UrlPath } from "./server/url-path.ts";
 import { websocketRoute } from "./server/websocket.ts";
 import { InMemoryMachineClientStore } from "./services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
@@ -320,15 +325,14 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 					),
 				),
 				Layer.provide(httpServer),
+				Layer.provide(UrlPath.layer),
+				Layer.provide(FetchHttpClient.layer),
 			);
 			return yield* Layer.launch(ServerLive);
 		});
 
 		return { namespaces, start };
-	}).pipe(
-		Effect.provideService(LoadedNamespacesService, loaded),
-		Effect.provide(BuiltNamespaceRegistry.layer),
-	);
+	}).pipe(Effect.provideService(LoadedNamespacesService, loaded));
 });
 
 export interface LoadedNodeCG<
@@ -347,6 +351,7 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 				Layer.provide(replicantStorage(options.storage)),
 			),
 			InMemoryTopicBroker,
+			BuiltNamespaceRegistry.layer,
 			Layer.effect(Scope.Scope, Effect.scope),
 			Logger.layer([Logger.consolePretty()]),
 		),

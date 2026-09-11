@@ -278,16 +278,14 @@ export const buildFields = Effect.fn("buildFields")(function* <
 			manifest.namespace,
 			name,
 			codec,
-			Effect.gen(function* () {
-				return yield* Effect.try({
-					try: () => compute(computeContext),
-					catch: (error) =>
-						new ComputedComputeError({
-							namespace: manifest.namespace,
-							name,
-							cause: toError(error),
-						}),
-				});
+			Effect.try({
+				try: () => compute(computeContext),
+				catch: (error) =>
+					ComputedComputeError.make({
+						namespace: manifest.namespace,
+						name,
+						cause: toError(error),
+					}),
 			}),
 		),
 	);

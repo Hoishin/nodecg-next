@@ -17,8 +17,8 @@ const wsUrl = Effect.fn("wsUrl")(function* (baseUrl?: string) {
 	return url.href;
 });
 
-export const webSocketMessageChannel = (baseUrl?: string) => {
-	return SocketMessageChannel.pipe(
+export const webSocketMessageChannel = (baseUrl?: string) =>
+	SocketMessageChannel.pipe(
 		Layer.provide(
 			Layer.effect(
 				Socket.Socket,
@@ -30,4 +30,3 @@ export const webSocketMessageChannel = (baseUrl?: string) => {
 		),
 		Layer.provide(Socket.layerWebSocketConstructorGlobal),
 	);
-};

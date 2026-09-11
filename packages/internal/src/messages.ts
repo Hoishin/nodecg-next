@@ -55,16 +55,16 @@ export type ClientMessage = typeof ClientMessage.Type;
 export const ReplicantSnapshotMessage = Schema.TaggedStruct("snapshot", {
 	field: ReplicantFieldIdentifier,
 	value: Schema.Json,
-	revision: Schema.Number,
+	revision: Schema.Int,
 });
 export type ReplicantSnapshotMessage = typeof ReplicantSnapshotMessage.Type;
 
 export const ReplicantDeltaMessage = Schema.TaggedStruct("delta", {
 	field: ReplicantFieldIdentifier,
 	ops: Schema.NonEmptyArray(ChangeOp),
-	baseRevision: Schema.Number,
-	revision: Schema.Number,
-	hash: Schema.Number,
+	baseRevision: Schema.Int,
+	revision: Schema.Int,
+	hash: Schema.Int,
 });
 export type ReplicantDeltaMessage = typeof ReplicantDeltaMessage.Type;
 

@@ -43,7 +43,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	) =>
 		attempt.pipe(
 			Effect.retry({
-				while: (error) => error instanceof CommitContended,
+				while: Schema.is(CommitContended),
 				times: 100,
 			}),
 			Effect.catchTag("CommitContended", () =>
