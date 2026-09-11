@@ -5,7 +5,7 @@ import {
 	HttpApiSecurity,
 } from "effect/unstable/httpapi";
 
-import { RoleNameSchema } from "./role.ts";
+import { GlobalRoleNameSchema, RoleNameSchema } from "./role.ts";
 
 export const AnonymousIdentitySchema = Schema.TaggedStruct("anonymous", {});
 
@@ -19,6 +19,7 @@ export type HumanAccount = typeof HumanAccountSchema.Type;
 export const HumanIdentitySchema = Schema.TaggedStruct("human", {
 	account: HumanAccountSchema,
 	roles: Schema.ReadonlySet(RoleNameSchema),
+	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
 });
 export type HumanIdentity = typeof HumanIdentitySchema.Type;
 
@@ -26,6 +27,7 @@ export const MachineIdentitySchema = Schema.TaggedStruct("machine", {
 	id: Schema.String,
 	displayName: Schema.String,
 	roles: Schema.ReadonlySet(RoleNameSchema),
+	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
 });
 export type MachineIdentity = typeof MachineIdentitySchema.Type;
 

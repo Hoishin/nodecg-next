@@ -11,8 +11,7 @@ export {
 	MachineAssignmentSchema,
 	type MePayload,
 	MePayloadSchema,
-	type RoleAssignmentsDocument,
-	RoleAssignmentsDocumentSchema,
+	RoleAssignmentsDocument,
 	RoleImportError,
 	TooManyRequests,
 } from "./api/api-internal.ts";
@@ -65,7 +64,9 @@ export {
 	type PrincipalName,
 } from "./principal.ts";
 export {
-	ADMIN_ROLE,
+	ADMIN_TIER,
+	type AdminRoleName,
+	type GlobalRoleName,
 	isUndeclarableRole,
 	RoleName,
 	type UndeclarableRoleName,

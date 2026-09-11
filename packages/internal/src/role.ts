@@ -7,13 +7,14 @@ export type RoleName = typeof RoleNameSchema.Type;
 export const RoleName = Brand.nominal<RoleName>();
 
 export const AdminRoleNameSchema = Schema.Literals(["admin", "superadmin"]);
+export type AdminRoleName = typeof AdminRoleNameSchema.Type;
 
-export const ADMIN_ROLE: Record<typeof AdminRoleNameSchema.Type, RoleName> = {
-	admin: RoleName("admin"),
-	superadmin: RoleName("superadmin"),
-};
+export const ADMIN_TIER: ReadonlySet<AdminRoleName> = new Set(
+	AdminRoleNameSchema.literals,
+);
 
-export const ADMIN_ROLE_BY_NAME = new Map(Object.entries(ADMIN_ROLE));
+export const GlobalRoleNameSchema = Schema.Union([AdminRoleNameSchema]);
+export type GlobalRoleName = typeof GlobalRoleNameSchema.Type;
 
 export const UndeclarableRoleSchema = Schema.Union([
 	PrincipalNameSchema,

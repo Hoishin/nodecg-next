@@ -26,6 +26,7 @@ const mePayload = {
 		_tag: "human",
 		account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 		roles: [],
+		globalRoles: [],
 	},
 	namespaces: {
 		fixture: { roles: ["producer"] },

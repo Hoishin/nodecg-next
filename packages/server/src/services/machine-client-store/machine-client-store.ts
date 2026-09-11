@@ -1,10 +1,11 @@
-import type { RoleName } from "@nodecg-next/internal";
+import type { GlobalRoleName, RoleName } from "@nodecg-next/internal";
 import { Context, type Effect, type Option, type Redacted } from "effect";
 
 export interface MachineClient {
 	readonly id: string;
 	readonly displayName: string;
 	readonly roles: ReadonlySet<RoleName>;
+	readonly globalRoles: ReadonlySet<GlobalRoleName>;
 }
 
 export interface CreatedApiKey {
@@ -22,7 +23,7 @@ export interface MachineClientStore {
 		token: string,
 	) => Effect.Effect<Option.Option<MachineClient>>;
 
-	readonly list: () => Effect.Effect<ReadonlyArray<MachineClient>>;
+	readonly list: Effect.Effect<ReadonlyArray<MachineClient>>;
 
 	readonly revoke: (id: string) => Effect.Effect<Option.Option<MachineClient>>;
 
@@ -44,6 +45,21 @@ export interface MachineClientStore {
 		id: string,
 		role: RoleName,
 	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
+
+	readonly setGlobalRoles: (
+		id: string,
+		globalRoles: ReadonlySet<GlobalRoleName>,
+	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
+
+	readonly grantGlobal: (
+		id: string,
+		role: GlobalRoleName,
+	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
+
+	readonly revokeGlobal: (
+		id: string,
+		role: GlobalRoleName,
+	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
 }
 
 export class MachineClientStoreService extends Context.Service<

@@ -13,7 +13,11 @@ import {
 	IdentitySchema,
 	SuperadminMiddleware,
 } from "../auth.ts";
-import { AdminRoleNameSchema, RoleNameSchema } from "../role.ts";
+import {
+	AdminRoleNameSchema,
+	GlobalRoleNameSchema,
+	RoleNameSchema,
+} from "../role.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
@@ -29,6 +33,10 @@ export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
 
 const RoleAssignmentResultSchema = Schema.Struct({
 	roles: Schema.ReadonlySet(RoleNameSchema),
+});
+
+const GlobalRoleAssignmentResultSchema = Schema.Struct({
+	roles: Schema.ReadonlySet(GlobalRoleNameSchema),
 });
 
 const NamespacePermissionsSchema = Schema.Struct({
@@ -96,7 +104,7 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 			"/authentication/claim-superadmin",
 			{
 				payload: ClaimSuperadminRequestSchema,
-				success: RoleAssignmentResultSchema,
+				success: GlobalRoleAssignmentResultSchema,
 				error: [
 					HttpApiError.Forbidden,
 					TooManyRequests.pipe(HttpApiSchema.status(429)),
@@ -115,24 +123,26 @@ export const HumanAssignmentSchema = Schema.TaggedStruct("human", {
 	issuer: Schema.String,
 	subject: Schema.String,
 	roles: Schema.ReadonlySet(RoleNameSchema),
+	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
 });
 
 export const MachineAssignmentSchema = Schema.TaggedStruct("machine", {
 	id: Schema.String,
 	roles: Schema.ReadonlySet(RoleNameSchema),
+	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
 });
 
-export const RoleAssignmentsDocumentSchema = Schema.Struct({
+export const RoleAssignmentsDocument = Schema.Struct({
 	version: Schema.Literal(0),
 	assignments: Schema.Array(
 		Schema.Union([HumanAssignmentSchema, MachineAssignmentSchema]),
 	),
 });
-export type RoleAssignmentsDocument = typeof RoleAssignmentsDocumentSchema.Type;
+export type RoleAssignmentsDocument = typeof RoleAssignmentsDocument.Type;
 
 const ImportAssignmentsRequestSchema = Schema.Struct({
 	mode: Schema.Literals(["replace", "merge"]),
-	document: RoleAssignmentsDocumentSchema,
+	document: RoleAssignmentsDocument,
 });
 
 const CreateApiKeyRequestSchema = Schema.Struct({
@@ -149,6 +159,7 @@ const MachineClientSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
 	roles: Schema.ReadonlySet(RoleNameSchema),
+	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
 });
 
 const ListMachinesResultSchema = Schema.Struct({
@@ -217,7 +228,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	)
 	.add(
 		HttpApiEndpoint.get("export", "/roles/export", {
-			success: RoleAssignmentsDocumentSchema,
+			success: RoleAssignmentsDocument,
 		}),
 	)
 	.add(
@@ -248,14 +259,14 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 	.add(
 		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
 			payload: AdminRoleAssignmentSchema,
-			success: RoleAssignmentResultSchema,
+			success: GlobalRoleAssignmentResultSchema,
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke", {
 			payload: AdminRoleAssignmentSchema,
-			success: RoleAssignmentResultSchema,
+			success: GlobalRoleAssignmentResultSchema,
 			error: HttpApiError.NotFound,
 		}),
 	)

@@ -36,6 +36,7 @@ describe("validateApiKey", () => {
 				id: created.id,
 				displayName: "Bot",
 				roles: new Set(),
+				globalRoles: new Set(),
 			});
 		}),
 	);
@@ -58,12 +59,22 @@ describe("list", () => {
 			const machines = yield* MachineClientStoreService;
 			const a = yield* machines.createApiKey({ displayName: "Bot A" });
 			const b = yield* machines.createApiKey({ displayName: "Bot B" });
-			const clients = yield* machines.list();
+			const clients = yield* machines.list;
 			expect(clients).toHaveLength(2);
 			expect(clients).toEqual(
 				expect.arrayContaining([
-					{ id: a.id, displayName: "Bot A", roles: new Set() },
-					{ id: b.id, displayName: "Bot B", roles: new Set() },
+					{
+						id: a.id,
+						displayName: "Bot A",
+						roles: new Set(),
+						globalRoles: new Set(),
+					},
+					{
+						id: b.id,
+						displayName: "Bot B",
+						roles: new Set(),
+						globalRoles: new Set(),
+					},
 				]),
 			);
 		}),
@@ -73,7 +84,7 @@ describe("list", () => {
 		"is empty before any key is created",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			expect(yield* machines.list()).toEqual([]);
+			expect(yield* machines.list).toEqual([]);
 		}),
 	);
 });
@@ -90,13 +101,14 @@ describe("revoke", () => {
 				id: created.id,
 				displayName: "Bot",
 				roles: new Set(),
+				globalRoles: new Set(),
 			});
 			expect(
 				Option.isNone(
 					yield* machines.validateApiKey(Redacted.value(created.token)),
 				),
 			).toBe(true);
-			expect(yield* machines.list()).toEqual([]);
+			expect(yield* machines.list).toEqual([]);
 		}),
 	);
 
@@ -113,6 +125,7 @@ describe("revoke", () => {
 				id: b.id,
 				displayName: "Bot B",
 				roles: new Set(),
+				globalRoles: new Set(),
 			});
 		}),
 	);
@@ -158,6 +171,7 @@ describe("refreshApiKey", () => {
 				id: created.id,
 				displayName: "Bot",
 				roles: new Set(),
+				globalRoles: new Set(),
 			});
 			expect(
 				Option.isNone(
@@ -173,8 +187,13 @@ describe("refreshApiKey", () => {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			yield* machines.refreshApiKey(created.id);
-			expect(yield* machines.list()).toEqual([
-				{ id: created.id, displayName: "Bot", roles: new Set() },
+			expect(yield* machines.list).toEqual([
+				{
+					id: created.id,
+					displayName: "Bot",
+					roles: new Set(),
+					globalRoles: new Set(),
+				},
 			]);
 		}),
 	);
@@ -218,6 +237,21 @@ describe("setRoles", () => {
 			const result = yield* machines.setRoles(created.id, new Set());
 			assert(Option.isSome(result));
 			expect(result.value).toEqual(new Set());
+		}),
+	);
+
+	test(
+		"leaves the client's global roles untouched",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			const created = yield* machines.createApiKey({ displayName: "Bot" });
+			yield* machines.grantGlobal(created.id, "admin");
+			yield* machines.setRoles(created.id, new Set());
+			const resolved = yield* machines.validateApiKey(
+				Redacted.value(created.token),
+			);
+			assert(Option.isSome(resolved));
+			expect(resolved.value.globalRoles).toEqual(new Set(["admin"]));
 		}),
 	);
 
@@ -306,6 +340,83 @@ describe("grantRole / revokeRole", () => {
 			).toBe(true);
 			expect(
 				Option.isNone(yield* machines.revokeRole("ghost", RoleName("viewer"))),
+			).toBe(true);
+		}),
+	);
+});
+
+describe("setGlobalRoles", () => {
+	test(
+		"replaces the whole global set and leaves the client's roles",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			const created = yield* machines.createApiKey({ displayName: "Bot" });
+			yield* machines.grantRole(created.id, RoleName("viewer"));
+			yield* machines.grantGlobal(created.id, "admin");
+			const result = yield* machines.setGlobalRoles(
+				created.id,
+				new Set(["superadmin"]),
+			);
+			assert(Option.isSome(result));
+			expect(result.value).toEqual(new Set(["superadmin"]));
+			const resolved = yield* machines.validateApiKey(
+				Redacted.value(created.token),
+			);
+			assert(Option.isSome(resolved));
+			expect(resolved.value).toEqual({
+				id: created.id,
+				displayName: "Bot",
+				roles: new Set([RoleName("viewer")]),
+				globalRoles: new Set(["superadmin"]),
+			});
+		}),
+	);
+
+	test(
+		"returns None for an unknown id",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			expect(
+				yield* machines.setGlobalRoles("ghost", new Set(["admin"])),
+			).toEqual(Option.none());
+		}),
+	);
+});
+
+describe("grantGlobal / revokeGlobal", () => {
+	test(
+		"grants and revokes a global role on the client",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			const created = yield* machines.createApiKey({ displayName: "Bot" });
+			const granted = yield* machines.grantGlobal(created.id, "admin");
+			assert(Option.isSome(granted));
+			expect(granted.value).toEqual(new Set(["admin"]));
+			const revoked = yield* machines.revokeGlobal(created.id, "admin");
+			assert(Option.isSome(revoked));
+			expect(revoked.value).toEqual(new Set());
+			const resolved = yield* machines.validateApiKey(
+				Redacted.value(created.token),
+			);
+			assert(Option.isSome(resolved));
+			expect(resolved.value).toEqual({
+				id: created.id,
+				displayName: "Bot",
+				roles: new Set(),
+				globalRoles: new Set(),
+			});
+		}),
+	);
+
+	test(
+		"return None for an unknown id",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			expect(Option.isNone(yield* machines.grantGlobal("ghost", "admin"))).toBe(
+				true,
+			);
+			expect(
+				Option.isNone(yield* machines.revokeGlobal("ghost", "admin")),
 			).toBe(true);
 		}),
 	);

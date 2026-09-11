@@ -1,5 +1,5 @@
 import {
-	ADMIN_ROLE,
+	ADMIN_TIER,
 	DeclarablePrincipalNameSchema,
 	type DeclarablePrincipalName,
 	type Identity,
@@ -81,13 +81,27 @@ export const getRolesFromIdentity = (caller: Identity): ReadonlySet<RoleName> =>
 		Match.exhaustive,
 	);
 
-const ADMIN_ROLES = new Set(Object.values(ADMIN_ROLE));
-
 export const isAdminTier = (caller: Identity): boolean =>
-	!getRolesFromIdentity(caller).isDisjointFrom(ADMIN_ROLES);
+	Match.value(caller).pipe(
+		Match.tag(
+			"human",
+			"machine",
+			(holder) => !holder.globalRoles.isDisjointFrom(ADMIN_TIER),
+		),
+		Match.tag("anonymous", () => false),
+		Match.tag("server", () => false),
+		Match.exhaustive,
+	);
 
 export const isSuperadmin = (caller: Identity): boolean =>
-	getRolesFromIdentity(caller).has(ADMIN_ROLE.superadmin);
+	Match.value(caller).pipe(
+		Match.tag("human", "machine", (holder) =>
+			holder.globalRoles.has("superadmin"),
+		),
+		Match.tag("anonymous", () => false),
+		Match.tag("server", () => false),
+		Match.exhaustive,
+	);
 
 const can = (
 	access: Access,
@@ -97,10 +111,10 @@ const can = (
 	if (caller._tag === "server") {
 		return true;
 	}
-	const roles = getRolesFromIdentity(caller);
-	if (!roles.isDisjointFrom(ADMIN_ROLES)) {
+	if (isAdminTier(caller)) {
 		return true;
 	}
+	const roles = getRolesFromIdentity(caller);
 
 	const isClient = !roles.isDisjointFrom(namedRoles);
 	if (isClient && access.client === "deny") {

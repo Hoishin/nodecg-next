@@ -68,6 +68,7 @@ const scorer = Layer.succeed(
 			displayName: "Scorer",
 		}),
 		roles: new Set([RoleName("scorer")]),
+		globalRoles: new Set(),
 	}),
 );
 

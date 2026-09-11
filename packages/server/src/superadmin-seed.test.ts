@@ -1,5 +1,4 @@
 import { it } from "@effect/vitest";
-import { ADMIN_ROLE } from "@nodecg-next/internal";
 import { Cause, ConfigProvider, Effect, Exit, HashMap, Layer } from "effect";
 import { assert, describe, expect } from "vitest";
 
@@ -46,13 +45,13 @@ describe("seededRoleStore", () => {
 				const roles = yield* RoleStoreService;
 				expect(
 					yield* roles.get({ issuer: "https://idp.test", subject: "root" }),
-				).toEqual(new Set([ADMIN_ROLE.superadmin]));
+				).toEqual({ roles: new Set(), globalRoles: new Set(["superadmin"]) });
 				expect(
 					yield* roles.get({ issuer: "https://idp.test", subject: "backup" }),
-				).toEqual(new Set([ADMIN_ROLE.superadmin]));
+				).toEqual({ roles: new Set(), globalRoles: new Set(["superadmin"]) });
 				expect(
 					yield* roles.get({ issuer: "https://idp.test", subject: "other" }),
-				).toEqual(new Set());
+				).toEqual({ roles: new Set(), globalRoles: new Set() });
 			}).pipe(
 				Effect.provide(
 					seeded({ SUPERADMINS: "dev:root, dev:backup" }, [
@@ -65,7 +64,7 @@ describe("seededRoleStore", () => {
 	it.effect("seeds nothing when SUPERADMINS is unset", () =>
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			expect(yield* roles.list()).toEqual([]);
+			expect(yield* roles.list).toEqual([]);
 		}).pipe(
 			Effect.provide(seeded({}, [stubProvider("dev", "https://idp.test")])),
 		),
@@ -74,7 +73,7 @@ describe("seededRoleStore", () => {
 	it.effect("seeds nothing when SUPERADMINS is an empty string", () =>
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			expect(yield* roles.list()).toEqual([]);
+			expect(yield* roles.list).toEqual([]);
 		}).pipe(
 			Effect.provide(
 				seeded({ SUPERADMINS: "" }, [stubProvider("dev", "https://idp.test")]),
@@ -87,10 +86,10 @@ describe("seededRoleStore", () => {
 			const roles = yield* RoleStoreService;
 			expect(
 				yield* roles.get({ issuer: "https://idp.test", subject: "root" }),
-			).toEqual(new Set());
+			).toEqual({ roles: new Set(), globalRoles: new Set() });
 			expect(
 				yield* roles.get({ issuer: "https://idp.test", subject: "existing" }),
-			).toEqual(new Set([ADMIN_ROLE.superadmin]));
+			).toEqual({ roles: new Set(), globalRoles: new Set(["superadmin"]) });
 		}).pipe(
 			Effect.provide(
 				seedSuperadmins.pipe(
@@ -98,9 +97,9 @@ describe("seededRoleStore", () => {
 						Layer.effectDiscard(
 							Effect.gen(function* () {
 								const roles = yield* RoleStoreService;
-								yield* roles.grant(
+								yield* roles.grantGlobal(
 									{ issuer: "https://idp.test", subject: "existing" },
-									ADMIN_ROLE.superadmin,
+									"superadmin",
 								);
 							}),
 						).pipe(Layer.provideMerge(InMemoryRoleStore)),

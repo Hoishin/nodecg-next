@@ -1,4 +1,4 @@
-import { ADMIN_ROLE } from "@nodecg-next/internal";
+import { RoleName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
@@ -12,12 +12,18 @@ const alice = { issuer: "https://idp.test", subject: "alice" };
 const bob = { issuer: "https://idp.test", subject: "bob" };
 const aliceElsewhere = { issuer: "https://other.test", subject: "alice" };
 
+const producer = RoleName("producer");
+const viewer = RoleName("viewer");
+
 describe("get", () => {
 	test(
-		"returns an empty set for an unassigned identity",
+		"returns empty grants for an unassigned identity",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			expect(yield* roles.get(alice)).toEqual(new Set());
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set(),
+				globalRoles: new Set(),
+			});
 		}),
 	);
 });
@@ -27,31 +33,29 @@ describe("list", () => {
 		"returns every assignment with its identity key",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			yield* roles.grant(alice, ADMIN_ROLE.admin);
-			yield* roles.grant(bob, ADMIN_ROLE.admin);
-			const assignments = yield* roles.list();
+			yield* roles.grant(alice, producer);
+			yield* roles.grant(alice, viewer);
+			yield* roles.grantGlobal(bob, "admin");
+			const assignments = yield* roles.list;
 			expect(assignments).toHaveLength(2);
 			expect(assignments).toEqual(
 				expect.arrayContaining([
 					{
 						key: alice,
-						roles: new Set([ADMIN_ROLE.superadmin, ADMIN_ROLE.admin]),
+						roles: new Set([producer, viewer]),
+						globalRoles: new Set(),
 					},
-					{ key: bob, roles: new Set([ADMIN_ROLE.admin]) },
+					{ key: bob, roles: new Set(), globalRoles: new Set(["admin"]) },
 				]),
 			);
 		}),
 	);
 
 	test(
-		"is empty initially and after the last role is revoked",
+		"is empty initially",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			expect(yield* roles.list()).toEqual([]);
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			yield* roles.revoke(alice, ADMIN_ROLE.superadmin);
-			expect(yield* roles.list()).toEqual([]);
+			expect(yield* roles.list).toEqual([]);
 		}),
 	);
 });
@@ -61,20 +65,25 @@ describe("set", () => {
 		"replaces the identity's whole role set",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			yield* roles.set(alice, new Set([ADMIN_ROLE.admin]));
-			expect(yield* roles.get(alice)).toEqual(new Set([ADMIN_ROLE.admin]));
+			yield* roles.grant(alice, producer);
+			yield* roles.set(alice, new Set([viewer]));
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set([viewer]),
+				globalRoles: new Set(),
+			});
 		}),
 	);
 
 	test(
-		"an empty set clears the identity from the listing",
+		"leaves the identity's global roles untouched",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
+			yield* roles.grantGlobal(alice, "superadmin");
 			yield* roles.set(alice, new Set());
-			expect(yield* roles.get(alice)).toEqual(new Set());
-			expect(yield* roles.list()).toEqual([]);
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set(),
+				globalRoles: new Set(["superadmin"]),
+			});
 		}),
 	);
 
@@ -82,9 +91,12 @@ describe("set", () => {
 		"leaves other identities alone",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(bob, ADMIN_ROLE.admin);
-			yield* roles.set(alice, new Set([ADMIN_ROLE.superadmin]));
-			expect(yield* roles.get(bob)).toEqual(new Set([ADMIN_ROLE.admin]));
+			yield* roles.grant(bob, viewer);
+			yield* roles.set(alice, new Set([producer]));
+			expect(yield* roles.get(bob)).toEqual({
+				roles: new Set([viewer]),
+				globalRoles: new Set(),
+			});
 		}),
 	);
 });
@@ -94,9 +106,11 @@ describe("grant", () => {
 		"adds a role and returns the resulting set",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			const result = yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			expect(result).toEqual(new Set([ADMIN_ROLE.superadmin]));
-			expect(yield* roles.get(alice)).toEqual(new Set([ADMIN_ROLE.superadmin]));
+			expect(yield* roles.grant(alice, producer)).toEqual(new Set([producer]));
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set([producer]),
+				globalRoles: new Set(),
+			});
 		}),
 	);
 
@@ -104,11 +118,10 @@ describe("grant", () => {
 		"accumulates multiple roles and is idempotent per role",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			const result = yield* roles.grant(alice, ADMIN_ROLE.admin);
-			expect(result).toEqual(
-				new Set([ADMIN_ROLE.superadmin, ADMIN_ROLE.admin]),
+			yield* roles.grant(alice, producer);
+			yield* roles.grant(alice, producer);
+			expect(yield* roles.grant(alice, viewer)).toEqual(
+				new Set([producer, viewer]),
 			);
 		}),
 	);
@@ -117,9 +130,10 @@ describe("grant", () => {
 		"keeps assignments isolated by issuer-qualified subject",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			expect(yield* roles.get(bob)).toEqual(new Set());
-			expect(yield* roles.get(aliceElsewhere)).toEqual(new Set());
+			yield* roles.grant(alice, producer);
+			const empty = { roles: new Set(), globalRoles: new Set() };
+			expect(yield* roles.get(bob)).toEqual(empty);
+			expect(yield* roles.get(aliceElsewhere)).toEqual(empty);
 		}),
 	);
 });
@@ -129,23 +143,13 @@ describe("revoke", () => {
 		"removes a granted role and leaves the rest",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			yield* roles.grant(alice, ADMIN_ROLE.admin);
-			const result = yield* roles.revoke(alice, ADMIN_ROLE.admin);
-			expect(result).toEqual(new Set([ADMIN_ROLE.superadmin]));
-			expect(yield* roles.get(alice)).toEqual(new Set([ADMIN_ROLE.superadmin]));
-		}),
-	);
-
-	test(
-		"revoking the last role clears the identity back to empty",
-		Effect.gen(function* () {
-			const roles = yield* RoleStoreService;
-			yield* roles.grant(alice, ADMIN_ROLE.superadmin);
-			expect(yield* roles.revoke(alice, ADMIN_ROLE.superadmin)).toEqual(
-				new Set(),
-			);
-			expect(yield* roles.get(alice)).toEqual(new Set());
+			yield* roles.grant(alice, producer);
+			yield* roles.grant(alice, viewer);
+			expect(yield* roles.revoke(alice, viewer)).toEqual(new Set([producer]));
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set([producer]),
+				globalRoles: new Set(),
+			});
 		}),
 	);
 
@@ -153,9 +157,66 @@ describe("revoke", () => {
 		"revoking from an unassigned identity is a no-op",
 		Effect.gen(function* () {
 			const roles = yield* RoleStoreService;
-			expect(yield* roles.revoke(alice, ADMIN_ROLE.superadmin)).toEqual(
-				new Set(),
+			expect(yield* roles.revoke(alice, producer)).toEqual(new Set());
+		}),
+	);
+});
+
+describe("setGlobal", () => {
+	test(
+		"replaces the identity's whole global role set and leaves its roles",
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			yield* roles.grant(alice, producer);
+			yield* roles.grantGlobal(alice, "admin");
+			yield* roles.setGlobal(alice, new Set(["superadmin"]));
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set([producer]),
+				globalRoles: new Set(["superadmin"]),
+			});
+		}),
+	);
+});
+
+describe("grantGlobal", () => {
+	test(
+		"adds a global role and returns the resulting set",
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			yield* roles.grantGlobal(alice, "admin");
+			expect(yield* roles.grantGlobal(alice, "superadmin")).toEqual(
+				new Set(["admin", "superadmin"]),
 			);
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set(),
+				globalRoles: new Set(["admin", "superadmin"]),
+			});
+		}),
+	);
+});
+
+describe("revokeGlobal", () => {
+	test(
+		"removes a granted global role and leaves the rest",
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			yield* roles.grantGlobal(alice, "admin");
+			yield* roles.grantGlobal(alice, "superadmin");
+			expect(yield* roles.revokeGlobal(alice, "admin")).toEqual(
+				new Set(["superadmin"]),
+			);
+			expect(yield* roles.get(alice)).toEqual({
+				roles: new Set(),
+				globalRoles: new Set(["superadmin"]),
+			});
+		}),
+	);
+
+	test(
+		"revoking from an unassigned identity is a no-op",
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			expect(yield* roles.revokeGlobal(alice, "admin")).toEqual(new Set());
 		}),
 	);
 });

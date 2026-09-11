@@ -1,5 +1,5 @@
 import {
-	ADMIN_ROLE,
+	type AdminRoleName,
 	HumanAccountSchema,
 	HumanIdentitySchema,
 	MachineIdentitySchema,
@@ -17,20 +17,29 @@ import {
 } from "./define-namespace.ts";
 import { getRolesFromIdentity, isAdminTier } from "./role.ts";
 
+const account = HumanAccountSchema.make({
+	issuer: "test",
+	subject: "subject",
+	displayName: "Tester",
+});
 const human = (...roles: RoleName[]) =>
 	HumanIdentitySchema.make({
-		account: HumanAccountSchema.make({
-			issuer: "test",
-			subject: "subject",
-			displayName: "Tester",
-		}),
+		account,
 		roles: new Set(roles),
+		globalRoles: new Set(),
+	});
+const adminTier = (...globalRoles: AdminRoleName[]) =>
+	HumanIdentitySchema.make({
+		account,
+		roles: new Set(),
+		globalRoles: new Set(globalRoles),
 	});
 const machine = (...roles: RoleName[]) =>
 	MachineIdentitySchema.make({
 		id: "robot",
 		displayName: "Bot",
 		roles: new Set(roles),
+		globalRoles: new Set(),
 	});
 const anonymous = AnonymousIdentitySchema.make({});
 const server = ServerIdentitySchema.make({});
@@ -74,12 +83,10 @@ describe("canRead / canWrite", () => {
 
 	test("admin and superadmin pass every field set by default", () => {
 		expect(
-			manifest.replicant.score.permission.canWrite(
-				human(ADMIN_ROLE.superadmin),
-			),
+			manifest.replicant.score.permission.canWrite(adminTier("superadmin")),
 		).toBe(true);
 		expect(
-			manifest.replicant.score.permission.canWrite(human(ADMIN_ROLE.admin)),
+			manifest.replicant.score.permission.canWrite(adminTier("admin")),
 		).toBe(true);
 	});
 
@@ -109,7 +116,7 @@ describe("canRead / canWrite", () => {
 			manifest.computed.total.permission.canRead(human(RoleName("viewer"))),
 		).toBe(true);
 		expect(
-			manifest.computed.total.permission.canWrite(human(ADMIN_ROLE.superadmin)),
+			manifest.computed.total.permission.canWrite(adminTier("superadmin")),
 		).toBe(false);
 	});
 
@@ -122,7 +129,7 @@ describe("canRead / canWrite", () => {
 		expect(manifest.replicant.score.permission.canWrite(server)).toBe(true);
 		expect(manifest.replicant.config.permission.canWrite(server)).toBe(true);
 		expect(
-			manifest.replicant.config.permission.canWrite(human(ADMIN_ROLE.admin)),
+			manifest.replicant.config.permission.canWrite(adminTier("admin")),
 		).toBe(true);
 		expect(
 			manifest.replicant.config.permission.canWrite(human(RoleName("judge"))),
@@ -241,17 +248,17 @@ describe("deny beats a wildcard grant", () => {
 		expect(
 			sealed.replicant.audit.permission.canRead(human(RoleName("viewer"))),
 		).toBe(false);
-		expect(
-			sealed.replicant.audit.permission.canRead(human(ADMIN_ROLE.admin)),
-		).toBe(true);
+		expect(sealed.replicant.audit.permission.canRead(adminTier("admin"))).toBe(
+			true,
+		);
 		expect(sealed.replicant.audit.permission.canRead(server)).toBe(true);
 	});
 });
 
 describe("isAdminTier", () => {
 	test("holds for superadmin and admin", () => {
-		expect(isAdminTier(human(ADMIN_ROLE.superadmin))).toBe(true);
-		expect(isAdminTier(human(ADMIN_ROLE.admin))).toBe(true);
+		expect(isAdminTier(adminTier("superadmin"))).toBe(true);
+		expect(isAdminTier(adminTier("admin"))).toBe(true);
 	});
 
 	test("fails for a named role, anonymous, and server", () => {

@@ -10,6 +10,7 @@ import { authSession } from "./auth-session.ts";
 const humanIdentity = HumanIdentitySchema.make({
 	account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 	roles: new Set(),
+	globalRoles: new Set(),
 });
 
 const humanPayload: MePayload = { identity: humanIdentity, namespaces: {} };

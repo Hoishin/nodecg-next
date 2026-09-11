@@ -20,9 +20,11 @@ export const resolveSessionIdentity =
 			}
 			yield* deps.sessions.refreshTTL(sessionId);
 			const account = resolved.value;
-			const roles = yield* deps.roleStore.get({
+			const { roles, globalRoles } = yield* deps.roleStore.get({
 				issuer: account.issuer,
 				subject: account.subject,
 			});
-			return Option.some(HumanIdentitySchema.make({ account, roles }));
+			return Option.some(
+				HumanIdentitySchema.make({ account, roles, globalRoles }),
+			);
 		});

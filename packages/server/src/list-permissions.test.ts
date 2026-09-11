@@ -35,6 +35,7 @@ const human = (...roles: ReadonlyArray<string>) =>
 	HumanIdentitySchema.make({
 		account: { issuer: "dev", subject: "subject", displayName: "Subject" },
 		roles: new Set(roles.map(RoleName)),
+		globalRoles: new Set(),
 	});
 
 describe("listPermissions", () => {
@@ -63,7 +64,15 @@ describe("listPermissions", () => {
 			const identities: ReadonlyArray<Identity> = [
 				AnonymousIdentitySchema.make({}),
 				ServerIdentitySchema.make({}),
-				human("superadmin"),
+				HumanIdentitySchema.make({
+					account: {
+						issuer: "dev",
+						subject: "subject",
+						displayName: "Subject",
+					},
+					roles: new Set(),
+					globalRoles: new Set(["superadmin"]),
+				}),
 			];
 			for (const identity of identities) {
 				expect(yield* listPermissions(identity)).toEqual({

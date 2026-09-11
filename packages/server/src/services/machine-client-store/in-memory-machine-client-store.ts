@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { RoleName } from "@nodecg-next/internal";
+import type { GlobalRoleName, RoleName } from "@nodecg-next/internal";
 import { Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
 import {
@@ -32,6 +32,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 						id,
 						displayName: input.displayName,
 						roles: new Set(),
+						globalRoles: new Set(),
 					};
 					return [
 						{ id, displayName: input.displayName, token: Redacted.make(token) },
@@ -47,10 +48,8 @@ export const InMemoryMachineClientStore = Layer.effect(
 				),
 		);
 
-		const list = Effect.fn("MachineClientStore.list")(() =>
-			Ref.get(clients).pipe(
-				Effect.map((map) => Array.from(HashMap.values(map))),
-			),
+		const list = Ref.get(clients).pipe(
+			Effect.map((map) => Array.from(HashMap.values(map))),
 		);
 
 		const revoke = Effect.fn("MachineClientStore.revoke")((id: string) =>
@@ -139,6 +138,55 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
+		const setGlobalRoles = Effect.fn("MachineClientStore.setGlobalRoles")(
+			(id: string, globalRoles: ReadonlySet<GlobalRoleName>) =>
+				Ref.modify(clients, (map) => {
+					const entry = findById(map, id);
+					if (Option.isNone(entry)) {
+						return [Option.none(), map];
+					}
+					const [key, client] = entry.value;
+					const next = new Set(globalRoles);
+					return [
+						Option.some(next),
+						HashMap.set(map, key, { ...client, globalRoles: next }),
+					];
+				}),
+		);
+
+		const grantGlobal = Effect.fn("MachineClientStore.grantGlobal")(
+			(id: string, role: GlobalRoleName) =>
+				Ref.modify(clients, (map) => {
+					const entry = findById(map, id);
+					if (Option.isNone(entry)) {
+						return [Option.none(), map];
+					}
+					const [key, client] = entry.value;
+					const globalRoles = new Set(client.globalRoles).add(role);
+					return [
+						Option.some(globalRoles),
+						HashMap.set(map, key, { ...client, globalRoles }),
+					];
+				}),
+		);
+
+		const revokeGlobal = Effect.fn("MachineClientStore.revokeGlobal")(
+			(id: string, role: GlobalRoleName) =>
+				Ref.modify(clients, (map) => {
+					const entry = findById(map, id);
+					if (Option.isNone(entry)) {
+						return [Option.none(), map];
+					}
+					const [key, client] = entry.value;
+					const globalRoles = new Set(client.globalRoles);
+					globalRoles.delete(role);
+					return [
+						Option.some(globalRoles),
+						HashMap.set(map, key, { ...client, globalRoles }),
+					];
+				}),
+		);
+
 		return {
 			createApiKey,
 			validateApiKey,
@@ -148,6 +196,9 @@ export const InMemoryMachineClientStore = Layer.effect(
 			setRoles,
 			grantRole,
 			revokeRole,
+			setGlobalRoles,
+			grantGlobal,
+			revokeGlobal,
 		};
 	}),
 );

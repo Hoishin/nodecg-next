@@ -307,6 +307,7 @@ describe("rpc ctx runs as the server identity", () => {
 				displayName: "Operator",
 			}),
 			roles: new Set([RoleName("operator")]),
+			globalRoles: new Set(),
 		}),
 	);
 

@@ -25,6 +25,7 @@ describe("browser login", () => {
 			_tag: "human",
 			account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 			roles: new Set(),
+			globalRoles: new Set(),
 		});
 
 		await logout();

@@ -6,7 +6,6 @@ import {
 	CurrentIdentity,
 	HumanIdentitySchema,
 	type Identity,
-	ADMIN_ROLE,
 	RoleName,
 } from "@nodecg-next/internal";
 import {
@@ -271,6 +270,7 @@ describe("me", () => {
 					HumanIdentitySchema.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: new Set([RoleName("producer")]),
+						globalRoles: new Set(),
 					}),
 				),
 			);
@@ -281,6 +281,7 @@ describe("me", () => {
 					_tag: "human",
 					account: { issuer: "dev", subject: "op", displayName: "Op" },
 					roles: ["producer"],
+					globalRoles: [],
 				},
 				namespaces: {
 					perms: { roles: ["producer"] },
@@ -455,7 +456,8 @@ describe("roles", () => {
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([ADMIN_ROLE.admin]),
+			roles: new Set(),
+			globalRoles: new Set(["admin"]),
 		}),
 	);
 
@@ -479,6 +481,7 @@ describe("roles", () => {
 					HumanIdentitySchema.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: new Set([RoleName("producer")]),
+						globalRoles: new Set(),
 					}),
 				),
 			);
@@ -533,14 +536,16 @@ describe("admin roles", () => {
 	const superadmin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
-			roles: new Set([ADMIN_ROLE.superadmin]),
+			roles: new Set(),
+			globalRoles: new Set(["superadmin"]),
 		}),
 	);
 
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([ADMIN_ROLE.admin]),
+			roles: new Set(),
+			globalRoles: new Set(["admin"]),
 		}),
 	);
 
@@ -643,6 +648,7 @@ describe("claim superadmin", () => {
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "founder", displayName: "Founder" },
 			roles: new Set(),
+			globalRoles: new Set(),
 		}),
 	);
 
@@ -734,6 +740,7 @@ describe("claim superadmin", () => {
 										displayName: "Founder",
 									},
 									roles: new Set(),
+									globalRoles: new Set(),
 								})
 							: AnonymousIdentitySchema.make({}),
 					),
@@ -761,10 +768,12 @@ describe("roles export/import", () => {
 	const founderIdentity = HumanIdentitySchema.make({
 		account: { issuer: "dev", subject: "founder", displayName: "Founder" },
 		roles: new Set(),
+		globalRoles: new Set(),
 	});
 	const adminIdentity = HumanIdentitySchema.make({
 		account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-		roles: new Set([ADMIN_ROLE.admin]),
+		roles: new Set(),
+		globalRoles: new Set(["admin"]),
 	});
 	const admin = asIdentity(adminIdentity);
 
@@ -779,11 +788,21 @@ describe("roles export/import", () => {
 				),
 		});
 
-	// The admin tier can only enter the store by claim or seed — grant and import both refuse it.
 	const tiered = identityBySubject({
 		founder: founderIdentity,
 		boss: adminIdentity,
+		root: HumanIdentitySchema.make({
+			account: { issuer: "dev", subject: "root", displayName: "Root" },
+			roles: new Set(),
+			globalRoles: new Set(["superadmin"]),
+		}),
 	});
+
+	const grantFounderAdminRequest = () =>
+		postRequest("http://x/api/internal/admin-roles/grant", {
+			subject: { _tag: "human", issuer: "dev", subject: "founder" },
+			role: "admin",
+		});
 
 	const withClaimToken = ConfigProvider.layer(
 		ConfigProvider.fromEnvRecord({
@@ -832,10 +851,6 @@ describe("roles export/import", () => {
 		Schema.Struct({ id: Schema.String }),
 	);
 
-	const decodeRoles = Schema.decodeUnknownSync(
-		Schema.Struct({ roles: Schema.Array(Schema.String) }),
-	);
-
 	const decodeImportError = Schema.decodeUnknownSync(
 		Schema.Struct({ message: Schema.String }),
 	);
@@ -868,6 +883,7 @@ describe("roles export/import", () => {
 					HumanIdentitySchema.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: new Set([RoleName("producer")]),
+						globalRoles: new Set(),
 					}),
 				),
 			);
@@ -895,8 +911,9 @@ describe("roles export/import", () => {
 						issuer: "dev",
 						subject: "operator",
 						roles: ["producer"],
+						globalRoles: [],
 					},
-					{ _tag: "machine", id, roles: ["viewer"] },
+					{ _tag: "machine", id, roles: ["viewer"], globalRoles: [] },
 				],
 			});
 		}),
@@ -916,6 +933,7 @@ describe("roles export/import", () => {
 							issuer: "dev",
 							subject: "operator",
 							roles: ["viewer"],
+							globalRoles: [],
 						},
 					]),
 				);
@@ -946,6 +964,7 @@ describe("roles export/import", () => {
 						issuer: "dev",
 						subject: "operator",
 						roles: ["viewer"],
+						globalRoles: [],
 					},
 				]),
 			);
@@ -958,6 +977,7 @@ describe("roles export/import", () => {
 						issuer: "dev",
 						subject: "operator",
 						roles: ["viewer"],
+						globalRoles: [],
 					},
 				],
 			});
@@ -973,7 +993,9 @@ describe("roles export/import", () => {
 			yield* handler(machineRoleRequest(id, "viewer"));
 			expect((yield* handler(importRequest("replace", []))).status).toBe(204);
 			expect(yield* json(yield* handler(listMachinesRequest()))).toEqual({
-				machines: [{ id, displayName: "scoreboard", roles: [] }],
+				machines: [
+					{ id, displayName: "scoreboard", roles: [], globalRoles: [] },
+				],
 			});
 		}),
 	);
@@ -995,6 +1017,7 @@ describe("roles export/import", () => {
 						issuer: "dev",
 						subject: "founder",
 						roles: ["producer"],
+						globalRoles: [],
 					},
 				],
 			});
@@ -1014,21 +1037,18 @@ describe("roles export/import", () => {
 								issuer: "dev",
 								subject: "founder",
 								roles: ["viewer"],
+								globalRoles: [],
 							},
 						]),
 						"boss",
 					),
 				)).status,
 			).toBe(204);
-			const { roles } = decodeRoles(
+			expect(
 				yield* json(
-					yield* handler(withSid(grantRequest("founder", "judge"), "boss")),
+					yield* handler(withSid(grantFounderAdminRequest(), "root")),
 				),
-			);
-			expect(roles).toHaveLength(3);
-			expect(roles).toEqual(
-				expect.arrayContaining(["superadmin", "viewer", "judge"]),
-			);
+			).toEqual({ roles: ["superadmin", "admin"] });
 		}),
 	);
 
@@ -1043,13 +1063,35 @@ describe("roles export/import", () => {
 					(yield* handler(withSid(importRequest("replace", []), "boss")))
 						.status,
 				).toBe(204);
-				const { roles } = decodeRoles(
+				expect(
 					yield* json(
-						yield* handler(withSid(grantRequest("founder", "judge"), "boss")),
+						yield* handler(withSid(grantFounderAdminRequest(), "root")),
 					),
-				);
-				expect(roles).toEqual(["superadmin", "judge"]);
+				).toEqual({ roles: ["superadmin", "admin"] });
 			}),
+	);
+
+	it.effect("400 with a detail message for an admin-tier global role", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], admin);
+			const res = yield* handler(
+				importRequest("merge", [
+					{
+						_tag: "human",
+						issuer: "dev",
+						subject: "operator",
+						roles: [],
+						globalRoles: ["superadmin"],
+					},
+				]),
+			);
+			expect(res.status).toBe(400);
+			expect(yield* json(res)).toEqual({
+				_tag: "RoleImportError",
+				message:
+					'role "superadmin" cannot be assigned via import (entry {"_tag":"human","issuer":"dev","subject":"operator"})',
+			});
+		}),
 	);
 
 	it.effect(
@@ -1064,6 +1106,7 @@ describe("roles export/import", () => {
 							issuer: "dev",
 							subject: "operator",
 							roles: ["admin"],
+							globalRoles: [],
 						},
 					]),
 				);
@@ -1085,6 +1128,7 @@ describe("roles export/import", () => {
 							issuer: "dev",
 							subject: "operator",
 							roles: ["server"],
+							globalRoles: [],
 						},
 					]),
 				)).status,
@@ -1098,7 +1142,12 @@ describe("roles export/import", () => {
 			expect(
 				(yield* handler(
 					importRequest("merge", [
-						{ _tag: "machine", id: "anything", roles: ["admin"] },
+						{
+							_tag: "machine",
+							id: "anything",
+							roles: ["admin"],
+							globalRoles: [],
+						},
 					]),
 				)).status,
 			).toBe(400);
@@ -1110,7 +1159,7 @@ describe("roles export/import", () => {
 			const handler = yield* webHandler([], admin);
 			const res = yield* handler(
 				importRequest("merge", [
-					{ _tag: "machine", id: "ghost", roles: ["viewer"] },
+					{ _tag: "machine", id: "ghost", roles: ["viewer"], globalRoles: [] },
 				]),
 			);
 			expect(res.status).toBe(400);
@@ -1132,12 +1181,14 @@ describe("roles export/import", () => {
 							issuer: "dev",
 							subject: "operator",
 							roles: ["viewer"],
+							globalRoles: [],
 						},
 						{
 							_tag: "human",
 							issuer: "dev",
 							subject: "operator",
 							roles: ["judge"],
+							globalRoles: [],
 						},
 					]),
 				)).status,
@@ -1157,7 +1208,8 @@ describe("machines", () => {
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([ADMIN_ROLE.admin]),
+			roles: new Set(),
+			globalRoles: new Set(["admin"]),
 		}),
 	);
 
@@ -1207,7 +1259,9 @@ describe("machines", () => {
 			const res = yield* handler(listRequest());
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({
-				machines: [{ id, displayName: "scoreboard", roles: [] }],
+				machines: [
+					{ id, displayName: "scoreboard", roles: [], globalRoles: [] },
+				],
 			});
 		}),
 	);
@@ -1865,7 +1919,8 @@ describe("public surface (v0) with bearer token", () => {
 	const admin = asIdentity(
 		HumanIdentitySchema.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set([ADMIN_ROLE.admin]),
+			roles: new Set(),
+			globalRoles: new Set(["admin"]),
 		}),
 	);
 

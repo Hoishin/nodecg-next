@@ -1,4 +1,3 @@
-import { ADMIN_ROLE } from "@nodecg-next/internal";
 import { Effect, HashMap, Layer, Option } from "effect";
 
 import { AuthProviderRegistry } from "./auth/auth-provider.ts";
@@ -13,8 +12,8 @@ export const seedSuperadmins = Layer.effectDiscard(
 			return;
 		}
 		const roleStore = yield* RoleStoreService;
-		const assignments = yield* roleStore.list();
-		if (assignments.some(({ roles }) => roles.has(ADMIN_ROLE.superadmin))) {
+		const assignments = yield* roleStore.list;
+		if (assignments.some(({ globalRoles }) => globalRoles.has("superadmin"))) {
 			yield* Effect.logInfo(
 				"Skipping SUPERADMINS seeding: a superadmin already exists",
 			);
@@ -31,9 +30,9 @@ export const seedSuperadmins = Layer.effectDiscard(
 						),
 					);
 				}
-				yield* roleStore.grant(
+				yield* roleStore.grantGlobal(
 					{ issuer: provider.value.issuer, subject },
-					ADMIN_ROLE.superadmin,
+					"superadmin",
 				);
 			}),
 		);
