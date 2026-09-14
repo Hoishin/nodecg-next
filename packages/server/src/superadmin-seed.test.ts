@@ -45,13 +45,19 @@ describe("seededRoleStore", () => {
 				const roles = yield* RoleStoreService;
 				expect(
 					yield* roles.get({ issuer: "https://idp.test", subject: "root" }),
-				).toEqual({ roles: new Set(), globalRoles: new Set(["superadmin"]) });
+				).toEqual({
+					roles: [],
+					globalRoles: ["superadmin"],
+				});
 				expect(
 					yield* roles.get({ issuer: "https://idp.test", subject: "backup" }),
-				).toEqual({ roles: new Set(), globalRoles: new Set(["superadmin"]) });
+				).toEqual({
+					roles: [],
+					globalRoles: ["superadmin"],
+				});
 				expect(
 					yield* roles.get({ issuer: "https://idp.test", subject: "other" }),
-				).toEqual({ roles: new Set(), globalRoles: new Set() });
+				).toEqual({ roles: [], globalRoles: [] });
 			}).pipe(
 				Effect.provide(
 					seeded({ SUPERADMINS: "dev:root, dev:backup" }, [
@@ -86,10 +92,13 @@ describe("seededRoleStore", () => {
 			const roles = yield* RoleStoreService;
 			expect(
 				yield* roles.get({ issuer: "https://idp.test", subject: "root" }),
-			).toEqual({ roles: new Set(), globalRoles: new Set() });
+			).toEqual({ roles: [], globalRoles: [] });
 			expect(
 				yield* roles.get({ issuer: "https://idp.test", subject: "existing" }),
-			).toEqual({ roles: new Set(), globalRoles: new Set(["superadmin"]) });
+			).toEqual({
+				roles: [],
+				globalRoles: ["superadmin"],
+			});
 		}).pipe(
 			Effect.provide(
 				seedSuperadmins.pipe(

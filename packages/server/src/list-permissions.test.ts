@@ -1,9 +1,9 @@
 import { it } from "@effect/vitest";
 import {
 	AnonymousIdentitySchema,
-	HumanIdentitySchema,
+	HumanIdentity,
 	RoleName,
-	ServerIdentitySchema,
+	ServerIdentity,
 	type Identity,
 } from "@nodecg-next/internal";
 import { Effect } from "effect";
@@ -32,10 +32,10 @@ const provideRegistry = Effect.provide(
 );
 
 const human = (...roles: ReadonlyArray<string>) =>
-	HumanIdentitySchema.make({
+	HumanIdentity.make({
 		account: { issuer: "dev", subject: "subject", displayName: "Subject" },
-		roles: new Set(roles.map(RoleName)),
-		globalRoles: new Set(),
+		roles: roles.map(RoleName),
+		globalRoles: [],
 	});
 
 describe("listPermissions", () => {
@@ -46,8 +46,8 @@ describe("listPermissions", () => {
 				expect(
 					yield* listPermissions(human("producer", "moderator", "unrelated")),
 				).toEqual({
-					fixture: { roles: new Set([RoleName("producer")]) },
-					other: { roles: new Set([RoleName("moderator")]) },
+					fixture: { roles: [RoleName("producer")] },
+					other: { roles: [RoleName("moderator")] },
 				});
 			}).pipe(provideRegistry),
 	);
@@ -55,7 +55,7 @@ describe("listPermissions", () => {
 	it.effect("a held capability-less declared role still reports", () =>
 		Effect.gen(function* () {
 			const report = yield* listPermissions(human("viewer"));
-			expect(report["fixture"]?.roles).toEqual(new Set([RoleName("viewer")]));
+			expect(report["fixture"]?.roles).toEqual([RoleName("viewer")]);
 		}).pipe(provideRegistry),
 	);
 
@@ -63,21 +63,21 @@ describe("listPermissions", () => {
 		Effect.gen(function* () {
 			const identities: ReadonlyArray<Identity> = [
 				AnonymousIdentitySchema.make({}),
-				ServerIdentitySchema.make({}),
-				HumanIdentitySchema.make({
+				ServerIdentity.make({}),
+				HumanIdentity.make({
 					account: {
 						issuer: "dev",
 						subject: "subject",
 						displayName: "Subject",
 					},
-					roles: new Set(),
-					globalRoles: new Set(["superadmin"]),
+					roles: [],
+					globalRoles: ["superadmin"],
 				}),
 			];
 			for (const identity of identities) {
 				expect(yield* listPermissions(identity)).toEqual({
-					fixture: { roles: new Set() },
-					other: { roles: new Set() },
+					fixture: { roles: [] },
+					other: { roles: [] },
 				});
 			}
 		}).pipe(provideRegistry),

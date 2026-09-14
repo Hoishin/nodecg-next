@@ -3,9 +3,9 @@ import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
 	HumanAccountSchema,
-	HumanIdentitySchema,
+	HumanIdentity,
 	RoleName,
-	ServerIdentitySchema,
+	ServerIdentity,
 } from "@nodecg-next/internal";
 import { computeTestHash } from "@nodecg-next/internal/occ";
 import { testLayer } from "@nodecg-next/test-utils";
@@ -23,7 +23,7 @@ const anonymous = Layer.succeed(
 	CurrentIdentity,
 	AnonymousIdentitySchema.make({}),
 );
-const identity = Layer.succeed(CurrentIdentity, ServerIdentitySchema.make({}));
+const identity = Layer.succeed(CurrentIdentity, ServerIdentity.make({}));
 
 const { stub: storage, reset } = createStorageStub();
 afterEach(reset);
@@ -61,14 +61,14 @@ const manifest = defineNamespace("ns", {
 
 const scorer = Layer.succeed(
 	CurrentIdentity,
-	HumanIdentitySchema.make({
+	HumanIdentity.make({
 		account: HumanAccountSchema.make({
 			issuer: "test",
 			subject: "subject",
 			displayName: "Scorer",
 		}),
-		roles: new Set([RoleName("scorer")]),
-		globalRoles: new Set(),
+		roles: [RoleName("scorer")],
+		globalRoles: [],
 	}),
 );
 

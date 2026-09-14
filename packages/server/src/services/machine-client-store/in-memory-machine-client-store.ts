@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import type { GlobalRoleName, RoleName } from "@nodecg-next/internal";
-import { Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
+import { Array, Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
 import {
 	type MachineClient,
@@ -31,8 +31,8 @@ export const InMemoryMachineClientStore = Layer.effect(
 					const client: MachineClient = {
 						id,
 						displayName: input.displayName,
-						roles: new Set(),
-						globalRoles: new Set(),
+						roles: [],
+						globalRoles: [],
 					};
 					return [
 						{ id, displayName: input.displayName, token: Redacted.make(token) },
@@ -49,7 +49,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 		);
 
 		const list = Ref.get(clients).pipe(
-			Effect.map((map) => Array.from(HashMap.values(map))),
+			Effect.map((map) => Array.fromIterable(HashMap.values(map))),
 		);
 
 		const revoke = Effect.fn("MachineClientStore.revoke")((id: string) =>
@@ -90,18 +90,15 @@ export const InMemoryMachineClientStore = Layer.effect(
 		);
 
 		const setRoles = Effect.fn("MachineClientStore.setRoles")(
-			(id: string, roles: ReadonlySet<RoleName>) =>
+			(id: string, roles: ReadonlyArray<RoleName>) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
 					if (Option.isNone(entry)) {
 						return [Option.none(), map];
 					}
 					const [key, client] = entry.value;
-					const next = new Set(roles);
-					return [
-						Option.some(next),
-						HashMap.set(map, key, { ...client, roles: next }),
-					];
+					const next = { ...client, roles: Array.dedupe(roles) };
+					return [Option.some(next.roles), HashMap.set(map, key, next)];
 				}),
 		);
 
@@ -113,7 +110,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 						return [Option.none(), map];
 					}
 					const [key, client] = entry.value;
-					const roles = new Set(client.roles).add(role);
+					const roles = Array.union(client.roles, [role]);
 					return [
 						Option.some(roles),
 						HashMap.set(map, key, { ...client, roles }),
@@ -129,8 +126,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 						return [Option.none(), map];
 					}
 					const [key, client] = entry.value;
-					const roles = new Set(client.roles);
-					roles.delete(role);
+					const roles = Array.difference(client.roles, [role]);
 					return [
 						Option.some(roles),
 						HashMap.set(map, key, { ...client, roles }),
@@ -139,18 +135,15 @@ export const InMemoryMachineClientStore = Layer.effect(
 		);
 
 		const setGlobalRoles = Effect.fn("MachineClientStore.setGlobalRoles")(
-			(id: string, globalRoles: ReadonlySet<GlobalRoleName>) =>
+			(id: string, globalRoles: ReadonlyArray<GlobalRoleName>) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
 					if (Option.isNone(entry)) {
 						return [Option.none(), map];
 					}
 					const [key, client] = entry.value;
-					const next = new Set(globalRoles);
-					return [
-						Option.some(next),
-						HashMap.set(map, key, { ...client, globalRoles: next }),
-					];
+					const next = { ...client, globalRoles: Array.dedupe(globalRoles) };
+					return [Option.some(next.globalRoles), HashMap.set(map, key, next)];
 				}),
 		);
 
@@ -162,7 +155,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 						return [Option.none(), map];
 					}
 					const [key, client] = entry.value;
-					const globalRoles = new Set(client.globalRoles).add(role);
+					const globalRoles = Array.union(client.globalRoles, [role]);
 					return [
 						Option.some(globalRoles),
 						HashMap.set(map, key, { ...client, globalRoles }),
@@ -178,8 +171,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 						return [Option.none(), map];
 					}
 					const [key, client] = entry.value;
-					const globalRoles = new Set(client.globalRoles);
-					globalRoles.delete(role);
+					const globalRoles = Array.difference(client.globalRoles, [role]);
 					return [
 						Option.some(globalRoles),
 						HashMap.set(map, key, { ...client, globalRoles }),

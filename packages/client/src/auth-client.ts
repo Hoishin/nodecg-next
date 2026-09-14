@@ -28,10 +28,10 @@ export interface AuthClient {
 	readonly logout: () => Promise<void>;
 	readonly grantRole: (
 		assignment: RoleAssignment,
-	) => Promise<ReadonlySet<RoleName>>;
+	) => Promise<ReadonlyArray<RoleName>>;
 	readonly revokeRole: (
 		assignment: RoleAssignment,
-	) => Promise<ReadonlySet<RoleName>>;
+	) => Promise<ReadonlyArray<RoleName>>;
 	readonly dispose: () => void;
 	readonly [Symbol.dispose]: () => void;
 }

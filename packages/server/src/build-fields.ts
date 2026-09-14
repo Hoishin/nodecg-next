@@ -1,5 +1,5 @@
 import type { NamespaceManifest } from "@nodecg-next/core";
-import { CurrentIdentity, ServerIdentitySchema } from "@nodecg-next/internal";
+import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import {
 	mapValues,
 	mapEffectValues,
@@ -55,7 +55,7 @@ import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts
 
 export const asServer = Effect.provideService(
 	CurrentIdentity,
-	ServerIdentitySchema.make({}),
+	ServerIdentity.make({}),
 );
 
 export class NamespaceNotLoaded extends Schema.TaggedError<NamespaceNotLoaded>()(

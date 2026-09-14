@@ -24,8 +24,8 @@ describe("browser login", () => {
 		expect((await me()).identity).toEqual({
 			_tag: "human",
 			account: { issuer: "dev", subject: "alice", displayName: "Alice" },
-			roles: new Set(),
-			globalRoles: new Set(),
+			roles: [],
+			globalRoles: [],
 		});
 
 		await logout();
@@ -36,7 +36,7 @@ describe("browser login", () => {
 describe("role reporting", () => {
 	test("anonymous holds no declared role", async () => {
 		await logout();
-		expect((await me()).namespaces["e2e"]?.roles).toEqual(new Set());
+		expect((await me()).namespaces["e2e"]?.roles).toEqual([]);
 	});
 
 	test("a held declared role reports for its namespace, capabilities or not", async () => {
@@ -47,7 +47,7 @@ describe("role reporting", () => {
 			await logout();
 		});
 
-		expect((await me()).namespaces["e2e"]?.roles).toEqual(new Set(["viewer"]));
+		expect((await me()).namespaces["e2e"]?.roles).toEqual(["viewer"]);
 	});
 });
 
@@ -72,7 +72,7 @@ describe("loadAuthClient", () => {
 		await login("alice");
 		const payload = await client.me();
 		assert(payload.identity._tag === "human");
-		expect(payload.namespaces["e2e"]?.roles).toEqual(new Set());
+		expect(payload.namespaces["e2e"]?.roles).toEqual([]);
 
 		await client.logout();
 		expect((await me()).identity).toEqual({ _tag: "anonymous" });
@@ -132,19 +132,19 @@ describe("runtime role assignment", () => {
 		await login("operator");
 		const before = (await me()).identity;
 		assert(before._tag === "human");
-		expect(before.roles).toEqual(new Set());
+		expect(before.roles).toEqual([]);
 
 		await grantAsAdmin("operator", "producer");
 		await login("operator");
 		const granted = (await me()).identity;
 		assert(granted._tag === "human");
-		expect(granted.roles).toEqual(new Set(["producer"]));
+		expect(granted.roles).toEqual(["producer"]);
 
 		await revokeAsAdmin("operator", "producer");
 		await login("operator");
 		const revoked = (await me()).identity;
 		assert(revoked._tag === "human");
-		expect(revoked.roles).toEqual(new Set());
+		expect(revoked.roles).toEqual([]);
 
 		await logout();
 	});

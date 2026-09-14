@@ -35,8 +35,8 @@ describe("validateApiKey", () => {
 			expect(resolved.value).toEqual({
 				id: created.id,
 				displayName: "Bot",
-				roles: new Set(),
-				globalRoles: new Set(),
+				roles: [],
+				globalRoles: [],
 			});
 		}),
 	);
@@ -66,14 +66,14 @@ describe("list", () => {
 					{
 						id: a.id,
 						displayName: "Bot A",
-						roles: new Set(),
-						globalRoles: new Set(),
+						roles: [],
+						globalRoles: [],
 					},
 					{
 						id: b.id,
 						displayName: "Bot B",
-						roles: new Set(),
-						globalRoles: new Set(),
+						roles: [],
+						globalRoles: [],
 					},
 				]),
 			);
@@ -100,8 +100,8 @@ describe("revoke", () => {
 			expect(revoked.value).toEqual({
 				id: created.id,
 				displayName: "Bot",
-				roles: new Set(),
-				globalRoles: new Set(),
+				roles: [],
+				globalRoles: [],
 			});
 			expect(
 				Option.isNone(
@@ -124,8 +124,8 @@ describe("revoke", () => {
 			expect(resolved.value).toEqual({
 				id: b.id,
 				displayName: "Bot B",
-				roles: new Set(),
-				globalRoles: new Set(),
+				roles: [],
+				globalRoles: [],
 			});
 		}),
 	);
@@ -170,8 +170,8 @@ describe("refreshApiKey", () => {
 			expect(byNew.value).toEqual({
 				id: created.id,
 				displayName: "Bot",
-				roles: new Set(),
-				globalRoles: new Set(),
+				roles: [],
+				globalRoles: [],
 			});
 			expect(
 				Option.isNone(
@@ -191,8 +191,8 @@ describe("refreshApiKey", () => {
 				{
 					id: created.id,
 					displayName: "Bot",
-					roles: new Set(),
-					globalRoles: new Set(),
+					roles: [],
+					globalRoles: [],
 				},
 			]);
 		}),
@@ -209,22 +209,34 @@ describe("refreshApiKey", () => {
 
 describe("setRoles", () => {
 	test(
-		"replaces the whole set and surfaces it on the client",
+		"replaces the whole list and surfaces it on the client",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			yield* machines.grantRole(created.id, RoleName("viewer"));
-			const result = yield* machines.setRoles(
-				created.id,
-				new Set([RoleName("judge")]),
-			);
+			const result = yield* machines.setRoles(created.id, [RoleName("judge")]);
 			assert(Option.isSome(result));
-			expect(result.value).toEqual(new Set([RoleName("judge")]));
+			expect(result.value).toEqual([RoleName("judge")]);
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value.roles).toEqual(new Set([RoleName("judge")]));
+			expect(resolved.value.roles).toEqual([RoleName("judge")]);
+		}),
+	);
+
+	test(
+		"keeps a repeated role once",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			const created = yield* machines.createApiKey({ displayName: "Bot" });
+			const result = yield* machines.setRoles(created.id, [
+				RoleName("viewer"),
+				RoleName("judge"),
+				RoleName("viewer"),
+			]);
+			assert(Option.isSome(result));
+			expect(result.value).toEqual([RoleName("viewer"), RoleName("judge")]);
 		}),
 	);
 
@@ -234,9 +246,9 @@ describe("setRoles", () => {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			yield* machines.grantRole(created.id, RoleName("viewer"));
-			const result = yield* machines.setRoles(created.id, new Set());
+			const result = yield* machines.setRoles(created.id, []);
 			assert(Option.isSome(result));
-			expect(result.value).toEqual(new Set());
+			expect(result.value).toEqual([]);
 		}),
 	);
 
@@ -246,12 +258,12 @@ describe("setRoles", () => {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			yield* machines.grantGlobalRole(created.id, "admin");
-			yield* machines.setRoles(created.id, new Set());
+			yield* machines.setRoles(created.id, []);
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value.globalRoles).toEqual(new Set(["admin"]));
+			expect(resolved.value.globalRoles).toEqual(["admin"]);
 		}),
 	);
 
@@ -259,9 +271,9 @@ describe("setRoles", () => {
 		"returns None for an unknown id",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			expect(
-				yield* machines.setRoles("ghost", new Set([RoleName("viewer")])),
-			).toEqual(Option.none());
+			expect(yield* machines.setRoles("ghost", [RoleName("viewer")])).toEqual(
+				Option.none(),
+			);
 		}),
 	);
 });
@@ -277,15 +289,16 @@ describe("grantRole / revokeRole", () => {
 				RoleName("viewer"),
 			);
 			assert(Option.isSome(afterFirst));
-			expect(afterFirst.value).toEqual(new Set([RoleName("viewer")]));
+			expect(afterFirst.value).toEqual([RoleName("viewer")]);
 			yield* machines.grantRole(created.id, RoleName("judge"));
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
 			expect(resolved.value.roles).toEqual(
-				new Set([RoleName("viewer"), RoleName("judge")]),
+				expect.arrayContaining([RoleName("viewer"), RoleName("judge")]),
 			);
+			expect(resolved.value.roles).toHaveLength(2);
 		}),
 	);
 
@@ -297,7 +310,7 @@ describe("grantRole / revokeRole", () => {
 			yield* machines.grantRole(created.id, RoleName("viewer"));
 			const again = yield* machines.grantRole(created.id, RoleName("viewer"));
 			assert(Option.isSome(again));
-			expect(again.value).toEqual(new Set([RoleName("viewer")]));
+			expect(again.value).toEqual([RoleName("viewer")]);
 		}),
 	);
 
@@ -313,7 +326,7 @@ describe("grantRole / revokeRole", () => {
 				RoleName("viewer"),
 			);
 			assert(Option.isSome(remaining));
-			expect(remaining.value).toEqual(new Set([RoleName("judge")]));
+			expect(remaining.value).toEqual([RoleName("judge")]);
 		}),
 	);
 
@@ -327,7 +340,7 @@ describe("grantRole / revokeRole", () => {
 				RoleName("viewer"),
 			);
 			assert(Option.isSome(remaining));
-			expect(remaining.value).toEqual(new Set());
+			expect(remaining.value).toEqual([]);
 		}),
 	);
 
@@ -347,18 +360,15 @@ describe("grantRole / revokeRole", () => {
 
 describe("setGlobalRoles", () => {
 	test(
-		"replaces the whole global set and leaves the client's roles",
+		"replaces the whole global list and leaves the client's roles",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			yield* machines.grantRole(created.id, RoleName("viewer"));
 			yield* machines.grantGlobalRole(created.id, "admin");
-			const result = yield* machines.setGlobalRoles(
-				created.id,
-				new Set(["superadmin"]),
-			);
+			const result = yield* machines.setGlobalRoles(created.id, ["superadmin"]);
 			assert(Option.isSome(result));
-			expect(result.value).toEqual(new Set(["superadmin"]));
+			expect(result.value).toEqual(["superadmin"]);
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
@@ -366,8 +376,8 @@ describe("setGlobalRoles", () => {
 			expect(resolved.value).toEqual({
 				id: created.id,
 				displayName: "Bot",
-				roles: new Set([RoleName("viewer")]),
-				globalRoles: new Set(["superadmin"]),
+				roles: [RoleName("viewer")],
+				globalRoles: ["superadmin"],
 			});
 		}),
 	);
@@ -376,9 +386,9 @@ describe("setGlobalRoles", () => {
 		"returns None for an unknown id",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			expect(
-				yield* machines.setGlobalRoles("ghost", new Set(["admin"])),
-			).toEqual(Option.none());
+			expect(yield* machines.setGlobalRoles("ghost", ["admin"])).toEqual(
+				Option.none(),
+			);
 		}),
 	);
 });
@@ -391,10 +401,10 @@ describe("grantGlobalRole / revokeGlobalRole", () => {
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			const granted = yield* machines.grantGlobalRole(created.id, "admin");
 			assert(Option.isSome(granted));
-			expect(granted.value).toEqual(new Set(["admin"]));
+			expect(granted.value).toEqual(["admin"]);
 			const revoked = yield* machines.revokeGlobalRole(created.id, "admin");
 			assert(Option.isSome(revoked));
-			expect(revoked.value).toEqual(new Set());
+			expect(revoked.value).toEqual([]);
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
@@ -402,8 +412,8 @@ describe("grantGlobalRole / revokeGlobalRole", () => {
 			expect(resolved.value).toEqual({
 				id: created.id,
 				displayName: "Bot",
-				roles: new Set(),
-				globalRoles: new Set(),
+				roles: [],
+				globalRoles: [],
 			});
 		}),
 	);

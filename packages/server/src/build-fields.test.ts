@@ -2,9 +2,9 @@ import { defineNamespace } from "@nodecg-next/core";
 import {
 	CurrentIdentity,
 	HumanAccountSchema,
-	HumanIdentitySchema,
+	HumanIdentity,
 	RoleName,
-	ServerIdentitySchema,
+	ServerIdentity,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema, Stream } from "effect";
@@ -25,7 +25,7 @@ import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
-const server = ServerIdentitySchema.make({});
+const server = ServerIdentity.make({});
 const identity = Layer.succeed(CurrentIdentity, server);
 
 const test = testLayer(
@@ -300,14 +300,14 @@ describe("rpc ctx", () => {
 describe("rpc ctx runs as the server identity", () => {
 	const operator = Layer.succeed(
 		CurrentIdentity,
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: HumanAccountSchema.make({
 				issuer: "test",
 				subject: "subject",
 				displayName: "Operator",
 			}),
-			roles: new Set([RoleName("operator")]),
-			globalRoles: new Set(),
+			roles: [RoleName("operator")],
+			globalRoles: [],
 		}),
 	);
 

@@ -2,7 +2,7 @@ import { defineNamespace } from "@nodecg-next/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	ServerIdentitySchema,
+	ServerIdentity,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema, Stream } from "effect";
@@ -17,10 +17,7 @@ import { ReplicantNotFound } from "../services/replicant-storage/replicant-stora
 import { buildComputed } from "./build-computed.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
-const serverIdentity = Layer.succeed(
-	CurrentIdentity,
-	ServerIdentitySchema.make({}),
-);
+const serverIdentity = Layer.succeed(CurrentIdentity, ServerIdentity.make({}));
 const anonymousIdentity = Layer.succeed(
 	CurrentIdentity,
 	AnonymousIdentitySchema.make({}),

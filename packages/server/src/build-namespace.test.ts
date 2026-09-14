@@ -1,5 +1,5 @@
 import { defineNamespace } from "@nodecg-next/core";
-import { CurrentIdentity, ServerIdentitySchema } from "@nodecg-next/internal";
+import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, onTestFinished, vi } from "vitest";
@@ -12,7 +12,7 @@ import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
-const server = ServerIdentitySchema.make({});
+const server = ServerIdentity.make({});
 const identity = Layer.succeed(CurrentIdentity, server);
 
 const test = testLayer(

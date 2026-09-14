@@ -1,11 +1,11 @@
 import {
 	type AdminRoleName,
 	HumanAccountSchema,
-	HumanIdentitySchema,
-	MachineIdentitySchema,
+	HumanIdentity,
+	MachineIdentity,
 	AnonymousIdentitySchema,
 	RoleName,
-	ServerIdentitySchema,
+	ServerIdentity,
 } from "@nodecg-next/internal";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
@@ -23,26 +23,26 @@ const account = HumanAccountSchema.make({
 	displayName: "Tester",
 });
 const human = (...roles: RoleName[]) =>
-	HumanIdentitySchema.make({
+	HumanIdentity.make({
 		account,
-		roles: new Set(roles),
-		globalRoles: new Set(),
+		roles,
+		globalRoles: [],
 	});
 const adminTier = (...globalRoles: AdminRoleName[]) =>
-	HumanIdentitySchema.make({
+	HumanIdentity.make({
 		account,
-		roles: new Set(),
-		globalRoles: new Set(globalRoles),
+		roles: [],
+		globalRoles,
 	});
 const machine = (...roles: RoleName[]) =>
-	MachineIdentitySchema.make({
+	MachineIdentity.make({
 		id: "robot",
 		displayName: "Bot",
-		roles: new Set(roles),
-		globalRoles: new Set(),
+		roles,
+		globalRoles: [],
 	});
 const anonymous = AnonymousIdentitySchema.make({});
-const server = ServerIdentitySchema.make({});
+const server = ServerIdentity.make({});
 
 const manifest = defineNamespace("match", {
 	roles: {
@@ -270,17 +270,17 @@ describe("isAdminTier", () => {
 
 describe("getRolesFromIdentity", () => {
 	test("projects the held roles of a human and a machine", () => {
-		expect(getRolesFromIdentity(human(RoleName("judge")))).toEqual(
-			new Set([RoleName("judge")]),
-		);
-		expect(getRolesFromIdentity(machine(RoleName("viewer")))).toEqual(
-			new Set([RoleName("viewer")]),
-		);
+		expect(getRolesFromIdentity(human(RoleName("judge")))).toEqual([
+			RoleName("judge"),
+		]);
+		expect(getRolesFromIdentity(machine(RoleName("viewer")))).toEqual([
+			RoleName("viewer"),
+		]);
 	});
 
 	test("is empty for anonymous and server", () => {
-		expect(getRolesFromIdentity(anonymous)).toEqual(new Set());
-		expect(getRolesFromIdentity(server)).toEqual(new Set());
+		expect(getRolesFromIdentity(anonymous)).toEqual([]);
+		expect(getRolesFromIdentity(server)).toEqual([]);
 	});
 });
 

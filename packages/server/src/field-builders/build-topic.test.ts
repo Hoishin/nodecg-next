@@ -2,7 +2,7 @@ import { defineNamespace } from "@nodecg-next/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	ServerIdentitySchema,
+	ServerIdentity,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema, Stream } from "effect";
@@ -16,7 +16,7 @@ import {
 import { buildTopic } from "./build-topic.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
-const server = ServerIdentitySchema.make({});
+const server = ServerIdentity.make({});
 const anonymous = Layer.succeed(
 	CurrentIdentity,
 	AnonymousIdentitySchema.make({}),

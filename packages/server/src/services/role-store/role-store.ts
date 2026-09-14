@@ -2,14 +2,14 @@ import type { GlobalRoleName, Login, RoleName } from "@nodecg-next/internal";
 import { Context, type Effect } from "effect";
 
 export interface RoleGrants {
-	readonly roles: ReadonlySet<RoleName>;
-	readonly globalRoles: ReadonlySet<GlobalRoleName>;
+	readonly roles: ReadonlyArray<RoleName>;
+	readonly globalRoles: ReadonlyArray<GlobalRoleName>;
 }
 
 export interface RoleAssignment {
 	readonly key: Login;
-	readonly roles: ReadonlySet<RoleName>;
-	readonly globalRoles: ReadonlySet<GlobalRoleName>;
+	readonly roles: ReadonlyArray<RoleName>;
+	readonly globalRoles: ReadonlyArray<GlobalRoleName>;
 }
 
 export interface RoleStore {
@@ -19,33 +19,33 @@ export interface RoleStore {
 
 	readonly setRoles: (
 		key: Login,
-		roles: ReadonlySet<RoleName>,
+		roles: ReadonlyArray<RoleName>,
 	) => Effect.Effect<void>;
 
 	readonly grantRole: (
 		key: Login,
 		role: RoleName,
-	) => Effect.Effect<ReadonlySet<RoleName>>;
+	) => Effect.Effect<ReadonlyArray<RoleName>>;
 
 	readonly revokeRole: (
 		key: Login,
 		role: RoleName,
-	) => Effect.Effect<ReadonlySet<RoleName>>;
+	) => Effect.Effect<ReadonlyArray<RoleName>>;
 
 	readonly setGlobalRoles: (
 		key: Login,
-		globalRoles: ReadonlySet<GlobalRoleName>,
+		globalRoles: ReadonlyArray<GlobalRoleName>,
 	) => Effect.Effect<void>;
 
 	readonly grantGlobalRole: (
 		key: Login,
 		role: GlobalRoleName,
-	) => Effect.Effect<ReadonlySet<GlobalRoleName>>;
+	) => Effect.Effect<ReadonlyArray<GlobalRoleName>>;
 
 	readonly revokeGlobalRole: (
 		key: Login,
 		role: GlobalRoleName,
-	) => Effect.Effect<ReadonlySet<GlobalRoleName>>;
+	) => Effect.Effect<ReadonlyArray<GlobalRoleName>>;
 }
 
 export class RoleStoreService extends Context.Service<

@@ -1,5 +1,5 @@
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
-import { CurrentIdentity, ServerIdentitySchema } from "@nodecg-next/internal";
+import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, test } from "vitest";
@@ -16,7 +16,7 @@ import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-bro
 
 const testInMemory = testLayer(
 	Layer.mergeAll(
-		Layer.succeed(CurrentIdentity, ServerIdentitySchema.make({})),
+		Layer.succeed(CurrentIdentity, ServerIdentity.make({})),
 		InMemoryReplicantStorage,
 		InMemoryTopicBroker,
 		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),

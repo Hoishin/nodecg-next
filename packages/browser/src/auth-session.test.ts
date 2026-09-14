@@ -1,16 +1,13 @@
 import type { AuthClient, MePayload } from "@nodecg-next/client";
-import {
-	AnonymousIdentitySchema,
-	HumanIdentitySchema,
-} from "@nodecg-next/internal";
+import { AnonymousIdentitySchema, HumanIdentity } from "@nodecg-next/internal";
 import { describe, expect, test, vi } from "vitest";
 
 import { authSession } from "./auth-session.ts";
 
-const humanIdentity = HumanIdentitySchema.make({
+const humanIdentity = HumanIdentity.make({
 	account: { issuer: "dev", subject: "alice", displayName: "Alice" },
-	roles: new Set(),
-	globalRoles: new Set(),
+	roles: [],
+	globalRoles: [],
 });
 
 const humanPayload: MePayload = { identity: humanIdentity, namespaces: {} };
@@ -19,8 +16,8 @@ const stubClient = () => {
 	const providers = vi.fn<AuthClient["providers"]>(async () => []);
 	const me = vi.fn<AuthClient["me"]>(async () => humanPayload);
 	const logout = vi.fn<AuthClient["logout"]>(async () => undefined);
-	const grantRole = vi.fn<AuthClient["grantRole"]>(async () => new Set());
-	const revokeRole = vi.fn<AuthClient["revokeRole"]>(async () => new Set());
+	const grantRole = vi.fn<AuthClient["grantRole"]>(async () => []);
+	const revokeRole = vi.fn<AuthClient["revokeRole"]>(async () => []);
 	const dispose = vi.fn();
 	const client: AuthClient = {
 		providers,

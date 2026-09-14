@@ -71,22 +71,21 @@ export interface ResolvedPermission {
 	readonly canWrite: (caller: Identity) => boolean;
 }
 
-export const getRolesFromIdentity = (caller: Identity): ReadonlySet<RoleName> =>
+export const getRolesFromIdentity = (
+	caller: Identity,
+): ReadonlyArray<RoleName> =>
 	Match.value(caller).pipe(
-		Match.withReturnType<ReadonlySet<RoleName>>(),
-		Match.tag("human", (human) => human.roles),
-		Match.tag("machine", (machine) => machine.roles),
-		Match.tag("anonymous", () => new Set()),
-		Match.tag("server", () => new Set()),
+		Match.withReturnType<ReadonlyArray<RoleName>>(),
+		Match.tag("human", "machine", (holder) => holder.roles),
+		Match.tag("anonymous", () => []),
+		Match.tag("server", () => []),
 		Match.exhaustive,
 	);
 
 export const isAdminTier = (caller: Identity): boolean =>
 	Match.value(caller).pipe(
-		Match.tag(
-			"human",
-			"machine",
-			(holder) => !holder.globalRoles.isDisjointFrom(ADMIN_TIER),
+		Match.tag("human", "machine", (holder) =>
+			holder.globalRoles.some((role) => ADMIN_TIER.has(role)),
 		),
 		Match.tag("anonymous", () => false),
 		Match.tag("server", () => false),
@@ -96,7 +95,7 @@ export const isAdminTier = (caller: Identity): boolean =>
 export const isSuperadmin = (caller: Identity): boolean =>
 	Match.value(caller).pipe(
 		Match.tag("human", "machine", (holder) =>
-			holder.globalRoles.has("superadmin"),
+			holder.globalRoles.includes("superadmin"),
 		),
 		Match.tag("anonymous", () => false),
 		Match.tag("server", () => false),
@@ -116,7 +115,7 @@ const can = (
 	}
 	const roles = getRolesFromIdentity(caller);
 
-	const isClient = !roles.isDisjointFrom(namedRoles);
+	const isClient = roles.some((role) => namedRoles.has(role));
 	if (isClient && access.client === "deny") {
 		return false;
 	}
@@ -124,14 +123,14 @@ const can = (
 	if (access.everyone === "deny") {
 		return false;
 	}
-	if (!roles.isDisjointFrom(access.rolesDenied)) {
+	if (roles.some((role) => access.rolesDenied.has(role))) {
 		return false;
 	}
 
 	return (
 		(isClient && access.client === "allow") ||
 		access.everyone === "allow" ||
-		!roles.isDisjointFrom(access.roles)
+		roles.some((role) => access.roles.has(role))
 	);
 };
 

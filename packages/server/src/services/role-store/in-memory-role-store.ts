@@ -1,114 +1,107 @@
 import type { GlobalRoleName, Login, RoleName } from "@nodecg-next/internal";
-import { Effect, Layer, MutableHashMap, Option } from "effect";
+import { Array, Effect, Layer, MutableHashMap, Option } from "effect";
 
-import { RoleStoreService } from "./role-store.ts";
+import { type RoleGrants, RoleStoreService } from "./role-store.ts";
 
-interface Entry {
-	readonly key: Login;
-	readonly roles: Set<RoleName>;
-	readonly globalRoles: Set<GlobalRoleName>;
-}
+const unassigned: RoleGrants = { roles: [], globalRoles: [] };
 
 export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
-	const assignments = MutableHashMap.empty<Login, Entry>();
+	const assignments = MutableHashMap.empty<Login, RoleGrants>();
 
-	const getOrCreate = (key: Login): Entry => {
-		const existing = MutableHashMap.get(assignments, key);
-		if (Option.isSome(existing)) {
-			return existing.value;
-		}
-		const entry: Entry = { key, roles: new Set(), globalRoles: new Set() };
-		MutableHashMap.set(assignments, key, entry);
-		return entry;
-	};
+	const current = (key: Login): RoleGrants =>
+		MutableHashMap.get(assignments, key).pipe(
+			Option.getOrElse(() => unassigned),
+		);
 
 	const get = Effect.fn("RoleStore.get")((key: Login) =>
-		Effect.sync(() =>
-			Option.match(MutableHashMap.get(assignments, key), {
-				onNone: () => ({
-					roles: new Set<RoleName>(),
-					globalRoles: new Set<GlobalRoleName>(),
-				}),
-				onSome: ({ roles, globalRoles }) => ({
-					roles: new Set(roles),
-					globalRoles: new Set(globalRoles),
-				}),
-			}),
-		),
+		Effect.sync(() => current(key)),
 	);
 
 	const list = Effect.sync(() =>
-		Array.from(
-			MutableHashMap.values(assignments),
-			({ key, roles, globalRoles }) => ({
-				key,
-				roles: new Set(roles),
-				globalRoles: new Set(globalRoles),
-			}),
-		),
+		Array.fromIterable(assignments).map(([key, { roles, globalRoles }]) => ({
+			key,
+			roles,
+			globalRoles,
+		})),
 	);
 
 	const setRoles = Effect.fn("RoleStore.setRoles")(
-		(key: Login, roles: ReadonlySet<RoleName>) =>
+		(key: Login, roles: ReadonlyArray<RoleName>) =>
 			Effect.sync(() => {
-				const entry = getOrCreate(key);
-				entry.roles.clear();
-				for (const role of roles) {
-					entry.roles.add(role);
-				}
+				MutableHashMap.set(assignments, key, {
+					roles: Array.dedupe(roles),
+					globalRoles: current(key).globalRoles,
+				});
 			}),
 	);
 
 	const grantRole = Effect.fn("RoleStore.grantRole")(
 		(key: Login, role: RoleName) =>
 			Effect.sync(() => {
-				const entry = getOrCreate(key);
-				entry.roles.add(role);
-				return new Set(entry.roles);
+				const grants = current(key);
+				const roles = Array.union(grants.roles, [role]);
+				MutableHashMap.set(assignments, key, {
+					roles,
+					globalRoles: grants.globalRoles,
+				});
+				return roles;
 			}),
 	);
 
 	const revokeRole = Effect.fn("RoleStore.revokeRole")(
 		(key: Login, role: RoleName) =>
 			Effect.sync(() => {
-				const entry = MutableHashMap.get(assignments, key);
-				if (Option.isNone(entry)) {
-					return new Set<RoleName>();
+				const existing = MutableHashMap.get(assignments, key);
+				if (Option.isNone(existing)) {
+					return [];
 				}
-				entry.value.roles.delete(role);
-				return new Set(entry.value.roles);
+				const roles = Array.difference(existing.value.roles, [role]);
+				MutableHashMap.set(assignments, key, {
+					roles,
+					globalRoles: existing.value.globalRoles,
+				});
+				return roles;
 			}),
 	);
 
 	const setGlobalRoles = Effect.fn("RoleStore.setGlobalRoles")(
-		(key: Login, globalRoles: ReadonlySet<GlobalRoleName>) =>
+		(key: Login, globalRoles: ReadonlyArray<GlobalRoleName>) =>
 			Effect.sync(() => {
-				const entry = getOrCreate(key);
-				entry.globalRoles.clear();
-				for (const role of globalRoles) {
-					entry.globalRoles.add(role);
-				}
+				MutableHashMap.set(assignments, key, {
+					roles: current(key).roles,
+					globalRoles: Array.dedupe(globalRoles),
+				});
 			}),
 	);
 
 	const grantGlobalRole = Effect.fn("RoleStore.grantGlobalRole")(
 		(key: Login, role: GlobalRoleName) =>
 			Effect.sync(() => {
-				const entry = getOrCreate(key);
-				entry.globalRoles.add(role);
-				return new Set(entry.globalRoles);
+				const grants = current(key);
+				const globalRoles = Array.union(grants.globalRoles, [role]);
+				MutableHashMap.set(assignments, key, {
+					roles: grants.roles,
+					globalRoles,
+				});
+				return globalRoles;
 			}),
 	);
 
 	const revokeGlobalRole = Effect.fn("RoleStore.revokeGlobalRole")(
 		(key: Login, role: GlobalRoleName) =>
 			Effect.sync(() => {
-				const entry = MutableHashMap.get(assignments, key);
-				if (Option.isNone(entry)) {
-					return new Set<GlobalRoleName>();
+				const existing = MutableHashMap.get(assignments, key);
+				if (Option.isNone(existing)) {
+					return [];
 				}
-				entry.value.globalRoles.delete(role);
-				return new Set(entry.value.globalRoles);
+				const globalRoles = Array.difference(existing.value.globalRoles, [
+					role,
+				]);
+				MutableHashMap.set(assignments, key, {
+					roles: existing.value.roles,
+					globalRoles,
+				});
+				return globalRoles;
 			}),
 	);
 

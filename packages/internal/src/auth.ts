@@ -5,7 +5,7 @@ import {
 	HttpApiSecurity,
 } from "effect/unstable/httpapi";
 
-import { GlobalRoleNameSchema, RoleNameSchema } from "./role.ts";
+import { GlobalRoleName, RoleNameSchema } from "./role.ts";
 
 export const AnonymousIdentitySchema = Schema.TaggedStruct("anonymous", {});
 
@@ -22,31 +22,31 @@ export const HumanAccountSchema = Schema.Struct({
 });
 export type HumanAccount = typeof HumanAccountSchema.Type;
 
-export const HumanIdentitySchema = Schema.TaggedStruct("human", {
+export const HumanIdentity = Schema.TaggedStruct("human", {
 	account: HumanAccountSchema,
-	roles: Schema.ReadonlySet(RoleNameSchema),
-	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
+	globalRoles: Schema.Array(GlobalRoleName),
 });
-export type HumanIdentity = typeof HumanIdentitySchema.Type;
+export type HumanIdentity = typeof HumanIdentity.Type;
 
-export const MachineIdentitySchema = Schema.TaggedStruct("machine", {
+export const MachineIdentity = Schema.TaggedStruct("machine", {
 	id: Schema.String,
 	displayName: Schema.String,
-	roles: Schema.ReadonlySet(RoleNameSchema),
-	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
+	globalRoles: Schema.Array(GlobalRoleName),
 });
-export type MachineIdentity = typeof MachineIdentitySchema.Type;
+export type MachineIdentity = typeof MachineIdentity.Type;
 
-export const ServerIdentitySchema = Schema.TaggedStruct("server", {});
-export type ServerIdentity = typeof ServerIdentitySchema.Type;
+export const ServerIdentity = Schema.TaggedStruct("server", {});
+export type ServerIdentity = typeof ServerIdentity.Type;
 
-export const IdentitySchema = Schema.Union([
+export const Identity = Schema.Union([
 	AnonymousIdentitySchema,
-	HumanIdentitySchema,
-	MachineIdentitySchema,
-	ServerIdentitySchema,
+	HumanIdentity,
+	MachineIdentity,
+	ServerIdentity,
 ]);
-export type Identity = typeof IdentitySchema.Type;
+export type Identity = typeof Identity.Type;
 
 export class CurrentIdentity extends Context.Service<
 	CurrentIdentity,

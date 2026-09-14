@@ -15,6 +15,7 @@ import {
 } from "@nodecg-next/internal";
 import { MalformedUrl, parseRelativeUrl } from "@nodecg-next/internal/utils";
 import {
+	Array,
 	Clock,
 	type Duration,
 	Effect,
@@ -158,7 +159,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 				)
 				.handle("providers", () =>
 					Effect.forEach(
-						Array.from(HashMap.keys(registry)).toSorted(),
+						Array.fromIterable(HashMap.keys(registry)).toSorted(),
 						(name) =>
 							loginPath(baseUrl.pathname, name).pipe(
 								Effect.map((url) => ({ name, url })),
@@ -316,7 +317,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						const assignments = yield* roleStore.list;
 						const hasSuperadmin = assignments.some(({ globalRoles }) =>
-							globalRoles.has("superadmin"),
+							globalRoles.includes("superadmin"),
 						);
 						if (hasSuperadmin || !tokenEquals(claimToken.value, token)) {
 							return yield* new HttpApiError.Forbidden();
@@ -487,24 +488,27 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 										issuer: key.issuer,
 										subject: key.subject,
 										roles,
-										globalRoles: globalRoles.difference(ADMIN_TIER),
+										globalRoles: Array.difference(globalRoles, ADMIN_TIER),
 									}),
 								)
 								.filter(
 									({ roles, globalRoles }) =>
-										roles.size > 0 || globalRoles.size > 0,
+										roles.length > 0 || globalRoles.length > 0,
 								),
 							...machineClients
 								.map((client) =>
 									MachineAssignmentSchema.make({
 										id: client.id,
 										roles: client.roles,
-										globalRoles: client.globalRoles.difference(ADMIN_TIER),
+										globalRoles: Array.difference(
+											client.globalRoles,
+											ADMIN_TIER,
+										),
 									}),
 								)
 								.filter(
 									({ roles, globalRoles }) =>
-										roles.size > 0 || globalRoles.size > 0,
+										roles.length > 0 || globalRoles.length > 0,
 								),
 						],
 					};
@@ -529,7 +533,10 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 								});
 							}
 						}
-						const [tierRole] = entry.globalRoles.intersection(ADMIN_TIER);
+						const [tierRole] = Array.intersection(
+							entry.globalRoles,
+							ADMIN_TIER,
+						);
 						if (typeof tierRole !== "undefined") {
 							return yield* new RoleImportError({
 								message: `role "${tierRole}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
@@ -562,10 +569,10 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					if (mode === "replace") {
 						for (const assignment of current) {
 							if (!HashSet.has(humanTarget, assignment.key)) {
-								yield* roleStore.setRoles(assignment.key, new Set());
+								yield* roleStore.setRoles(assignment.key, []);
 								yield* roleStore.setGlobalRoles(
 									assignment.key,
-									assignment.globalRoles.intersection(ADMIN_TIER),
+									Array.intersection(assignment.globalRoles, ADMIN_TIER),
 								);
 							}
 						}
@@ -578,15 +585,16 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 						yield* roleStore.setRoles(
 							key,
 							mode === "merge"
-								? existing.roles.union(entry.roles)
+								? Array.union(existing.roles, entry.roles)
 								: entry.roles,
 						);
 						yield* roleStore.setGlobalRoles(
 							key,
 							mode === "merge"
-								? existing.globalRoles.union(entry.globalRoles)
-								: entry.globalRoles.union(
-										existing.globalRoles.intersection(ADMIN_TIER),
+								? Array.union(existing.globalRoles, entry.globalRoles)
+								: Array.union(
+										entry.globalRoles,
+										Array.intersection(existing.globalRoles, ADMIN_TIER),
 									),
 						);
 					}
@@ -598,24 +606,27 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 						const entry = machineTarget.get(client.id);
 						if (typeof entry === "undefined") {
 							if (mode === "replace") {
-								yield* machines.setRoles(client.id, new Set());
+								yield* machines.setRoles(client.id, []);
 								yield* machines.setGlobalRoles(
 									client.id,
-									client.globalRoles.intersection(ADMIN_TIER),
+									Array.intersection(client.globalRoles, ADMIN_TIER),
 								);
 							}
 							continue;
 						}
 						yield* machines.setRoles(
 							client.id,
-							mode === "merge" ? client.roles.union(entry.roles) : entry.roles,
+							mode === "merge"
+								? Array.union(client.roles, entry.roles)
+								: entry.roles,
 						);
 						yield* machines.setGlobalRoles(
 							client.id,
 							mode === "merge"
-								? client.globalRoles.union(entry.globalRoles)
-								: entry.globalRoles.union(
-										client.globalRoles.intersection(ADMIN_TIER),
+								? Array.union(client.globalRoles, entry.globalRoles)
+								: Array.union(
+										entry.globalRoles,
+										Array.intersection(client.globalRoles, ADMIN_TIER),
 									),
 						);
 					}

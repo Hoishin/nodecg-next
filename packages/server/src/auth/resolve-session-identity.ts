@@ -1,5 +1,5 @@
 import {
-	HumanIdentitySchema,
+	HumanIdentity,
 	type Identity,
 	AnonymousIdentitySchema,
 } from "@nodecg-next/internal";
@@ -24,7 +24,5 @@ export const resolveSessionIdentity =
 				issuer: account.issuer,
 				subject: account.subject,
 			});
-			return Option.some(
-				HumanIdentitySchema.make({ account, roles, globalRoles }),
-			);
+			return Option.some(HumanIdentity.make({ account, roles, globalRoles }));
 		});

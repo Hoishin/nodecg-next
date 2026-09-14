@@ -104,9 +104,7 @@ describe("me", () => {
 				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
 			expect(payload.identity._tag).toBe("human");
-			expect(payload.namespaces["fixture"]?.roles).toEqual(
-				new Set(["producer"]),
-			);
+			expect(payload.namespaces["fixture"]?.roles).toEqual(["producer"]);
 			const request = requestOf(fetch);
 			expect(request.method).toBe("GET");
 			expect(request.url).toContain("/api/internal/me");

@@ -4,8 +4,8 @@ import { Context, type Effect, type Option, type Redacted } from "effect";
 export interface MachineClient {
 	readonly id: string;
 	readonly displayName: string;
-	readonly roles: ReadonlySet<RoleName>;
-	readonly globalRoles: ReadonlySet<GlobalRoleName>;
+	readonly roles: ReadonlyArray<RoleName>;
+	readonly globalRoles: ReadonlyArray<GlobalRoleName>;
 }
 
 export interface CreatedApiKey {
@@ -33,33 +33,33 @@ export interface MachineClientStore {
 
 	readonly setRoles: (
 		id: string,
-		roles: ReadonlySet<RoleName>,
-	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
+		roles: ReadonlyArray<RoleName>,
+	) => Effect.Effect<Option.Option<ReadonlyArray<RoleName>>>;
 
 	readonly grantRole: (
 		id: string,
 		role: RoleName,
-	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
+	) => Effect.Effect<Option.Option<ReadonlyArray<RoleName>>>;
 
 	readonly revokeRole: (
 		id: string,
 		role: RoleName,
-	) => Effect.Effect<Option.Option<ReadonlySet<RoleName>>>;
+	) => Effect.Effect<Option.Option<ReadonlyArray<RoleName>>>;
 
 	readonly setGlobalRoles: (
 		id: string,
-		globalRoles: ReadonlySet<GlobalRoleName>,
-	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
+		globalRoles: ReadonlyArray<GlobalRoleName>,
+	) => Effect.Effect<Option.Option<ReadonlyArray<GlobalRoleName>>>;
 
 	readonly grantGlobalRole: (
 		id: string,
 		role: GlobalRoleName,
-	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
+	) => Effect.Effect<Option.Option<ReadonlyArray<GlobalRoleName>>>;
 
 	readonly revokeGlobalRole: (
 		id: string,
 		role: GlobalRoleName,
-	) => Effect.Effect<Option.Option<ReadonlySet<GlobalRoleName>>>;
+	) => Effect.Effect<Option.Option<ReadonlyArray<GlobalRoleName>>>;
 }
 
 export class MachineClientStoreService extends Context.Service<

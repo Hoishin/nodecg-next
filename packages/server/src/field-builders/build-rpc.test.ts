@@ -2,7 +2,7 @@ import { defineNamespace } from "@nodecg-next/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	ServerIdentitySchema,
+	ServerIdentity,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
@@ -11,10 +11,7 @@ import { describe, expect, vi } from "vitest";
 import { buildRpc } from "./build-rpc.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
-const serverIdentity = Layer.succeed(
-	CurrentIdentity,
-	ServerIdentitySchema.make({}),
-);
+const serverIdentity = Layer.succeed(CurrentIdentity, ServerIdentity.make({}));
 
 const test = testLayer(serverIdentity);
 

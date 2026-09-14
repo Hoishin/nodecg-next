@@ -4,7 +4,7 @@ import {
 	HumanAuthenticationMiddleware,
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	HumanIdentitySchema,
+	HumanIdentity,
 	type Identity,
 	RoleName,
 } from "@nodecg-next/internal";
@@ -267,10 +267,10 @@ describe("me", () => {
 					),
 				],
 				asIdentity(
-					HumanIdentitySchema.make({
+					HumanIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: new Set([RoleName("producer")]),
-						globalRoles: new Set(),
+						roles: [RoleName("producer")],
+						globalRoles: [],
 					}),
 				),
 			);
@@ -454,10 +454,10 @@ describe("roles", () => {
 	}
 
 	const admin = asIdentity(
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set(),
-			globalRoles: new Set(["admin"]),
+			roles: [],
+			globalRoles: ["admin"],
 		}),
 	);
 
@@ -478,10 +478,10 @@ describe("roles", () => {
 			const handler = yield* webHandler(
 				[],
 				asIdentity(
-					HumanIdentitySchema.make({
+					HumanIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: new Set([RoleName("producer")]),
-						globalRoles: new Set(),
+						roles: [RoleName("producer")],
+						globalRoles: [],
 					}),
 				),
 			);
@@ -534,18 +534,18 @@ describe("admin roles", () => {
 	const human = { _tag: "human", issuer: "dev", subject: "operator" };
 
 	const superadmin = asIdentity(
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
-			roles: new Set(),
-			globalRoles: new Set(["superadmin"]),
+			roles: [],
+			globalRoles: ["superadmin"],
 		}),
 	);
 
 	const admin = asIdentity(
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set(),
-			globalRoles: new Set(["admin"]),
+			roles: [],
+			globalRoles: ["admin"],
 		}),
 	);
 
@@ -645,10 +645,10 @@ describe("claim superadmin", () => {
 	const claimRequest = (token: string) => postRequest(claimUrl, { token });
 
 	const human = asIdentity(
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: { issuer: "dev", subject: "founder", displayName: "Founder" },
-			roles: new Set(),
-			globalRoles: new Set(),
+			roles: [],
+			globalRoles: [],
 		}),
 	);
 
@@ -733,14 +733,14 @@ describe("claim superadmin", () => {
 						httpEffect,
 						CurrentIdentity,
 						Redacted.value(credential) === "founder"
-							? HumanIdentitySchema.make({
+							? HumanIdentity.make({
 									account: {
 										issuer: "dev",
 										subject: "founder",
 										displayName: "Founder",
 									},
-									roles: new Set(),
-									globalRoles: new Set(),
+									roles: [],
+									globalRoles: [],
 								})
 							: AnonymousIdentitySchema.make({}),
 					),
@@ -765,15 +765,15 @@ describe("claim superadmin", () => {
 });
 
 describe("roles export/import", () => {
-	const founderIdentity = HumanIdentitySchema.make({
+	const founderIdentity = HumanIdentity.make({
 		account: { issuer: "dev", subject: "founder", displayName: "Founder" },
-		roles: new Set(),
-		globalRoles: new Set(),
+		roles: [],
+		globalRoles: [],
 	});
-	const adminIdentity = HumanIdentitySchema.make({
+	const adminIdentity = HumanIdentity.make({
 		account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-		roles: new Set(),
-		globalRoles: new Set(["admin"]),
+		roles: [],
+		globalRoles: ["admin"],
 	});
 	const admin = asIdentity(adminIdentity);
 
@@ -791,10 +791,10 @@ describe("roles export/import", () => {
 	const tiered = identityBySubject({
 		founder: founderIdentity,
 		boss: adminIdentity,
-		root: HumanIdentitySchema.make({
+		root: HumanIdentity.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
-			roles: new Set(),
-			globalRoles: new Set(["superadmin"]),
+			roles: [],
+			globalRoles: ["superadmin"],
 		}),
 	});
 
@@ -880,10 +880,10 @@ describe("roles export/import", () => {
 			const handler = yield* webHandler(
 				[],
 				asIdentity(
-					HumanIdentitySchema.make({
+					HumanIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: new Set([RoleName("producer")]),
-						globalRoles: new Set(),
+						roles: [RoleName("producer")],
+						globalRoles: [],
 					}),
 				),
 			);
@@ -1024,6 +1024,18 @@ describe("roles export/import", () => {
 		}),
 	);
 
+	it.effect("excludes a subject who holds only the admin tier", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], tiered, withClaimToken);
+			expect((yield* handler(withSid(claimRequest(), "founder"))).status).toBe(
+				200,
+			);
+			expect(
+				yield* json(yield* handler(withSid(exportRequest(), "boss"))),
+			).toEqual({ version: 0, assignments: [] });
+		}),
+	);
+
 	it.effect("merge keeps an admin tier the document does not mention", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], tiered, withClaimToken);
@@ -1048,7 +1060,9 @@ describe("roles export/import", () => {
 				yield* json(
 					yield* handler(withSid(grantFounderAdminRequest(), "root")),
 				),
-			).toEqual({ roles: ["superadmin", "admin"] });
+			).toEqual({
+				roles: expect.arrayContaining(["superadmin", "admin"]),
+			});
 		}),
 	);
 
@@ -1067,7 +1081,9 @@ describe("roles export/import", () => {
 					yield* json(
 						yield* handler(withSid(grantFounderAdminRequest(), "root")),
 					),
-				).toEqual({ roles: ["superadmin", "admin"] });
+				).toEqual({
+					roles: expect.arrayContaining(["superadmin", "admin"]),
+				});
 			}),
 	);
 
@@ -1206,10 +1222,10 @@ describe("machines", () => {
 		});
 
 	const admin = asIdentity(
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set(),
-			globalRoles: new Set(["admin"]),
+			roles: [],
+			globalRoles: ["admin"],
 		}),
 	);
 
@@ -1917,10 +1933,10 @@ describe("public surface (v0) with bearer token", () => {
 	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
 
 	const admin = asIdentity(
-		HumanIdentitySchema.make({
+		HumanIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
-			roles: new Set(),
-			globalRoles: new Set(["admin"]),
+			roles: [],
+			globalRoles: ["admin"],
 		}),
 	);
 

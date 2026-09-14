@@ -10,14 +10,10 @@ import {
 import {
 	AdminTierMiddleware,
 	HumanAuthenticationMiddleware,
-	IdentitySchema,
+	Identity,
 	SuperadminMiddleware,
 } from "../auth.ts";
-import {
-	AdminRoleNameSchema,
-	GlobalRoleNameSchema,
-	RoleNameSchema,
-} from "../role.ts";
+import { AdminRoleName, GlobalRoleName, RoleNameSchema } from "../role.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
@@ -32,21 +28,21 @@ export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
 ) {}
 
 const RoleAssignmentResultSchema = Schema.Struct({
-	roles: Schema.ReadonlySet(RoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
 });
 
 const GlobalRoleAssignmentResultSchema = Schema.Struct({
-	roles: Schema.ReadonlySet(GlobalRoleNameSchema),
+	roles: Schema.Array(GlobalRoleName),
 });
 
 const NamespacePermissionsSchema = Schema.Struct({
-	roles: Schema.ReadonlySet(RoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
 });
-export const MePayloadSchema = Schema.Struct({
-	identity: IdentitySchema,
+export const MePayload = Schema.Struct({
+	identity: Identity,
 	namespaces: Schema.Record(Schema.String, NamespacePermissionsSchema),
 });
-export type MePayload = typeof MePayloadSchema.Type;
+export type MePayload = typeof MePayload.Type;
 
 export const LoginProviderSchema = Schema.Struct({
 	name: Schema.String,
@@ -65,7 +61,7 @@ const ReturnToSchema = Schema.String.check(
 );
 
 const AuthenticationGroup = HttpApiGroup.make("Authentication")
-	.add(HttpApiEndpoint.get("me", "/me", { success: MePayloadSchema }))
+	.add(HttpApiEndpoint.get("me", "/me", { success: MePayload }))
 	.add(
 		HttpApiEndpoint.get("providers", "/authentication/providers", {
 			success: Schema.Array(LoginProviderSchema),
@@ -122,14 +118,14 @@ const RoleAssignmentSchema = Schema.Struct({
 export const HumanAssignmentSchema = Schema.TaggedStruct("human", {
 	issuer: Schema.String,
 	subject: Schema.String,
-	roles: Schema.ReadonlySet(RoleNameSchema),
-	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
+	globalRoles: Schema.Array(GlobalRoleName),
 });
 
 export const MachineAssignmentSchema = Schema.TaggedStruct("machine", {
 	id: Schema.String,
-	roles: Schema.ReadonlySet(RoleNameSchema),
-	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
+	globalRoles: Schema.Array(GlobalRoleName),
 });
 
 export const RoleAssignmentsDocument = Schema.Struct({
@@ -158,8 +154,8 @@ const CreateApiKeyResultSchema = Schema.Struct({
 const MachineClientSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
-	roles: Schema.ReadonlySet(RoleNameSchema),
-	globalRoles: Schema.ReadonlySet(GlobalRoleNameSchema),
+	roles: Schema.Array(RoleNameSchema),
+	globalRoles: Schema.Array(GlobalRoleName),
 });
 
 const ListMachinesResultSchema = Schema.Struct({
@@ -251,7 +247,7 @@ export type AdminSubject = typeof AdminSubjectSchema.Type;
 
 export const AdminRoleAssignmentSchema = Schema.Struct({
 	subject: AdminSubjectSchema,
-	role: AdminRoleNameSchema,
+	role: AdminRoleName,
 });
 export type AdminRoleAssignment = typeof AdminRoleAssignmentSchema.Type;
 

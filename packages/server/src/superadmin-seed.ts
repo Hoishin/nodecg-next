@@ -13,7 +13,9 @@ export const seedSuperadmins = Layer.effectDiscard(
 		}
 		const roleStore = yield* RoleStoreService;
 		const assignments = yield* roleStore.list;
-		if (assignments.some(({ globalRoles }) => globalRoles.has("superadmin"))) {
+		if (
+			assignments.some(({ globalRoles }) => globalRoles.includes("superadmin"))
+		) {
 			yield* Effect.logInfo(
 				"Skipping SUPERADMINS seeding: a superadmin already exists",
 			);

@@ -4,23 +4,23 @@ import { PrincipalNameSchema } from "./principal.ts";
 
 export const RoleNameSchema = Schema.String.pipe(Schema.brand("Role"));
 export type RoleName = typeof RoleNameSchema.Type;
+// TODO: remove and use schema.make()
 export const RoleName = Brand.nominal<RoleName>();
 
-export const AdminRoleNameSchema = Schema.Literals(["admin", "superadmin"]);
-export type AdminRoleName = typeof AdminRoleNameSchema.Type;
+export const AdminRoleName = Schema.Literals(["admin", "superadmin"]);
+export type AdminRoleName = typeof AdminRoleName.Type;
 
 export const ADMIN_TIER: ReadonlySet<AdminRoleName> = new Set(
-	AdminRoleNameSchema.literals,
+	AdminRoleName.literals,
 );
 
-export const GlobalRoleNameSchema = Schema.Union([AdminRoleNameSchema]);
-export type GlobalRoleName = typeof GlobalRoleNameSchema.Type;
+export const GlobalRoleName = Schema.Union([AdminRoleName]);
+export type GlobalRoleName = typeof GlobalRoleName.Type;
 
-export const UndeclarableRoleSchema = Schema.Union([
+export const UndeclarableRoleName = Schema.Union([
 	PrincipalNameSchema,
-	AdminRoleNameSchema,
+	AdminRoleName,
 ]);
+export type UndeclarableRoleName = typeof UndeclarableRoleName.Type;
 
-export type UndeclarableRoleName = typeof UndeclarableRoleSchema.Type;
-
-export const isUndeclarableRole = Schema.is(UndeclarableRoleSchema);
+export const isUndeclarableRole = Schema.is(UndeclarableRoleName);
