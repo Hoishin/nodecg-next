@@ -2,8 +2,8 @@ export { RpcCallError } from "./api/shared.ts";
 export {
 	type AdminRoleAssignment,
 	AdminRoleAssignmentSchema,
-	type AdminSubject,
-	AdminSubjectSchema,
+	type AdminTarget,
+	AdminTargetSchema,
 	HumanAssignmentSchema,
 	InternalApi,
 	type LoginProvider,

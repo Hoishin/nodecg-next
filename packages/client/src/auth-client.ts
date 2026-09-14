@@ -1,5 +1,6 @@
 import {
 	InternalApi,
+	type Login,
 	RoleName,
 	type LoginProvider,
 	type MePayload,
@@ -17,8 +18,7 @@ export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 }
 
 export interface RoleAssignment {
-	readonly issuer: string;
-	readonly subject: string;
+	readonly login: Login;
 	readonly role: string;
 }
 

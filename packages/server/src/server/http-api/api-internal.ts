@@ -336,26 +336,30 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 );
 
 const mutateAdminRole = (
-	{ subject, role }: AdminRoleAssignment,
+	{ target, role }: AdminRoleAssignment,
 	humanOp: RoleStore["grantGlobalRole"] | RoleStore["revokeGlobalRole"],
 	machineOp:
 		| MachineClientStore["grantGlobalRole"]
 		| MachineClientStore["revokeGlobalRole"],
 ) =>
-	Effect.gen(function* () {
-		if (subject._tag === "human") {
-			const roles = yield* humanOp(
-				{ issuer: subject.issuer, subject: subject.subject },
-				role,
-			);
-			return { roles };
-		}
-		const roles = yield* machineOp(subject.id, role);
-		if (Option.isNone(roles)) {
-			return yield* new HttpApiError.NotFound();
-		}
-		return { roles: roles.value };
-	});
+	Match.value(target).pipe(
+		Match.tag("human", ({ login }) =>
+			Effect.gen(function* () {
+				const roles = yield* humanOp(login, role);
+				return { roles };
+			}),
+		),
+		Match.tag("machine", ({ id }) =>
+			Effect.gen(function* () {
+				const roles = yield* machineOp(id, role);
+				if (Option.isNone(roles)) {
+					return yield* new HttpApiError.NotFound();
+				}
+				return { roles: roles.value };
+			}),
+		),
+		Match.exhaustive,
+	);
 
 const AdminRolesGroupLive = HttpApiBuilder.group(
 	RootApi,
@@ -384,11 +388,7 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 
 const assignmentKey = (entry: RoleAssignmentsDocument["assignments"][number]) =>
 	Match.value(entry).pipe(
-		Match.tag("human", ({ issuer, subject }) => ({
-			_tag: "human",
-			issuer,
-			subject,
-		})),
+		Match.tag("human", ({ login }) => ({ _tag: "human", login })),
 		Match.tag("machine", ({ id }) => ({ _tag: "machine", id })),
 		Match.exhaustive,
 	);
@@ -460,18 +460,18 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 		const machines = yield* MachineClientStoreService;
 
 		return handlers
-			.handle("grant", ({ payload: { issuer, subject, role } }) =>
+			.handle("grant", ({ payload: { login, role } }) =>
 				Effect.gen(function* () {
 					if (isUndeclarableRole(role)) {
 						return yield* new HttpApiError.Forbidden();
 					}
-					const roles = yield* roleStore.grantRole({ issuer, subject }, role);
+					const roles = yield* roleStore.grantRole(login, role);
 					return { roles };
 				}),
 			)
-			.handle("revoke", ({ payload: { issuer, subject, role } }) =>
+			.handle("revoke", ({ payload: { login, role } }) =>
 				Effect.gen(function* () {
-					const roles = yield* roleStore.revokeRole({ issuer, subject }, role);
+					const roles = yield* roleStore.revokeRole(login, role);
 					return { roles };
 				}),
 			)
@@ -485,8 +485,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 							...humans
 								.map(({ key, roles, globalRoles }) =>
 									HumanAssignmentSchema.make({
-										issuer: key.issuer,
-										subject: key.subject,
+										login: key,
 										roles,
 										globalRoles: Array.difference(globalRoles, ADMIN_TIER),
 									}),
@@ -562,7 +561,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					// Admin roles are outside of import and export
 					const current = yield* roleStore.list;
 					const humanTarget = HashSet.fromIterable(
-						humanEntries.map(({ issuer, subject }) => ({ issuer, subject })),
+						humanEntries.map(({ login }) => login),
 					);
 
 					// Clear roles of users that are not in the import
@@ -580,16 +579,15 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 
 					// Replace or add roles on top of existing roles
 					for (const entry of humanEntries) {
-						const key = { issuer: entry.issuer, subject: entry.subject };
-						const existing = yield* roleStore.get(key);
+						const existing = yield* roleStore.get(entry.login);
 						yield* roleStore.setRoles(
-							key,
+							entry.login,
 							mode === "merge"
 								? Array.union(existing.roles, entry.roles)
 								: entry.roles,
 						);
 						yield* roleStore.setGlobalRoles(
-							key,
+							entry.login,
 							mode === "merge"
 								? Array.union(existing.globalRoles, entry.globalRoles)
 								: Array.union(

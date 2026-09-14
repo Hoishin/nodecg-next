@@ -19,10 +19,10 @@ export const makeAuthHelpers = (baseUrl: string) => {
 	const me = () => client.me();
 
 	const grantRole = (subject: string, role: string) =>
-		client.grantRole({ issuer: "dev", subject, role });
+		client.grantRole({ login: { issuer: "dev", subject }, role });
 
 	const revokeRole = (subject: string, role: string) =>
-		client.revokeRole({ issuer: "dev", subject, role });
+		client.revokeRole({ login: { issuer: "dev", subject }, role });
 
 	const grantAsAdmin = async (subject: string, role: string) => {
 		await login("root");

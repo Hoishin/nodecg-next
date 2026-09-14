@@ -11,6 +11,7 @@ import {
 	AdminTierMiddleware,
 	HumanAuthenticationMiddleware,
 	Identity,
+	Login,
 	SuperadminMiddleware,
 } from "../auth.ts";
 import { AdminRoleName, GlobalRoleName, RoleNameSchema } from "../role.ts";
@@ -110,14 +111,12 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 	);
 
 const RoleAssignmentSchema = Schema.Struct({
-	issuer: Schema.String,
-	subject: Schema.String,
+	login: Login,
 	role: RoleNameSchema,
 });
 
 export const HumanAssignmentSchema = Schema.TaggedStruct("human", {
-	issuer: Schema.String,
-	subject: Schema.String,
+	login: Login,
 	roles: Schema.Array(RoleNameSchema),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
@@ -236,17 +235,14 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	)
 	.middleware(AdminTierMiddleware);
 
-export const AdminSubjectSchema = Schema.Union([
-	Schema.TaggedStruct("human", {
-		issuer: Schema.String,
-		subject: Schema.String,
-	}),
+export const AdminTargetSchema = Schema.Union([
+	Schema.TaggedStruct("human", { login: Login }),
 	Schema.TaggedStruct("machine", { id: Schema.String }),
 ]);
-export type AdminSubject = typeof AdminSubjectSchema.Type;
+export type AdminTarget = typeof AdminTargetSchema.Type;
 
 export const AdminRoleAssignmentSchema = Schema.Struct({
-	subject: AdminSubjectSchema,
+	target: AdminTargetSchema,
 	role: AdminRoleName,
 });
 export type AdminRoleAssignment = typeof AdminRoleAssignmentSchema.Type;
