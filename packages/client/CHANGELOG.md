@@ -1,5 +1,17 @@
 # @nodecg-next/client
 
+## 0.2.0
+
+### Minor Changes
+
+- Separate admin roles as global roles ([`ca0d6dd`](https://github.com/Hoishin/nodecg-next/commit/ca0d6dd68c80f3fe8e7c5f8a615aca66156843d5))
+- Scope role grants to their namespace ([`94420f7`](https://github.com/Hoishin/nodecg-next/commit/94420f79dee7614f85f99f61f16b15f3863a5352))
+
+### Patch Changes
+
+- Carry role lists as arrays instead of sets ([`a7dd76e`](https://github.com/Hoishin/nodecg-next/commit/a7dd76e449c8e97c8af0a873a33277b5d5750adc))
+- Nest role target under `login` ([`279b7cc`](https://github.com/Hoishin/nodecg-next/commit/279b7cc11d8287319252d14760cea0a4a786fe9f))
+
 ## 0.1.0
 
 ### Minor Changes
