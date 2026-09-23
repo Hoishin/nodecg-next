@@ -39,6 +39,7 @@ import {
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
+import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
 import {
@@ -428,8 +429,8 @@ const MachinesGroupLive = HttpApiBuilder.group(
 				)
 				.handle("grantRole", ({ params: { id }, payload: role }) =>
 					Effect.gen(function* () {
-						// TODO: use the resolved list of roles in the namespace
-						if (isUndeclarableRole(role.name)) {
+						const { declaredRoles } = yield* FieldRegistryService;
+						if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 							return yield* new HttpApiError.Forbidden();
 						}
 						const roles = yield* machines.grantRole(id, role);
@@ -459,7 +460,8 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 		return handlers
 			.handle("grant", ({ payload: { login, role } }) =>
 				Effect.gen(function* () {
-					if (isUndeclarableRole(role.name)) {
+					const { declaredRoles } = yield* FieldRegistryService;
+					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 						return yield* new HttpApiError.Forbidden();
 					}
 					const roles = yield* roleStore.grantRole(login, role);

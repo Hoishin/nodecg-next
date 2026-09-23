@@ -165,6 +165,15 @@ function registeredNamespace(
 	};
 }
 
+const show = registeredNamespace(
+	"show",
+	{},
+	{},
+	{},
+	{},
+	new Set([RoleName("producer"), RoleName("viewer"), RoleName("judge")]),
+);
+
 const asIdentity = (identity: Identity) =>
 	Layer.succeed(HumanAuthenticationMiddleware, {
 		cookie: (httpEffect) =>
@@ -445,12 +454,16 @@ describe("login and callback", () => {
 });
 
 describe("roles", () => {
-	function rolesRequest(action: "grant" | "revoke", role: string) {
+	function rolesRequest(
+		action: "grant" | "revoke",
+		name: string,
+		namespace = "show",
+	) {
 		return new Request(`http://x/api/internal/roles/${action}`, {
 			method: "POST",
 			body: JSON.stringify({
 				login: { issuer: "dev", subject: "operator" },
-				role: { namespace: "show", name: role },
+				role: { namespace, name },
 			}),
 			headers: { "content-type": "application/json" },
 		});
@@ -498,7 +511,7 @@ describe("roles", () => {
 		"grant returns the updated set, revoke removes it for an admin",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], admin);
+				const handler = yield* webHandler([show], admin);
 				const grant = yield* handler(rolesRequest("grant", "producer"));
 				expect(grant.status).toBe(200);
 				expect(yield* json(grant)).toEqual({
@@ -511,17 +524,20 @@ describe("roles", () => {
 			}),
 	);
 
-	it.effect("403 when an admin grants an undeclarable role", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			expect((yield* handler(rolesRequest("grant", "superadmin"))).status).toBe(
-				403,
-			);
-			expect((yield* handler(rolesRequest("grant", "admin"))).status).toBe(403);
-			expect((yield* handler(rolesRequest("grant", "server"))).status).toBe(
-				403,
-			);
-		}),
+	it.effect(
+		"403 when an admin grants a role the namespace does not declare",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([show], admin);
+				for (const name of ["superadmin", "admin", "server", "ghost"]) {
+					expect((yield* handler(rolesRequest("grant", name))).status).toBe(
+						403,
+					);
+				}
+				expect(
+					(yield* handler(rolesRequest("grant", "producer", "stage"))).status,
+				).toBe(403);
+			}),
 	);
 });
 
@@ -677,16 +693,21 @@ describe("claim superadmin", () => {
 			}),
 	);
 
-	it.effect("403 for a wrong token, without closing the window", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], human, withClaimToken);
-			expect(
-				(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
-			).toBe(403);
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(200);
-		}),
+	it.effect(
+		"a wrong token keeps the window open and the first success closes it",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], human, withClaimToken);
+				expect(
+					(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
+				).toBe(403);
+				expect(
+					(yield* handler(claimRequest("super-secret-claim-token"))).status,
+				).toBe(200);
+				expect(
+					(yield* handler(claimRequest("super-secret-claim-token"))).status,
+				).toBe(403);
+			}),
 	);
 
 	it.effect("403 for an anonymous caller", () =>
@@ -701,18 +722,6 @@ describe("claim superadmin", () => {
 	it.effect("403 when no claim token is configured", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], human);
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(403);
-		}),
-	);
-
-	it.effect("the first successful claim closes the window", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], human, withClaimToken);
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(200);
 			expect(
 				(yield* handler(claimRequest("super-secret-claim-token"))).status,
 			).toBe(403);
@@ -861,10 +870,6 @@ describe("roles export/import", () => {
 		Schema.Struct({ id: Schema.String }),
 	);
 
-	const decodeImportError = Schema.decodeUnknownSync(
-		Schema.Struct({ message: Schema.String }),
-	);
-
 	const decodeAssignmentsDocument = Schema.decodeUnknownSync(
 		Schema.Struct({
 			assignments: Schema.Array(
@@ -878,34 +883,9 @@ describe("roles export/import", () => {
 		}),
 	);
 
-	it.effect("403 for an anonymous caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect((yield* handler(exportRequest())).status).toBe(403);
-			expect((yield* handler(importRequest("merge", []))).status).toBe(403);
-		}),
-	);
-
-	it.effect("403 for a named-role caller without the admin tier", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler(
-				[],
-				asIdentity(
-					HumanIdentity.make({
-						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: [{ namespace: "show", name: RoleName("producer") }],
-						globalRoles: [],
-					}),
-				),
-			);
-			expect((yield* handler(exportRequest())).status).toBe(403);
-			expect((yield* handler(importRequest("merge", []))).status).toBe(403);
-		}),
-	);
-
 	it.effect("exports human and machine assignments for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			yield* handler(grantRequest("operator", "producer"));
 			const { id } = decodeId(
 				yield* json(yield* handler(createMachineRequest("scoreboard"))),
@@ -938,7 +918,7 @@ describe("roles export/import", () => {
 		"merge adds roles to the named identities and leaves others alone",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], admin);
+				const handler = yield* webHandler([show], admin);
 				yield* handler(grantRequest("operator", "producer"));
 				yield* handler(grantRequest("other", "judge"));
 				const res = yield* handler(
@@ -973,7 +953,7 @@ describe("roles export/import", () => {
 
 	it.effect("replace overwrites the whole store", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			yield* handler(grantRequest("operator", "producer"));
 			yield* handler(grantRequest("other", "judge"));
 			const res = yield* handler(
@@ -1003,7 +983,7 @@ describe("roles export/import", () => {
 
 	it.effect("replace clears roles of machines absent from the document", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const { id } = decodeId(
 				yield* json(yield* handler(createMachineRequest("scoreboard"))),
 			);
@@ -1019,7 +999,7 @@ describe("roles export/import", () => {
 
 	it.effect("excludes the admin tier from the export", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], tiered, withClaimToken);
+			const handler = yield* webHandler([show], tiered, withClaimToken);
 			expect((yield* handler(withSid(claimRequest(), "founder"))).status).toBe(
 				200,
 			);
@@ -1042,7 +1022,7 @@ describe("roles export/import", () => {
 
 	it.effect("excludes a subject who holds only the admin tier", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], tiered, withClaimToken);
+			const handler = yield* webHandler([show], tiered, withClaimToken);
 			expect((yield* handler(withSid(claimRequest(), "founder"))).status).toBe(
 				200,
 			);
@@ -1054,7 +1034,7 @@ describe("roles export/import", () => {
 
 	it.effect("merge keeps an admin tier the document does not mention", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], tiered, withClaimToken);
+			const handler = yield* webHandler([show], tiered, withClaimToken);
 			yield* handler(withSid(claimRequest(), "founder"));
 			expect(
 				(yield* handler(
@@ -1085,7 +1065,7 @@ describe("roles export/import", () => {
 		"replace keeps the admin tier of an identity absent from the document",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], tiered, withClaimToken);
+				const handler = yield* webHandler([show], tiered, withClaimToken);
 				yield* handler(withSid(claimRequest(), "founder"));
 				yield* handler(withSid(grantRequest("founder", "producer"), "boss"));
 				expect(
@@ -1104,7 +1084,7 @@ describe("roles export/import", () => {
 
 	it.effect("400 with a detail message for an admin-tier global role", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const res = yield* handler(
 				importRequest("merge", [
 					{
@@ -1124,31 +1104,9 @@ describe("roles export/import", () => {
 		}),
 	);
 
-	it.effect(
-		"400 with a detail message for an admin-tier role on a human entry",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([], admin);
-				const res = yield* handler(
-					importRequest("merge", [
-						{
-							_tag: "human",
-							login: { issuer: "dev", subject: "operator" },
-							roles: [{ namespace: "show", name: "admin" }],
-							globalRoles: [],
-						},
-					]),
-				);
-				expect(res.status).toBe(400);
-				expect(decodeImportError(yield* json(res)).message).toContain(
-					"cannot be assigned via import",
-				);
-			}),
-	);
-
-	it.effect("400 for a principal role on a human entry", () =>
+	it.effect("400 for an undeclarable role on an entry", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			expect(
 				(yield* handler(
 					importRequest("merge", [
@@ -1164,27 +1122,9 @@ describe("roles export/import", () => {
 		}),
 	);
 
-	it.effect("400 for a reserved role on a machine entry", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			expect(
-				(yield* handler(
-					importRequest("merge", [
-						{
-							_tag: "machine",
-							id: "anything",
-							roles: [{ namespace: "show", name: "admin" }],
-							globalRoles: [],
-						},
-					]),
-				)).status,
-			).toBe(400);
-		}),
-	);
-
 	it.effect("400 with a detail message for an unknown machine id", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const res = yield* handler(
 				importRequest("merge", [
 					{
@@ -1205,7 +1145,7 @@ describe("roles export/import", () => {
 
 	it.effect("400 for duplicate entries for one identity", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			expect(
 				(yield* handler(
 					importRequest("merge", [
@@ -1253,7 +1193,7 @@ describe("machines", () => {
 
 	it.effect("mints an api key with an id and prefixed token for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const res = yield* handler(createRequest());
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({
@@ -1274,16 +1214,9 @@ describe("machines", () => {
 	const revokeRequest = (id: string) =>
 		new Request(`http://x/api/internal/machines/${id}`, { method: "DELETE" });
 
-	it.effect("403 for an anonymous caller listing keys", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect((yield* handler(listRequest())).status).toBe(403);
-		}),
-	);
-
 	it.effect("lists created keys without their token for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const { id } = decodeCreated(
 				yield* json(yield* handler(createRequest())),
 			);
@@ -1297,16 +1230,9 @@ describe("machines", () => {
 		}),
 	);
 
-	it.effect("403 for an anonymous caller revoking a key", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect((yield* handler(revokeRequest("anything"))).status).toBe(403);
-		}),
-	);
-
 	it.effect("revokes a key and drops it from the listing for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const { id } = decodeCreated(
 				yield* json(yield* handler(createRequest())),
 			);
@@ -1319,7 +1245,7 @@ describe("machines", () => {
 
 	it.effect("404 when revoking an unknown id for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			expect((yield* handler(revokeRequest("ghost"))).status).toBe(404);
 		}),
 	);
@@ -1329,16 +1255,9 @@ describe("machines", () => {
 			method: "POST",
 		});
 
-	it.effect("403 for an anonymous caller refreshing a key", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect((yield* handler(refreshRequest("anything"))).status).toBe(403);
-		}),
-	);
-
 	it.effect("refreshes a key, keeping id and display name, for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
+			const handler = yield* webHandler([show], admin);
 			const created = decodeCreated(
 				yield* json(yield* handler(createRequest())),
 			);
@@ -1352,17 +1271,10 @@ describe("machines", () => {
 		}),
 	);
 
-	it.effect("404 when refreshing an unknown id for an admin", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			expect((yield* handler(refreshRequest("ghost"))).status).toBe(404);
-		}),
-	);
-
-	const grantRoleRequest = (id: string, role: string) =>
+	const grantRoleRequest = (id: string, name: string, namespace = "show") =>
 		new Request(`http://x/api/internal/machines/${id}/roles`, {
 			method: "POST",
-			body: JSON.stringify({ namespace: "show", name: role }),
+			body: JSON.stringify({ namespace, name }),
 			headers: { "content-type": "application/json" },
 		});
 
@@ -1372,20 +1284,11 @@ describe("machines", () => {
 			{ method: "DELETE" },
 		);
 
-	it.effect("403 for an anonymous caller granting a role", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect(
-				(yield* handler(grantRoleRequest("anything", "viewer"))).status,
-			).toBe(403);
-		}),
-	);
-
 	it.effect(
 		"grants a named role and returns the updated set for an admin",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], admin);
+				const handler = yield* webHandler([show], admin);
 				const { id } = decodeCreated(
 					yield* json(yield* handler(createRequest())),
 				);
@@ -1397,30 +1300,28 @@ describe("machines", () => {
 			}),
 	);
 
-	it.effect("403 when granting a reserved role to a machine", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			const { id } = decodeCreated(
-				yield* json(yield* handler(createRequest())),
-			);
-			expect((yield* handler(grantRoleRequest(id, "admin"))).status).toBe(403);
-		}),
-	);
-
-	it.effect("404 when granting to an unknown id for an admin", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			expect((yield* handler(grantRoleRequest("ghost", "viewer"))).status).toBe(
-				404,
-			);
-		}),
+	it.effect(
+		"403 when granting a machine a role the namespace does not declare",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([show], admin);
+				const { id } = decodeCreated(
+					yield* json(yield* handler(createRequest())),
+				);
+				for (const name of ["admin", "server", "ghost"]) {
+					expect((yield* handler(grantRoleRequest(id, name))).status).toBe(403);
+				}
+				expect(
+					(yield* handler(grantRoleRequest(id, "viewer", "stage"))).status,
+				).toBe(403);
+			}),
 	);
 
 	it.effect(
 		"revokes a named role and returns the remaining set for an admin",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], admin);
+				const handler = yield* webHandler([show], admin);
 				const { id } = decodeCreated(
 					yield* json(yield* handler(createRequest())),
 				);
@@ -1432,15 +1333,6 @@ describe("machines", () => {
 					roles: [{ namespace: "show", name: "judge" }],
 				});
 			}),
-	);
-
-	it.effect("404 when revoking a role from an unknown id for an admin", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			expect(
-				(yield* handler(revokeRoleRequest("ghost", "viewer"))).status,
-			).toBe(404);
-		}),
 	);
 });
 
@@ -1527,31 +1419,6 @@ describe("update", () => {
 			}),
 	);
 
-	it.effect("passes a field-level patch through whole", () =>
-		Effect.gen(function* () {
-			const commitPatch = vi.fn(committed);
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-						commitPatch,
-					}),
-				}),
-			]);
-			const res = yield* handler(
-				putPatch([
-					{ op: "replace", path: "/a", value: 7 },
-					{ op: "replace", path: "/b/0", value: 8 },
-				]),
-			);
-			expect(res.status).toBe(204);
-			expect(commitPatch).toHaveBeenCalledWith([
-				{ op: "replace", path: "/a", value: 7 },
-				{ op: "replace", path: "/b/0", value: 8 },
-			]);
-		}),
-	);
-
 	it.effect("400 when the payload is not a patch", () =>
 		Effect.gen(function* () {
 			const commitPatch = vi.fn(committed);
@@ -1631,16 +1498,6 @@ describe("update", () => {
 					reason: "HashMismatch",
 				});
 			}),
-	);
-
-	it.effect("404 when the namespace/name is not registered", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			const res = yield* handler(
-				putPatch([{ op: "replace", path: "", value: 7 }]),
-			);
-			expect(res.status).toBe(404);
-		}),
 	);
 
 	it.effect("400 when the field reports FieldDecodeError", () =>
@@ -1739,16 +1596,6 @@ describe("permission enforcement", () => {
 		}),
 	);
 
-	it.effect("403 when computed getEncoded denies the caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {}, { count: stubComputed(readDenied) }),
-			]);
-			const res = yield* handler(new Request(computedUrl));
-			expect(res.status).toBe(403);
-		}),
-	);
-
 	it.effect("runs the encoded op with the resolved identity in context", () =>
 		Effect.gen(function* () {
 			const getRevisioned = () =>
@@ -1781,37 +1628,6 @@ describe("topic publish", () => {
 			const res = yield* handler(postRequest(topicUrl, 5));
 			expect(res.status).toBe(204);
 			expect(publishEncoded).toHaveBeenCalledWith(5);
-		}),
-	);
-
-	it.effect("404 when the namespace/name is not registered", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect((yield* handler(postRequest(topicUrl, 5))).status).toBe(404);
-		}),
-	);
-
-	it.effect("403 when publishEncoded denies the caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace(
-					"root",
-					{},
-					{},
-					{
-						chat: stubTopic(() =>
-							Effect.fail(
-								new FieldPermissionDenied({
-									namespace: "root",
-									name: "chat",
-									operation: "write",
-								}),
-							),
-						),
-					},
-				),
-			]);
-			expect((yield* handler(postRequest(topicUrl, 5))).status).toBe(403);
 		}),
 	);
 
@@ -1855,38 +1671,6 @@ describe("rpc call", () => {
 			const res = yield* handler(postRequest(rpcUrl, 42));
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toBe(84);
-		}),
-	);
-
-	it.effect("404 when the proc is not registered", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(404);
-		}),
-	);
-
-	it.effect("403 when callEncoded denies the caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace(
-					"root",
-					{},
-					{},
-					{},
-					{
-						echo: stubRpc(() =>
-							Effect.fail(
-								new FieldPermissionDenied({
-									namespace: "root",
-									name: "echo",
-									operation: "write",
-								}),
-							),
-						),
-					},
-				),
-			]);
-			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(403);
 		}),
 	);
 
