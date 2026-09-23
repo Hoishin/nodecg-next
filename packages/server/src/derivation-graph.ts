@@ -19,10 +19,12 @@ import {
 } from "@preact/signals-core";
 import {
 	Array,
+	type Cause,
 	Context,
 	Effect,
 	Equal,
 	Exit,
+	Fiber,
 	Hash,
 	HashMap,
 	Layer,
@@ -177,11 +179,14 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				HashMap.empty<FieldKey, ReadonlySignal<ComputedResult>>(),
 			);
 
-			const pendingWrites = yield* Queue.unbounded<{
-				readonly namespace: string;
-				readonly name: string;
-				readonly value: Schema.Json;
-			}>();
+			const pendingWrites = yield* Queue.unbounded<
+				{
+					readonly namespace: string;
+					readonly name: string;
+					readonly value: Schema.Json;
+				},
+				Cause.Done
+			>();
 
 			const changes = yield* PubSub.unbounded<{
 				readonly namespace: string;
@@ -251,23 +256,14 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 						),
 					);
 
-			yield* Effect.addFinalizer(() =>
-				Effect.gen(function* () {
-					const map = yield* SynchronizedRef.get(replicants);
-					yield* Effect.forEach(HashMap.toEntries(map), ([key, node]) =>
-						readLeaf(node, key.namespace, key.name).pipe(
-							Effect.flatMap((stored) =>
-								persist(key.namespace, key.name, stored.value),
-							),
-						),
-					);
-				}),
-			);
-
-			yield* Effect.forkScoped(
+			const consumer = yield* Effect.forkScoped(
 				Stream.runForEach(Stream.fromQueue(pendingWrites), (write) =>
 					persist(write.namespace, write.name, write.value),
 				),
+			);
+
+			yield* Effect.addFinalizer(() =>
+				Queue.end(pendingWrites).pipe(Effect.andThen(Fiber.join(consumer))),
 			);
 
 			const readReplicant = Effect.fn("DerivationEngine.readReplicant")(

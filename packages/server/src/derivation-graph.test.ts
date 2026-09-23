@@ -3,6 +3,7 @@ import { testLayer } from "@nodecg-next/test-utils";
 import {
 	Cause,
 	Context,
+	Deferred,
 	Effect,
 	Exit,
 	Layer,
@@ -569,24 +570,49 @@ describe("persistence", () => {
 	);
 
 	testStubbed(
-		"closing the scope writes every replicant, so an unreached write is not lost",
+		"closing the scope persists every queued write, in write order",
+		Effect.gen(function* () {
+			const scope = yield* Scope.make();
+			const engine = yield* engineIn(scope);
+			yield* engine.initializeReplicant("ns", "a", 0);
+			storage.write.mockClear();
+			const gate = yield* Deferred.make<void>();
+			storage.write.mockImplementation((_namespace, _name, value) =>
+				value === 1 ? Deferred.await(gate) : Effect.void,
+			);
+
+			yield* engine.commit("ns", "a", () => Effect.succeed(1));
+			yield* engine.commit("ns", "a", () => Effect.succeed(2));
+			yield* engine.commit("ns", "a", () => Effect.succeed(3));
+			yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
+			yield* Scope.addFinalizer(scope, Deferred.succeed(gate, undefined));
+
+			expect(storage.write.mock.calls).toEqual([["ns", "a", 1]]);
+
+			yield* Scope.close(scope, Exit.void);
+			expect(storage.write.mock.calls).toEqual([
+				["ns", "a", 1],
+				["ns", "a", 2],
+				["ns", "a", 3],
+			]);
+		}),
+	);
+
+	testStubbed(
+		"closing the scope does not write a replicant with no pending write",
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
 			const engine = yield* engineIn(scope);
 			yield* engine.initializeReplicant("ns", "a", 0);
 			yield* engine.initializeReplicant("ns", "b", 0);
-			storage.write.mockClear();
-
-			yield* engine.commit("ns", "a", () => Effect.succeed(9));
-			yield* engine.commit("ns", "b", () => Effect.succeed(8));
-			yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(2));
+			yield* engine.commit("ns", "a", () => Effect.succeed(1));
+			yield* waitFor(() =>
+				expect(storage.write).toHaveBeenCalledWith("ns", "a", 1),
+			);
 			storage.write.mockClear();
 
 			yield* Scope.close(scope, Exit.void);
-			expect(storage.write.mock.calls).toEqual([
-				["ns", "a", 9],
-				["ns", "b", 8],
-			]);
+			expect(storage.write).not.toHaveBeenCalled();
 		}),
 	);
 
