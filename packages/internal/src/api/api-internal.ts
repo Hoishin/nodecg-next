@@ -14,7 +14,12 @@ import {
 	Login,
 	SuperadminMiddleware,
 } from "../auth.ts";
-import { AdminRoleName, GlobalRoleName, RoleNameSchema } from "../role.ts";
+import {
+	AdminRoleName,
+	GlobalRoleName,
+	Role,
+	RoleNameSchema,
+} from "../role.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
@@ -29,7 +34,7 @@ export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
 ) {}
 
 const RoleAssignmentResultSchema = Schema.Struct({
-	roles: Schema.Array(RoleNameSchema),
+	roles: Schema.Array(Role),
 });
 
 const GlobalRoleAssignmentResultSchema = Schema.Struct({
@@ -112,18 +117,18 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 
 const RoleAssignmentSchema = Schema.Struct({
 	login: Login,
-	role: RoleNameSchema,
+	role: Role,
 });
 
 export const HumanAssignmentSchema = Schema.TaggedStruct("human", {
 	login: Login,
-	roles: Schema.Array(RoleNameSchema),
+	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
 
 export const MachineAssignmentSchema = Schema.TaggedStruct("machine", {
 	id: Schema.String,
-	roles: Schema.Array(RoleNameSchema),
+	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
 
@@ -153,16 +158,12 @@ const CreateApiKeyResultSchema = Schema.Struct({
 const MachineClientSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
-	roles: Schema.Array(RoleNameSchema),
+	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
 
 const ListMachinesResultSchema = Schema.Struct({
 	machines: Schema.Array(MachineClientSchema),
-});
-
-const MachineRoleRequestSchema = Schema.Struct({
-	role: RoleNameSchema,
 });
 
 const MachinesGroup = HttpApiGroup.make("Machines")
@@ -194,17 +195,25 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 	.add(
 		HttpApiEndpoint.post("grantRole", "/machines/:id/roles", {
 			params: { id: Schema.String },
-			payload: MachineRoleRequestSchema,
+			payload: Role,
 			success: RoleAssignmentResultSchema,
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
-		HttpApiEndpoint.delete("revokeRole", "/machines/:id/roles/:role", {
-			params: { id: Schema.String, role: RoleNameSchema },
-			success: RoleAssignmentResultSchema,
-			error: HttpApiError.NotFound,
-		}),
+		HttpApiEndpoint.delete(
+			"revokeRole",
+			"/machines/:id/namespaces/:namespace/roles/:name",
+			{
+				params: {
+					id: Schema.String,
+					namespace: Schema.String,
+					name: RoleNameSchema,
+				},
+				success: RoleAssignmentResultSchema,
+				error: HttpApiError.NotFound,
+			},
+		),
 	)
 	.middleware(AdminTierMiddleware);
 

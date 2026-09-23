@@ -1,6 +1,7 @@
 import {
 	InternalApi,
 	type Login,
+	type Role,
 	RoleName,
 	type LoginProvider,
 	type MePayload,
@@ -19,7 +20,7 @@ export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 
 export interface RoleAssignment {
 	readonly login: Login;
-	readonly role: string;
+	readonly role: typeof Role.Encoded;
 }
 
 export interface AuthClient {
@@ -28,10 +29,10 @@ export interface AuthClient {
 	readonly logout: () => Promise<void>;
 	readonly grantRole: (
 		assignment: RoleAssignment,
-	) => Promise<ReadonlyArray<RoleName>>;
+	) => Promise<ReadonlyArray<Role>>;
 	readonly revokeRole: (
 		assignment: RoleAssignment,
-	) => Promise<ReadonlyArray<RoleName>>;
+	) => Promise<ReadonlyArray<Role>>;
 	readonly dispose: () => void;
 	readonly [Symbol.dispose]: () => void;
 }
@@ -67,7 +68,13 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 		assignment: RoleAssignment,
 	) {
 		const result = yield* api.Roles.grant({
-			payload: { ...assignment, role: RoleName(assignment.role) },
+			payload: {
+				login: assignment.login,
+				role: {
+					namespace: assignment.role.namespace,
+					name: RoleName(assignment.role.name),
+				},
+			},
 		}).pipe(Effect.mapError(requestFailed));
 		return result.roles;
 	});
@@ -76,7 +83,13 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 		assignment: RoleAssignment,
 	) {
 		const result = yield* api.Roles.revoke({
-			payload: { ...assignment, role: RoleName(assignment.role) },
+			payload: {
+				login: assignment.login,
+				role: {
+					namespace: assignment.role.namespace,
+					name: RoleName(assignment.role.name),
+				},
+			},
 		}).pipe(Effect.mapError(requestFailed));
 		return result.roles;
 	});

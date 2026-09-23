@@ -67,7 +67,7 @@ const scorer = Layer.succeed(
 			subject: "subject",
 			displayName: "Scorer",
 		}),
-		roles: [RoleName("scorer")],
+		roles: [{ namespace: "ns", name: RoleName("scorer") }],
 		globalRoles: [],
 	}),
 );

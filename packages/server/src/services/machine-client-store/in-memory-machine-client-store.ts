@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { GlobalRoleName, RoleName } from "@nodecg-next/internal";
+import type { GlobalRoleName, Role } from "@nodecg-next/internal";
 import { Array, Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
 import {
@@ -90,7 +90,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 		);
 
 		const setRoles = Effect.fn("MachineClientStore.setRoles")(
-			(id: string, roles: ReadonlyArray<RoleName>) =>
+			(id: string, roles: ReadonlyArray<Role>) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
 					if (Option.isNone(entry)) {
@@ -103,7 +103,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 		);
 
 		const grantRole = Effect.fn("MachineClientStore.grantRole")(
-			(id: string, role: RoleName) =>
+			(id: string, role: Role) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
 					if (Option.isNone(entry)) {
@@ -119,7 +119,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 		);
 
 		const revokeRole = Effect.fn("MachineClientStore.revokeRole")(
-			(id: string, role: RoleName) =>
+			(id: string, role: Role) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
 					if (Option.isNone(entry)) {

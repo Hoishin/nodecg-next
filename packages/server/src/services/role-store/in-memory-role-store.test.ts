@@ -12,8 +12,8 @@ const alice = { issuer: "https://idp.test", subject: "alice" };
 const bob = { issuer: "https://idp.test", subject: "bob" };
 const aliceElsewhere = { issuer: "https://other.test", subject: "alice" };
 
-const producer = RoleName("producer");
-const viewer = RoleName("viewer");
+const producer = { namespace: "show", name: RoleName("producer") };
+const viewer = { namespace: "show", name: RoleName("viewer") };
 
 describe("get", () => {
 	test(
@@ -137,6 +137,19 @@ describe("grantRole", () => {
 			yield* roles.grantRole(alice, producer);
 			yield* roles.grantRole(alice, producer);
 			expect(yield* roles.grantRole(alice, viewer)).toEqual([producer, viewer]);
+		}),
+	);
+
+	test(
+		"holds one name granted in two namespaces as two roles",
+		Effect.gen(function* () {
+			const roles = yield* RoleStoreService;
+			const stageProducer = { namespace: "stage", name: RoleName("producer") };
+			yield* roles.grantRole(alice, producer);
+			expect(yield* roles.grantRole(alice, stageProducer)).toEqual([
+				producer,
+				stageProducer,
+			]);
 		}),
 	);
 

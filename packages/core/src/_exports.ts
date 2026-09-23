@@ -10,7 +10,7 @@ export {
 	type NamespaceManifest,
 } from "./define-namespace.ts";
 export {
-	getRolesFromIdentity,
+	getRolesForNamespace,
 	isAdminTier,
 	isSuperadmin,
 	type Access,

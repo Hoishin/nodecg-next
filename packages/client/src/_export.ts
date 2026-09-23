@@ -39,5 +39,6 @@ export {
 	type Identity,
 	type LoginProvider,
 	type MePayload,
+	type Role,
 	type Updater,
 } from "@nodecg-next/internal";

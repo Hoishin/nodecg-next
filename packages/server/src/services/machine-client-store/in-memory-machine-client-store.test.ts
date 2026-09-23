@@ -8,6 +8,9 @@ import { MachineClientStoreService } from "./machine-client-store.ts";
 
 const test = testLayer(InMemoryMachineClientStore);
 
+const viewer = { namespace: "show", name: RoleName("viewer") };
+const judge = { namespace: "show", name: RoleName("judge") };
+
 describe("createApiKey", () => {
 	test(
 		"returns an ncg-prefixed token and a distinct id per key",
@@ -213,15 +216,15 @@ describe("setRoles", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			yield* machines.grantRole(created.id, RoleName("viewer"));
-			const result = yield* machines.setRoles(created.id, [RoleName("judge")]);
+			yield* machines.grantRole(created.id, viewer);
+			const result = yield* machines.setRoles(created.id, [judge]);
 			assert(Option.isSome(result));
-			expect(result.value).toEqual([RoleName("judge")]);
+			expect(result.value).toEqual([judge]);
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value.roles).toEqual([RoleName("judge")]);
+			expect(resolved.value.roles).toEqual([judge]);
 		}),
 	);
 
@@ -231,12 +234,12 @@ describe("setRoles", () => {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
 			const result = yield* machines.setRoles(created.id, [
-				RoleName("viewer"),
-				RoleName("judge"),
-				RoleName("viewer"),
+				viewer,
+				judge,
+				viewer,
 			]);
 			assert(Option.isSome(result));
-			expect(result.value).toEqual([RoleName("viewer"), RoleName("judge")]);
+			expect(result.value).toEqual([viewer, judge]);
 		}),
 	);
 
@@ -245,7 +248,7 @@ describe("setRoles", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			yield* machines.grantRole(created.id, RoleName("viewer"));
+			yield* machines.grantRole(created.id, viewer);
 			const result = yield* machines.setRoles(created.id, []);
 			assert(Option.isSome(result));
 			expect(result.value).toEqual([]);
@@ -271,7 +274,7 @@ describe("setRoles", () => {
 		"returns None for an unknown id",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			expect(yield* machines.setRoles("ghost", [RoleName("viewer")])).toEqual(
+			expect(yield* machines.setRoles("ghost", [viewer])).toEqual(
 				Option.none(),
 			);
 		}),
@@ -284,19 +287,16 @@ describe("grantRole / revokeRole", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			const afterFirst = yield* machines.grantRole(
-				created.id,
-				RoleName("viewer"),
-			);
+			const afterFirst = yield* machines.grantRole(created.id, viewer);
 			assert(Option.isSome(afterFirst));
-			expect(afterFirst.value).toEqual([RoleName("viewer")]);
-			yield* machines.grantRole(created.id, RoleName("judge"));
+			expect(afterFirst.value).toEqual([viewer]);
+			yield* machines.grantRole(created.id, judge);
 			const resolved = yield* machines.validateApiKey(
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
 			expect(resolved.value.roles).toEqual(
-				expect.arrayContaining([RoleName("viewer"), RoleName("judge")]),
+				expect.arrayContaining([viewer, judge]),
 			);
 			expect(resolved.value.roles).toHaveLength(2);
 		}),
@@ -307,10 +307,23 @@ describe("grantRole / revokeRole", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			yield* machines.grantRole(created.id, RoleName("viewer"));
-			const again = yield* machines.grantRole(created.id, RoleName("viewer"));
+			yield* machines.grantRole(created.id, viewer);
+			const again = yield* machines.grantRole(created.id, viewer);
 			assert(Option.isSome(again));
-			expect(again.value).toEqual([RoleName("viewer")]);
+			expect(again.value).toEqual([viewer]);
+		}),
+	);
+
+	test(
+		"holds one name granted in two namespaces as two roles",
+		Effect.gen(function* () {
+			const machines = yield* MachineClientStoreService;
+			const created = yield* machines.createApiKey({ displayName: "Bot" });
+			const stageViewer = { namespace: "stage", name: RoleName("viewer") };
+			yield* machines.grantRole(created.id, viewer);
+			const both = yield* machines.grantRole(created.id, stageViewer);
+			assert(Option.isSome(both));
+			expect(both.value).toEqual([viewer, stageViewer]);
 		}),
 	);
 
@@ -319,14 +332,11 @@ describe("grantRole / revokeRole", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			yield* machines.grantRole(created.id, RoleName("viewer"));
-			yield* machines.grantRole(created.id, RoleName("judge"));
-			const remaining = yield* machines.revokeRole(
-				created.id,
-				RoleName("viewer"),
-			);
+			yield* machines.grantRole(created.id, viewer);
+			yield* machines.grantRole(created.id, judge);
+			const remaining = yield* machines.revokeRole(created.id, viewer);
 			assert(Option.isSome(remaining));
-			expect(remaining.value).toEqual([RoleName("judge")]);
+			expect(remaining.value).toEqual([judge]);
 		}),
 	);
 
@@ -335,10 +345,7 @@ describe("grantRole / revokeRole", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			const remaining = yield* machines.revokeRole(
-				created.id,
-				RoleName("viewer"),
-			);
+			const remaining = yield* machines.revokeRole(created.id, viewer);
 			assert(Option.isSome(remaining));
 			expect(remaining.value).toEqual([]);
 		}),
@@ -348,12 +355,12 @@ describe("grantRole / revokeRole", () => {
 		"return None for an unknown id",
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			expect(
-				Option.isNone(yield* machines.grantRole("ghost", RoleName("viewer"))),
-			).toBe(true);
-			expect(
-				Option.isNone(yield* machines.revokeRole("ghost", RoleName("viewer"))),
-			).toBe(true);
+			expect(Option.isNone(yield* machines.grantRole("ghost", viewer))).toBe(
+				true,
+			);
+			expect(Option.isNone(yield* machines.revokeRole("ghost", viewer))).toBe(
+				true,
+			);
 		}),
 	);
 });
@@ -364,7 +371,7 @@ describe("setGlobalRoles", () => {
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
 			const created = yield* machines.createApiKey({ displayName: "Bot" });
-			yield* machines.grantRole(created.id, RoleName("viewer"));
+			yield* machines.grantRole(created.id, viewer);
 			yield* machines.grantGlobalRole(created.id, "admin");
 			const result = yield* machines.setGlobalRoles(created.id, ["superadmin"]);
 			assert(Option.isSome(result));
@@ -376,7 +383,7 @@ describe("setGlobalRoles", () => {
 			expect(resolved.value).toEqual({
 				id: created.id,
 				displayName: "Bot",
-				roles: [RoleName("viewer")],
+				roles: [viewer],
 				globalRoles: ["superadmin"],
 			});
 		}),

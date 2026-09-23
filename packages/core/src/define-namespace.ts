@@ -466,6 +466,7 @@ export function defineNamespace<
 		permission: replicantPermission(
 			resolve("replicant-read", option.permission?.read),
 			resolve("replicant-write", option.permission?.write),
+			namespace,
 			namedRoles,
 		),
 	}))(defineOption.replicant);
@@ -477,6 +478,7 @@ export function defineNamespace<
 		...implementCodec(name, option.schema),
 		permission: computedPermission(
 			resolve("computed-read", option.permission?.read),
+			namespace,
 			namedRoles,
 		),
 	}))(defineOption.computed);
@@ -489,6 +491,7 @@ export function defineNamespace<
 		permission: topicPermission(
 			resolve("topic-subscribe", option.permission?.read),
 			resolve("topic-publish", option.permission?.write),
+			namespace,
 			namedRoles,
 		),
 	}))(defineOption.topic);
@@ -502,6 +505,7 @@ export function defineNamespace<
 		response: makeCodec(name, option.schema.response),
 		permission: rpcPermission(
 			resolve("rpc-call", option.permission?.write),
+			namespace,
 			namedRoles,
 		),
 	}));
@@ -642,6 +646,7 @@ export function extendNamespace<
 						field.permission.write,
 						override?.permission?.write,
 					),
+					manifest.namespace,
 					namedRoles,
 				),
 			};
@@ -656,6 +661,7 @@ export function extendNamespace<
 		permission: replicantPermission(
 			resolve("replicant-read", option.permission?.read),
 			resolve("replicant-write", option.permission?.write),
+			manifest.namespace,
 			namedRoles,
 		),
 	}));
@@ -681,6 +687,7 @@ export function extendNamespace<
 						field.permission.read,
 						override?.permission?.read,
 					),
+					manifest.namespace,
 					namedRoles,
 				),
 			};
@@ -693,6 +700,7 @@ export function extendNamespace<
 		...implementCodec(name, option.schema),
 		permission: computedPermission(
 			resolve("computed-read", option.permission?.read),
+			manifest.namespace,
 			namedRoles,
 		),
 	}));
@@ -723,6 +731,7 @@ export function extendNamespace<
 						field.permission.write,
 						override?.permission?.write,
 					),
+					manifest.namespace,
 					namedRoles,
 				),
 			};
@@ -736,6 +745,7 @@ export function extendNamespace<
 		permission: topicPermission(
 			resolve("topic-subscribe", option.permission?.read),
 			resolve("topic-publish", option.permission?.write),
+			manifest.namespace,
 			namedRoles,
 		),
 	}));
@@ -760,6 +770,7 @@ export function extendNamespace<
 						field.permission.write,
 						override?.permission?.write,
 					),
+					manifest.namespace,
 					namedRoles,
 				),
 			};
@@ -774,6 +785,7 @@ export function extendNamespace<
 		response: makeCodec(name, option.schema.response),
 		permission: rpcPermission(
 			resolve("rpc-call", option.permission?.write),
+			manifest.namespace,
 			namedRoles,
 		),
 	}));

@@ -399,58 +399,55 @@ const MachinesGroupLive = HttpApiBuilder.group(
 	(handlers) =>
 		Effect.gen(function* () {
 			const machines = yield* MachineClientStoreService;
-			return (
-				handlers
-					.handle("createApiKey", ({ payload: { displayName } }) =>
-						machines.createApiKey({ displayName }),
-					)
-					.handle("list", () =>
-						Effect.gen(function* () {
-							const machineList = yield* machines.list;
-							return { machines: machineList };
-						}),
-					)
-					.handle("revoke", ({ params: { id } }) =>
-						Effect.gen(function* () {
-							const revoked = yield* machines.revoke(id);
-							if (Option.isNone(revoked)) {
-								return yield* new HttpApiError.NotFound();
-							}
-						}),
-					)
-					.handle("refresh", ({ params: { id } }) =>
-						Effect.gen(function* () {
-							const refreshed = yield* machines.refreshApiKey(id);
-							if (Option.isNone(refreshed)) {
-								return yield* new HttpApiError.NotFound();
-							}
-							return refreshed.value;
-						}),
-					)
-					// TODO: has to be scoped into namespace
-					.handle("grantRole", ({ params: { id }, payload: { role } }) =>
-						Effect.gen(function* () {
-							// TODO: use the resolved list of roles in the namespace
-							if (isUndeclarableRole(role)) {
-								return yield* new HttpApiError.Forbidden();
-							}
-							const roles = yield* machines.grantRole(id, role);
-							if (Option.isNone(roles)) {
-								return yield* new HttpApiError.NotFound();
-							}
-							return { roles: roles.value };
-						}),
-					)
-					.handle("revokeRole", ({ params: { id, role } }) =>
-						Effect.gen(function* () {
-							const roles = yield* machines.revokeRole(id, role);
-							if (Option.isNone(roles)) {
-								return yield* new HttpApiError.NotFound();
-							}
-							return { roles: roles.value };
-						}),
-					)
-			);
+			return handlers
+				.handle("createApiKey", ({ payload: { displayName } }) =>
+					machines.createApiKey({ displayName }),
+				)
+				.handle("list", () =>
+					Effect.gen(function* () {
+						const machineList = yield* machines.list;
+						return { machines: machineList };
+					}),
+				)
+				.handle("revoke", ({ params: { id } }) =>
+					Effect.gen(function* () {
+						const revoked = yield* machines.revoke(id);
+						if (Option.isNone(revoked)) {
+							return yield* new HttpApiError.NotFound();
+						}
+					}),
+				)
+				.handle("refresh", ({ params: { id } }) =>
+					Effect.gen(function* () {
+						const refreshed = yield* machines.refreshApiKey(id);
+						if (Option.isNone(refreshed)) {
+							return yield* new HttpApiError.NotFound();
+						}
+						return refreshed.value;
+					}),
+				)
+				.handle("grantRole", ({ params: { id }, payload: role }) =>
+					Effect.gen(function* () {
+						// TODO: use the resolved list of roles in the namespace
+						if (isUndeclarableRole(role.name)) {
+							return yield* new HttpApiError.Forbidden();
+						}
+						const roles = yield* machines.grantRole(id, role);
+						if (Option.isNone(roles)) {
+							return yield* new HttpApiError.NotFound();
+						}
+						return { roles: roles.value };
+					}),
+				)
+				.handle("revokeRole", ({ params: { id, namespace, name } }) =>
+					Effect.gen(function* () {
+						const roles = yield* machines.revokeRole(id, { namespace, name });
+						if (Option.isNone(roles)) {
+							return yield* new HttpApiError.NotFound();
+						}
+						return { roles: roles.value };
+					}),
+				);
 		}),
 );
 
@@ -462,7 +459,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 		return handlers
 			.handle("grant", ({ payload: { login, role } }) =>
 				Effect.gen(function* () {
-					if (isUndeclarableRole(role)) {
+					if (isUndeclarableRole(role.name)) {
 						return yield* new HttpApiError.Forbidden();
 					}
 					const roles = yield* roleStore.grantRole(login, role);
@@ -526,9 +523,9 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 						}
 						MutableHashSet.add(seen, key);
 						for (const role of entry.roles) {
-							if (isUndeclarableRole(role)) {
+							if (isUndeclarableRole(role.name)) {
 								return yield* new RoleImportError({
-									message: `role "${role}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
+									message: `role "${role.name}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
 								});
 							}
 						}

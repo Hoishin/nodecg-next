@@ -41,7 +41,7 @@ const grantMachineRole = async (id: string, role: string) => {
 	const response = await fetch(`${base}/api/internal/machines/${id}/roles`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ role }),
+		body: JSON.stringify({ namespace: "e2e", name: role }),
 	});
 	await logout();
 	return response;
@@ -89,7 +89,9 @@ describe("public /api/v0 bearer authentication", () => {
 
 		const grant = await grantMachineRole(id, "producer");
 		expect(grant.status).toBe(200);
-		expect(await grant.json()).toEqual({ roles: ["producer"] });
+		expect(await grant.json()).toEqual({
+			roles: [{ namespace: "e2e", name: "producer" }],
+		});
 
 		const read = await readV0("producerOnly", token);
 		expect(read.status).toBe(200);

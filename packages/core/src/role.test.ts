@@ -15,17 +15,17 @@ import {
 	defineNamespace,
 	extendNamespace,
 } from "./define-namespace.ts";
-import { getRolesFromIdentity, isAdminTier } from "./role.ts";
+import { getRolesForNamespace, isAdminTier } from "./role.ts";
 
 const account = HumanAccountSchema.make({
 	issuer: "test",
 	subject: "subject",
 	displayName: "Tester",
 });
-const human = (...roles: RoleName[]) =>
+const human = (...names: RoleName[]) =>
 	HumanIdentity.make({
 		account,
-		roles,
+		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],
 	});
 const adminTier = (...globalRoles: AdminRoleName[]) =>
@@ -34,11 +34,11 @@ const adminTier = (...globalRoles: AdminRoleName[]) =>
 		roles: [],
 		globalRoles,
 	});
-const machine = (...roles: RoleName[]) =>
+const machine = (...names: RoleName[]) =>
 	MachineIdentity.make({
 		id: "robot",
 		displayName: "Bot",
-		roles,
+		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],
 	});
 const anonymous = AnonymousIdentitySchema.make({});
@@ -87,6 +87,22 @@ describe("canRead / canWrite", () => {
 		).toBe(true);
 		expect(
 			manifest.replicant.score.permission.canWrite(adminTier("admin")),
+		).toBe(true);
+	});
+
+	test("a role counts only in the namespace it is held in", () => {
+		const foreign = HumanIdentity.make({
+			account,
+			roles: [{ namespace: "other", name: RoleName("judge") }],
+			globalRoles: [],
+		});
+		expect(manifest.replicant.score.permission.canRead(foreign)).toBe(false);
+		expect(manifest.replicant.score.permission.canWrite(foreign)).toBe(false);
+		expect(
+			manifest.replicant.score.permission.canRead(human(RoleName("judge"))),
+		).toBe(true);
+		expect(
+			manifest.replicant.score.permission.canWrite(human(RoleName("judge"))),
 		).toBe(true);
 	});
 
@@ -268,19 +284,23 @@ describe("isAdminTier", () => {
 	});
 });
 
-describe("getRolesFromIdentity", () => {
-	test("projects the held roles of a human and a machine", () => {
-		expect(getRolesFromIdentity(human(RoleName("judge")))).toEqual([
+describe("getRolesForNamespace", () => {
+	test("projects the roles a human and a machine hold in the namespace", () => {
+		expect(getRolesForNamespace(human(RoleName("judge")), "match")).toEqual([
 			RoleName("judge"),
 		]);
-		expect(getRolesFromIdentity(machine(RoleName("viewer")))).toEqual([
+		expect(getRolesForNamespace(machine(RoleName("viewer")), "match")).toEqual([
 			RoleName("viewer"),
 		]);
 	});
 
+	test("is empty for a namespace the holder has no role in", () => {
+		expect(getRolesForNamespace(human(RoleName("judge")), "other")).toEqual([]);
+	});
+
 	test("is empty for anonymous and server", () => {
-		expect(getRolesFromIdentity(anonymous)).toEqual([]);
-		expect(getRolesFromIdentity(server)).toEqual([]);
+		expect(getRolesForNamespace(anonymous, "match")).toEqual([]);
+		expect(getRolesForNamespace(server, "match")).toEqual([]);
 	});
 });
 

@@ -7,6 +7,12 @@ export type RoleName = typeof RoleNameSchema.Type;
 // TODO: remove and use schema.make()
 export const RoleName = Brand.nominal<RoleName>();
 
+export const Role = Schema.Struct({
+	namespace: Schema.String,
+	name: RoleNameSchema,
+});
+export type Role = typeof Role.Type;
+
 export const AdminRoleName = Schema.Literals(["admin", "superadmin"]);
 export type AdminRoleName = typeof AdminRoleName.Type;
 

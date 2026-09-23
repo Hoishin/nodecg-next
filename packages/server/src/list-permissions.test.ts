@@ -2,6 +2,7 @@ import { it } from "@effect/vitest";
 import {
 	AnonymousIdentitySchema,
 	HumanIdentity,
+	type Role,
 	RoleName,
 	ServerIdentity,
 	type Identity,
@@ -27,24 +28,30 @@ const registered = (
 const provideRegistry = Effect.provide(
 	FieldRegistryService.layer([
 		registered("fixture", new Set([RoleName("producer"), RoleName("viewer")])),
-		registered("other", new Set([RoleName("moderator")])),
+		registered("other", new Set([RoleName("moderator"), RoleName("producer")])),
 	]),
 );
 
-const human = (...roles: ReadonlyArray<string>) =>
+const human = (...roles: ReadonlyArray<Role>) =>
 	HumanIdentity.make({
 		account: { issuer: "dev", subject: "subject", displayName: "Subject" },
-		roles: roles.map(RoleName),
+		roles,
 		globalRoles: [],
 	});
 
 describe("listPermissions", () => {
 	it.effect(
-		"reports each namespace's declared roles intersected with the held ones",
+		"reports each namespace's declared roles intersected with the ones held there",
 		() =>
 			Effect.gen(function* () {
 				expect(
-					yield* listPermissions(human("producer", "moderator", "unrelated")),
+					yield* listPermissions(
+						human(
+							{ namespace: "fixture", name: RoleName("producer") },
+							{ namespace: "fixture", name: RoleName("unrelated") },
+							{ namespace: "other", name: RoleName("moderator") },
+						),
+					),
 				).toEqual({
 					fixture: { roles: [RoleName("producer")] },
 					other: { roles: [RoleName("moderator")] },
@@ -52,9 +59,22 @@ describe("listPermissions", () => {
 			}).pipe(provideRegistry),
 	);
 
+	it.effect(
+		"does not report a role held in one namespace under another declaring it",
+		() =>
+			Effect.gen(function* () {
+				const report = yield* listPermissions(
+					human({ namespace: "fixture", name: RoleName("producer") }),
+				);
+				expect(report["other"]?.roles).toEqual([]);
+			}).pipe(provideRegistry),
+	);
+
 	it.effect("a held capability-less declared role still reports", () =>
 		Effect.gen(function* () {
-			const report = yield* listPermissions(human("viewer"));
+			const report = yield* listPermissions(
+				human({ namespace: "fixture", name: RoleName("viewer") }),
+			);
 			expect(report["fixture"]?.roles).toEqual([RoleName("viewer")]);
 		}).pipe(provideRegistry),
 	);

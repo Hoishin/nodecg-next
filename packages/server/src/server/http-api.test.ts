@@ -269,7 +269,7 @@ describe("me", () => {
 				asIdentity(
 					HumanIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: [RoleName("producer")],
+						roles: [{ namespace: "perms", name: RoleName("producer") }],
 						globalRoles: [],
 					}),
 				),
@@ -280,7 +280,7 @@ describe("me", () => {
 				identity: {
 					_tag: "human",
 					account: { issuer: "dev", subject: "op", displayName: "Op" },
-					roles: ["producer"],
+					roles: [{ namespace: "perms", name: "producer" }],
 					globalRoles: [],
 				},
 				namespaces: {
@@ -450,7 +450,7 @@ describe("roles", () => {
 			method: "POST",
 			body: JSON.stringify({
 				login: { issuer: "dev", subject: "operator" },
-				role,
+				role: { namespace: "show", name: role },
 			}),
 			headers: { "content-type": "application/json" },
 		});
@@ -483,7 +483,7 @@ describe("roles", () => {
 				asIdentity(
 					HumanIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: [RoleName("producer")],
+						roles: [{ namespace: "show", name: RoleName("producer") }],
 						globalRoles: [],
 					}),
 				),
@@ -501,7 +501,9 @@ describe("roles", () => {
 				const handler = yield* webHandler([], admin);
 				const grant = yield* handler(rolesRequest("grant", "producer"));
 				expect(grant.status).toBe(200);
-				expect(yield* json(grant)).toEqual({ roles: ["producer"] });
+				expect(yield* json(grant)).toEqual({
+					roles: [{ namespace: "show", name: "producer" }],
+				});
 
 				const revoke = yield* handler(rolesRequest("revoke", "producer"));
 				expect(revoke.status).toBe(200);
@@ -840,14 +842,17 @@ describe("roles export/import", () => {
 	const grantRequest = (subject: string, role: string) =>
 		postRequest("http://x/api/internal/roles/grant", {
 			login: { issuer: "dev", subject },
-			role,
+			role: { namespace: "show", name: role },
 		});
 
 	const createMachineRequest = (displayName: string) =>
 		postRequest("http://x/api/internal/machines", { displayName });
 
 	const machineRoleRequest = (id: string, role: string) =>
-		postRequest(`http://x/api/internal/machines/${id}/roles`, { role });
+		postRequest(`http://x/api/internal/machines/${id}/roles`, {
+			namespace: "show",
+			name: role,
+		});
 
 	const listMachinesRequest = () =>
 		new Request("http://x/api/internal/machines");
@@ -865,7 +870,9 @@ describe("roles export/import", () => {
 			assignments: Schema.Array(
 				Schema.Struct({
 					login: Schema.Struct({ subject: Schema.String }),
-					roles: Schema.Array(Schema.String),
+					roles: Schema.Array(
+						Schema.Struct({ namespace: Schema.String, name: Schema.String }),
+					),
 				}),
 			),
 		}),
@@ -886,7 +893,7 @@ describe("roles export/import", () => {
 				asIdentity(
 					HumanIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
-						roles: [RoleName("producer")],
+						roles: [{ namespace: "show", name: RoleName("producer") }],
 						globalRoles: [],
 					}),
 				),
@@ -913,10 +920,15 @@ describe("roles export/import", () => {
 					{
 						_tag: "human",
 						login: { issuer: "dev", subject: "operator" },
-						roles: ["producer"],
+						roles: [{ namespace: "show", name: "producer" }],
 						globalRoles: [],
 					},
-					{ _tag: "machine", id, roles: ["viewer"], globalRoles: [] },
+					{
+						_tag: "machine",
+						id,
+						roles: [{ namespace: "show", name: "viewer" }],
+						globalRoles: [],
+					},
 				],
 			});
 		}),
@@ -934,7 +946,7 @@ describe("roles export/import", () => {
 						{
 							_tag: "human",
 							login: { issuer: "dev", subject: "operator" },
-							roles: ["viewer"],
+							roles: [{ namespace: "show", name: "viewer" }],
 							globalRoles: [],
 						},
 					]),
@@ -950,9 +962,12 @@ describe("roles export/import", () => {
 				const other = doc.assignments.find((a) => a.login.subject === "other");
 				expect(operator?.roles).toHaveLength(2);
 				expect(operator?.roles).toEqual(
-					expect.arrayContaining(["producer", "viewer"]),
+					expect.arrayContaining([
+						{ namespace: "show", name: "producer" },
+						{ namespace: "show", name: "viewer" },
+					]),
 				);
-				expect(other?.roles).toEqual(["judge"]);
+				expect(other?.roles).toEqual([{ namespace: "show", name: "judge" }]);
 			}),
 	);
 
@@ -966,7 +981,7 @@ describe("roles export/import", () => {
 					{
 						_tag: "human",
 						login: { issuer: "dev", subject: "operator" },
-						roles: ["viewer"],
+						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
 					},
 				]),
@@ -978,7 +993,7 @@ describe("roles export/import", () => {
 					{
 						_tag: "human",
 						login: { issuer: "dev", subject: "operator" },
-						roles: ["viewer"],
+						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
 					},
 				],
@@ -1017,7 +1032,7 @@ describe("roles export/import", () => {
 					{
 						_tag: "human",
 						login: { issuer: "dev", subject: "founder" },
-						roles: ["producer"],
+						roles: [{ namespace: "show", name: "producer" }],
 						globalRoles: [],
 					},
 				],
@@ -1048,7 +1063,7 @@ describe("roles export/import", () => {
 							{
 								_tag: "human",
 								login: { issuer: "dev", subject: "founder" },
-								roles: ["viewer"],
+								roles: [{ namespace: "show", name: "viewer" }],
 								globalRoles: [],
 							},
 						]),
@@ -1119,7 +1134,7 @@ describe("roles export/import", () => {
 						{
 							_tag: "human",
 							login: { issuer: "dev", subject: "operator" },
-							roles: ["admin"],
+							roles: [{ namespace: "show", name: "admin" }],
 							globalRoles: [],
 						},
 					]),
@@ -1140,7 +1155,7 @@ describe("roles export/import", () => {
 						{
 							_tag: "human",
 							login: { issuer: "dev", subject: "operator" },
-							roles: ["server"],
+							roles: [{ namespace: "show", name: "server" }],
 							globalRoles: [],
 						},
 					]),
@@ -1158,7 +1173,7 @@ describe("roles export/import", () => {
 						{
 							_tag: "machine",
 							id: "anything",
-							roles: ["admin"],
+							roles: [{ namespace: "show", name: "admin" }],
 							globalRoles: [],
 						},
 					]),
@@ -1172,7 +1187,12 @@ describe("roles export/import", () => {
 			const handler = yield* webHandler([], admin);
 			const res = yield* handler(
 				importRequest("merge", [
-					{ _tag: "machine", id: "ghost", roles: ["viewer"], globalRoles: [] },
+					{
+						_tag: "machine",
+						id: "ghost",
+						roles: [{ namespace: "show", name: "viewer" }],
+						globalRoles: [],
+					},
 				]),
 			);
 			expect(res.status).toBe(400);
@@ -1192,13 +1212,13 @@ describe("roles export/import", () => {
 						{
 							_tag: "human",
 							login: { issuer: "dev", subject: "operator" },
-							roles: ["viewer"],
+							roles: [{ namespace: "show", name: "viewer" }],
 							globalRoles: [],
 						},
 						{
 							_tag: "human",
 							login: { issuer: "dev", subject: "operator" },
-							roles: ["judge"],
+							roles: [{ namespace: "show", name: "judge" }],
 							globalRoles: [],
 						},
 					]),
@@ -1342,14 +1362,15 @@ describe("machines", () => {
 	const grantRoleRequest = (id: string, role: string) =>
 		new Request(`http://x/api/internal/machines/${id}/roles`, {
 			method: "POST",
-			body: JSON.stringify({ role }),
+			body: JSON.stringify({ namespace: "show", name: role }),
 			headers: { "content-type": "application/json" },
 		});
 
 	const revokeRoleRequest = (id: string, role: string) =>
-		new Request(`http://x/api/internal/machines/${id}/roles/${role}`, {
-			method: "DELETE",
-		});
+		new Request(
+			`http://x/api/internal/machines/${id}/namespaces/show/roles/${role}`,
+			{ method: "DELETE" },
+		);
 
 	it.effect("403 for an anonymous caller granting a role", () =>
 		Effect.gen(function* () {
@@ -1370,7 +1391,9 @@ describe("machines", () => {
 				);
 				const res = yield* handler(grantRoleRequest(id, "viewer"));
 				expect(res.status).toBe(200);
-				expect(yield* json(res)).toEqual({ roles: ["viewer"] });
+				expect(yield* json(res)).toEqual({
+					roles: [{ namespace: "show", name: "viewer" }],
+				});
 			}),
 	);
 
@@ -1405,7 +1428,9 @@ describe("machines", () => {
 				yield* handler(grantRoleRequest(id, "judge"));
 				const res = yield* handler(revokeRoleRequest(id, "viewer"));
 				expect(res.status).toBe(200);
-				expect(yield* json(res)).toEqual({ roles: ["judge"] });
+				expect(yield* json(res)).toEqual({
+					roles: [{ namespace: "show", name: "judge" }],
+				});
 			}),
 	);
 

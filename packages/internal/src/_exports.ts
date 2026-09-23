@@ -64,6 +64,7 @@ export {
 	type AdminRoleName,
 	GlobalRoleName,
 	isUndeclarableRole,
+	Role,
 	RoleName,
 	RoleNameSchema,
 	type UndeclarableRoleName,

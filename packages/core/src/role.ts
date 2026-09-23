@@ -71,12 +71,17 @@ export interface ResolvedPermission {
 	readonly canWrite: (caller: Identity) => boolean;
 }
 
-export const getRolesFromIdentity = (
+export const getRolesForNamespace = (
 	caller: Identity,
+	namespace: string,
 ): ReadonlyArray<RoleName> =>
 	Match.value(caller).pipe(
 		Match.withReturnType<ReadonlyArray<RoleName>>(),
-		Match.tag("human", "machine", (holder) => holder.roles),
+		Match.tag("human", "machine", (holder) =>
+			holder.roles
+				.filter((role) => role.namespace === namespace)
+				.map((role) => role.name),
+		),
 		Match.tag("anonymous", () => []),
 		Match.tag("server", () => []),
 		Match.exhaustive,
@@ -105,6 +110,7 @@ export const isSuperadmin = (caller: Identity): boolean =>
 const can = (
 	access: Access,
 	caller: Identity,
+	namespace: string,
 	namedRoles: ReadonlySet<RoleName>,
 ): boolean => {
 	if (caller._tag === "server") {
@@ -113,7 +119,7 @@ const can = (
 	if (isAdminTier(caller)) {
 		return true;
 	}
-	const roles = getRolesFromIdentity(caller);
+	const roles = getRolesForNamespace(caller, namespace);
 
 	const isClient = roles.some((role) => namedRoles.has(role));
 	if (isClient && access.client === "deny") {
@@ -142,12 +148,15 @@ const EMPTY_ACCESS: Access = {
 const buildPermission = (
 	read: Access,
 	write: Access,
+	namespace: string,
 	namedRoles: ReadonlySet<RoleName>,
 ): ResolvedPermission => ({
 	read,
 	write,
-	canRead: (caller: Identity): boolean => can(read, caller, namedRoles),
-	canWrite: (caller: Identity): boolean => can(write, caller, namedRoles),
+	canRead: (caller: Identity): boolean =>
+		can(read, caller, namespace, namedRoles),
+	canWrite: (caller: Identity): boolean =>
+		can(write, caller, namespace, namedRoles),
 });
 
 const canReadWhenCanWrite = (
@@ -179,6 +188,7 @@ const foldSlots = (
 export const replicantPermission = (
 	read: Access,
 	write: Access,
+	namespace: string,
 	namedRoles: ReadonlySet<RoleName>,
 ): ResolvedPermission => {
 	const writeDenied = write.rolesDenied.union(read.rolesDenied);
@@ -193,6 +203,7 @@ export const replicantPermission = (
 			rolesDenied: writeDenied,
 			...foldSlots(cantWriteWhenCantRead, read, write),
 		},
+		namespace,
 		namedRoles,
 	);
 };
@@ -201,26 +212,32 @@ const absentOperation = () => false;
 
 export const computedPermission = (
 	read: Access,
+	namespace: string,
 	namedRoles: ReadonlySet<RoleName>,
 ): ResolvedPermission => ({
 	read,
 	write: EMPTY_ACCESS,
-	canRead: (caller: Identity): boolean => can(read, caller, namedRoles),
+	canRead: (caller: Identity): boolean =>
+		can(read, caller, namespace, namedRoles),
 	canWrite: absentOperation,
 });
 
 export const rpcPermission = (
 	call: Access,
+	namespace: string,
 	namedRoles: ReadonlySet<RoleName>,
 ): ResolvedPermission => ({
 	read: EMPTY_ACCESS,
 	write: call,
 	canRead: absentOperation,
-	canWrite: (caller: Identity): boolean => can(call, caller, namedRoles),
+	canWrite: (caller: Identity): boolean =>
+		can(call, caller, namespace, namedRoles),
 });
 
 export const topicPermission = (
 	subscribe: Access,
 	publish: Access,
+	namespace: string,
 	namedRoles: ReadonlySet<RoleName>,
-): ResolvedPermission => buildPermission(subscribe, publish, namedRoles);
+): ResolvedPermission =>
+	buildPermission(subscribe, publish, namespace, namedRoles);

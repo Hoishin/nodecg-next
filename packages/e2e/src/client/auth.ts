@@ -1,5 +1,5 @@
 import { authSession } from "@nodecg-next/browser";
-import { loadAuthClient } from "@nodecg-next/client";
+import { loadAuthClient, type RoleAssignment } from "@nodecg-next/client";
 
 export const makeAuthHelpers = (baseUrl: string) => {
 	const client = loadAuthClient(baseUrl);
@@ -18,18 +18,24 @@ export const makeAuthHelpers = (baseUrl: string) => {
 	const logout = () => client.logout();
 	const me = () => client.me();
 
-	const grantRole = (subject: string, role: string) =>
+	const grantRole = (subject: string, role: RoleAssignment["role"]) =>
 		client.grantRole({ login: { issuer: "dev", subject }, role });
 
-	const revokeRole = (subject: string, role: string) =>
+	const revokeRole = (subject: string, role: RoleAssignment["role"]) =>
 		client.revokeRole({ login: { issuer: "dev", subject }, role });
 
-	const grantAsAdmin = async (subject: string, role: string) => {
+	const grantAsAdmin = async (
+		subject: string,
+		role: RoleAssignment["role"],
+	) => {
 		await login("root");
 		await grantRole(subject, role);
 	};
 
-	const revokeAsAdmin = async (subject: string, role: string) => {
+	const revokeAsAdmin = async (
+		subject: string,
+		role: RoleAssignment["role"],
+	) => {
 		await login("root");
 		await revokeRole(subject, role);
 	};

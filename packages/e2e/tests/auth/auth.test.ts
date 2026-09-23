@@ -40,10 +40,10 @@ describe("role reporting", () => {
 	});
 
 	test("a held declared role reports for its namespace, capabilities or not", async () => {
-		await grantAsAdmin("permsviewer", "viewer");
+		await grantAsAdmin("permsviewer", { namespace: "e2e", name: "viewer" });
 		await login("permsviewer");
 		onTestFinished(async () => {
-			await revokeAsAdmin("permsviewer", "viewer");
+			await revokeAsAdmin("permsviewer", { namespace: "e2e", name: "viewer" });
 			await logout();
 		});
 
@@ -134,13 +134,13 @@ describe("runtime role assignment", () => {
 		assert(before._tag === "human");
 		expect(before.roles).toEqual([]);
 
-		await grantAsAdmin("operator", "producer");
+		await grantAsAdmin("operator", { namespace: "e2e", name: "producer" });
 		await login("operator");
 		const granted = (await me()).identity;
 		assert(granted._tag === "human");
-		expect(granted.roles).toEqual(["producer"]);
+		expect(granted.roles).toEqual([{ namespace: "e2e", name: "producer" }]);
 
-		await revokeAsAdmin("operator", "producer");
+		await revokeAsAdmin("operator", { namespace: "e2e", name: "producer" });
 		await login("operator");
 		const revoked = (await me()).identity;
 		assert(revoked._tag === "human");
@@ -154,12 +154,12 @@ describe("runtime role assignment", () => {
 		onTestFinished(async () => {
 			await logout();
 		});
-		await expect(grantRole("operator", "server")).rejects.toThrow(
-			"Authentication request failed",
-		);
-		await expect(grantRole("operator", "superadmin")).rejects.toThrow(
-			"Authentication request failed",
-		);
+		await expect(
+			grantRole("operator", { namespace: "e2e", name: "server" }),
+		).rejects.toThrow("Authentication request failed");
+		await expect(
+			grantRole("operator", { namespace: "e2e", name: "superadmin" }),
+		).rejects.toThrow("Authentication request failed");
 	});
 
 	test("a caller without the admin tier cannot grant", async () => {
@@ -167,15 +167,15 @@ describe("runtime role assignment", () => {
 		onTestFinished(async () => {
 			await logout();
 		});
-		await expect(grantRole("nobody", "superadmin")).rejects.toThrow(
-			"Authentication request failed",
-		);
+		await expect(
+			grantRole("nobody", { namespace: "e2e", name: "superadmin" }),
+		).rejects.toThrow("Authentication request failed");
 	});
 
 	test("an anonymous caller cannot grant", async () => {
 		await logout();
-		await expect(grantRole("nobody", "superadmin")).rejects.toThrow(
-			"Authentication request failed",
-		);
+		await expect(
+			grantRole("nobody", { namespace: "e2e", name: "superadmin" }),
+		).rejects.toThrow("Authentication request failed");
 	});
 });
