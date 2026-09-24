@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import {
 	type AuthProvider,
-	HumanAccountSchema,
+	Authentication,
 	ProviderStateMismatch,
 } from "@nodecg-next/server";
 import { Effect } from "effect";
@@ -38,7 +38,7 @@ export const makeFakeAuthProvider = (
 			}
 			const id = input.searchParams.get("identity") ?? "";
 			const found = identities.get(id);
-			return HumanAccountSchema.make({
+			return Authentication.make({
 				issuer: name,
 				subject: id,
 				displayName: found?.displayName ?? id,

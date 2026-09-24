@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { HumanAccountSchema } from "@nodecg-next/internal";
+import { Authentication } from "@nodecg-next/internal";
 import { Effect } from "effect";
 import {
 	allowInsecureRequests,
@@ -154,7 +154,7 @@ export const makeOAuth2Provider = (
 			if (typeof subject === "undefined") {
 				return yield* new NoIdentity({ provider: config.name });
 			}
-			return HumanAccountSchema.make({
+			return Authentication.make({
 				issuer: config.issuer,
 				subject,
 				displayName: pickString(identity?.displayName) ?? subject,

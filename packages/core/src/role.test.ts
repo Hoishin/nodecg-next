@@ -1,6 +1,6 @@
 import {
 	type AdminRoleName,
-	HumanAccountSchema,
+	Authentication,
 	UserIdentity,
 	ServiceAccountIdentity,
 	AnonymousIdentitySchema,
@@ -17,7 +17,7 @@ import {
 } from "./define-namespace.ts";
 import { getRolesForNamespace, isAdminTier } from "./role.ts";
 
-const account = HumanAccountSchema.make({
+const account = Authentication.make({
 	issuer: "test",
 	subject: "subject",
 	displayName: "Tester",

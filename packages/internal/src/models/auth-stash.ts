@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+// TODO: rename to PendingLogin
 export const AuthStash = Schema.Struct({
 	provider: Schema.String,
 	state: Schema.String,

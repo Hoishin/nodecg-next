@@ -1,13 +1,13 @@
 import { randomBytes } from "node:crypto";
 
-import type { HumanAccount } from "@nodecg-next/internal";
+import type { Authentication } from "@nodecg-next/internal";
 import { Clock, Duration, Effect, Layer, Option } from "effect";
 
 import { config } from "../../server-config.ts";
 import { SessionStoreService } from "./session-store.ts";
 
 interface SessionEntry {
-	readonly account: HumanAccount;
+	readonly account: Authentication;
 	expiresAt: number;
 }
 
@@ -18,7 +18,7 @@ export const InMemorySessionStore = Layer.effect(
 		const sessions = new Map<string, SessionEntry>();
 
 		const create = Effect.fn("SessionStore.create")(function* (
-			account: HumanAccount,
+			account: Authentication,
 		) {
 			const now = yield* Clock.currentTimeMillis;
 			const sessionId = randomBytes(32).toString("base64url");

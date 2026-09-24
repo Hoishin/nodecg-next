@@ -2,7 +2,7 @@ import { defineNamespace } from "@nodecg-next/core";
 import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	HumanAccountSchema,
+	Authentication,
 	UserIdentity,
 	RoleName,
 	ServerIdentity,
@@ -62,7 +62,7 @@ const manifest = defineNamespace("ns", {
 const scorer = Layer.succeed(
 	CurrentIdentity,
 	UserIdentity.make({
-		account: HumanAccountSchema.make({
+		account: Authentication.make({
 			issuer: "test",
 			subject: "subject",
 			displayName: "Scorer",

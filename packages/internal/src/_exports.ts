@@ -42,11 +42,12 @@ export {
 	type ReplicantFieldIdentifier,
 	type TopicFieldIdentifier,
 } from "./messages.ts";
+export { Account, AccountId } from "./models/account.ts";
+export { ApiKey, ApiKeyId } from "./models/api-key.ts";
 export { AuthStash } from "./models/auth-stash.ts";
+export { Authentication, AuthenticationId } from "./models/authentication.ts";
 export {
 	AnonymousIdentitySchema,
-	type HumanAccount,
-	HumanAccountSchema,
 	Identity,
 	ServerIdentity,
 	ServiceAccountIdentity,
@@ -72,4 +73,8 @@ export {
 	RoleNameSchema,
 	type UndeclarableRoleName,
 } from "./models/role.ts";
+export { GlobalRoleGrant, RoleGrant } from "./models/role-grant.ts";
+export { ServiceAccount, ServiceAccountId } from "./models/service-account.ts";
+export { User, UserId } from "./models/user.ts";
+export { UserSession, UserSessionId } from "./models/user-session.ts";
 export { type Updater } from "./updater-types.ts";

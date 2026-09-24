@@ -1,4 +1,4 @@
-import type { AuthStash, HumanAccount } from "@nodecg-next/internal";
+import type { AuthStash, Authentication } from "@nodecg-next/internal";
 import { Context, type Effect, HashMap, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
@@ -58,7 +58,7 @@ export interface AuthProvider {
 		readonly redirectUri: string;
 		readonly searchParams: URLSearchParams;
 		readonly stash: AuthStash;
-	}) => Effect.Effect<HumanAccount, CallbackError, HttpClient.HttpClient>;
+	}) => Effect.Effect<Authentication, CallbackError, HttpClient.HttpClient>;
 }
 
 export class AuthProviderRegistry extends Context.Service<

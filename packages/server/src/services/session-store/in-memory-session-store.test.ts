@@ -1,4 +1,4 @@
-import { HumanAccountSchema } from "@nodecg-next/internal";
+import { Authentication } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { ConfigProvider, Effect, Layer, Option } from "effect";
 import { TestClock } from "effect/testing";
@@ -7,7 +7,7 @@ import { assert, describe, expect } from "vitest";
 import { InMemorySessionStore } from "./in-memory-session-store.ts";
 import { SessionStoreService } from "./session-store.ts";
 
-const alice = HumanAccountSchema.make({
+const alice = Authentication.make({
 	issuer: "https://idp.test",
 	subject: "alice",
 	displayName: "Alice",

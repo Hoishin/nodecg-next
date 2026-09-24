@@ -1,19 +1,12 @@
 import { Schema } from "effect";
 
+import { Authentication } from "./authentication.ts";
 import { GlobalRoleName, Role } from "./role.ts";
 
 export const AnonymousIdentitySchema = Schema.TaggedStruct("anonymous", {});
 
-// TODO: rename to Authentication in a separate model file
-export const HumanAccountSchema = Schema.Struct({
-	issuer: Schema.String,
-	subject: Schema.String,
-	displayName: Schema.String,
-});
-export type HumanAccount = typeof HumanAccountSchema.Type;
-
 export const UserIdentity = Schema.TaggedStruct("user", {
-	account: HumanAccountSchema,
+	account: Authentication,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });

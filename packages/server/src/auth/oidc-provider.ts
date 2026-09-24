@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { HumanAccountSchema } from "@nodecg-next/internal";
+import { Authentication } from "@nodecg-next/internal";
 import { Effect, Function, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import {
@@ -75,7 +75,7 @@ const identityFromClaims = (claims: Record<string, unknown>) => {
 		pickString(claims["name"]) ??
 		pickString(claims["preferred_username"]) ??
 		subject;
-	return HumanAccountSchema.make({ issuer, subject, displayName });
+	return Authentication.make({ issuer, subject, displayName });
 };
 
 const callbackUrl = (redirectUri: string, searchParams: URLSearchParams) => {
