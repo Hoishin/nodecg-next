@@ -1,12 +1,5 @@
+import type { AuthStash } from "@nodecg-next/internal";
 import { Context, type Effect, type Option } from "effect";
-
-export interface AuthStash {
-	readonly provider: string;
-	readonly state: string;
-	readonly codeVerifier?: string;
-	readonly nonce?: string;
-	readonly returnTo?: string;
-}
 
 export interface StashStore {
 	readonly create: (stash: AuthStash) => Effect.Effect<string>;

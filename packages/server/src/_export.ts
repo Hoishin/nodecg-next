@@ -12,7 +12,11 @@ export {
 	type AuthProvider,
 	ProviderStateMismatch,
 } from "./auth/auth-provider.ts";
-export { type HumanAccount, HumanAccountSchema } from "@nodecg-next/internal";
+export {
+	type AuthStash,
+	type HumanAccount,
+	HumanAccountSchema,
+} from "@nodecg-next/internal";
 export {
 	makeOidcProvider,
 	type OidcProviderConfig,
@@ -21,7 +25,6 @@ export {
 	makeOAuth2Provider,
 	type OAuth2ProviderConfig,
 } from "./auth/oauth2-provider.ts";
-export { type AuthStash } from "./services/stash-store/stash-store.ts";
 export {
 	implementNamespace,
 	implementExtendedNamespace,

@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 
+import type { AuthStash } from "@nodecg-next/internal";
 import { Clock, Duration, Effect, Layer, Option } from "effect";
 
-import { type AuthStash, StashStoreService } from "./stash-store.ts";
+import { StashStoreService } from "./stash-store.ts";
 
 const ttlMillis = Duration.toMillis(Duration.minutes(10));
 

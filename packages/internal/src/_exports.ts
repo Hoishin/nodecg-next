@@ -21,14 +21,6 @@ export {
 	AdminTierMiddleware,
 	SuperadminMiddleware,
 	CurrentIdentity,
-	Identity,
-	UserIdentity,
-	type HumanAccount,
-	HumanAccountSchema,
-	type Login,
-	ServiceAccountIdentity,
-	AnonymousIdentitySchema,
-	ServerIdentity,
 	sessionCookieName,
 	sessionCookieSecurity,
 } from "./auth.ts";
@@ -50,6 +42,17 @@ export {
 	type ReplicantFieldIdentifier,
 	type TopicFieldIdentifier,
 } from "./messages.ts";
+export { AuthStash } from "./models/auth-stash.ts";
+export {
+	AnonymousIdentitySchema,
+	type HumanAccount,
+	HumanAccountSchema,
+	Identity,
+	ServerIdentity,
+	ServiceAccountIdentity,
+	UserIdentity,
+} from "./models/identity.ts";
+export { Login } from "./models/login.ts";
 export {
 	DeclarablePrincipalNameSchema,
 	Principal,
@@ -58,7 +61,7 @@ export {
 	UndeniablePrincipalNameSchema,
 	type DeclarablePrincipalName,
 	type PrincipalName,
-} from "./principal.ts";
+} from "./models/principal.ts";
 export {
 	ADMIN_TIER,
 	type AdminRoleName,
@@ -68,5 +71,5 @@ export {
 	RoleName,
 	RoleNameSchema,
 	type UndeclarableRoleName,
-} from "./role.ts";
+} from "./models/role.ts";
 export { type Updater } from "./updater-types.ts";

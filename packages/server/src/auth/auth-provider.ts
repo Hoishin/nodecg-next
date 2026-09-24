@@ -1,8 +1,6 @@
-import type { HumanAccount } from "@nodecg-next/internal";
+import type { AuthStash, HumanAccount } from "@nodecg-next/internal";
 import { Context, type Effect, HashMap, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-
-import type { AuthStash } from "../services/stash-store/stash-store.ts";
 
 export class ProviderStateMismatch extends Schema.TaggedError<ProviderStateMismatch>()(
 	"ProviderStateMismatch",

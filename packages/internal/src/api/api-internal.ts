@@ -10,16 +10,16 @@ import {
 import {
 	AdminTierMiddleware,
 	UserAuthenticationMiddleware,
-	Identity,
-	Login,
 	SuperadminMiddleware,
 } from "../auth.ts";
+import { Identity } from "../models/identity.ts";
+import { Login } from "../models/login.ts";
 import {
 	AdminRoleName,
 	GlobalRoleName,
 	Role,
 	RoleNameSchema,
-} from "../role.ts";
+} from "../models/role.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 

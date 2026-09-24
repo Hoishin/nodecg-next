@@ -1,10 +1,11 @@
+import type { AuthStash } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Option } from "effect";
 import { TestClock } from "effect/testing";
 import { assert, describe, expect } from "vitest";
 
 import { InMemoryStashStore } from "./in-memory-stash-store.ts";
-import { type AuthStash, StashStoreService } from "./stash-store.ts";
+import { StashStoreService } from "./stash-store.ts";
 
 const test = testLayer(InMemoryStashStore);
 
