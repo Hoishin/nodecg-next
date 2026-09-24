@@ -35,7 +35,7 @@ export {
 	SubscribeMessage,
 	UnsubscribeMessage,
 	type FieldIdentifier,
-	type HumanIdentity,
+	type UserIdentity,
 	type Identity,
 	type LoginProvider,
 	type MePayload,

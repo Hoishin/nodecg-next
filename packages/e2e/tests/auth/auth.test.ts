@@ -22,7 +22,7 @@ describe("browser login", () => {
 		await login("alice");
 
 		expect((await me()).identity).toEqual({
-			_tag: "human",
+			_tag: "user",
 			account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 			roles: [],
 			globalRoles: [],
@@ -71,7 +71,7 @@ describe("loadAuthClient", () => {
 
 		await login("alice");
 		const payload = await client.me();
-		assert(payload.identity._tag === "human");
+		assert(payload.identity._tag === "user");
 		expect(payload.namespaces["e2e"]?.roles).toEqual([]);
 
 		await client.logout();
@@ -80,7 +80,7 @@ describe("loadAuthClient", () => {
 });
 
 describe("authSession", () => {
-	test("popupLogin resolves the human identity, updates the store, and closes the popup", async () => {
+	test("popupLogin resolves the user identity, updates the store, and closes the popup", async () => {
 		const session = authSession(loadAuthClient(base));
 		onTestFinished(() => {
 			session.client.dispose();
@@ -97,9 +97,9 @@ describe("authSession", () => {
 		const dev = providers.find((provider) => provider.name === "dev");
 		assert(dev);
 
-		const human = await session.popupLogin(dev);
-		expect(human.account.subject).toBe("alice");
-		expect(session.identity.get()).toEqual(human);
+		const user = await session.popupLogin(dev);
+		expect(user.account.subject).toBe("alice");
+		expect(session.identity.get()).toEqual(user);
 		expect(changed).toHaveBeenCalled();
 		await vi.waitFor(async () => {
 			expect(await commands.countPages()).toBe(pagesBefore);
@@ -131,19 +131,19 @@ describe("runtime role assignment", () => {
 	test("a granted role rides on the resolved identity live, and revoke removes it", async () => {
 		await login("operator");
 		const before = (await me()).identity;
-		assert(before._tag === "human");
+		assert(before._tag === "user");
 		expect(before.roles).toEqual([]);
 
 		await grantAsAdmin("operator", { namespace: "e2e", name: "producer" });
 		await login("operator");
 		const granted = (await me()).identity;
-		assert(granted._tag === "human");
+		assert(granted._tag === "user");
 		expect(granted.roles).toEqual([{ namespace: "e2e", name: "producer" }]);
 
 		await revokeAsAdmin("operator", { namespace: "e2e", name: "producer" });
 		await login("operator");
 		const revoked = (await me()).identity;
-		assert(revoked._tag === "human");
+		assert(revoked._tag === "user");
 		expect(revoked.roles).toEqual([]);
 
 		await logout();

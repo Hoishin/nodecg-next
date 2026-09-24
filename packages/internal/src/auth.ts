@@ -22,28 +22,28 @@ export const HumanAccountSchema = Schema.Struct({
 });
 export type HumanAccount = typeof HumanAccountSchema.Type;
 
-export const HumanIdentity = Schema.TaggedStruct("human", {
+export const UserIdentity = Schema.TaggedStruct("user", {
 	account: HumanAccountSchema,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
-export type HumanIdentity = typeof HumanIdentity.Type;
+export type UserIdentity = typeof UserIdentity.Type;
 
-export const MachineIdentity = Schema.TaggedStruct("machine", {
+export const ServiceAccountIdentity = Schema.TaggedStruct("serviceAccount", {
 	id: Schema.String,
 	displayName: Schema.String,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
-export type MachineIdentity = typeof MachineIdentity.Type;
+export type ServiceAccountIdentity = typeof ServiceAccountIdentity.Type;
 
 export const ServerIdentity = Schema.TaggedStruct("server", {});
 export type ServerIdentity = typeof ServerIdentity.Type;
 
 export const Identity = Schema.Union([
 	AnonymousIdentitySchema,
-	HumanIdentity,
-	MachineIdentity,
+	UserIdentity,
+	ServiceAccountIdentity,
 	ServerIdentity,
 ]);
 export type Identity = typeof Identity.Type;
@@ -60,8 +60,8 @@ export const sessionCookieSecurity = HttpApiSecurity.apiKey({
 	in: "cookie",
 });
 
-export class HumanAuthenticationMiddleware extends HttpApiMiddleware.Service<
-	HumanAuthenticationMiddleware,
+export class UserAuthenticationMiddleware extends HttpApiMiddleware.Service<
+	UserAuthenticationMiddleware,
 	{ provides: CurrentIdentity }
 >()("Authentication", {
 	error: HttpApiError.Unauthorized,
@@ -78,10 +78,10 @@ export class SuperadminMiddleware extends HttpApiMiddleware.Service<
 	{ requires: CurrentIdentity }
 >()("Superadmin", { error: HttpApiError.Forbidden }) {}
 
-export class MachineAuthenticationMiddleware extends HttpApiMiddleware.Service<
-	MachineAuthenticationMiddleware,
+export class ServiceAccountAuthenticationMiddleware extends HttpApiMiddleware.Service<
+	ServiceAccountAuthenticationMiddleware,
 	{ provides: CurrentIdentity }
->()("MachineAuthentication", {
+>()("ServiceAccountAuthentication", {
 	error: HttpApiError.Unauthorized,
 	security: { bearer: HttpApiSecurity.bearer },
 }) {}

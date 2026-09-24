@@ -23,7 +23,7 @@ const jsonResponse = (body: unknown) =>
 
 const mePayload = {
 	identity: {
-		_tag: "human",
+		_tag: "user",
 		account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 		roles: [],
 		globalRoles: [],
@@ -103,7 +103,7 @@ describe("me", () => {
 				.me()
 				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 
-			expect(payload.identity._tag).toBe("human");
+			expect(payload.identity._tag).toBe("user");
 			expect(payload.namespaces["fixture"]?.roles).toEqual(["producer"]);
 			const request = requestOf(fetch);
 			expect(request.method).toBe("GET");

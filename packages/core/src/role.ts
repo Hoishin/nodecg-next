@@ -77,7 +77,7 @@ export const getRolesForNamespace = (
 ): ReadonlyArray<RoleName> =>
 	Match.value(caller).pipe(
 		Match.withReturnType<ReadonlyArray<RoleName>>(),
-		Match.tag("human", "machine", (holder) =>
+		Match.tag("user", "serviceAccount", (holder) =>
 			holder.roles
 				.filter((role) => role.namespace === namespace)
 				.map((role) => role.name),
@@ -89,7 +89,7 @@ export const getRolesForNamespace = (
 
 export const isAdminTier = (caller: Identity): boolean =>
 	Match.value(caller).pipe(
-		Match.tag("human", "machine", (holder) =>
+		Match.tag("user", "serviceAccount", (holder) =>
 			holder.globalRoles.some((role) => ADMIN_TIER.has(role)),
 		),
 		Match.tag("anonymous", () => false),
@@ -99,7 +99,7 @@ export const isAdminTier = (caller: Identity): boolean =>
 
 export const isSuperadmin = (caller: Identity): boolean =>
 	Match.value(caller).pipe(
-		Match.tag("human", "machine", (holder) =>
+		Match.tag("user", "serviceAccount", (holder) =>
 			holder.globalRoles.includes("superadmin"),
 		),
 		Match.tag("anonymous", () => false),

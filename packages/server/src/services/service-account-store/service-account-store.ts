@@ -1,7 +1,7 @@
 import type { GlobalRoleName, Role } from "@nodecg-next/internal";
 import { Context, type Effect, type Option, type Redacted } from "effect";
 
-export interface MachineClient {
+export interface ServiceAccount {
 	readonly id: string;
 	readonly displayName: string;
 	readonly roles: ReadonlyArray<Role>;
@@ -14,18 +14,18 @@ export interface CreatedApiKey {
 	readonly token: Redacted.Redacted<string>;
 }
 
-export interface MachineClientStore {
+export interface ServiceAccountStore {
 	readonly createApiKey: (input: {
 		readonly displayName: string;
 	}) => Effect.Effect<CreatedApiKey>;
 
 	readonly validateApiKey: (
 		token: string,
-	) => Effect.Effect<Option.Option<MachineClient>>;
+	) => Effect.Effect<Option.Option<ServiceAccount>>;
 
-	readonly list: Effect.Effect<ReadonlyArray<MachineClient>>;
+	readonly list: Effect.Effect<ReadonlyArray<ServiceAccount>>;
 
-	readonly revoke: (id: string) => Effect.Effect<Option.Option<MachineClient>>;
+	readonly revoke: (id: string) => Effect.Effect<Option.Option<ServiceAccount>>;
 
 	readonly refreshApiKey: (
 		id: string,
@@ -62,7 +62,7 @@ export interface MachineClientStore {
 	) => Effect.Effect<Option.Option<ReadonlyArray<GlobalRoleName>>>;
 }
 
-export class MachineClientStoreService extends Context.Service<
-	MachineClientStoreService,
-	MachineClientStore
->()("MachineClientStore") {}
+export class ServiceAccountStoreService extends Context.Service<
+	ServiceAccountStoreService,
+	ServiceAccountStore
+>()("ServiceAccountStore") {}

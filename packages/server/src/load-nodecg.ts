@@ -29,8 +29,8 @@ import {
 } from "./auth/auth-provider.ts";
 import {
 	AdminTierMiddlewareLive,
-	MachineAuthenticationMiddlewareLive,
-	HumanAuthenticationMiddlewareLive,
+	ServiceAccountAuthenticationMiddlewareLive,
+	UserAuthenticationMiddlewareLive,
 	SuperadminMiddlewareLive,
 } from "./auth/middleware.ts";
 import {
@@ -58,12 +58,12 @@ import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { UrlPath } from "./server/url-path.ts";
 import { websocketRoute } from "./server/websocket.ts";
-import { InMemoryMachineClientStore } from "./services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import {
 	type ReplicantStorage,
 	ReplicantStorageService,
 } from "./services/replicant-storage/replicant-storage.ts";
+import { InMemoryServiceAccountStore } from "./services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
@@ -304,13 +304,13 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			const ServerLive = HttpRouter.serve(AppLive).pipe(
 				Layer.provide(FieldRegistryService.layer(registered)),
 				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
-				Layer.provide(HumanAuthenticationMiddlewareLive),
-				Layer.provide(MachineAuthenticationMiddlewareLive),
+				Layer.provide(UserAuthenticationMiddlewareLive),
+				Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
 				Layer.provide(AdminTierMiddlewareLive),
 				Layer.provide(SuperadminMiddlewareLive),
 				Layer.provide(InMemorySessionStore),
 				Layer.provide(InMemoryStashStore),
-				Layer.provide(InMemoryMachineClientStore),
+				Layer.provide(InMemoryServiceAccountStore),
 				Layer.provide(seededRoleStore),
 				Layer.provide(
 					Layer.succeed(

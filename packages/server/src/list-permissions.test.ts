@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import {
 	AnonymousIdentitySchema,
-	HumanIdentity,
+	UserIdentity,
 	type Role,
 	RoleName,
 	ServerIdentity,
@@ -32,8 +32,8 @@ const provideRegistry = Effect.provide(
 	]),
 );
 
-const human = (...roles: ReadonlyArray<Role>) =>
-	HumanIdentity.make({
+const user = (...roles: ReadonlyArray<Role>) =>
+	UserIdentity.make({
 		account: { issuer: "dev", subject: "subject", displayName: "Subject" },
 		roles,
 		globalRoles: [],
@@ -46,7 +46,7 @@ describe("listPermissions", () => {
 			Effect.gen(function* () {
 				expect(
 					yield* listPermissions(
-						human(
+						user(
 							{ namespace: "fixture", name: RoleName("producer") },
 							{ namespace: "fixture", name: RoleName("unrelated") },
 							{ namespace: "other", name: RoleName("moderator") },
@@ -64,7 +64,7 @@ describe("listPermissions", () => {
 		() =>
 			Effect.gen(function* () {
 				const report = yield* listPermissions(
-					human({ namespace: "fixture", name: RoleName("producer") }),
+					user({ namespace: "fixture", name: RoleName("producer") }),
 				);
 				expect(report["other"]?.roles).toEqual([]);
 			}).pipe(provideRegistry),
@@ -73,7 +73,7 @@ describe("listPermissions", () => {
 	it.effect("a held capability-less declared role still reports", () =>
 		Effect.gen(function* () {
 			const report = yield* listPermissions(
-				human({ namespace: "fixture", name: RoleName("viewer") }),
+				user({ namespace: "fixture", name: RoleName("viewer") }),
 			);
 			expect(report["fixture"]?.roles).toEqual([RoleName("viewer")]);
 		}).pipe(provideRegistry),
@@ -84,7 +84,7 @@ describe("listPermissions", () => {
 			const identities: ReadonlyArray<Identity> = [
 				AnonymousIdentitySchema.make({}),
 				ServerIdentity.make({}),
-				HumanIdentity.make({
+				UserIdentity.make({
 					account: {
 						issuer: "dev",
 						subject: "subject",

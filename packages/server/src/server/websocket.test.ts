@@ -8,15 +8,15 @@ import {
 } from "../auth/auth-provider.ts";
 import {
 	AdminTierMiddlewareLive,
-	HumanAuthenticationMiddlewareLive,
-	MachineAuthenticationMiddlewareLive,
+	UserAuthenticationMiddlewareLive,
+	ServiceAccountAuthenticationMiddlewareLive,
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
-import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
+import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
@@ -35,8 +35,8 @@ const handler = () => {
 					FetchHttpClient.layer,
 				),
 			),
-			Layer.provide(HumanAuthenticationMiddlewareLive),
-			Layer.provide(MachineAuthenticationMiddlewareLive),
+			Layer.provide(UserAuthenticationMiddlewareLive),
+			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(FieldRegistryService.layer([])),
@@ -50,7 +50,7 @@ const handler = () => {
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
-			Layer.provide(InMemoryMachineClientStore),
+			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,

@@ -1,8 +1,12 @@
 import { HttpApi } from "effect/unstable/httpapi";
 
-import { MachineAuthenticationMiddleware } from "../auth.ts";
+import { ServiceAccountAuthenticationMiddleware } from "../auth.ts";
 import { fieldGroup } from "./shared.ts";
 
 export const PublicApi = HttpApi.make("PublicApi")
-	.add(fieldGroup("PublicField").middleware(MachineAuthenticationMiddleware))
+	.add(
+		fieldGroup("PublicField").middleware(
+			ServiceAccountAuthenticationMiddleware,
+		),
+	)
 	.prefix("/api/v0");

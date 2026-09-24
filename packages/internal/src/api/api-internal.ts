@@ -9,7 +9,7 @@ import {
 
 import {
 	AdminTierMiddleware,
-	HumanAuthenticationMiddleware,
+	UserAuthenticationMiddleware,
 	Identity,
 	Login,
 	SuperadminMiddleware,
@@ -120,22 +120,25 @@ const RoleAssignmentSchema = Schema.Struct({
 	role: Role,
 });
 
-export const HumanAssignmentSchema = Schema.TaggedStruct("human", {
+export const UserAssignmentSchema = Schema.TaggedStruct("user", {
 	login: Login,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
 
-export const MachineAssignmentSchema = Schema.TaggedStruct("machine", {
-	id: Schema.String,
-	roles: Schema.Array(Role),
-	globalRoles: Schema.Array(GlobalRoleName),
-});
+export const ServiceAccountAssignmentSchema = Schema.TaggedStruct(
+	"serviceAccount",
+	{
+		id: Schema.String,
+		roles: Schema.Array(Role),
+		globalRoles: Schema.Array(GlobalRoleName),
+	},
+);
 
 export const RoleAssignmentsDocument = Schema.Struct({
 	version: Schema.Literal(0),
 	assignments: Schema.Array(
-		Schema.Union([HumanAssignmentSchema, MachineAssignmentSchema]),
+		Schema.Union([UserAssignmentSchema, ServiceAccountAssignmentSchema]),
 	),
 });
 export type RoleAssignmentsDocument = typeof RoleAssignmentsDocument.Type;
@@ -155,45 +158,45 @@ const CreateApiKeyResultSchema = Schema.Struct({
 	token: Schema.Redacted(Schema.String),
 });
 
-const MachineClientSchema = Schema.Struct({
+const ServiceAccountSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
 
-const ListMachinesResultSchema = Schema.Struct({
-	machines: Schema.Array(MachineClientSchema),
+const ListServiceAccountsResultSchema = Schema.Struct({
+	serviceAccounts: Schema.Array(ServiceAccountSchema),
 });
 
-const MachinesGroup = HttpApiGroup.make("Machines")
+const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 	.add(
-		HttpApiEndpoint.post("createApiKey", "/machines", {
+		HttpApiEndpoint.post("createApiKey", "/service-accounts", {
 			payload: CreateApiKeyRequestSchema,
 			success: CreateApiKeyResultSchema,
 		}),
 	)
 	.add(
-		HttpApiEndpoint.get("list", "/machines", {
-			success: ListMachinesResultSchema,
+		HttpApiEndpoint.get("list", "/service-accounts", {
+			success: ListServiceAccountsResultSchema,
 		}),
 	)
 	.add(
-		HttpApiEndpoint.delete("revoke", "/machines/:id", {
+		HttpApiEndpoint.delete("revoke", "/service-accounts/:id", {
 			params: { id: Schema.String },
 			success: HttpApiSchema.Empty(204),
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
-		HttpApiEndpoint.post("refresh", "/machines/:id/refresh", {
+		HttpApiEndpoint.post("refresh", "/service-accounts/:id/refresh", {
 			params: { id: Schema.String },
 			success: CreateApiKeyResultSchema,
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
-		HttpApiEndpoint.post("grantRole", "/machines/:id/roles", {
+		HttpApiEndpoint.post("grantRole", "/service-accounts/:id/roles", {
 			params: { id: Schema.String },
 			payload: Role,
 			success: RoleAssignmentResultSchema,
@@ -203,7 +206,7 @@ const MachinesGroup = HttpApiGroup.make("Machines")
 	.add(
 		HttpApiEndpoint.delete(
 			"revokeRole",
-			"/machines/:id/namespaces/:namespace/roles/:name",
+			"/service-accounts/:id/namespaces/:namespace/roles/:name",
 			{
 				params: {
 					id: Schema.String,
@@ -245,8 +248,8 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	.middleware(AdminTierMiddleware);
 
 export const AdminTargetSchema = Schema.Union([
-	Schema.TaggedStruct("human", { login: Login }),
-	Schema.TaggedStruct("machine", { id: Schema.String }),
+	Schema.TaggedStruct("user", { login: Login }),
+	Schema.TaggedStruct("serviceAccount", { id: Schema.String }),
 ]);
 export type AdminTarget = typeof AdminTargetSchema.Type;
 
@@ -276,8 +279,8 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 export const InternalApi = HttpApi.make("InternalApi")
 	.add(fieldGroup("Field"))
 	.add(AuthenticationGroup)
-	.add(MachinesGroup)
+	.add(ServiceAccountsGroup)
 	.add(RolesGroup)
 	.add(AdminRolesGroup)
-	.middleware(HumanAuthenticationMiddleware)
+	.middleware(UserAuthenticationMiddleware)
 	.prefix("/api/internal");

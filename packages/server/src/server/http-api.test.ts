@@ -1,10 +1,10 @@
 import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
-	HumanAuthenticationMiddleware,
+	UserAuthenticationMiddleware,
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	HumanIdentity,
+	UserIdentity,
 	type Identity,
 	RoleName,
 } from "@nodecg-next/internal";
@@ -36,8 +36,8 @@ import {
 } from "../auth/auth-provider.ts";
 import {
 	AdminTierMiddlewareLive,
-	HumanAuthenticationMiddlewareLive,
-	MachineAuthenticationMiddlewareLive,
+	UserAuthenticationMiddlewareLive,
+	ServiceAccountAuthenticationMiddlewareLive,
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
 import { type BuiltNamespace } from "../build-fields.ts";
@@ -52,9 +52,9 @@ import {
 	FieldRegistryService,
 	type RegisteredNamespace,
 } from "../field-registry.ts";
-import { InMemoryMachineClientStore } from "../services/machine-client-store/in-memory-machine-client-store.ts";
 import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
+import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
@@ -175,14 +175,14 @@ const show = registeredNamespace(
 );
 
 const asIdentity = (identity: Identity) =>
-	Layer.succeed(HumanAuthenticationMiddleware, {
+	Layer.succeed(UserAuthenticationMiddleware, {
 		cookie: (httpEffect) =>
 			Effect.provideService(httpEffect, CurrentIdentity, identity),
 	});
 
 const webHandler = Effect.fn(function* (
 	namespaces: ReadonlyArray<RegisteredNamespace>,
-	middleware: typeof HumanAuthenticationMiddlewareLive = HumanAuthenticationMiddlewareLive,
+	middleware: typeof UserAuthenticationMiddlewareLive = UserAuthenticationMiddlewareLive,
 	environment: Layer.Layer<never> = Layer.empty,
 	options?: {
 		providers?: HashMap.HashMap<string, AuthProvider>;
@@ -199,13 +199,13 @@ const webHandler = Effect.fn(function* (
 				),
 			),
 			Layer.provide(middleware),
-			Layer.provide(MachineAuthenticationMiddlewareLive),
+			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
-			Layer.provide(InMemoryMachineClientStore),
+			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(InMemoryReplicantStorage),
 			Layer.provide(
 				DerivationEngineService.layer.pipe(
@@ -276,7 +276,7 @@ describe("me", () => {
 					),
 				],
 				asIdentity(
-					HumanIdentity.make({
+					UserIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: [{ namespace: "perms", name: RoleName("producer") }],
 						globalRoles: [],
@@ -287,7 +287,7 @@ describe("me", () => {
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({
 				identity: {
-					_tag: "human",
+					_tag: "user",
 					account: { issuer: "dev", subject: "op", displayName: "Op" },
 					roles: [{ namespace: "perms", name: "producer" }],
 					globalRoles: [],
@@ -470,7 +470,7 @@ describe("roles", () => {
 	}
 
 	const admin = asIdentity(
-		HumanIdentity.make({
+		UserIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -494,7 +494,7 @@ describe("roles", () => {
 			const handler = yield* webHandler(
 				[],
 				asIdentity(
-					HumanIdentity.make({
+					UserIdentity.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: [{ namespace: "show", name: RoleName("producer") }],
 						globalRoles: [],
@@ -552,13 +552,13 @@ describe("admin roles", () => {
 			role,
 		});
 
-	const human = {
-		_tag: "human",
+	const user = {
+		_tag: "user",
 		login: { issuer: "dev", subject: "operator" },
 	};
 
 	const superadmin = asIdentity(
-		HumanIdentity.make({
+		UserIdentity.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
 			roles: [],
 			globalRoles: ["superadmin"],
@@ -566,7 +566,7 @@ describe("admin roles", () => {
 	);
 
 	const admin = asIdentity(
-		HumanIdentity.make({
+		UserIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -577,11 +577,13 @@ describe("admin roles", () => {
 		Schema.Struct({ id: Schema.String }),
 	);
 
-	const createMachine = Effect.fn(function* (
+	const createServiceAccount = Effect.fn(function* (
 		handler: (request: Request) => Effect.Effect<Response>,
 	) {
 		const res = yield* handler(
-			postRequest("http://x/api/internal/machines", { displayName: "bot" }),
+			postRequest("http://x/api/internal/service-accounts", {
+				displayName: "bot",
+			}),
 		);
 		return decodeId(yield* json(res));
 	});
@@ -590,10 +592,10 @@ describe("admin roles", () => {
 		Effect.gen(function* () {
 			const handler = yield* webHandler([]);
 			expect(
-				(yield* handler(adminRoleRequest("grant", human, "admin"))).status,
+				(yield* handler(adminRoleRequest("grant", user, "admin"))).status,
 			).toBe(403);
 			expect(
-				(yield* handler(adminRoleRequest("revoke", human, "admin"))).status,
+				(yield* handler(adminRoleRequest("revoke", user, "admin"))).status,
 			).toBe(403);
 		}),
 	);
@@ -602,30 +604,28 @@ describe("admin roles", () => {
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], admin);
 			expect(
-				(yield* handler(adminRoleRequest("grant", human, "admin"))).status,
+				(yield* handler(adminRoleRequest("grant", user, "admin"))).status,
 			).toBe(403);
 		}),
 	);
 
-	it.effect("superadmin grants and revokes the admin tier for a human", () =>
+	it.effect("superadmin grants and revokes the admin tier for a user", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], superadmin);
-			const grant = yield* handler(adminRoleRequest("grant", human, "admin"));
+			const grant = yield* handler(adminRoleRequest("grant", user, "admin"));
 			expect(grant.status).toBe(200);
 			expect(yield* json(grant)).toEqual({ roles: ["admin"] });
 
-			const revoke = yield* handler(adminRoleRequest("revoke", human, "admin"));
+			const revoke = yield* handler(adminRoleRequest("revoke", user, "admin"));
 			expect(revoke.status).toBe(200);
 			expect(yield* json(revoke)).toEqual({ roles: [] });
 		}),
 	);
 
-	it.effect("superadmin grants superadmin to a human", () =>
+	it.effect("superadmin grants superadmin to a user", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], superadmin);
-			const res = yield* handler(
-				adminRoleRequest("grant", human, "superadmin"),
-			);
+			const res = yield* handler(adminRoleRequest("grant", user, "superadmin"));
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({ roles: ["superadmin"] });
 		}),
@@ -635,32 +635,38 @@ describe("admin roles", () => {
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], superadmin);
 			expect(
-				(yield* handler(adminRoleRequest("grant", human, "producer"))).status,
+				(yield* handler(adminRoleRequest("grant", user, "producer"))).status,
 			).toBe(400);
 		}),
 	);
 
-	it.effect("superadmin grants the admin tier to a machine", () =>
+	it.effect("superadmin grants the admin tier to a service account", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], superadmin);
-			const { id } = yield* createMachine(handler);
+			const { id } = yield* createServiceAccount(handler);
 			const res = yield* handler(
-				adminRoleRequest("grant", { _tag: "machine", id }, "admin"),
+				adminRoleRequest("grant", { _tag: "serviceAccount", id }, "admin"),
 			);
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({ roles: ["admin"] });
 		}),
 	);
 
-	it.effect("404 when granting the admin tier to an unknown machine", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], superadmin);
-			expect(
-				(yield* handler(
-					adminRoleRequest("grant", { _tag: "machine", id: "ghost" }, "admin"),
-				)).status,
-			).toBe(404);
-		}),
+	it.effect(
+		"404 when granting the admin tier to an unknown service account",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], superadmin);
+				expect(
+					(yield* handler(
+						adminRoleRequest(
+							"grant",
+							{ _tag: "serviceAccount", id: "ghost" },
+							"admin",
+						),
+					)).status,
+				).toBe(404);
+			}),
 	);
 });
 
@@ -668,8 +674,8 @@ describe("claim superadmin", () => {
 	const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
 	const claimRequest = (token: string) => postRequest(claimUrl, { token });
 
-	const human = asIdentity(
-		HumanIdentity.make({
+	const user = asIdentity(
+		UserIdentity.make({
 			account: { issuer: "dev", subject: "founder", displayName: "Founder" },
 			roles: [],
 			globalRoles: [],
@@ -683,10 +689,10 @@ describe("claim superadmin", () => {
 	);
 
 	it.effect(
-		"grants superadmin to the logged-in human presenting the token",
+		"grants superadmin to the logged-in user presenting the token",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], human, withClaimToken);
+				const handler = yield* webHandler([], user, withClaimToken);
 				const res = yield* handler(claimRequest("super-secret-claim-token"));
 				expect(res.status).toBe(200);
 				expect(yield* json(res)).toEqual({ roles: ["superadmin"] });
@@ -697,7 +703,7 @@ describe("claim superadmin", () => {
 		"a wrong token keeps the window open and the first success closes it",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([], human, withClaimToken);
+				const handler = yield* webHandler([], user, withClaimToken);
 				expect(
 					(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
 				).toBe(403);
@@ -721,7 +727,7 @@ describe("claim superadmin", () => {
 
 	it.effect("403 when no claim token is configured", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], human);
+			const handler = yield* webHandler([], user);
 			expect(
 				(yield* handler(claimRequest("super-secret-claim-token"))).status,
 			).toBe(403);
@@ -730,7 +736,7 @@ describe("claim superadmin", () => {
 
 	it.effect("429 after too many attempts in the window", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], human, withClaimToken);
+			const handler = yield* webHandler([], user, withClaimToken);
 			for (let attempt = 0; attempt < 5; attempt++) {
 				expect(
 					(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
@@ -744,13 +750,13 @@ describe("claim superadmin", () => {
 
 	it.effect("an anonymous flood does not consume the claim budget", () =>
 		Effect.gen(function* () {
-			const bySid = Layer.succeed(HumanAuthenticationMiddleware, {
+			const bySid = Layer.succeed(UserAuthenticationMiddleware, {
 				cookie: (httpEffect, { credential }) =>
 					Effect.provideService(
 						httpEffect,
 						CurrentIdentity,
 						Redacted.value(credential) === "founder"
-							? HumanIdentity.make({
+							? UserIdentity.make({
 									account: {
 										issuer: "dev",
 										subject: "founder",
@@ -782,12 +788,12 @@ describe("claim superadmin", () => {
 });
 
 describe("roles export/import", () => {
-	const founderIdentity = HumanIdentity.make({
+	const founderIdentity = UserIdentity.make({
 		account: { issuer: "dev", subject: "founder", displayName: "Founder" },
 		roles: [],
 		globalRoles: [],
 	});
-	const adminIdentity = HumanIdentity.make({
+	const adminIdentity = UserIdentity.make({
 		account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 		roles: [],
 		globalRoles: ["admin"],
@@ -795,7 +801,7 @@ describe("roles export/import", () => {
 	const admin = asIdentity(adminIdentity);
 
 	const identityBySubject = (identities: Record<string, Identity>) =>
-		Layer.succeed(HumanAuthenticationMiddleware, {
+		Layer.succeed(UserAuthenticationMiddleware, {
 			cookie: (httpEffect, { credential }) =>
 				Effect.provideService(
 					httpEffect,
@@ -808,7 +814,7 @@ describe("roles export/import", () => {
 	const tiered = identityBySubject({
 		founder: founderIdentity,
 		boss: adminIdentity,
-		root: HumanIdentity.make({
+		root: UserIdentity.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
 			roles: [],
 			globalRoles: ["superadmin"],
@@ -817,7 +823,7 @@ describe("roles export/import", () => {
 
 	const grantFounderAdminRequest = () =>
 		postRequest("http://x/api/internal/admin-roles/grant", {
-			target: { _tag: "human", login: { issuer: "dev", subject: "founder" } },
+			target: { _tag: "user", login: { issuer: "dev", subject: "founder" } },
 			role: "admin",
 		});
 
@@ -854,17 +860,17 @@ describe("roles export/import", () => {
 			role: { namespace: "show", name: role },
 		});
 
-	const createMachineRequest = (displayName: string) =>
-		postRequest("http://x/api/internal/machines", { displayName });
+	const createServiceAccountRequest = (displayName: string) =>
+		postRequest("http://x/api/internal/service-accounts", { displayName });
 
-	const machineRoleRequest = (id: string, role: string) =>
-		postRequest(`http://x/api/internal/machines/${id}/roles`, {
+	const serviceAccountRoleRequest = (id: string, role: string) =>
+		postRequest(`http://x/api/internal/service-accounts/${id}/roles`, {
 			namespace: "show",
 			name: role,
 		});
 
-	const listMachinesRequest = () =>
-		new Request("http://x/api/internal/machines");
+	const listServiceAccountsRequest = () =>
+		new Request("http://x/api/internal/service-accounts");
 
 	const decodeId = Schema.decodeUnknownSync(
 		Schema.Struct({ id: Schema.String }),
@@ -883,28 +889,28 @@ describe("roles export/import", () => {
 		}),
 	);
 
-	it.effect("exports human and machine assignments for an admin", () =>
+	it.effect("exports user and service account assignments for an admin", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([show], admin);
 			yield* handler(grantRequest("operator", "producer"));
 			const { id } = decodeId(
-				yield* json(yield* handler(createMachineRequest("scoreboard"))),
+				yield* json(yield* handler(createServiceAccountRequest("scoreboard"))),
 			);
-			yield* handler(machineRoleRequest(id, "viewer"));
-			yield* handler(createMachineRequest("idle"));
+			yield* handler(serviceAccountRoleRequest(id, "viewer"));
+			yield* handler(createServiceAccountRequest("idle"));
 			const res = yield* handler(exportRequest());
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({
 				version: 0,
 				assignments: [
 					{
-						_tag: "human",
+						_tag: "user",
 						login: { issuer: "dev", subject: "operator" },
 						roles: [{ namespace: "show", name: "producer" }],
 						globalRoles: [],
 					},
 					{
-						_tag: "machine",
+						_tag: "serviceAccount",
 						id,
 						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
@@ -924,7 +930,7 @@ describe("roles export/import", () => {
 				const res = yield* handler(
 					importRequest("merge", [
 						{
-							_tag: "human",
+							_tag: "user",
 							login: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "viewer" }],
 							globalRoles: [],
@@ -959,7 +965,7 @@ describe("roles export/import", () => {
 			const res = yield* handler(
 				importRequest("replace", [
 					{
-						_tag: "human",
+						_tag: "user",
 						login: { issuer: "dev", subject: "operator" },
 						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
@@ -971,7 +977,7 @@ describe("roles export/import", () => {
 				version: 0,
 				assignments: [
 					{
-						_tag: "human",
+						_tag: "user",
 						login: { issuer: "dev", subject: "operator" },
 						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
@@ -981,20 +987,26 @@ describe("roles export/import", () => {
 		}),
 	);
 
-	it.effect("replace clears roles of machines absent from the document", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([show], admin);
-			const { id } = decodeId(
-				yield* json(yield* handler(createMachineRequest("scoreboard"))),
-			);
-			yield* handler(machineRoleRequest(id, "viewer"));
-			expect((yield* handler(importRequest("replace", []))).status).toBe(204);
-			expect(yield* json(yield* handler(listMachinesRequest()))).toEqual({
-				machines: [
-					{ id, displayName: "scoreboard", roles: [], globalRoles: [] },
-				],
-			});
-		}),
+	it.effect(
+		"replace clears roles of service accounts absent from the document",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([show], admin);
+				const { id } = decodeId(
+					yield* json(
+						yield* handler(createServiceAccountRequest("scoreboard")),
+					),
+				);
+				yield* handler(serviceAccountRoleRequest(id, "viewer"));
+				expect((yield* handler(importRequest("replace", []))).status).toBe(204);
+				expect(
+					yield* json(yield* handler(listServiceAccountsRequest())),
+				).toEqual({
+					serviceAccounts: [
+						{ id, displayName: "scoreboard", roles: [], globalRoles: [] },
+					],
+				});
+			}),
 	);
 
 	it.effect("excludes the admin tier from the export", () =>
@@ -1010,7 +1022,7 @@ describe("roles export/import", () => {
 				version: 0,
 				assignments: [
 					{
-						_tag: "human",
+						_tag: "user",
 						login: { issuer: "dev", subject: "founder" },
 						roles: [{ namespace: "show", name: "producer" }],
 						globalRoles: [],
@@ -1041,7 +1053,7 @@ describe("roles export/import", () => {
 					withSid(
 						importRequest("merge", [
 							{
-								_tag: "human",
+								_tag: "user",
 								login: { issuer: "dev", subject: "founder" },
 								roles: [{ namespace: "show", name: "viewer" }],
 								globalRoles: [],
@@ -1088,7 +1100,7 @@ describe("roles export/import", () => {
 			const res = yield* handler(
 				importRequest("merge", [
 					{
-						_tag: "human",
+						_tag: "user",
 						login: { issuer: "dev", subject: "operator" },
 						roles: [],
 						globalRoles: ["superadmin"],
@@ -1099,7 +1111,7 @@ describe("roles export/import", () => {
 			expect(yield* json(res)).toEqual({
 				_tag: "RoleImportError",
 				message:
-					'role "superadmin" cannot be assigned via import (entry {"_tag":"human","login":{"issuer":"dev","subject":"operator"}})',
+					'role "superadmin" cannot be assigned via import (entry {"_tag":"user","login":{"issuer":"dev","subject":"operator"}})',
 			});
 		}),
 	);
@@ -1111,7 +1123,7 @@ describe("roles export/import", () => {
 				(yield* handler(
 					importRequest("merge", [
 						{
-							_tag: "human",
+							_tag: "user",
 							login: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "server" }],
 							globalRoles: [],
@@ -1122,13 +1134,13 @@ describe("roles export/import", () => {
 		}),
 	);
 
-	it.effect("400 with a detail message for an unknown machine id", () =>
+	it.effect("400 with a detail message for an unknown service account id", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([show], admin);
 			const res = yield* handler(
 				importRequest("merge", [
 					{
-						_tag: "machine",
+						_tag: "serviceAccount",
 						id: "ghost",
 						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
@@ -1138,7 +1150,7 @@ describe("roles export/import", () => {
 			expect(res.status).toBe(400);
 			expect(yield* json(res)).toEqual({
 				_tag: "RoleImportError",
-				message: 'unknown machine id "ghost"',
+				message: 'unknown service account id "ghost"',
 			});
 		}),
 	);
@@ -1150,13 +1162,13 @@ describe("roles export/import", () => {
 				(yield* handler(
 					importRequest("merge", [
 						{
-							_tag: "human",
+							_tag: "user",
 							login: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "viewer" }],
 							globalRoles: [],
 						},
 						{
-							_tag: "human",
+							_tag: "user",
 							login: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "judge" }],
 							globalRoles: [],
@@ -1168,16 +1180,16 @@ describe("roles export/import", () => {
 	);
 });
 
-describe("machines", () => {
+describe("service accounts", () => {
 	const createRequest = () =>
-		new Request("http://x/api/internal/machines", {
+		new Request("http://x/api/internal/service-accounts", {
 			method: "POST",
 			body: JSON.stringify({ displayName: "scoreboard" }),
 			headers: { "content-type": "application/json" },
 		});
 
 	const admin = asIdentity(
-		HumanIdentity.make({
+		UserIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -1209,10 +1221,12 @@ describe("machines", () => {
 	);
 
 	const listRequest = () =>
-		new Request("http://x/api/internal/machines", { method: "GET" });
+		new Request("http://x/api/internal/service-accounts", { method: "GET" });
 
 	const revokeRequest = (id: string) =>
-		new Request(`http://x/api/internal/machines/${id}`, { method: "DELETE" });
+		new Request(`http://x/api/internal/service-accounts/${id}`, {
+			method: "DELETE",
+		});
 
 	it.effect("lists created keys without their token for an admin", () =>
 		Effect.gen(function* () {
@@ -1223,7 +1237,7 @@ describe("machines", () => {
 			const res = yield* handler(listRequest());
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({
-				machines: [
+				serviceAccounts: [
 					{ id, displayName: "scoreboard", roles: [], globalRoles: [] },
 				],
 			});
@@ -1238,7 +1252,7 @@ describe("machines", () => {
 			);
 			expect((yield* handler(revokeRequest(id))).status).toBe(204);
 			expect(yield* json(yield* handler(listRequest()))).toEqual({
-				machines: [],
+				serviceAccounts: [],
 			});
 		}),
 	);
@@ -1251,7 +1265,7 @@ describe("machines", () => {
 	);
 
 	const refreshRequest = (id: string) =>
-		new Request(`http://x/api/internal/machines/${id}/refresh`, {
+		new Request(`http://x/api/internal/service-accounts/${id}/refresh`, {
 			method: "POST",
 		});
 
@@ -1272,7 +1286,7 @@ describe("machines", () => {
 	);
 
 	const grantRoleRequest = (id: string, name: string, namespace = "show") =>
-		new Request(`http://x/api/internal/machines/${id}/roles`, {
+		new Request(`http://x/api/internal/service-accounts/${id}/roles`, {
 			method: "POST",
 			body: JSON.stringify({ namespace, name }),
 			headers: { "content-type": "application/json" },
@@ -1280,7 +1294,7 @@ describe("machines", () => {
 
 	const revokeRoleRequest = (id: string, role: string) =>
 		new Request(
-			`http://x/api/internal/machines/${id}/namespaces/show/roles/${role}`,
+			`http://x/api/internal/service-accounts/${id}/namespaces/show/roles/${role}`,
 			{ method: "DELETE" },
 		);
 
@@ -1301,7 +1315,7 @@ describe("machines", () => {
 	);
 
 	it.effect(
-		"403 when granting a machine a role the namespace does not declare",
+		"403 when granting a service account a role the namespace does not declare",
 		() =>
 			Effect.gen(function* () {
 				const handler = yield* webHandler([show], admin);
@@ -1737,7 +1751,7 @@ describe("public surface (v0) with bearer token", () => {
 	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
 
 	const admin = asIdentity(
-		HumanIdentity.make({
+		UserIdentity.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -1752,7 +1766,7 @@ describe("public surface (v0) with bearer token", () => {
 		handler: (request: Request) => Effect.Effect<Response>,
 	) {
 		const res = yield* handler(
-			new Request("http://x/api/internal/machines", {
+			new Request("http://x/api/internal/service-accounts", {
 				method: "POST",
 				body: JSON.stringify({ displayName: "scoreboard" }),
 				headers: { "content-type": "application/json" },

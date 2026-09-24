@@ -2,25 +2,25 @@ import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	AdminTierMiddleware,
 	CurrentIdentity,
-	HumanAuthenticationMiddleware,
-	MachineAuthenticationMiddleware,
+	UserAuthenticationMiddleware,
+	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
 import { Effect, Layer, Option, Redacted } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
 import { config } from "../server-config.ts";
-import { MachineClientStoreService } from "../services/machine-client-store/machine-client-store.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
+import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";
-import { resolveMachineIdentity } from "./resolve-machine-identity.ts";
+import { resolveServiceAccountIdentity } from "./resolve-service-account-identity.ts";
 import {
 	anonymousIdentity,
 	resolveSessionIdentity,
 } from "./resolve-session-identity.ts";
 
-export const HumanAuthenticationMiddlewareLive = Layer.effect(
-	HumanAuthenticationMiddleware,
+export const UserAuthenticationMiddlewareLive = Layer.effect(
+	UserAuthenticationMiddleware,
 	Effect.gen(function* () {
 		const requireAuth = yield* config.requireAuth;
 		const sessions = yield* SessionStoreService;
@@ -70,11 +70,11 @@ export const SuperadminMiddlewareLive = Layer.succeed(
 		}),
 );
 
-export const MachineAuthenticationMiddlewareLive = Layer.effect(
-	MachineAuthenticationMiddleware,
+export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
+	ServiceAccountAuthenticationMiddleware,
 	Effect.gen(function* () {
-		const machines = yield* MachineClientStoreService;
-		const resolve = resolveMachineIdentity({ machines });
+		const serviceAccounts = yield* ServiceAccountStoreService;
+		const resolve = resolveServiceAccountIdentity({ serviceAccounts });
 
 		return {
 			bearer: (httpEffect, { credential }) =>

@@ -2,7 +2,7 @@ import { defineNamespace } from "@nodecg-next/core";
 import {
 	CurrentIdentity,
 	HumanAccountSchema,
-	HumanIdentity,
+	UserIdentity,
 	RoleName,
 	ServerIdentity,
 } from "@nodecg-next/internal";
@@ -300,7 +300,7 @@ describe("rpc ctx", () => {
 describe("rpc ctx runs as the server identity", () => {
 	const operator = Layer.succeed(
 		CurrentIdentity,
-		HumanIdentity.make({
+		UserIdentity.make({
 			account: HumanAccountSchema.make({
 				issuer: "test",
 				subject: "subject",

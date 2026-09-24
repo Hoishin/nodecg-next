@@ -4,11 +4,11 @@ import type { GlobalRoleName, Role } from "@nodecg-next/internal";
 import { Array, Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
 import {
-	type MachineClient,
-	MachineClientStoreService,
-} from "./machine-client-store.ts";
+	type ServiceAccount,
+	ServiceAccountStoreService,
+} from "./service-account-store.ts";
 
-type Clients = HashMap.HashMap<Redacted.Redacted<string>, MachineClient>;
+type Clients = HashMap.HashMap<Redacted.Redacted<string>, ServiceAccount>;
 
 const hashToken = (token: string): Redacted.Redacted<string> =>
 	Redacted.make(createHash("sha256").update(token).digest("base64url"));
@@ -18,17 +18,17 @@ const newToken = () => `ncg_${randomBytes(32).toString("base64url")}`;
 const findById = (map: Clients, id: string) =>
 	HashMap.findFirst(map, (client) => client.id === id);
 
-export const InMemoryMachineClientStore = Layer.effect(
-	MachineClientStoreService,
+export const InMemoryServiceAccountStore = Layer.effect(
+	ServiceAccountStoreService,
 	Effect.gen(function* () {
 		const clients = yield* Ref.make<Clients>(HashMap.empty());
 
-		const createApiKey = Effect.fn("MachineClientStore.createApiKey")(
+		const createApiKey = Effect.fn("ServiceAccountStore.createApiKey")(
 			(input: { readonly displayName: string }) =>
 				Ref.modify(clients, (map) => {
 					const id = randomBytes(16).toString("base64url");
 					const token = newToken();
-					const client: MachineClient = {
+					const client: ServiceAccount = {
 						id,
 						displayName: input.displayName,
 						roles: [],
@@ -41,7 +41,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const validateApiKey = Effect.fn("MachineClientStore.validateApiKey")(
+		const validateApiKey = Effect.fn("ServiceAccountStore.validateApiKey")(
 			(token: string) =>
 				Ref.get(clients).pipe(
 					Effect.map((map) => HashMap.get(map, hashToken(token))),
@@ -52,7 +52,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 			Effect.map((map) => Array.fromIterable(HashMap.values(map))),
 		);
 
-		const revoke = Effect.fn("MachineClientStore.revoke")((id: string) =>
+		const revoke = Effect.fn("ServiceAccountStore.revoke")((id: string) =>
 			Ref.modify(clients, (map) => {
 				const entry = findById(map, id);
 				if (Option.isNone(entry)) {
@@ -65,7 +65,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 			}),
 		);
 
-		const refreshApiKey = Effect.fn("MachineClientStore.refreshApiKey")(
+		const refreshApiKey = Effect.fn("ServiceAccountStore.refreshApiKey")(
 			(id: string) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -89,7 +89,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const setRoles = Effect.fn("MachineClientStore.setRoles")(
+		const setRoles = Effect.fn("ServiceAccountStore.setRoles")(
 			(id: string, roles: ReadonlyArray<Role>) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -102,7 +102,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const grantRole = Effect.fn("MachineClientStore.grantRole")(
+		const grantRole = Effect.fn("ServiceAccountStore.grantRole")(
 			(id: string, role: Role) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -118,7 +118,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const revokeRole = Effect.fn("MachineClientStore.revokeRole")(
+		const revokeRole = Effect.fn("ServiceAccountStore.revokeRole")(
 			(id: string, role: Role) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -134,7 +134,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const setGlobalRoles = Effect.fn("MachineClientStore.setGlobalRoles")(
+		const setGlobalRoles = Effect.fn("ServiceAccountStore.setGlobalRoles")(
 			(id: string, globalRoles: ReadonlyArray<GlobalRoleName>) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -147,7 +147,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const grantGlobalRole = Effect.fn("MachineClientStore.grantGlobalRole")(
+		const grantGlobalRole = Effect.fn("ServiceAccountStore.grantGlobalRole")(
 			(id: string, role: GlobalRoleName) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);
@@ -163,7 +163,7 @@ export const InMemoryMachineClientStore = Layer.effect(
 				}),
 		);
 
-		const revokeGlobalRole = Effect.fn("MachineClientStore.revokeGlobalRole")(
+		const revokeGlobalRole = Effect.fn("ServiceAccountStore.revokeGlobalRole")(
 			(id: string, role: GlobalRoleName) =>
 				Ref.modify(clients, (map) => {
 					const entry = findById(map, id);

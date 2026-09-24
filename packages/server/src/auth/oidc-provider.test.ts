@@ -54,7 +54,7 @@ const authorizeCode = async (authorizeUrl: string) => {
 	return new URL(location).searchParams;
 };
 
-test("resolves a human identity end-to-end against a real local OIDC server", async () => {
+test("resolves a user identity end-to-end against a real local OIDC server", async () => {
 	const issuer = await startIdp();
 	const provider = await makeLocalProvider(issuer);
 

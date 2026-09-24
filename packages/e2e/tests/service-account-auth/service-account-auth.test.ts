@@ -5,44 +5,49 @@ import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { makeAuthHelpers } from "../../src/client/auth.ts";
 import { suiteBase } from "../../src/client/suite-base.ts";
 
-const base = suiteBase("machine-auth");
+const base = suiteBase("service-account-auth");
 const { login, logout } = makeAuthHelpers(base);
 
-const CreatedMachineSchema = Schema.Struct({
+const CreatedServiceAccountSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
 	token: Schema.String,
 });
-const decodeCreatedMachine = Schema.decodeUnknownSync(CreatedMachineSchema);
+const decodeCreatedServiceAccount = Schema.decodeUnknownSync(
+	CreatedServiceAccountSchema,
+);
 
-const provisionMachine = async (displayName: string) => {
+const provisionServiceAccount = async (displayName: string) => {
 	await login("root");
-	const response = await fetch(`${base}/api/internal/machines`, {
+	const response = await fetch(`${base}/api/internal/service-accounts`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ displayName }),
 	});
-	const machine = decodeCreatedMachine(await response.json());
+	const serviceAccount = decodeCreatedServiceAccount(await response.json());
 	await logout();
-	return machine;
+	return serviceAccount;
 };
 
-const revokeMachine = async (id: string) => {
+const revokeServiceAccount = async (id: string) => {
 	await login("root");
-	const response = await fetch(`${base}/api/internal/machines/${id}`, {
+	const response = await fetch(`${base}/api/internal/service-accounts/${id}`, {
 		method: "DELETE",
 	});
 	await logout();
 	return response;
 };
 
-const grantMachineRole = async (id: string, role: string) => {
+const grantServiceAccountRole = async (id: string, role: string) => {
 	await login("root");
-	const response = await fetch(`${base}/api/internal/machines/${id}/roles`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ namespace: "e2e", name: role }),
-	});
+	const response = await fetch(
+		`${base}/api/internal/service-accounts/${id}/roles`,
+		{
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ namespace: "e2e", name: role }),
+		},
+	);
 	await logout();
 	return response;
 };
@@ -72,22 +77,22 @@ describe("public /api/v0 bearer authentication", () => {
 	});
 
 	test("a provisioned key reads an unrestricted field", async () => {
-		const { token } = await provisionMachine("reader-bot");
+		const { token } = await provisionServiceAccount("reader-bot");
 		const response = await readV0("count", token);
 		expect(response.status).toBe(200);
 		expect(typeof (await response.json())).toBe("number");
 	});
 
-	test("an authenticated machine without roles is forbidden from a restricted field", async () => {
-		const { token } = await provisionMachine("nosy-bot");
+	test("an authenticated service account without roles is forbidden from a restricted field", async () => {
+		const { token } = await provisionServiceAccount("nosy-bot");
 		expect((await readV0("secret", token)).status).toBe(403);
 	});
 
 	test("a granted role opens the fields it gates, and only those", async () => {
-		const { id, token } = await provisionMachine("promoted-bot");
+		const { id, token } = await provisionServiceAccount("promoted-bot");
 		expect((await readV0("producerOnly", token)).status).toBe(403);
 
-		const grant = await grantMachineRole(id, "producer");
+		const grant = await grantServiceAccountRole(id, "producer");
 		expect(grant.status).toBe(200);
 		expect(await grant.json()).toEqual({
 			roles: [{ namespace: "e2e", name: "producer" }],
@@ -101,10 +106,10 @@ describe("public /api/v0 bearer authentication", () => {
 	});
 
 	test("a revoked key stops authenticating", async () => {
-		const { id, token } = await provisionMachine("throwaway-bot");
+		const { id, token } = await provisionServiceAccount("throwaway-bot");
 		expect((await readV0("count", token)).status).toBe(200);
 
-		expect((await revokeMachine(id)).status).toBe(204);
+		expect((await revokeServiceAccount(id)).status).toBe(204);
 
 		expect((await readV0("count", token)).status).toBe(401);
 	});
@@ -116,7 +121,7 @@ describe("duplicate subscribe over the raw wire", () => {
 	);
 
 	test("restarts the subscription: a fresh seed arrives and later writes deliver once", async () => {
-		const { token } = await provisionMachine("ws-bot");
+		const { token } = await provisionServiceAccount("ws-bot");
 		const wsUrl = new URL(`${base}/ws/internal`);
 		wsUrl.protocol = "ws:";
 		const socket = new WebSocket(wsUrl);
@@ -170,7 +175,7 @@ describe("duplicate subscribe over the raw wire", () => {
 
 describe("hand-written patches with test preconditions", () => {
 	test("a matching test commits, the same patch replayed answers 409", async () => {
-		const { token } = await provisionMachine("patch-bot");
+		const { token } = await provisionServiceAccount("patch-bot");
 		const patch = [
 			{ op: "test", path: "/home", value: 0 },
 			{ op: "replace", path: "/home", value: 5 },

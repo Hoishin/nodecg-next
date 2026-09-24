@@ -3,7 +3,7 @@ import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
 	HumanAccountSchema,
-	HumanIdentity,
+	UserIdentity,
 	RoleName,
 	ServerIdentity,
 } from "@nodecg-next/internal";
@@ -61,7 +61,7 @@ const manifest = defineNamespace("ns", {
 
 const scorer = Layer.succeed(
 	CurrentIdentity,
-	HumanIdentity.make({
+	UserIdentity.make({
 		account: HumanAccountSchema.make({
 			issuer: "test",
 			subject: "subject",

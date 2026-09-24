@@ -71,7 +71,7 @@ const authorizeCode = async (authorizeUrl: string) => {
 	return new URL(location).searchParams;
 };
 
-test("resolves a human identity from userinfo with the config-pinned issuer", async () => {
+test("resolves a user identity from userinfo with the config-pinned issuer", async () => {
 	const serverUrl = await startIdp();
 	const provider = makeLocalProvider(serverUrl);
 

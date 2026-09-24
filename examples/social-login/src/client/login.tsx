@@ -42,7 +42,7 @@ export function Login() {
 		return <p>Checking session…</p>;
 	}
 
-	if (identity._tag === "human") {
+	if (identity._tag === "user") {
 		const account = identity.account;
 		return (
 			<div>

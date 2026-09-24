@@ -1,8 +1,8 @@
 import {
 	type AdminRoleName,
 	HumanAccountSchema,
-	HumanIdentity,
-	MachineIdentity,
+	UserIdentity,
+	ServiceAccountIdentity,
 	AnonymousIdentitySchema,
 	RoleName,
 	ServerIdentity,
@@ -22,20 +22,20 @@ const account = HumanAccountSchema.make({
 	subject: "subject",
 	displayName: "Tester",
 });
-const human = (...names: RoleName[]) =>
-	HumanIdentity.make({
+const user = (...names: RoleName[]) =>
+	UserIdentity.make({
 		account,
 		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],
 	});
 const adminTier = (...globalRoles: AdminRoleName[]) =>
-	HumanIdentity.make({
+	UserIdentity.make({
 		account,
 		roles: [],
 		globalRoles,
 	});
-const machine = (...names: RoleName[]) =>
-	MachineIdentity.make({
+const serviceAccount = (...names: RoleName[]) =>
+	ServiceAccountIdentity.make({
 		id: "robot",
 		displayName: "Bot",
 		roles: names.map((name) => ({ namespace: "match", name })),
@@ -71,13 +71,13 @@ const manifest = defineNamespace("match", {
 describe("canRead / canWrite", () => {
 	test("check the caller's roles against the field's read/write set", () => {
 		expect(
-			manifest.replicant.score.permission.canRead(human(RoleName("viewer"))),
+			manifest.replicant.score.permission.canRead(user(RoleName("viewer"))),
 		).toBe(true);
 		expect(
-			manifest.replicant.score.permission.canWrite(human(RoleName("viewer"))),
+			manifest.replicant.score.permission.canWrite(user(RoleName("viewer"))),
 		).toBe(false);
 		expect(
-			manifest.replicant.score.permission.canWrite(human(RoleName("judge"))),
+			manifest.replicant.score.permission.canWrite(user(RoleName("judge"))),
 		).toBe(true);
 	});
 
@@ -91,7 +91,7 @@ describe("canRead / canWrite", () => {
 	});
 
 	test("a role counts only in the namespace it is held in", () => {
-		const foreign = HumanIdentity.make({
+		const foreign = UserIdentity.make({
 			account,
 			roles: [{ namespace: "other", name: RoleName("judge") }],
 			globalRoles: [],
@@ -99,10 +99,10 @@ describe("canRead / canWrite", () => {
 		expect(manifest.replicant.score.permission.canRead(foreign)).toBe(false);
 		expect(manifest.replicant.score.permission.canWrite(foreign)).toBe(false);
 		expect(
-			manifest.replicant.score.permission.canRead(human(RoleName("judge"))),
+			manifest.replicant.score.permission.canRead(user(RoleName("judge"))),
 		).toBe(true);
 		expect(
-			manifest.replicant.score.permission.canWrite(human(RoleName("judge"))),
+			manifest.replicant.score.permission.canWrite(user(RoleName("judge"))),
 		).toBe(true);
 	});
 
@@ -111,25 +111,33 @@ describe("canRead / canWrite", () => {
 		expect(manifest.replicant.open.permission.canRead(anonymous)).toBe(true);
 	});
 
-	test("a machine with no roles matches nothing", () => {
-		expect(manifest.replicant.score.permission.canRead(machine())).toBe(false);
+	test("a service account with no roles matches nothing", () => {
+		expect(manifest.replicant.score.permission.canRead(serviceAccount())).toBe(
+			false,
+		);
 	});
 
-	test("a machine's assigned roles are enforced like a human's", () => {
+	test("a service account's assigned roles are enforced like a user's", () => {
 		expect(
-			manifest.replicant.score.permission.canRead(machine(RoleName("viewer"))),
+			manifest.replicant.score.permission.canRead(
+				serviceAccount(RoleName("viewer")),
+			),
 		).toBe(true);
 		expect(
-			manifest.replicant.score.permission.canWrite(machine(RoleName("viewer"))),
+			manifest.replicant.score.permission.canWrite(
+				serviceAccount(RoleName("viewer")),
+			),
 		).toBe(false);
 		expect(
-			manifest.replicant.score.permission.canWrite(machine(RoleName("judge"))),
+			manifest.replicant.score.permission.canWrite(
+				serviceAccount(RoleName("judge")),
+			),
 		).toBe(true);
 	});
 
 	test("computed fields are never writable, not even for an admin", () => {
 		expect(
-			manifest.computed.total.permission.canRead(human(RoleName("viewer"))),
+			manifest.computed.total.permission.canRead(user(RoleName("viewer"))),
 		).toBe(true);
 		expect(
 			manifest.computed.total.permission.canWrite(adminTier("superadmin")),
@@ -148,7 +156,7 @@ describe("canRead / canWrite", () => {
 			manifest.replicant.config.permission.canWrite(adminTier("admin")),
 		).toBe(true);
 		expect(
-			manifest.replicant.config.permission.canWrite(human(RoleName("judge"))),
+			manifest.replicant.config.permission.canWrite(user(RoleName("judge"))),
 		).toBe(false);
 	});
 
@@ -164,7 +172,7 @@ describe("canRead / canWrite", () => {
 		});
 
 		expect(
-			members.replicant.lounge.permission.canRead(human(RoleName("judge"))),
+			members.replicant.lounge.permission.canRead(user(RoleName("judge"))),
 		).toBe(true);
 		expect(members.replicant.lounge.permission.canRead(anonymous)).toBe(false);
 
@@ -172,7 +180,7 @@ describe("canRead / canWrite", () => {
 			roles: { auditor: { permission: [] } },
 		});
 		expect(
-			extended.replicant.lounge.permission.canRead(human(RoleName("auditor"))),
+			extended.replicant.lounge.permission.canRead(user(RoleName("auditor"))),
 		).toBe(true);
 	});
 });
@@ -188,7 +196,7 @@ describe("principals as capability bases", () => {
 	test("an everyone base admits every caller without a field rule", () => {
 		expect(based.computed.total.permission.canRead(anonymous)).toBe(true);
 		expect(
-			based.computed.total.permission.canRead(human(RoleName("judge"))),
+			based.computed.total.permission.canRead(user(RoleName("judge"))),
 		).toBe(true);
 	});
 
@@ -241,10 +249,10 @@ describe("deny beats a wildcard grant", () => {
 
 	test("an explicit deny excludes a caller the wildcard would have admitted", () => {
 		expect(
-			wildcard.replicant.open.permission.canRead(human(RoleName("viewer"))),
+			wildcard.replicant.open.permission.canRead(user(RoleName("viewer"))),
 		).toBe(true);
 		expect(
-			wildcard.replicant.hidden.permission.canRead(human(RoleName("viewer"))),
+			wildcard.replicant.hidden.permission.canRead(user(RoleName("viewer"))),
 		).toBe(false);
 		expect(wildcard.replicant.hidden.permission.canRead(anonymous)).toBe(true);
 	});
@@ -262,7 +270,7 @@ describe("deny beats a wildcard grant", () => {
 
 		expect(sealed.replicant.audit.permission.canRead(anonymous)).toBe(false);
 		expect(
-			sealed.replicant.audit.permission.canRead(human(RoleName("viewer"))),
+			sealed.replicant.audit.permission.canRead(user(RoleName("viewer"))),
 		).toBe(false);
 		expect(sealed.replicant.audit.permission.canRead(adminTier("admin"))).toBe(
 			true,
@@ -278,24 +286,24 @@ describe("isAdminTier", () => {
 	});
 
 	test("fails for a named role, anonymous, and server", () => {
-		expect(isAdminTier(human(RoleName("judge")))).toBe(false);
+		expect(isAdminTier(user(RoleName("judge")))).toBe(false);
 		expect(isAdminTier(anonymous)).toBe(false);
 		expect(isAdminTier(server)).toBe(false);
 	});
 });
 
 describe("getRolesForNamespace", () => {
-	test("projects the roles a human and a machine hold in the namespace", () => {
-		expect(getRolesForNamespace(human(RoleName("judge")), "match")).toEqual([
+	test("projects the roles a user and a service account hold in the namespace", () => {
+		expect(getRolesForNamespace(user(RoleName("judge")), "match")).toEqual([
 			RoleName("judge"),
 		]);
-		expect(getRolesForNamespace(machine(RoleName("viewer")), "match")).toEqual([
-			RoleName("viewer"),
-		]);
+		expect(
+			getRolesForNamespace(serviceAccount(RoleName("viewer")), "match"),
+		).toEqual([RoleName("viewer")]);
 	});
 
 	test("is empty for a namespace the holder has no role in", () => {
-		expect(getRolesForNamespace(human(RoleName("judge")), "other")).toEqual([]);
+		expect(getRolesForNamespace(user(RoleName("judge")), "other")).toEqual([]);
 	});
 
 	test("is empty for anonymous and server", () => {

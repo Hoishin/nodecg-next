@@ -2,7 +2,7 @@ import {
 	loadAuthClient,
 	loginUrl,
 	type AuthClient,
-	type HumanIdentity,
+	type UserIdentity,
 	type Identity,
 	type LoginProvider,
 	type MePayload,
@@ -32,7 +32,7 @@ export interface AuthSession {
 		readonly get: () => Identity | undefined;
 		readonly subscribe: (callback: () => void) => () => void;
 	};
-	readonly popupLogin: (provider: LoginProvider) => Promise<HumanIdentity>;
+	readonly popupLogin: (provider: LoginProvider) => Promise<UserIdentity>;
 	readonly logout: () => Promise<void>;
 	readonly refresh: () => Promise<MePayload>;
 }
@@ -42,7 +42,7 @@ const watchLoginSession = (client: AuthClient, popup: Window) =>
 	Effect.gen(function* () {
 		const closed = popup.closed;
 		const payload = yield* Effect.promise(() => client.me());
-		if (payload.identity._tag === "human") {
+		if (payload.identity._tag === "user") {
 			return Option.some(payload.identity);
 		}
 		if (closed) {
@@ -52,7 +52,7 @@ const watchLoginSession = (client: AuthClient, popup: Window) =>
 	}).pipe(
 		Effect.repeat({
 			schedule: Schedule.spaced(Duration.millis(500)),
-			until: Option.isSome<HumanIdentity>,
+			until: Option.isSome<UserIdentity>,
 		}),
 		Effect.map((found) => found.value),
 		Effect.timeoutOrElse({
@@ -93,9 +93,9 @@ export const authSession = (
 				}),
 				(opened) => Effect.sync(() => opened.close()),
 			);
-			const human = yield* watchLoginSession(client, popup);
-			setIdentity(human);
-			return human;
+			const user = yield* watchLoginSession(client, popup);
+			setIdentity(user);
+			return user;
 		}).pipe(Effect.scoped, Effect.runPromise);
 
 	const logout = async () => {

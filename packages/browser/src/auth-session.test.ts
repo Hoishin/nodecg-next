@@ -1,20 +1,20 @@
 import type { AuthClient, MePayload } from "@nodecg-next/client";
-import { AnonymousIdentitySchema, HumanIdentity } from "@nodecg-next/internal";
+import { AnonymousIdentitySchema, UserIdentity } from "@nodecg-next/internal";
 import { describe, expect, test, vi } from "vitest";
 
 import { authSession } from "./auth-session.ts";
 
-const humanIdentity = HumanIdentity.make({
+const userIdentity = UserIdentity.make({
 	account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 	roles: [],
 	globalRoles: [],
 });
 
-const humanPayload: MePayload = { identity: humanIdentity, namespaces: {} };
+const userPayload: MePayload = { identity: userIdentity, namespaces: {} };
 
 const stubClient = () => {
 	const providers = vi.fn<AuthClient["providers"]>(async () => []);
-	const me = vi.fn<AuthClient["me"]>(async () => humanPayload);
+	const me = vi.fn<AuthClient["me"]>(async () => userPayload);
 	const logout = vi.fn<AuthClient["logout"]>(async () => undefined);
 	const grantRole = vi.fn<AuthClient["grantRole"]>(async () => []);
 	const revokeRole = vi.fn<AuthClient["revokeRole"]>(async () => []);
@@ -37,7 +37,7 @@ describe("identity", () => {
 		const session = authSession(client);
 		expect(session.identity.get()).toBeUndefined();
 		await vi.waitFor(() => {
-			expect(session.identity.get()).toEqual(humanIdentity);
+			expect(session.identity.get()).toEqual(userIdentity);
 		});
 	});
 
@@ -64,8 +64,8 @@ describe("refresh", () => {
 
 		const payload = await session.refresh();
 
-		expect(payload).toEqual(humanPayload);
-		expect(session.identity.get()).toEqual(humanIdentity);
+		expect(payload).toEqual(userPayload);
+		expect(session.identity.get()).toEqual(userIdentity);
 		expect(me).toHaveBeenCalled();
 	});
 });
