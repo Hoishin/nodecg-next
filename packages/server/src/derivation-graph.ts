@@ -248,7 +248,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				storage
 					.write(namespace, name, value)
 					.pipe(
-						Effect.catch((error) =>
+						Effect.catchTag("ReplicantNotFound", (error) =>
 							Effect.logError(
 								`Persisting replicant "${namespace}/${name}" failed`,
 								error,
@@ -494,11 +494,17 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 								Effect.runSyncWith(context)(
 									readNode.pipe(
 										Effect.flatMap((encoded) => Queue.offer(updates, encoded)),
-										Effect.catch((error) =>
-											Effect.logError(
-												`Failed to compute "${namespace}/${name}"`,
-												error,
-											),
+										Effect.catchTag(
+											[
+												"ComputedComputeError",
+												"ReplicantNotFound",
+												"FieldEncodeError",
+											],
+											(error) =>
+												Effect.logError(
+													`Failed to compute "${namespace}/${name}"`,
+													error,
+												),
 										),
 										Effect.asVoid,
 									),
