@@ -13,9 +13,9 @@ import { Cause, Effect, Layer, Option, Result, Schema, Stream } from "effect";
 import { afterEach, assert, describe, expect } from "vitest";
 
 import { DerivationEngineService } from "../derivation-graph.ts";
-import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
-import { createStorageStub } from "../services/replicant-storage/replicant-storage.stub.ts";
-import { ReplicantStorageService } from "../services/replicant-storage/replicant-storage.ts";
+import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
+import { createReplicantRepositoryStub } from "../services/repository/replicant/replicant-repository.stub.ts";
+import { ReplicantRepositoryService } from "../services/repository/replicant/replicant-repository.ts";
 import { buildReplicant } from "./build-replicant.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
@@ -25,23 +25,25 @@ const anonymous = Layer.succeed(
 );
 const identity = Layer.succeed(CurrentIdentity, ServerIdentity.make({}));
 
-const { stub: storage, reset } = createStorageStub();
+const { stub: repository, reset } = createReplicantRepositoryStub();
 afterEach(reset);
 
-const stubbedStorage = Layer.succeed(ReplicantStorageService, storage);
+const stubbedRepository = Layer.succeed(ReplicantRepositoryService, repository);
 
 const testStubbed = testLayer(
 	Layer.mergeAll(
-		stubbedStorage,
-		DerivationEngineService.layer.pipe(Layer.provide(stubbedStorage)),
+		stubbedRepository,
+		DerivationEngineService.layer.pipe(Layer.provide(stubbedRepository)),
 		identity,
 	),
 );
 
 const testInMemory = testLayer(
 	Layer.mergeAll(
-		InMemoryReplicantStorage,
-		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		InMemoryReplicantRepository,
+		DerivationEngineService.layer.pipe(
+			Layer.provide(InMemoryReplicantRepository),
+		),
 		identity,
 	),
 );
@@ -267,8 +269,8 @@ describe("subscribe", () => {
 	testInMemory(
 		"emits decoded values on set",
 		Effect.gen(function* () {
-			const storage = yield* ReplicantStorageService;
-			yield* storage.write("ns", "count", "0");
+			const repository = yield* ReplicantRepositoryService;
+			yield* repository.write("ns", "count", "0");
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
@@ -287,9 +289,9 @@ describe("subscribe", () => {
 	testInMemory(
 		"filters out updates to other fields",
 		Effect.gen(function* () {
-			const storage = yield* ReplicantStorageService;
-			yield* storage.write("ns", "count", "0");
-			yield* storage.write("ns", "other", "0");
+			const repository = yield* ReplicantRepositoryService;
+			yield* repository.write("ns", "count", "0");
+			yield* repository.write("ns", "other", "0");
 			const count = yield* buildReplicant(
 				"ns",
 				"count",
@@ -315,8 +317,8 @@ describe("subscribe", () => {
 	testInMemory(
 		"[fieldInternal].subscribeRevisioned streams this field's frames",
 		Effect.gen(function* () {
-			const storage = yield* ReplicantStorageService;
-			yield* storage.write("ns", "count", "0");
+			const repository = yield* ReplicantRepositoryService;
+			yield* repository.write("ns", "count", "0");
 			const field = yield* buildReplicant(
 				"ns",
 				"count",

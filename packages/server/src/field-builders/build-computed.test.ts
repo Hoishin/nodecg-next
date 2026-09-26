@@ -12,8 +12,8 @@ import {
 	ComputedComputeError,
 	DerivationEngineService,
 } from "../derivation-graph.ts";
-import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
-import { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
+import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
+import { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { buildComputed } from "./build-computed.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
@@ -25,7 +25,9 @@ const anonymousIdentity = Layer.succeed(
 
 const test = testLayer(
 	Layer.merge(
-		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		DerivationEngineService.layer.pipe(
+			Layer.provide(InMemoryReplicantRepository),
+		),
 		serverIdentity,
 	),
 );

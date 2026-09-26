@@ -62,11 +62,11 @@ import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { UrlPath } from "./server/url-path.ts";
 import { websocketRoute } from "./server/websocket.ts";
 import { OperatingSystemService } from "./services/operating-system/operating-system.ts";
-import { JsonFileReplicantStorage } from "./services/replicant-storage/json-file-replicant-storage.ts";
+import { JsonFileReplicantRepository } from "./services/repository/replicant/json-file-replicant-repository.ts";
 import {
-	type ReplicantStorage,
-	ReplicantStorageService,
-} from "./services/replicant-storage/replicant-storage.ts";
+	type ReplicantRepository,
+	ReplicantRepositoryService,
+} from "./services/repository/replicant/replicant-repository.ts";
 import { InMemoryServiceAccountStore } from "./services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
 import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
@@ -75,8 +75,8 @@ import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 import { seededRoleStore } from "./superadmin-seed.ts";
 
 export type StorageOption =
-	| ReplicantStorage
-	| Effect.Effect<ReplicantStorage, never, never>;
+	| ReplicantRepository
+	| Effect.Effect<ReplicantRepository, never, never>;
 
 export type LoadNodeCGOptions<
 	Shapes extends Record<string, BaseNamespaceShape>,
@@ -109,13 +109,13 @@ export class OnLoadError extends Schema.TaggedError<OnLoadError>()(
 	override readonly message = `onLoad for namespace "${this.namespace}" failed: ${this.cause.message}`;
 }
 
-const replicantStorage = (storage: StorageOption | undefined) => {
+const replicantRepository = (storage: StorageOption | undefined) => {
 	if (typeof storage === "undefined") {
-		return JsonFileReplicantStorage;
+		return JsonFileReplicantRepository;
 	}
 	return Effect.isEffect(storage)
-		? Layer.effect(ReplicantStorageService, storage)
-		: Layer.succeed(ReplicantStorageService, storage);
+		? Layer.effect(ReplicantRepositoryService, storage)
+		: Layer.succeed(ReplicantRepositoryService, storage);
 };
 
 interface NamespaceShapeTarget {
@@ -360,7 +360,7 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
 			DerivationEngineService.layer.pipe(
-				Layer.provide(replicantStorage(options.storage)),
+				Layer.provide(replicantRepository(options.storage)),
 			),
 			InMemoryTopicBroker,
 			BuiltNamespaceRegistry.layer,

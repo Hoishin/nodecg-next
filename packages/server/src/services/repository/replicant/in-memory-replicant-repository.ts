@@ -2,11 +2,11 @@ import { Effect, Layer, type Schema } from "effect";
 
 import {
 	ReplicantNotFound,
-	ReplicantStorageService,
-} from "./replicant-storage.ts";
+	ReplicantRepositoryService,
+} from "./replicant-repository.ts";
 
-export const InMemoryReplicantStorage = Layer.sync(
-	ReplicantStorageService,
+export const InMemoryReplicantRepository = Layer.sync(
+	ReplicantRepositoryService,
 	() => {
 		const map = new Map<string, Map<string, Schema.Json>>();
 

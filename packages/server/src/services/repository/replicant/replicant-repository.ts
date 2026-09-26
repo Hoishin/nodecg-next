@@ -21,10 +21,7 @@ export class BackendError extends Schema.TaggedError<BackendError>()(
 	override readonly message = `Persistence backend failed: ${Formatter.format(this.cause)}`;
 }
 
-/**
- * ReplicantStorage is platform-agnostic layer to persist replicant values.
- */
-export interface ReplicantStorage {
+export interface ReplicantRepository {
 	read: (
 		namespace: string,
 		name: string,
@@ -40,7 +37,7 @@ export interface ReplicantStorage {
 	) => Effect.Effect<void, BackendError>;
 }
 
-export class ReplicantStorageService extends Context.Service<
-	ReplicantStorageService,
-	ReplicantStorage
->()("ReplicantStorage") {}
+export class ReplicantRepositoryService extends Context.Service<
+	ReplicantRepositoryService,
+	ReplicantRepository
+>()("ReplicantRepository") {}

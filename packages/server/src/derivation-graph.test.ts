@@ -20,22 +20,26 @@ import {
 	type ReplicantFrame,
 	ReplicantLoadError,
 } from "./derivation-graph.ts";
-import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
-import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
+import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
+import { createReplicantRepositoryStub } from "./services/repository/replicant/replicant-repository.stub.ts";
 import {
 	BackendError,
 	DecodeError,
-	ReplicantStorageService,
-} from "./services/replicant-storage/replicant-storage.ts";
+	ReplicantRepositoryService,
+} from "./services/repository/replicant/replicant-repository.ts";
 
 const test = testLayer(
-	DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+	DerivationEngineService.layer.pipe(
+		Layer.provide(InMemoryReplicantRepository),
+	),
 );
 
-const { stub: storage, reset } = createStorageStub();
+const { stub: repository, reset } = createReplicantRepositoryStub();
 afterEach(reset);
 
-const testStubbed = testLayer(Layer.succeed(ReplicantStorageService, storage));
+const testStubbed = testLayer(
+	Layer.succeed(ReplicantRepositoryService, repository),
+);
 
 class Invalid extends Schema.TaggedError<Invalid>()("Invalid", {}) {}
 
@@ -556,14 +560,14 @@ describe("persistence", () => {
 			const scope = yield* Scope.make();
 			const engine = yield* engineIn(scope);
 			yield* engine.initializeReplicant("ns", "a", 0);
-			storage.write.mockClear();
+			repository.write.mockClear();
 
 			yield* engine.commit("ns", "a", () => Effect.succeed(1));
 			yield* engine.commit("ns", "a", () => Effect.succeed(2));
 			yield* engine.commit("ns", "a", () => Effect.succeed(3));
 
-			yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(3));
-			expect(storage.write.mock.calls).toEqual([
+			yield* waitFor(() => expect(repository.write).toHaveBeenCalledTimes(3));
+			expect(repository.write.mock.calls).toEqual([
 				["ns", "a", 1],
 				["ns", "a", 2],
 				["ns", "a", 3],
@@ -577,22 +581,22 @@ describe("persistence", () => {
 			const scope = yield* Scope.make();
 			const engine = yield* engineIn(scope);
 			yield* engine.initializeReplicant("ns", "a", 0);
-			storage.write.mockClear();
+			repository.write.mockClear();
 			const gate = yield* Deferred.make<void>();
-			storage.write.mockImplementation((_namespace, _name, value) =>
+			repository.write.mockImplementation((_namespace, _name, value) =>
 				value === 1 ? Deferred.await(gate) : Effect.void,
 			);
 
 			yield* engine.commit("ns", "a", () => Effect.succeed(1));
 			yield* engine.commit("ns", "a", () => Effect.succeed(2));
 			yield* engine.commit("ns", "a", () => Effect.succeed(3));
-			yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
+			yield* waitFor(() => expect(repository.write).toHaveBeenCalledTimes(1));
 			yield* Scope.addFinalizer(scope, Deferred.succeed(gate, undefined));
 
-			expect(storage.write.mock.calls).toEqual([["ns", "a", 1]]);
+			expect(repository.write.mock.calls).toEqual([["ns", "a", 1]]);
 
 			yield* Scope.close(scope, Exit.void);
-			expect(storage.write.mock.calls).toEqual([
+			expect(repository.write.mock.calls).toEqual([
 				["ns", "a", 1],
 				["ns", "a", 2],
 				["ns", "a", 3],
@@ -609,12 +613,12 @@ describe("persistence", () => {
 			yield* engine.initializeReplicant("ns", "b", 0);
 			yield* engine.commit("ns", "a", () => Effect.succeed(1));
 			yield* waitFor(() =>
-				expect(storage.write).toHaveBeenCalledWith("ns", "a", 1),
+				expect(repository.write).toHaveBeenCalledWith("ns", "a", 1),
 			);
-			storage.write.mockClear();
+			repository.write.mockClear();
 
 			yield* Scope.close(scope, Exit.void);
-			expect(storage.write).not.toHaveBeenCalled();
+			expect(repository.write).not.toHaveBeenCalled();
 		}),
 	);
 
@@ -624,14 +628,14 @@ describe("persistence", () => {
 			const scope = yield* Scope.make();
 			const engine = yield* engineIn(scope);
 			yield* engine.initializeReplicant("ns", "a", 0);
-			storage.write.mockClear();
-			storage.write.mockReturnValue(
+			repository.write.mockClear();
+			repository.write.mockReturnValue(
 				BackendError.make({ cause: new Error("disk full") }),
 			);
 
 			yield* engine.commit("ns", "a", () => Effect.succeed(1));
 
-			yield* waitFor(() => expect(storage.write).toHaveBeenCalledTimes(1));
+			yield* waitFor(() => expect(repository.write).toHaveBeenCalledTimes(1));
 			expect((yield* engine.readReplicant("ns", "a")).value).toBe(1);
 		}),
 	);
@@ -645,8 +649,8 @@ describe("initializeReplicant", () => {
 			const engine = yield* engineIn(scope);
 			yield* engine.initializeReplicant("ns", "a", 0);
 
-			expect(storage.read).toHaveBeenCalledWith("ns", "a");
-			expect(storage.write).toHaveBeenCalledWith("ns", "a", 0);
+			expect(repository.read).toHaveBeenCalledWith("ns", "a");
+			expect(repository.write).toHaveBeenCalledWith("ns", "a", 0);
 			expect((yield* engine.readReplicant("ns", "a")).value).toBe(0);
 		}),
 	);
@@ -655,12 +659,12 @@ describe("initializeReplicant", () => {
 		"adopts the stored value and does not write it back",
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
-			storage.read.mockReturnValue(Effect.succeed(42));
+			repository.read.mockReturnValue(Effect.succeed(42));
 			const engine = yield* engineIn(scope);
 			yield* engine.initializeReplicant("ns", "a", 0);
 
 			expect((yield* engine.readReplicant("ns", "a")).value).toBe(42);
-			expect(storage.write).not.toHaveBeenCalled();
+			expect(repository.write).not.toHaveBeenCalled();
 		}),
 	);
 
@@ -668,7 +672,7 @@ describe("initializeReplicant", () => {
 		"fails when writing the seed fails",
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
-			storage.write.mockReturnValue(
+			repository.write.mockReturnValue(
 				BackendError.make({ cause: new Error("disk full") }),
 			);
 			const engine = yield* engineIn(scope);
@@ -686,7 +690,7 @@ describe("initializeReplicant", () => {
 		"fails without overwriting a stored value that does not decode",
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
-			storage.read.mockReturnValue(
+			repository.read.mockReturnValue(
 				DecodeError.make({ issue: "Expected a valid JSON string" }),
 			);
 			const engine = yield* engineIn(scope);
@@ -697,7 +701,7 @@ describe("initializeReplicant", () => {
 			assert(Schema.is(ReplicantLoadError)(error));
 			expect(error).toMatchObject({ namespace: "ns", name: "a" });
 			assert(Schema.is(DecodeError)(error.cause));
-			expect(storage.write).not.toHaveBeenCalled();
+			expect(repository.write).not.toHaveBeenCalled();
 		}),
 	);
 });

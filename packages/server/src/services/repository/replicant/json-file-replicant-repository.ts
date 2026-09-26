@@ -10,14 +10,14 @@ import {
 	Stream,
 } from "effect";
 
-import { config } from "../../server-config.ts";
-import { OperatingSystemService } from "../operating-system/operating-system.ts";
+import { config } from "../../../server-config.ts";
+import { OperatingSystemService } from "../../operating-system/operating-system.ts";
 import {
 	BackendError,
 	DecodeError,
 	ReplicantNotFound,
-	ReplicantStorageService,
-} from "./replicant-storage.ts";
+	ReplicantRepositoryService,
+} from "./replicant-repository.ts";
 
 const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Json));
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Json));
@@ -54,8 +54,8 @@ const resolveDataDir = Effect.fn("resolveDataDir")(
 	Effect.catchTag("PlatformError", (cause) => BackendError.make({ cause })),
 );
 
-export const JsonFileReplicantStorage = Layer.effect(
-	ReplicantStorageService,
+export const JsonFileReplicantRepository = Layer.effect(
+	ReplicantRepositoryService,
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
@@ -70,7 +70,7 @@ export const JsonFileReplicantStorage = Layer.effect(
 		const file = (namespace: string, name: string) =>
 			path.join(directory(namespace), `${name}.json`);
 
-		const read = Effect.fn("ReplicantStorage.read")(
+		const read = Effect.fn("ReplicantRepository.read")(
 			function* (namespace: string, name: string) {
 				const text = yield* fs
 					.readFileString(file(namespace, name))
@@ -88,7 +88,7 @@ export const JsonFileReplicantStorage = Layer.effect(
 			}),
 		);
 
-		const write = Effect.fn("ReplicantStorage.write")(
+		const write = Effect.fn("ReplicantRepository.write")(
 			function* (namespace: string, name: string, value: Schema.Json) {
 				const target = file(namespace, name);
 				const temporary = `${target}.tmp`;

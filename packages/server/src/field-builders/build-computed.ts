@@ -5,7 +5,7 @@ import {
 	ComputedComputeError,
 	DerivationEngineService,
 } from "../derivation-graph.ts";
-import type { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
+import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
 import { requirePermission } from "./permission.ts";

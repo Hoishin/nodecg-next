@@ -10,18 +10,20 @@ import {
 	implementNamespace,
 } from "./implement-namespace.ts";
 import { loadNodeCG, loadNodeCGEffect } from "./load-nodecg.ts";
-import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
+import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import {
-	type ReplicantStorage,
+	type ReplicantRepository,
 	ReplicantNotFound,
-} from "./services/replicant-storage/replicant-storage.ts";
+} from "./services/repository/replicant/replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
 const testInMemory = testLayer(
 	Layer.mergeAll(
-		InMemoryReplicantStorage,
+		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		DerivationEngineService.layer.pipe(
+			Layer.provide(InMemoryReplicantRepository),
+		),
 		BuiltNamespaceRegistry.layer,
 	),
 );
@@ -340,11 +342,11 @@ describe("duplicate namespaces", () => {
 describe("loadNodeCG", () => {
 	test("seeds through the injected plain storage and serves the handles", async () => {
 		const storage = {
-			read: vi.fn<ReplicantStorage["read"]>(
+			read: vi.fn<ReplicantRepository["read"]>(
 				(namespace, name) => new ReplicantNotFound({ namespace, name }),
 			),
-			write: vi.fn<ReplicantStorage["write"]>(() => Effect.void),
-		} satisfies ReplicantStorage;
+			write: vi.fn<ReplicantRepository["write"]>(() => Effect.void),
+		} satisfies ReplicantRepository;
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
 
@@ -354,11 +356,11 @@ describe("loadNodeCG", () => {
 
 	test("persists a write made after loading returns", async () => {
 		const storage = {
-			read: vi.fn<ReplicantStorage["read"]>(
+			read: vi.fn<ReplicantRepository["read"]>(
 				(namespace, name) => new ReplicantNotFound({ namespace, name }),
 			),
-			write: vi.fn<ReplicantStorage["write"]>(() => Effect.void),
-		} satisfies ReplicantStorage;
+			write: vi.fn<ReplicantRepository["write"]>(() => Effect.void),
+		} satisfies ReplicantRepository;
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
 		nodecg.namespaces.settings.replicant.multiplier.set(9);

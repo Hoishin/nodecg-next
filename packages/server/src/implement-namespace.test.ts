@@ -11,15 +11,17 @@ import {
 	implementExtendedNamespace,
 	implementNamespace,
 } from "./implement-namespace.ts";
-import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
+import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
 const testInMemory = testLayer(
 	Layer.mergeAll(
 		Layer.succeed(CurrentIdentity, ServerIdentity.make({})),
-		InMemoryReplicantStorage,
+		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		DerivationEngineService.layer.pipe(
+			Layer.provide(InMemoryReplicantRepository),
+		),
 		BuiltNamespaceRegistry.layer,
 	),
 );

@@ -21,7 +21,7 @@ import {
 	implementNamespace,
 	type RpcContext,
 } from "./implement-namespace.ts";
-import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
+import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
@@ -30,9 +30,11 @@ const identity = Layer.succeed(CurrentIdentity, server);
 
 const test = testLayer(
 	Layer.mergeAll(
-		InMemoryReplicantStorage,
+		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(Layer.provide(InMemoryReplicantStorage)),
+		DerivationEngineService.layer.pipe(
+			Layer.provide(InMemoryReplicantRepository),
+		),
 		BuiltNamespaceRegistry.layer,
 		identity,
 	),

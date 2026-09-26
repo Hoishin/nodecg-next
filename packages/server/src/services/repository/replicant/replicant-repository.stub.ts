@@ -2,19 +2,19 @@ import { Effect } from "effect";
 import { vi } from "vitest";
 
 import {
-	type ReplicantStorage,
+	type ReplicantRepository,
 	ReplicantNotFound,
-} from "./replicant-storage.ts";
+} from "./replicant-repository.ts";
 
-export const createStorageStub = () => {
-	const read = vi.fn<ReplicantStorage["read"]>(
+export const createReplicantRepositoryStub = () => {
+	const read = vi.fn<ReplicantRepository["read"]>(
 		(namespace, name) => new ReplicantNotFound({ namespace, name }),
 	);
-	const write = vi.fn<ReplicantStorage["write"]>(() => Effect.void);
+	const write = vi.fn<ReplicantRepository["write"]>(() => Effect.void);
 	const stub = {
 		read,
 		write,
-	} satisfies ReplicantStorage;
+	} satisfies ReplicantRepository;
 	const reset = () => {
 		for (const mock of [read, write]) {
 			mock.mockReset();

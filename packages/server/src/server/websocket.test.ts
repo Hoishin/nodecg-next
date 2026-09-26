@@ -14,7 +14,7 @@ import {
 } from "../auth/middleware.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
-import { InMemoryReplicantStorage } from "../services/replicant-storage/in-memory-replicant-storage.ts";
+import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
@@ -40,11 +40,11 @@ const handler = () => {
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(FieldRegistryService.layer([])),
-			Layer.provide(InMemoryReplicantStorage),
+			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(
 				DerivationEngineService.layer.pipe(
-					Layer.provide(InMemoryReplicantStorage),
+					Layer.provide(InMemoryReplicantRepository),
 				),
 			),
 			Layer.provide(InMemorySessionStore),

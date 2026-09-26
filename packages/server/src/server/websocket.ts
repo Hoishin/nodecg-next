@@ -54,7 +54,7 @@ import {
 	type TopicFieldInternal,
 } from "../field-registry.ts";
 import { config } from "../server-config.ts";
-import type { ReplicantNotFound } from "../services/replicant-storage/replicant-storage.ts";
+import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
 import { SessionStoreService } from "../services/session-store/session-store.ts";

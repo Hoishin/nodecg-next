@@ -41,8 +41,8 @@ import {
 	BackendError,
 	DecodeError,
 	type ReplicantNotFound,
-	ReplicantStorageService,
-} from "./services/replicant-storage/replicant-storage.ts";
+	ReplicantRepositoryService,
+} from "./services/repository/replicant/replicant-repository.ts";
 
 export class ReplicantLoadError extends Schema.TaggedError<ReplicantLoadError>()(
 	"ReplicantLoadError",
@@ -184,7 +184,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 	{
 		make: Effect.gen(function* () {
 			const context = yield* Effect.context<never>();
-			const storage = yield* ReplicantStorageService;
+			const repository = yield* ReplicantRepositoryService;
 			const replicants = yield* SynchronizedRef.make(
 				HashMap.empty<FieldKey, ReplicantNode>(),
 			);
@@ -210,7 +210,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 			const initializeReplicant = Effect.fn(
 				"DerivationEngine.initializeReplicant",
 			)(function* (namespace: string, name: string, seed: Schema.Json) {
-				const persisted = yield* storage.read(namespace, name).pipe(
+				const persisted = yield* repository.read(namespace, name).pipe(
 					Effect.asSome,
 					Effect.catchTags({
 						ReplicantNotFound: () => Effect.succeedNone,
@@ -237,7 +237,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 					}),
 				);
 				if (Option.isNone(persisted)) {
-					yield* storage
+					yield* repository
 						.write(namespace, name, seed)
 						.pipe(
 							Effect.catchTag("BackendError", (cause) =>
@@ -270,7 +270,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				);
 
 			const persist = (namespace: string, name: string, value: Schema.Json) =>
-				storage
+				repository
 					.write(namespace, name, value)
 					.pipe(
 						Effect.catchTag("BackendError", (error) =>
