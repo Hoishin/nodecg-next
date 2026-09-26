@@ -26,9 +26,7 @@ const respond = (baseUrl: string, path: string) =>
 		};
 	}).pipe(
 		Effect.provide(
-			ConfigProvider.layer(
-				ConfigProvider.fromEnvRecord({ NODECG_BASE_URL: baseUrl }),
-			),
+			ConfigProvider.layer(ConfigProvider.fromEnvRecord({ BASE_URL: baseUrl })),
 		),
 	);
 

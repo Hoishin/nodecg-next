@@ -38,9 +38,22 @@ import {
 } from "effect";
 
 import {
+	BackendError,
+	DecodeError,
 	type ReplicantNotFound,
 	ReplicantStorageService,
 } from "./services/replicant-storage/replicant-storage.ts";
+
+export class ReplicantLoadError extends Schema.TaggedError<ReplicantLoadError>()(
+	"ReplicantLoadError",
+	{
+		namespace: Schema.String,
+		name: Schema.String,
+		cause: Schema.Union([DecodeError, BackendError]),
+	},
+) {
+	override readonly message = `Loading replicant "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
+}
 
 export class ComputedComputeError extends Schema.TaggedError<ComputedComputeError>()(
 	"ComputedComputeError",
@@ -199,7 +212,13 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 			)(function* (namespace: string, name: string, seed: Schema.Json) {
 				const persisted = yield* storage.read(namespace, name).pipe(
 					Effect.asSome,
-					Effect.catchTag("ReplicantNotFound", () => Effect.succeedNone),
+					Effect.catchTags({
+						ReplicantNotFound: () => Effect.succeedNone,
+						DecodeError: (cause) =>
+							ReplicantLoadError.make({ namespace, name, cause }),
+						BackendError: (cause) =>
+							ReplicantLoadError.make({ namespace, name, cause }),
+					}),
 				);
 				const initial = Option.getOrElse(persisted, () => seed);
 				yield* SynchronizedRef.updateEffect(replicants, (map) =>
@@ -218,7 +237,13 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 					}),
 				);
 				if (Option.isNone(persisted)) {
-					yield* storage.write(namespace, name, seed, true);
+					yield* storage
+						.write(namespace, name, seed)
+						.pipe(
+							Effect.catchTag("BackendError", (cause) =>
+								ReplicantLoadError.make({ namespace, name, cause }),
+							),
+						);
 				}
 			});
 
@@ -248,7 +273,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				storage
 					.write(namespace, name, value)
 					.pipe(
-						Effect.catchTag("ReplicantNotFound", (error) =>
+						Effect.catchTag("BackendError", (error) =>
 							Effect.logError(
 								`Persisting replicant "${namespace}/${name}" failed`,
 								error,

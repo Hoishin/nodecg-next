@@ -22,23 +22,15 @@ export const InMemoryReplicantStorage = Layer.sync(
 			return Effect.succeed(value);
 		};
 
-		const write = Effect.fn("ReplicantStorage.write")(function* (
-			namespace: string,
-			name: string,
-			value: Schema.Json,
-			createIfNotFound = false,
-		) {
-			const ns = map.get(namespace);
-			const exists = typeof ns?.get(name) !== "undefined";
-			if (!exists && !createIfNotFound) {
-				return yield* new ReplicantNotFound({ namespace, name });
-			}
-			if (ns) {
-				ns.set(name, value);
-			} else {
-				map.set(namespace, new Map([[name, value]]));
-			}
-		});
+		const write = (namespace: string, name: string, value: Schema.Json) =>
+			Effect.sync(() => {
+				const ns = map.get(namespace);
+				if (ns) {
+					ns.set(name, value);
+				} else {
+					map.set(namespace, new Map([[name, value]]));
+				}
+			});
 
 		return {
 			read,

@@ -268,7 +268,7 @@ describe("subscribe", () => {
 		"emits decoded values on set",
 		Effect.gen(function* () {
 			const storage = yield* ReplicantStorageService;
-			yield* storage.write("ns", "count", "0", true);
+			yield* storage.write("ns", "count", "0");
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
@@ -288,8 +288,8 @@ describe("subscribe", () => {
 		"filters out updates to other fields",
 		Effect.gen(function* () {
 			const storage = yield* ReplicantStorageService;
-			yield* storage.write("ns", "count", "0", true);
-			yield* storage.write("ns", "other", "0", true);
+			yield* storage.write("ns", "count", "0");
+			yield* storage.write("ns", "other", "0");
 			const count = yield* buildReplicant(
 				"ns",
 				"count",
@@ -316,7 +316,7 @@ describe("subscribe", () => {
 		"[fieldInternal].subscribeRevisioned streams this field's frames",
 		Effect.gen(function* () {
 			const storage = yield* ReplicantStorageService;
-			yield* storage.write("ns", "count", "0", true);
+			yield* storage.write("ns", "count", "0");
 			const field = yield* buildReplicant(
 				"ns",
 				"count",

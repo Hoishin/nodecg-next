@@ -1,12 +1,14 @@
-import { NodeRuntime } from "@effect/platform-node";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { declaredRoleNames } from "@nodecg-next/core";
 import type { RoleName } from "@nodecg-next/internal";
 import {
+	findCaseClash,
 	mapEffectValues,
 	mapValues,
 	toError,
 } from "@nodecg-next/internal/utils";
 import {
+	ConfigProvider,
 	Effect,
 	Exit,
 	HashMap,
@@ -14,6 +16,7 @@ import {
 	Layer,
 	Logger,
 	ManagedRuntime,
+	Option,
 	Schema,
 	Scope,
 } from "effect";
@@ -58,7 +61,7 @@ import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { UrlPath } from "./server/url-path.ts";
 import { websocketRoute } from "./server/websocket.ts";
-import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
+import { JsonFileReplicantStorage } from "./services/replicant-storage/json-file-replicant-storage.ts";
 import {
 	type ReplicantStorage,
 	ReplicantStorageService,
@@ -107,7 +110,7 @@ export class OnLoadError extends Schema.TaggedError<OnLoadError>()(
 
 const replicantStorage = (storage: StorageOption | undefined) => {
 	if (typeof storage === "undefined") {
-		return InMemoryReplicantStorage;
+		return JsonFileReplicantStorage;
 	}
 	return Effect.isEffect(storage)
 		? Layer.effect(ReplicantStorageService, storage)
@@ -184,6 +187,14 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			);
 		}
 		loaded.add(manifest.namespace);
+	}
+	const clash = findCaseClash(loaded, []);
+	if (Option.isSome(clash)) {
+		return yield* Effect.die(
+			new Error(
+				`Namespace "${clash.value.name}" differs from "${clash.value.clash}" only in case`,
+			),
+		);
 	}
 
 	return yield* Effect.gen(function* () {
@@ -354,6 +365,13 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 			BuiltNamespaceRegistry.layer,
 			Layer.effect(Scope.Scope, Effect.scope),
 			Logger.layer([Logger.consolePretty()]),
+		).pipe(
+			Layer.provideMerge(
+				ConfigProvider.layer(
+					ConfigProvider.fromEnv().pipe(ConfigProvider.nested("NODECG")),
+				),
+			),
+			Layer.provide(NodeServices.layer),
 		),
 	);
 	return runtime

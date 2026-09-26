@@ -246,6 +246,41 @@ describe("defineNamespace", () => {
 		});
 	});
 
+	describe("names", () => {
+		test("rejects a namespace that is not file-safe", () => {
+			// @ts-expect-error a dot is not allowed
+			expect(() => defineNamespace("show.2", {})).toThrow(
+				/Namespace "show.2" must use only A-Z, a-z, 0-9/,
+			);
+		});
+
+		test("rejects a replicant name outside the allowed characters", () => {
+			expect(() =>
+				defineNamespace("show", {
+					replicant: {
+						// @ts-expect-error a space is not allowed
+						"home score": { schema: Schema.FiniteFromString },
+					},
+				}),
+			).toThrow(/Replicant "home score" in "show" must use only A-Z, a-z, 0-9/);
+		});
+
+		test("rejects replicant names that differ only in case", () => {
+			expect(() =>
+				defineNamespace("show", {
+					replicant: {
+						// @ts-expect-error differs from homescore only in case
+						homeScore: { schema: Schema.FiniteFromString },
+						// @ts-expect-error differs from homeScore only in case
+						homescore: { schema: Schema.FiniteFromString },
+					},
+				}),
+			).toThrow(
+				'Replicant "homescore" in "show" differs from "homeScore" only in case',
+			);
+		});
+	});
+
 	describe("a replicant writer is a reader", () => {
 		test("the write set folds into read, so a write capability carries read", () => {
 			const manifest = defineNamespace("match", {
@@ -633,6 +668,32 @@ describe("extendNamespace", () => {
 	});
 
 	describe("runtime", () => {
+		test("rejects an added replicant name outside the allowed characters", () => {
+			expect(() =>
+				extendNamespace(base, {
+					replicant: {
+						// @ts-expect-error a slash is not allowed
+						"away/score": { schema: Schema.Finite },
+					},
+				}),
+			).toThrow(
+				/Replicant "away\/score" in "match" must use only A-Z, a-z, 0-9/,
+			);
+		});
+
+		test("rejects an added replicant name that differs from an existing one only in case", () => {
+			expect(() =>
+				extendNamespace(base, {
+					replicant: {
+						// @ts-expect-error differs from score only in case
+						Score: { schema: Schema.Finite },
+					},
+				}),
+			).toThrow(
+				'Replicant "Score" in "match" differs from "score" only in case',
+			);
+		});
+
 		test("overrides an existing field's permission without a schema", () => {
 			const extended = extendNamespace(base, {
 				replicant: { score: { permission: { read: { deny: ["viewer"] } } } },

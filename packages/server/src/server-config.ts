@@ -57,7 +57,7 @@ const BaseUrlSchema = Schema.URLFromString.pipe(
 
 const baseUrl = Config.all([
 	port,
-	Config.option(Config.schema(BaseUrlSchema, "NODECG_BASE_URL")),
+	Config.option(Config.schema(BaseUrlSchema, "BASE_URL")),
 ]).pipe(
 	Config.map(([port, baseUrl]) =>
 		baseUrl.pipe(
@@ -72,6 +72,7 @@ const baseUrl = Config.all([
 export const config = {
 	port,
 	baseUrl,
+	dataDir: Config.String("DATA_DIR").pipe(Config.withDefault("data")),
 	requireAuth: Config.Boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
 	sessionTtl: Config.Duration("SESSION_TTL").pipe(
 		Config.withDefault(Duration.days(7)),

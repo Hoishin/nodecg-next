@@ -18,11 +18,13 @@ import {
 	ComputedComputeError,
 	DerivationEngineService,
 	type ReplicantFrame,
+	ReplicantLoadError,
 } from "./derivation-graph.ts";
 import { InMemoryReplicantStorage } from "./services/replicant-storage/in-memory-replicant-storage.ts";
 import { createStorageStub } from "./services/replicant-storage/replicant-storage.stub.ts";
 import {
-	ReplicantNotFound,
+	BackendError,
+	DecodeError,
 	ReplicantStorageService,
 } from "./services/replicant-storage/replicant-storage.ts";
 
@@ -624,7 +626,7 @@ describe("persistence", () => {
 			yield* engine.initializeReplicant("ns", "a", 0);
 			storage.write.mockClear();
 			storage.write.mockReturnValue(
-				ReplicantNotFound.make({ namespace: "ns", name: "a" }),
+				BackendError.make({ cause: new Error("disk full") }),
 			);
 
 			yield* engine.commit("ns", "a", () => Effect.succeed(1));
@@ -644,7 +646,7 @@ describe("initializeReplicant", () => {
 			yield* engine.initializeReplicant("ns", "a", 0);
 
 			expect(storage.read).toHaveBeenCalledWith("ns", "a");
-			expect(storage.write).toHaveBeenCalledWith("ns", "a", 0, true);
+			expect(storage.write).toHaveBeenCalledWith("ns", "a", 0);
 			expect((yield* engine.readReplicant("ns", "a")).value).toBe(0);
 		}),
 	);
@@ -663,18 +665,39 @@ describe("initializeReplicant", () => {
 	);
 
 	testStubbed(
-		"fails the load when the seed write fails",
+		"fails when writing the seed fails",
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
 			storage.write.mockReturnValue(
-				ReplicantNotFound.make({ namespace: "ns", name: "a" }),
+				BackendError.make({ cause: new Error("disk full") }),
 			);
 			const engine = yield* engineIn(scope);
 			const error = yield* engine
 				.initializeReplicant("ns", "a", 0)
 				.pipe(Effect.flip);
 
-			expect(error._tag).toBe("ReplicantNotFound");
+			assert(Schema.is(ReplicantLoadError)(error));
+			expect(error).toMatchObject({ namespace: "ns", name: "a" });
+			assert(Schema.is(BackendError)(error.cause));
+		}),
+	);
+
+	testStubbed(
+		"fails without overwriting a stored value that does not decode",
+		Effect.gen(function* () {
+			const scope = yield* Scope.make();
+			storage.read.mockReturnValue(
+				DecodeError.make({ issue: "Expected a valid JSON string" }),
+			);
+			const engine = yield* engineIn(scope);
+			const error = yield* engine
+				.initializeReplicant("ns", "a", 0)
+				.pipe(Effect.flip);
+
+			assert(Schema.is(ReplicantLoadError)(error));
+			expect(error).toMatchObject({ namespace: "ns", name: "a" });
+			assert(Schema.is(DecodeError)(error.cause));
+			expect(storage.write).not.toHaveBeenCalled();
 		}),
 	);
 });

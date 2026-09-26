@@ -25,7 +25,7 @@ describe("baseUrl", () => {
 
 	it.effect("a bare origin resolves to root", () =>
 		Effect.gen(function* () {
-			expect(yield* readBaseUrl({ NODECG_BASE_URL: "http://host" })).toEqual({
+			expect(yield* readBaseUrl({ BASE_URL: "http://host" })).toEqual({
 				href: "http://host/",
 				pathname: "/",
 			});
@@ -34,20 +34,23 @@ describe("baseUrl", () => {
 
 	it.effect("exposes the configured sub-path", () =>
 		Effect.gen(function* () {
-			expect(
-				yield* readBaseUrl({ NODECG_BASE_URL: "http://host/foo" }),
-			).toEqual({ href: "http://host/foo", pathname: "/foo" });
+			expect(yield* readBaseUrl({ BASE_URL: "http://host/foo" })).toEqual({
+				href: "http://host/foo",
+				pathname: "/foo",
+			});
 		}),
 	);
 
 	it.effect("strips a trailing slash from the pathname", () =>
 		Effect.gen(function* () {
-			expect(
-				yield* readBaseUrl({ NODECG_BASE_URL: "http://host/foo/" }),
-			).toEqual({ href: "http://host/foo/", pathname: "/foo" });
-			expect(
-				yield* readBaseUrl({ NODECG_BASE_URL: "http://host/a/b/" }),
-			).toEqual({ href: "http://host/a/b/", pathname: "/a/b" });
+			expect(yield* readBaseUrl({ BASE_URL: "http://host/foo/" })).toEqual({
+				href: "http://host/foo/",
+				pathname: "/foo",
+			});
+			expect(yield* readBaseUrl({ BASE_URL: "http://host/a/b/" })).toEqual({
+				href: "http://host/a/b/",
+				pathname: "/a/b",
+			});
 		}),
 	);
 
@@ -56,7 +59,7 @@ describe("baseUrl", () => {
 		() =>
 			Effect.gen(function* () {
 				const error = yield* readBaseUrl({
-					NODECG_BASE_URL: "not a url",
+					BASE_URL: "not a url",
 				}).pipe(Effect.flip);
 				expect(error).toBeInstanceOf(Config.ConfigError);
 			}),

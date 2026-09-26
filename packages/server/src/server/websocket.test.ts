@@ -1,4 +1,4 @@
-import { HashMap, Layer } from "effect";
+import { ConfigProvider, HashMap, Layer } from "effect";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 import { describe, expect, test } from "vitest";
 
@@ -57,6 +57,7 @@ const handler = () => {
 					HashMap.empty<string, AuthProvider>(),
 				),
 			),
+			Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
 			Layer.provide(HttpServer.layerServices),
 		),
 	);

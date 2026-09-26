@@ -11,12 +11,17 @@ import {
 import {
 	type AddedRpcSchemas,
 	type AddedSchemas,
+	type CaseClashingKeys,
+	type FileSafeName,
+	findCaseClash,
+	isFileSafeName,
 	mapRpcValues,
 	mapSchemaValues,
 	mapValues,
 	mergeRecords,
+	type UnsafeNameKeys,
 } from "@nodecg-next/internal/utils";
-import { Effect, type HKT, Schema } from "effect";
+import { Effect, type HKT, Option, Schema } from "effect";
 import type { WritableDeep } from "type-fest";
 
 import {
@@ -336,6 +341,27 @@ const validatePermissionTokens = (
 	}
 };
 
+const validateReplicantNames = (
+	namespace: string,
+	replicant: Readonly<Record<string, unknown>> | undefined,
+	existing: ReadonlyArray<string>,
+): void => {
+	const names = Object.keys(replicant ?? {});
+	for (const name of names) {
+		if (!isFileSafeName(name)) {
+			throw new Error(
+				`Replicant "${name}" in "${namespace}" must use only A-Z, a-z, 0-9, "_" and "-", and not be a Windows device name`,
+			);
+		}
+	}
+	const clash = findCaseClash(names, existing);
+	if (Option.isSome(clash)) {
+		throw new Error(
+			`Replicant "${clash.value.name}" in "${namespace}" differs from "${clash.value.clash}" only in case`,
+		);
+	}
+};
+
 const isDeclarablePrincipalName = Schema.is(DeclarablePrincipalNameSchema);
 const isUndeniablePrincipalName = Schema.is(UndeniablePrincipalNameSchema);
 
@@ -409,8 +435,9 @@ export function defineNamespace<
 		string,
 		RpcFieldOption<WriteOnlyPermissionArg<keyof Roles & string>>
 	> = {},
+	const Namespace extends string = string,
 >(
-	namespace: string,
+	namespace: FileSafeName<Namespace>,
 	defineOption: {
 		roles?: Roles & { [K in UndeclarableRoleName]?: never };
 		principals?: PrincipalsArg;
@@ -419,7 +446,8 @@ export function defineNamespace<
 				Replicant[K],
 				PermissionArg<keyof Roles & string>
 			>;
-		};
+		} & UnsafeNameKeys<Replicant> &
+			CaseClashingKeys<Replicant>;
 		computed?: {
 			[K in keyof Computed & string]: FieldOption<
 				Computed[K],
@@ -440,6 +468,13 @@ export function defineNamespace<
 	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> },
 	AddedRpcDecoded<Rpc>
 > {
+	if (!isFileSafeName(namespace)) {
+		throw new Error(
+			`Namespace "${namespace}" must use only A-Z, a-z, 0-9, "_" and "-", and not be a Windows device name`,
+		);
+	}
+	validateReplicantNames(namespace, defineOption.replicant, []);
+
 	const { registry, declared } = declareRoles(
 		{ roles: new Map(), principals: new Map() },
 		defineOption.roles,
@@ -458,6 +493,14 @@ export function defineNamespace<
 		rule: PermissionRuleArg<keyof Roles & string> | undefined,
 	) => resolveAccess(registry, declared, capability, undefined, rule);
 
+	const replicantOption:
+		| {
+				[K in keyof Replicant & string]: FieldOption<
+					Replicant[K],
+					PermissionArg<keyof Roles & string>
+				>;
+		  }
+		| undefined = defineOption.replicant;
 	const replicant = mapValues<
 		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
 		FieldManifestFromSchemaLambda
@@ -469,7 +512,7 @@ export function defineNamespace<
 			namespace,
 			namedRoles,
 		),
-	}))(defineOption.replicant);
+	}))(replicantOption);
 
 	const computed = mapValues<
 		FieldOptionLambda<ReadOnlyPermissionArg<keyof Roles & string>>,
@@ -579,7 +622,9 @@ export function extendNamespace<
 		| {
 				readonly roles?: Record<string, RoleArg>;
 				readonly principals?: PrincipalsArg;
-				readonly replicant?: EReplicant;
+				readonly replicant?: EReplicant &
+					UnsafeNameKeys<EReplicant> &
+					CaseClashingKeys<EReplicant, keyof PReplicant & string>;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
@@ -587,7 +632,9 @@ export function extendNamespace<
 		| ((precedent: NamespaceManifest<PReplicant, PComputed, PTopic, PRpc>) => {
 				readonly roles?: Record<string, RoleArg>;
 				readonly principals?: PrincipalsArg;
-				readonly replicant?: EReplicant;
+				readonly replicant?: EReplicant &
+					UnsafeNameKeys<EReplicant> &
+					CaseClashingKeys<EReplicant, keyof PReplicant & string>;
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
@@ -602,6 +649,12 @@ export function extendNamespace<
 		typeof extendOptionOrFn === "function"
 			? extendOptionOrFn(manifest)
 			: extendOptionOrFn;
+
+	validateReplicantNames(
+		manifest.namespace,
+		extendOption.replicant,
+		Object.keys(manifest.replicant),
+	);
 
 	const { registry, declared } = declareRoles(
 		manifest[manifestRolesKey],

@@ -1,24 +1,24 @@
-// @effect-diagnostics nodeBuiltinImport:off
 import { realpathSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-// @effect-diagnostics nodeBuiltinImport:error
 
 import { NodeFileSystem } from "@effect/platform-node";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, FileSystem, Layer } from "effect";
+import { ConfigProvider, Effect, FileSystem, Layer } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
-import { afterAll, describe, expect, vi } from "vitest";
+import { describe, expect } from "vitest";
 
 import { UrlPath } from "./url-path.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
 
-vi.stubEnv("NODECG_BASE_URL", "http://localhost:3000/sub");
-afterAll(() => {
-	vi.unstubAllEnvs();
-});
-
 const test = testLayer(
-	Layer.mergeAll(NodeFileSystem.layer, UrlPath.layer, FetchHttpClient.layer),
+	Layer.mergeAll(
+		NodeFileSystem.layer,
+		UrlPath.layer,
+		FetchHttpClient.layer,
+		ConfigProvider.layer(
+			ConfigProvider.fromEnvRecord({ BASE_URL: "http://localhost:3000/sub" }),
+		),
+	),
 );
 
 const startDevServer = Effect.gen(function* () {

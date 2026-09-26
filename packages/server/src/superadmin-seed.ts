@@ -17,7 +17,7 @@ export const seedSuperadmins = Layer.effectDiscard(
 			assignments.some(({ globalRoles }) => globalRoles.includes("superadmin"))
 		) {
 			yield* Effect.logInfo(
-				"Skipping SUPERADMINS seeding: a superadmin already exists",
+				"Skipping superadmin seeding: a superadmin already exists",
 			);
 			return;
 		}
@@ -28,7 +28,7 @@ export const seedSuperadmins = Layer.effectDiscard(
 				if (Option.isNone(provider)) {
 					return yield* Effect.die(
 						new Error(
-							`SUPERADMINS entry "${name}:${subject}" names an unknown authentication provider`,
+							`Configured superadmin "${name}:${subject}" names an unknown authentication provider`,
 						),
 					);
 				}

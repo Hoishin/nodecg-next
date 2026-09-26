@@ -129,7 +129,7 @@ describe("seededRoleStore", () => {
 			).pipe(Effect.exit);
 			assert(Exit.isFailure(exit));
 			expect(Cause.pretty(exit.cause)).toContain(
-				'SUPERADMINS entry "ghost:root" names an unknown authentication provider',
+				'Configured superadmin "ghost:root" names an unknown authentication provider',
 			);
 		}),
 	);

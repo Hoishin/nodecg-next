@@ -183,7 +183,9 @@ const asIdentity = (identity: Identity) =>
 const webHandler = Effect.fn(function* (
 	namespaces: ReadonlyArray<RegisteredNamespace>,
 	middleware: typeof UserAuthenticationMiddlewareLive = UserAuthenticationMiddlewareLive,
-	environment: Layer.Layer<never> = Layer.empty,
+	environment: Layer.Layer<never> = ConfigProvider.layer(
+		ConfigProvider.fromEnvRecord({}),
+	),
 	options?: {
 		providers?: HashMap.HashMap<string, AuthProvider>;
 	},
@@ -315,7 +317,7 @@ describe("login and callback", () => {
 	const providers = HashMap.make(["dev", devProvider] as const);
 
 	const loginHandler = () =>
-		webHandler([], undefined, Layer.empty, { providers });
+		webHandler([], undefined, undefined, { providers });
 
 	const stashCookieOf = (res: Response) => {
 		const match = (res.headers.get("set-cookie") ?? "").match(
@@ -328,9 +330,7 @@ describe("login and callback", () => {
 	};
 
 	const subPathEnv = ConfigProvider.layer(
-		ConfigProvider.fromEnvRecord({
-			NODECG_BASE_URL: "http://x/s/nodecg",
-		}).pipe(ConfigProvider.orElse(ConfigProvider.fromEnv())),
+		ConfigProvider.fromEnvRecord({ BASE_URL: "http://x/s/nodecg" }),
 	);
 
 	it.effect("providers lists each registered provider with its login URL", () =>

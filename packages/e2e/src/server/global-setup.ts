@@ -1,7 +1,15 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off
 import { type ChildProcess, fork } from "node:child_process";
 
-import { Duration, Effect, Schema } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import {
+	Duration,
+	Effect,
+	FileSystem,
+	Layer,
+	ManagedRuntime,
+	Path,
+	Schema,
+} from "effect";
 import type { TestProject } from "vitest/node";
 
 const BackendSchema = Schema.Struct({
@@ -40,13 +48,15 @@ class SuiteServerExited extends Schema.TaggedError<SuiteServerExited>()(
 
 const forkServer = (
 	backend: Backend,
+	dataDir: string,
 ): Effect.Effect<ChildProcess, SuiteServerExited> =>
 	Effect.callback((resume) => {
 		const child = fork(backend.serverEntry, {
 			env: {
-				PORT: String(backend.port),
+				NODECG_PORT: String(backend.port),
 				NODECG_BASE_URL: backend.baseUrl,
-				SUPERADMINS: backend.superadmins,
+				NODECG_DATA_DIR: dataDir,
+				NODECG_SUPERADMINS: backend.superadmins,
 			},
 			stdio: ["ignore", "inherit", "inherit", "ipc"],
 		});
@@ -87,14 +97,26 @@ const stopChild = (child: ChildProcess): Effect.Effect<void> =>
 
 export default async function setup(project: TestProject) {
 	const backends = decodeBackends(project.config.env["E2E_BACKENDS"]);
-	const children = await Effect.runPromise(
-		Effect.forEach(backends, forkServer, { concurrency: "unbounded" }),
-	);
-	return () =>
-		Effect.runPromise(
-			Effect.forEach(children, stopChild, {
-				concurrency: "unbounded",
-				discard: true,
-			}),
+	const runtime = Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const dataRoot = yield* fs.makeTempDirectoryScoped({
+			prefix: "nodecg-e2e-",
+		});
+		yield* Effect.forEach(
+			backends,
+			(backend) =>
+				Effect.acquireRelease(
+					forkServer(backend, path.join(dataRoot, backend.name)),
+					stopChild,
+				),
+			{ concurrency: "unbounded", discard: true },
 		);
+	}).pipe(
+		Layer.effectDiscard,
+		Layer.provide(NodeServices.layer),
+		ManagedRuntime.make,
+	);
+	await runtime.context();
+	return () => runtime.dispose();
 }

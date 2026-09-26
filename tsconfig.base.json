@@ -26,7 +26,7 @@
 			{
 				"name": "@effect/language-service",
 				"diagnosticSeverity": {
-					// Always a bug
+					// Bugs
 					"duplicatePackage": "error",
 					"effectFnIife": "error",
 					"effectGenUsesAdapter": "error",
@@ -46,7 +46,7 @@
 					"unknownInEffectCatch": "error",
 					"unsafeEffectTypeAssertion": "error",
 
-					// Effect and Schema misuse
+					// Misuse
 					"abortControllerInEffect": "error",
 					"catchUnfailableEffect": "error",
 					"instanceOfSchema": "error",
@@ -59,7 +59,7 @@
 					"tryCatchInEffectGen": "error",
 					"unnecessaryFailYieldableError": "error",
 
-					// Effect APIs over globals
+					// Globals
 					"cryptoRandomUUID": "error",
 					"cryptoRandomUUIDInEffect": "error",
 					"globalConsole": "error",
@@ -78,7 +78,7 @@
 					"nestedEffectGenYield": "error",
 					"serviceNotAsClass": "error",
 
-					// A catch handler that is a narrower combinator
+					// Catch shorthand
 					"catchAllToMapError": "error",
 					"catchChainToFirstSuccessOf": "error",
 					"catchConditionalRefailToCatchIf": "error",
@@ -88,7 +88,7 @@
 					"catchToOrElseSucceed": "error",
 					"multipleCatchTag": "error",
 
-					// map and flatMap shorthand
+					// Shorthand
 					"effectMapFlatten": "error",
 					"effectMapVoid": "error",
 					"effectSucceedWithVoid": "error",
@@ -113,7 +113,6 @@
 					"effectFnOpportunity": "message",
 					"lazyEffect": "message",
 					"leakingRequirements": "message",
-					"missedPipeableOpportunity": "message",
 					"newPromise": "message",
 					"raceFirstWithSleepToTimeout": "message",
 					"redundantMapError": "message",
@@ -126,15 +125,17 @@
 					"unnecessaryTypeofType": "message",
 
 					// Hints
+					"missedPipeableOpportunity": "suggestion",
 					"newSchemaClass": "suggestion",
 					"preferSchemaOverJson": "suggestion"
 				},
 				"overrides": [
 					{
-						"include": ["**/*.test.ts"],
+						"include": ["**/*.test.ts", "**/packages/e2e/**/*.ts"],
 						"options": {
 							"diagnosticSeverity": {
 								"globalFetch": "off",
+								"nodeBuiltinImport": "off",
 								"strictEffectProvide": "off"
 							}
 						}

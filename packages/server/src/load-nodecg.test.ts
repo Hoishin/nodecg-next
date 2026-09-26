@@ -318,6 +318,23 @@ describe("duplicate namespaces", () => {
 			expect(defect.success.message).toContain('"counter" was loaded twice');
 		}),
 	);
+
+	testInMemory(
+		"dies when two namespace names differ only in case",
+		Effect.gen(function* () {
+			const upper = implementNamespace(defineNamespace("Counter", {}), {});
+			const cause = yield* loadNodeCGEffect({
+				namespaces: { first: counter, second: upper },
+			}).pipe(Effect.sandbox, Effect.flip);
+
+			const defect = Cause.findDefect(cause);
+			assert(Result.isSuccess(defect));
+			assert(defect.success instanceof Error);
+			expect(defect.success.message).toBe(
+				'Namespace "Counter" differs from "counter" only in case',
+			);
+		}),
+	);
 });
 
 describe("loadNodeCG", () => {
@@ -331,12 +348,7 @@ describe("loadNodeCG", () => {
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
 
-		expect(storage.write).toHaveBeenCalledWith(
-			"settings",
-			"multiplier",
-			"3",
-			true,
-		);
+		expect(storage.write).toHaveBeenCalledWith("settings", "multiplier", "3");
 		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(3);
 	});
 

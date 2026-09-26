@@ -1,4 +1,11 @@
 export {
+	type CaseClashingKeys,
+	findCaseClash,
+	type FileSafeName,
+	isFileSafeName,
+	type UnsafeNameKeys,
+} from "./file-safe-name.ts";
+export {
 	mapValues,
 	mapEffectValues,
 	mergeRecords,
