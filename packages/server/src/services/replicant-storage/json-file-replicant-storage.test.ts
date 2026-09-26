@@ -37,22 +37,61 @@ const test = testLayer(
 );
 
 describe("build", () => {
-	test(
-		"resolves a relative data directory against the working directory",
-		Effect.gen(function* () {
-			const path = yield* Path.Path;
-			yield* Layer.build(
-				Layer.fresh(JsonFileReplicantStorage).pipe(
-					Layer.provide(
-						ConfigProvider.layer(
-							ConfigProvider.fromEnvRecord({ DATA_DIR: "relative" }),
-						),
+	const build = Effect.fn(function* (
+		dataDir: string,
+		workingDirectory: string,
+	) {
+		const path = yield* Path.Path;
+		return yield* Layer.build(
+			Layer.fresh(JsonFileReplicantStorage).pipe(
+				Layer.provide(
+					ConfigProvider.layer(
+						ConfigProvider.fromEnvRecord({ DATA_DIR: dataDir }),
 					),
 				),
+			),
+		).pipe(
+			Effect.provideService(Path.Path, {
+				...path,
+				resolve: (...segments) => path.resolve(workingDirectory, ...segments),
+			}),
+		);
+	});
+
+	test(
+		"resolves a relative data directory against the nearest project above the working directory",
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
+			const project = yield* fs.makeTempDirectoryScoped();
+			yield* fs.writeFileString(path.join(project, "package.json"), "{}");
+			const server = path.join(project, "src", "server");
+			yield* fs.makeDirectory(server, { recursive: true });
+
+			yield* build("data", server);
+
+			expect(yield* TestConsole.logLines).toContain(
+				`Storing replicants in ${path.join(project, "data", "replicants")}`,
+			);
+		}),
+	);
+
+	test(
+		"resolves a relative data directory against the working directory outside any project",
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
+			const outside = yield* fs.makeTempDirectoryScoped();
+
+			yield* build("data", outside).pipe(
+				Effect.provideService(FileSystem.FileSystem, {
+					...fs,
+					exists: () => Effect.succeed(false),
+				}),
 			);
 
 			expect(yield* TestConsole.logLines).toContain(
-				`Storing replicants in ${path.join(process.cwd(), "relative", "replicants")}`,
+				`Storing replicants in ${path.join(outside, "data", "replicants")}`,
 			);
 		}),
 	);
