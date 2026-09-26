@@ -1,0 +1,4 @@
+{
+	"include": [],
+	"references": [{ "path": "./counter" }, { "path": "./social-login" }]
+}

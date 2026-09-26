@@ -2,10 +2,6 @@
 	"name": "@nodecg-next/e2e",
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"effect-check": "effect-tsgo diagnostics --project tsconfig.dom.json && effect-tsgo diagnostics --project tsconfig.node.json",
-		"type-check": "tsc -b --noEmit"
-	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:",
 		"@nodecg-next/browser": "workspace:*",

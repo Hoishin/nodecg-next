@@ -19,10 +19,6 @@
 			".": "./dist/_export.js"
 		}
 	},
-	"scripts": {
-		"effect-check": "effect-tsgo diagnostics --project tsconfig.json",
-		"type-check": "tsc --noEmit"
-	},
 	"dependencies": {
 		"@nodecg-next/core": "workspace:*",
 		"@nodecg-next/internal": "workspace:*",

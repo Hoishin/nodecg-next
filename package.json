@@ -5,8 +5,8 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsdown",
-		"effect-check": "pnpm -r --stream run effect-check",
-		"type-check": "pnpm -r --stream run type-check"
+		"effect-check": "effect-tsgo diagnostics --project tsconfig.json",
+		"type-check": "tsc -b --noEmit"
 	},
 	"devDependencies": {
 		"@changesets/changelog-github": "^1.0.0",

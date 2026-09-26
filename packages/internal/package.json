@@ -23,10 +23,6 @@
 			"./utils": "./dist/utils.js"
 		}
 	},
-	"scripts": {
-		"effect-check": "effect-tsgo diagnostics --project tsconfig.json",
-		"type-check": "tsc --noEmit"
-	},
 	"dependencies": {
 		"@preact/signals-core": "catalog:",
 		"effect": "catalog:",
