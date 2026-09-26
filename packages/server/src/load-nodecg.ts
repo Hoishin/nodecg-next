@@ -61,6 +61,7 @@ import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { UrlPath } from "./server/url-path.ts";
 import { websocketRoute } from "./server/websocket.ts";
+import { OperatingSystemService } from "./services/operating-system/operating-system.ts";
 import { JsonFileReplicantStorage } from "./services/replicant-storage/json-file-replicant-storage.ts";
 import {
 	type ReplicantStorage,
@@ -371,7 +372,9 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 					ConfigProvider.fromEnv().pipe(ConfigProvider.nested("NODECG")),
 				),
 			),
-			Layer.provide(NodeServices.layer),
+			Layer.provide(
+				Layer.mergeAll(NodeServices.layer, OperatingSystemService.layer),
+			),
 		),
 	);
 	return runtime

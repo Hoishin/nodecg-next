@@ -3,16 +3,20 @@ import { testLayer } from "@nodecg-next/test-utils";
 import {
 	ConfigProvider,
 	Context,
+	Deferred,
 	Effect,
+	Fiber,
 	FileSystem,
 	Layer,
 	Path,
+	PlatformError,
 	Schema,
 } from "effect";
-import { TestConsole } from "effect/testing";
-import { assert, describe, expect } from "vitest";
+import { TestClock, TestConsole } from "effect/testing";
+import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import { config } from "../../server-config.ts";
+import { OperatingSystemService } from "../operating-system/operating-system.ts";
 import { JsonFileReplicantStorage } from "./json-file-replicant-storage.ts";
 import {
 	BackendError,
@@ -32,7 +36,13 @@ const temporaryDataDir = ConfigProvider.layer(
 const test = testLayer(
 	JsonFileReplicantStorage.pipe(
 		Layer.provideMerge(temporaryDataDir),
-		Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+		Layer.provideMerge(
+			Layer.mergeAll(
+				NodeFileSystem.layer,
+				NodePath.layer,
+				OperatingSystemService.layer,
+			),
+		),
 	),
 );
 
@@ -130,7 +140,7 @@ describe("read", () => {
 
 describe("write", () => {
 	test(
-		"fails with a backend error when the file cannot be written",
+		"fails with a backend error naming the path when the file cannot be written",
 		Effect.gen(function* () {
 			const storage = yield* ReplicantStorageService;
 			const fs = yield* FileSystem.FileSystem;
@@ -143,6 +153,7 @@ describe("write", () => {
 
 			const error = yield* storage.write("ns", "a", 1).pipe(Effect.flip);
 			assert(Schema.is(BackendError)(error));
+			expect(error.message).toContain(path.join(dir, "replicants", "ns"));
 		}),
 	);
 
@@ -200,4 +211,127 @@ describe("write", () => {
 			).toEqual({ count: 3 });
 		}),
 	);
+});
+
+describe("write over a locked file", () => {
+	const rename = vi.fn<FileSystem.FileSystem["rename"]>();
+	afterEach(() => {
+		rename.mockReset();
+	});
+
+	const testOn = (
+		operatingSystem: Context.Service.Shape<typeof OperatingSystemService>,
+	) =>
+		testLayer(
+			JsonFileReplicantStorage.pipe(
+				Layer.provideMerge(temporaryDataDir),
+				Layer.provideMerge(
+					Layer.effect(
+						FileSystem.FileSystem,
+						Effect.gen(function* () {
+							const fs = yield* FileSystem.FileSystem;
+							return {
+								...fs,
+								rename: (from: string, to: string) =>
+									Effect.suspend(() => rename(from, to)),
+							};
+						}),
+					).pipe(Layer.provide(NodeFileSystem.layer)),
+				),
+				Layer.provideMerge(
+					Layer.mergeAll(
+						NodePath.layer,
+						Layer.succeed(OperatingSystemService, operatingSystem),
+					),
+				),
+			),
+		);
+
+	const renameError = (code: string) =>
+		PlatformError.systemError({
+			_tag: "Unknown",
+			module: "FileSystem",
+			method: "rename",
+			cause: Object.assign(new Error(code), { code }),
+		});
+
+	describe("on Windows", () => {
+		const test = testOn("windows");
+
+		test(
+			"retries the rename until the lock is released",
+			Effect.gen(function* () {
+				const storage = yield* ReplicantStorageService;
+				const attempted = yield* Deferred.make<void>();
+				rename
+					.mockReturnValueOnce(
+						Deferred.succeed(attempted, undefined).pipe(
+							Effect.andThen(Effect.fail(renameError("EPERM"))),
+						),
+					)
+					.mockReturnValueOnce(Effect.fail(renameError("EPERM")))
+					.mockReturnValueOnce(Effect.void);
+
+				const write = yield* Effect.forkChild(storage.write("ns", "a", 1));
+				yield* Deferred.await(attempted);
+				yield* TestClock.adjust("1 second");
+				yield* Fiber.join(write);
+
+				expect(rename).toHaveBeenCalledTimes(3);
+			}),
+		);
+
+		test(
+			"fails with a backend error once the lock outlasts a minute",
+			Effect.gen(function* () {
+				const storage = yield* ReplicantStorageService;
+				const attempted = yield* Deferred.make<void>();
+				rename.mockReturnValue(
+					Deferred.succeed(attempted, undefined).pipe(
+						Effect.andThen(Effect.fail(renameError("EPERM"))),
+					),
+				);
+
+				const write = yield* Effect.forkChild(
+					storage.write("ns", "a", 1).pipe(Effect.flip),
+				);
+				yield* Deferred.await(attempted);
+				yield* TestClock.adjust("59 seconds");
+				expect(write.pollUnsafe()).toBeUndefined();
+				yield* TestClock.adjust("2 seconds");
+
+				assert(Schema.is(BackendError)(yield* Fiber.join(write)));
+			}),
+		);
+
+		test(
+			"does not retry a rename failure other than a lock",
+			Effect.gen(function* () {
+				const storage = yield* ReplicantStorageService;
+				rename.mockReturnValue(Effect.fail(renameError("ENOSPC")));
+
+				const error = yield* storage.write("ns", "a", 1).pipe(Effect.flip);
+
+				assert(Schema.is(BackendError)(error));
+				expect(rename).toHaveBeenCalledTimes(1);
+			}),
+		);
+	});
+
+	describe("on other operating systems", () => {
+		const test = testOn("linux");
+
+		test(
+			"does not retry the rename",
+			Effect.gen(function* () {
+				const storage = yield* ReplicantStorageService;
+				rename.mockReturnValue(Effect.fail(renameError("EPERM")));
+
+				const error = yield* storage.write("ns", "a", 1).pipe(Effect.flip);
+
+				assert(Schema.is(BackendError)(error));
+				expect(rename).toHaveBeenCalledTimes(1);
+			}),
+		);
+	});
 });

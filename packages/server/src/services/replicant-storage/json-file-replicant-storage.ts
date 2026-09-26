@@ -4,12 +4,14 @@ import {
 	Layer,
 	Option,
 	Path,
+	Schedule,
 	Schema,
 	SchemaIssue,
 	Stream,
 } from "effect";
 
 import { config } from "../../server-config.ts";
+import { OperatingSystemService } from "../operating-system/operating-system.ts";
 import {
 	BackendError,
 	DecodeError,
@@ -20,6 +22,12 @@ import {
 const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Json));
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Json));
 const formatIssue = SchemaIssue.makeFormatterDefault();
+
+const isFileLockError = Schema.is(
+	Schema.Struct({
+		code: Schema.Literals(["EPERM", "EBUSY"]),
+	}),
+);
 
 const resolveDataDir = Effect.fn("resolveDataDir")(
 	function* (dataDir: string) {
@@ -51,6 +59,7 @@ export const JsonFileReplicantStorage = Layer.effect(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
+		const operatingSystem = yield* OperatingSystemService;
 		const root = path.join(
 			yield* resolveDataDir(yield* config.dataDir),
 			"replicants",
@@ -96,7 +105,17 @@ export const JsonFileReplicantStorage = Layer.effect(
 							.pipe(Effect.andThen(writeTemporary)),
 					),
 				);
-				yield* fs.rename(temporary, target);
+
+				yield* fs.rename(temporary, target).pipe(
+					// Windows might randomly lock files, e.g. for an antivirus scan
+					Effect.retry({
+						while: (error) =>
+							operatingSystem === "windows" && isFileLockError(error.cause),
+						schedule: Schedule.spaced("100 millis").pipe(
+							Schedule.upTo({ duration: "1 minute" }),
+						),
+					}),
+				);
 			},
 			Effect.catchTag(["PlatformError", "SchemaError"], (cause) =>
 				BackendError.make({ cause }),
