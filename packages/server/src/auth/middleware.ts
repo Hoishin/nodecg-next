@@ -6,26 +6,44 @@ import {
 	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
-import { Effect, Layer, Option, Redacted } from "effect";
+import { Context, Effect, Layer, Option, Redacted } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
 import { config } from "../server-config.ts";
+import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
+import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
-import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { resolveServiceAccountIdentity } from "./resolve-service-account-identity.ts";
 import {
 	anonymousIdentity,
 	resolveSessionIdentity,
 } from "./resolve-session-identity.ts";
+import { setSessionCookie } from "./session.ts";
 
 export const UserAuthenticationMiddlewareLive = Layer.effect(
 	UserAuthenticationMiddleware,
 	Effect.gen(function* () {
 		const requireAuth = yield* config.requireAuth;
-		const sessions = yield* SessionStoreService;
+		const baseUrl = yield* config.baseUrl;
+		const sessionTtl = yield* config.sessionTtl;
+		const context = yield* Effect.context<
+			AuthenticationRepositoryService | SessionRepositoryService
+		>();
+		const repositories = context.pipe(
+			Context.pick(AuthenticationRepositoryService, SessionRepositoryService),
+		);
 		const roleStore = yield* RoleStoreService;
-		const resolve = resolveSessionIdentity({ sessions, roleStore });
+		const resolve = (token: string) =>
+			resolveSessionIdentity({ roleStore })(token).pipe(
+				Effect.provide(repositories),
+				Effect.tapCause((cause) =>
+					Effect.logError("Session lookup failed", cause),
+				),
+				Effect.catchTag(["BackendError", "ConfigError"], () =>
+					HttpApiError.InternalServerError.make(),
+				),
+			);
 
 		return {
 			cookie: (httpEffect, { credential }) =>
@@ -35,6 +53,12 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 						value.length > 0 ? yield* resolve(value) : Option.none();
 					if (Option.isNone(resolved) && requireAuth) {
 						return yield* new HttpApiError.Unauthorized();
+					}
+					if (Option.isSome(resolved)) {
+						yield* setSessionCookie(value, {
+							path: baseUrl.pathname,
+							maxAge: sessionTtl,
+						});
 					}
 					return yield* Effect.provideService(
 						httpEffect,

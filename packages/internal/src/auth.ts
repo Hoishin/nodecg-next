@@ -23,7 +23,7 @@ export class UserAuthenticationMiddleware extends HttpApiMiddleware.Service<
 	UserAuthenticationMiddleware,
 	{ provides: CurrentIdentity }
 >()("Authentication", {
-	error: HttpApiError.Unauthorized,
+	error: [HttpApiError.Unauthorized, HttpApiError.InternalServerError],
 	security: { cookie: sessionCookieSecurity },
 }) {}
 

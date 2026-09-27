@@ -1,24 +1,18 @@
-import {
-	UserIdentity,
-	type Identity,
-	AnonymousIdentitySchema,
-} from "@nodecg-next/internal";
+import { UserIdentity, AnonymousIdentitySchema } from "@nodecg-next/internal";
 import { Effect, Option } from "effect";
 
 import type { RoleStore } from "../services/role-store/role-store.ts";
-import type { SessionStore } from "../services/session-store/session-store.ts";
+import { resolveSession } from "./session.ts";
 
 export const anonymousIdentity = AnonymousIdentitySchema.make({});
 
 export const resolveSessionIdentity =
-	(deps: { readonly sessions: SessionStore; readonly roleStore: RoleStore }) =>
-	(sessionId: string): Effect.Effect<Option.Option<Identity>> =>
+	(deps: { readonly roleStore: RoleStore }) => (token: string) =>
 		Effect.gen(function* () {
-			const resolved = yield* deps.sessions.lookup(sessionId);
+			const resolved = yield* resolveSession(token);
 			if (Option.isNone(resolved)) {
 				return Option.none();
 			}
-			yield* deps.sessions.refreshTTL(sessionId);
 			const account = resolved.value;
 			const { roles, globalRoles } = yield* deps.roleStore.get({
 				issuer: account.issuer,

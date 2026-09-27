@@ -1,4 +1,10 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import {
+	AccountId,
+	AuthenticationId,
+	UserId,
+	UserSessionId,
+} from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq } from "drizzle-orm";
 import {
@@ -17,7 +23,13 @@ import {
 	DrizzleSqliteDatabaseService,
 	MigrationsNotFound,
 } from "./drizzle-sqlite-database.ts";
-import { loginAttempts } from "./tables.ts";
+import {
+	accounts,
+	authentications,
+	loginAttempts,
+	sessions,
+	users,
+} from "./tables.ts";
 
 const test = testLayer(
 	Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
@@ -52,6 +64,37 @@ describe("make", () => {
 					.from(loginAttempts)
 					.where(eq(loginAttempts.key, "k")),
 			).toStrictEqual([row]);
+		}),
+	);
+
+	test(
+		"deletes an account's user, authentications and sessions along with the account",
+		Effect.gen(function* () {
+			const db = yield* DrizzleSqliteDatabaseService.make(":memory:");
+			const accountId = AccountId.make("1");
+			const userId = UserId.make("2");
+			const authenticationId = AuthenticationId.make("3");
+			yield* db
+				.insert(accounts)
+				.values({ id: accountId, displayName: "Alice", createdAt: 0 });
+			yield* db.insert(users).values({ id: userId, accountId });
+			yield* db.insert(authentications).values({
+				id: authenticationId,
+				userId,
+				issuer: "dev",
+				subject: "alice",
+			});
+			yield* db.insert(sessions).values({
+				id: UserSessionId.make("4"),
+				authenticationId,
+				expiresAt: 1000,
+			});
+
+			yield* db.delete(accounts).where(eq(accounts.id, accountId));
+
+			expect(yield* db.select().from(users)).toStrictEqual([]);
+			expect(yield* db.select().from(authentications)).toStrictEqual([]);
+			expect(yield* db.select().from(sessions)).toStrictEqual([]);
 		}),
 	);
 

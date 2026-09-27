@@ -10,7 +10,6 @@ import {
 	type RoleAssignmentsDocument,
 	RoleImportError,
 	sessionCookieName,
-	sessionCookieSecurity,
 	TooManyRequests,
 } from "@nodecg-next/internal";
 import { MalformedUrl, parseRelativeUrl } from "@nodecg-next/internal/utils";
@@ -32,7 +31,6 @@ import {
 	Semaphore,
 } from "effect";
 import {
-	Cookies,
 	HttpServerRequest,
 	HttpServerResponse,
 	Url,
@@ -44,6 +42,12 @@ import {
 	consumeLoginAttempt,
 	createLoginAttempt,
 } from "../../auth/login-attempt.ts";
+import {
+	cookieOptions,
+	createSession,
+	revokeSession,
+	setSessionCookie,
+} from "../../auth/session.ts";
 import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
@@ -56,7 +60,6 @@ import {
 	type ServiceAccountStore,
 	ServiceAccountStoreService,
 } from "../../services/service-account-store/service-account-store.ts";
-import { SessionStoreService } from "../../services/session-store/session-store.ts";
 import { RootApi } from "../root-api.ts";
 import { UrlPath } from "../url-path.ts";
 import {
@@ -68,12 +71,6 @@ import {
 } from "./shared.ts";
 
 const loginAttemptCookieName = "nodecg.login_attempt";
-
-const cookieOptions: NonNullable<Cookies.Cookie["options"]> = {
-	httpOnly: true,
-	sameSite: "lax",
-	secure: false,
-};
 
 // TODO: get this path from Effect HttpApi
 const callbackUrl = Effect.fn("callbackUrl")(function* (
@@ -119,8 +116,9 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 	"Authentication",
 	(handlers) =>
 		Effect.gen(function* () {
-			const ttl = yield* config.sessionTtl;
 			const baseUrl = yield* config.baseUrl;
+			const loginAttemptTtl = yield* config.loginAttemptTtl;
+			const sessionTtl = yield* config.sessionTtl;
 
 			const setLoginAttemptCookie =
 				(value: string, maxAge: Duration.Input) =>
@@ -142,23 +140,16 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 				effect: Effect.Effect<A, BackendError | Config.ConfigError, R>,
 			) =>
 				effect.pipe(
-					Effect.tapError((error) =>
-						Effect.logError(`Login attempt failed: ${error.message}`),
+					Effect.tapCause((cause) =>
+						Effect.logError("Login attempt failed", cause),
 					),
 					Effect.catchTag(
 						["BackendError", "ConfigError"],
 						() => new HttpApiError.InternalServerError(),
 					),
 				);
-			const setSessionCookie = (value: string, maxAge: Duration.Input) =>
-				HttpApiBuilder.securitySetCookie(sessionCookieSecurity, value, {
-					...cookieOptions,
-					path: baseUrl.pathname,
-					maxAge,
-				});
 
 			const registry = yield* AuthProviderRegistry;
-			const sessions = yield* SessionStoreService;
 			const roleStore = yield* RoleStoreService;
 
 			// superadmin claim resources
@@ -209,7 +200,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							);
 						}
 						const authorized = redirect.success.loginAttempt;
-						const created = yield* createLoginAttempt({
+						const key = yield* createLoginAttempt({
 							provider: authorized.provider,
 							state: authorized.state,
 							codeVerifier: authorized.codeVerifier,
@@ -218,7 +209,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}).pipe(reportLoginAttemptFailure);
 						return yield* HttpServerResponse.redirect(redirect.success.url, {
 							status: 302,
-						}).pipe(setLoginAttemptCookie(created.key, created.ttl));
+						}).pipe(setLoginAttemptCookie(key, loginAttemptTtl));
 					}),
 				)
 				.handle("callback", ({ params: { provider: name } }) =>
@@ -259,10 +250,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								loginAttempt: loginAttempt.value,
 							})
 							.pipe(
-								Effect.tapError((error) =>
-									Effect.logError(
-										`Authentication callback failed: ${error.message}`,
-									),
+								Effect.tapCause((cause) =>
+									Effect.logError("Authentication callback failed", cause),
 								),
 								Effect.result,
 							);
@@ -298,8 +287,13 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Match.exhaustive,
 							);
 						}
-						const sessionId = yield* sessions.create(account.success);
-						yield* setSessionCookie(sessionId, ttl);
+						const token = yield* createSession(account.success).pipe(
+							reportLoginAttemptFailure,
+						);
+						yield* setSessionCookie(token, {
+							path: baseUrl.pathname,
+							maxAge: sessionTtl,
+						});
 						const returnTo = loginAttempt.value.returnTo;
 						return yield* (
 							typeof returnTo === "undefined"
@@ -311,11 +305,18 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 				.handle("logout", () =>
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest;
-						const sessionId = request.cookies[sessionCookieName];
-						if (typeof sessionId !== "undefined") {
-							yield* sessions.revoke(sessionId);
+						const token = request.cookies[sessionCookieName];
+						if (typeof token !== "undefined") {
+							yield* revokeSession(token).pipe(
+								Effect.tapCause((cause) =>
+									Effect.logError("Logout failed", cause),
+								),
+								Effect.catchTag("BackendError", () =>
+									HttpApiError.InternalServerError.make(),
+								),
+							);
 						}
-						yield* setSessionCookie("", 0);
+						yield* setSessionCookie("", { path: baseUrl.pathname, maxAge: 0 });
 						return HttpServerResponse.empty({ status: 204 });
 					}),
 				)

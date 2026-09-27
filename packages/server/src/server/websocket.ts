@@ -57,7 +57,6 @@ import { config } from "../server-config.ts";
 import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
-import { SessionStoreService } from "../services/session-store/session-store.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
 
 const decodeClientMessage = Schema.decodeEffect(
@@ -315,14 +314,13 @@ export const websocketRoute = HttpRouter.use((router) =>
 		});
 
 		const requireAuth = yield* config.requireAuth;
-		const sessions = yield* SessionStoreService;
 		const roleStore = yield* RoleStoreService;
 		const serviceAccounts = yield* ServiceAccountStoreService;
 		const broker = yield* TopicBrokerService;
 		const engine = yield* DerivationEngineService;
 
 		// TODO: keep contexts contexts, pass it to handler if needed
-		const resolveSession = resolveSessionIdentity({ sessions, roleStore });
+		const resolveSession = resolveSessionIdentity({ roleStore });
 		const resolveServiceAccount = resolveServiceAccountIdentity({
 			serviceAccounts,
 		});

@@ -1,6 +1,6 @@
 import type { LoginAttempt } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { ConfigProvider, Duration, Effect, Layer } from "effect";
+import { ConfigProvider, Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, vi } from "vitest";
 
@@ -48,9 +48,8 @@ describe("createLoginAttempt", () => {
 		"stores the login attempt under the returned key, expiring the configured TTL from now",
 		Effect.gen(function* () {
 			yield* TestClock.adjust("1 minute");
-			const { key, ttl } = yield* createLoginAttempt(loginAttempt);
+			const key = yield* createLoginAttempt(loginAttempt);
 			expect(create).toHaveBeenCalledWith(key, loginAttempt, 360_000);
-			expect(Duration.toMillis(ttl)).toBe(300_000);
 		}),
 	);
 

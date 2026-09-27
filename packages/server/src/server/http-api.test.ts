@@ -15,6 +15,7 @@ import {
 	RevisionConflict,
 } from "@nodecg-next/internal/occ";
 import {
+	Config,
 	ConfigProvider,
 	Effect,
 	HashMap,
@@ -55,12 +56,14 @@ import {
 	type RegisteredNamespace,
 } from "../field-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
+import { DrizzleSqliteSessionRepository } from "../services/repository/session/drizzle-sqlite-session-repository.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
-import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
+import { DrizzleSqliteTransaction } from "../services/transaction/drizzle-sqlite-transaction.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 import { UrlPath } from "./url-path.ts";
 
@@ -193,6 +196,12 @@ const webHandler = Effect.fn(function* (
 		providers?: HashMap.HashMap<string, AuthProvider>;
 	},
 ) {
+	const repositories = Layer.mergeAll(
+		DrizzleSqliteLoginAttemptRepository,
+		DrizzleSqliteAuthenticationRepository,
+		DrizzleSqliteSessionRepository,
+		DrizzleSqliteTransaction,
+	);
 	const handler = yield* HttpRouter.toHttpEffect(
 		RootApiLive.pipe(
 			HttpRouter.provideRequest(
@@ -201,28 +210,14 @@ const webHandler = Effect.fn(function* (
 					InMemoryTopicBroker,
 					UrlPath.layer,
 					FetchHttpClient.layer,
-					DrizzleSqliteLoginAttemptRepository.pipe(
-						Layer.provide(
-							Layer.effect(
-								DrizzleSqliteDatabaseService,
-								DrizzleSqliteDatabaseService.make(":memory:"),
-							),
-						),
-						Layer.provide(
-							Layer.mergeAll(
-								NodeFileSystem.layer,
-								NodePath.layer,
-								Reactivity.layer,
-							),
-						),
-					),
+					repositories,
 				),
 			),
 			Layer.provide(middleware),
 			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
-			Layer.provide(InMemorySessionStore),
+			Layer.provide(repositories),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(InMemoryReplicantRepository),
@@ -236,6 +231,15 @@ const webHandler = Effect.fn(function* (
 					AuthProviderRegistry,
 					options?.providers ?? HashMap.empty<string, AuthProvider>(),
 				),
+			),
+			Layer.provide(
+				Layer.effect(
+					DrizzleSqliteDatabaseService,
+					DrizzleSqliteDatabaseService.make(":memory:"),
+				),
+			),
+			Layer.provide(
+				Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
 			),
 			Layer.provide(environment),
 			Layer.provide(HttpServer.layerServices),
@@ -412,6 +416,94 @@ describe("login and callback", () => {
 			}),
 	);
 
+	const logIn = Effect.fn(function* (
+		handler: (request: Request) => Effect.Effect<Response>,
+	) {
+		const login = yield* handler(
+			new Request("http://x/api/internal/authentication/login/dev"),
+		);
+		const callback = yield* handler(
+			new Request("http://x/api/internal/authentication/callback/dev?state=s", {
+				headers: {
+					cookie: `nodecg.login_attempt=${loginAttemptCookieOf(login)}`,
+				},
+			}),
+		);
+		const match = (callback.headers.get("set-cookie") ?? "").match(
+			/nodecg\.sid=([^;]+)/,
+		);
+		const sid = match?.[1];
+		if (typeof sid === "undefined") {
+			throw new Error("callback did not set the session cookie");
+		}
+		return sid;
+	});
+
+	const meRequest = (sid: string) =>
+		new Request("http://x/api/internal/me", {
+			headers: { cookie: `nodecg.sid=${sid}` },
+		});
+
+	it.effect(
+		"the session a callback creates resolves to the logged-in user",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* loginHandler();
+				const sid = yield* logIn(handler);
+				const me = yield* handler(meRequest(sid));
+				expect(me.status).toBe(200);
+				expect(yield* json(me)).toEqual({
+					identity: {
+						_tag: "user",
+						account: { issuer: "dev", subject: "alice", displayName: "Alice" },
+						roles: [],
+						globalRoles: [],
+					},
+					namespaces: {},
+				});
+			}),
+	);
+
+	it.effect("a request with a live session renews its cookie", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			const sid = yield* logIn(handler);
+			const me = yield* handler(meRequest(sid));
+			expect(me.headers.get("set-cookie")).toBe(
+				`nodecg.sid=${sid}; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax`,
+			);
+		}),
+	);
+
+	it.effect("a request with an unknown session sets no cookie", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			const me = yield* handler(meRequest("unknown"));
+			expect(me.headers.get("set-cookie")).toBeNull();
+		}),
+	);
+
+	it.effect("logout ends the session and clears its cookie", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			const sid = yield* logIn(handler);
+			const logout = yield* handler(
+				new Request("http://x/api/internal/authentication/logout", {
+					method: "POST",
+					headers: { cookie: `nodecg.sid=${sid}` },
+				}),
+			);
+			expect(logout.status).toBe(204);
+			expect(logout.headers.get("set-cookie")).toBe(
+				"nodecg.sid=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax",
+			);
+			expect(yield* json(yield* handler(meRequest(sid)))).toEqual({
+				identity: { _tag: "anonymous" },
+				namespaces: {},
+			});
+		}),
+	);
+
 	it.effect("a callback with an unknown login attempt clears its cookie", () =>
 		Effect.gen(function* () {
 			const handler = yield* loginHandler();
@@ -443,6 +535,34 @@ describe("login and callback", () => {
 				);
 				expect(res.status).toBe(400);
 			}
+		}),
+	);
+
+	it.effect("fails to start when the login attempt TTL does not decode", () =>
+		Effect.gen(function* () {
+			const error = yield* webHandler(
+				[],
+				undefined,
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({ LOGIN_ATTEMPT_TTL: "soon" }),
+				),
+				{ providers },
+			).pipe(Effect.flip);
+			expect(error).toBeInstanceOf(Config.ConfigError);
+		}),
+	);
+
+	it.effect("fails to start when the session TTL does not decode", () =>
+		Effect.gen(function* () {
+			const error = yield* webHandler(
+				[],
+				undefined,
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({ SESSION_TTL: "soon" }),
+				),
+				{ providers },
+			).pipe(Effect.flip);
+			expect(error).toBeInstanceOf(Config.ConfigError);
 		}),
 	);
 

@@ -15,7 +15,7 @@ export const createLoginAttempt = Effect.fn("createLoginAttempt")(function* (
 	const key = randomBytes(32).toString("base64url");
 	yield* repository.deleteExpired(now);
 	yield* repository.create(key, loginAttempt, now + Duration.toMillis(ttl));
-	return { key, ttl };
+	return key;
 });
 
 export const consumeLoginAttempt = Effect.fn("consumeLoginAttempt")(function* (

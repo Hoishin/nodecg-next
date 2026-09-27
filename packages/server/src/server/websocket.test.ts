@@ -17,17 +17,25 @@ import {
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
+import { DrizzleSqliteSessionRepository } from "../services/repository/session/drizzle-sqlite-session-repository.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
-import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
+import { DrizzleSqliteTransaction } from "../services/transaction/drizzle-sqlite-transaction.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 import { UrlPath } from "./url-path.ts";
 import { websocketRoute } from "./websocket.ts";
 
 const handler = () => {
+	const repositories = Layer.mergeAll(
+		DrizzleSqliteLoginAttemptRepository,
+		DrizzleSqliteAuthenticationRepository,
+		DrizzleSqliteSessionRepository,
+		DrizzleSqliteTransaction,
+	);
 	const { handler } = HttpRouter.toWebHandler(
 		Layer.mergeAll(RootApiLive, websocketRoute).pipe(
 			HttpRouter.provideRequest(
@@ -36,27 +44,14 @@ const handler = () => {
 					InMemoryTopicBroker,
 					UrlPath.layer,
 					FetchHttpClient.layer,
-					DrizzleSqliteLoginAttemptRepository.pipe(
-						Layer.provide(
-							Layer.effect(
-								DrizzleSqliteDatabaseService,
-								DrizzleSqliteDatabaseService.make(":memory:"),
-							),
-						),
-						Layer.provide(
-							Layer.mergeAll(
-								NodeFileSystem.layer,
-								NodePath.layer,
-								Reactivity.layer,
-							),
-						),
-					),
+					repositories,
 				),
 			),
 			Layer.provide(UserAuthenticationMiddlewareLive),
 			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
+			Layer.provide(repositories),
 			Layer.provide(FieldRegistryService.layer([])),
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(InMemoryTopicBroker),
@@ -65,7 +60,6 @@ const handler = () => {
 					Layer.provide(InMemoryReplicantRepository),
 				),
 			),
-			Layer.provide(InMemorySessionStore),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(
@@ -73,6 +67,15 @@ const handler = () => {
 					AuthProviderRegistry,
 					HashMap.empty<string, AuthProvider>(),
 				),
+			),
+			Layer.provide(
+				Layer.effect(
+					DrizzleSqliteDatabaseService,
+					DrizzleSqliteDatabaseService.make(":memory:"),
+				),
+			),
+			Layer.provide(
+				Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
 			),
 			Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
 			Layer.provide(HttpServer.layerServices),
