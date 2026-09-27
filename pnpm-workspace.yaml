@@ -4,6 +4,7 @@ packages:
 
 catalog:
   "@effect/platform-node": 4.0.0-rc.113
+  "@effect/sql-sqlite-node": 4.0.0-rc.113
   "@effect/vitest": 4.0.0-rc.113
   "@preact/signals-core": ^1.14.4
   "@types/node": "^24.13.3"
@@ -23,14 +24,9 @@ catalog:
 
 allowBuilds:
   "@parcel/watcher": false
+  esbuild: false
   msgpackr-extract: false
 
 minimumReleaseAge: 4320
-
-minimumReleaseAgeExclude:
-  - effect@4.0.0-rc.113
-  - "@effect/platform-node@4.0.0-rc.113"
-  - "@effect/platform-node-shared@4.0.0-rc.113"
-  - "@effect/vitest@4.0.0-rc.113"
 
 verifyDepsBeforeRun: warn

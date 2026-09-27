@@ -1,5 +1,6 @@
 .vitest/
 /examples/*/data/
+/data/
 
 
 # https://github.com/github/gitignore/blob/main/Node.gitignore

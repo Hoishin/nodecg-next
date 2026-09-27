@@ -2,18 +2,16 @@ import {
 	Effect,
 	FileSystem,
 	Layer,
-	Option,
 	Path,
 	Schedule,
 	Schema,
 	SchemaIssue,
-	Stream,
 } from "effect";
 
-import { config } from "../../../server-config.ts";
+import { resolveDataDir } from "../../../data-dir.ts";
 import { OperatingSystemService } from "../../operating-system/operating-system.ts";
+import { BackendError } from "../repository-errors.ts";
 import {
-	BackendError,
 	DecodeError,
 	ReplicantNotFound,
 	ReplicantRepositoryService,
@@ -29,41 +27,13 @@ const isFileLockError = Schema.is(
 	}),
 );
 
-const resolveDataDir = Effect.fn("resolveDataDir")(
-	function* (dataDir: string) {
-		const fs = yield* FileSystem.FileSystem;
-		const path = yield* Path.Path;
-		if (path.isAbsolute(dataDir)) {
-			return dataDir;
-		}
-		const workingDirectory = path.resolve();
-		const project = yield* Stream.iterate(workingDirectory, (folder) =>
-			path.dirname(folder),
-		).pipe(
-			Stream.takeUntil((folder) => path.dirname(folder) === folder),
-			Stream.filterEffect((folder) =>
-				fs.exists(path.join(folder, "package.json")),
-			),
-			Stream.runHead,
-		);
-		return path.resolve(
-			project.pipe(Option.getOrElse(() => workingDirectory)),
-			dataDir,
-		);
-	},
-	Effect.catchTag("PlatformError", (cause) => BackendError.make({ cause })),
-);
-
 export const JsonFileReplicantRepository = Layer.effect(
 	ReplicantRepositoryService,
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const operatingSystem = yield* OperatingSystemService;
-		const root = path.join(
-			yield* resolveDataDir(yield* config.dataDir),
-			"replicants",
-		);
+		const root = path.join(yield* resolveDataDir(), "replicants");
 		yield* Effect.logInfo(`Storing replicants in ${root}`);
 
 		const directory = (namespace: string) => path.join(root, namespace);

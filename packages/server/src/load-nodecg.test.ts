@@ -1,7 +1,11 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Cause, Effect, Layer, Result, Schema } from "effect";
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
@@ -340,6 +344,15 @@ describe("duplicate namespaces", () => {
 });
 
 describe("loadNodeCG", () => {
+	beforeEach(() => {
+		const dataDir = mkdtempSync(join(tmpdir(), "nodecg-load-"));
+		vi.stubEnv("NODECG_DATA_DIR", dataDir);
+		return () => {
+			vi.unstubAllEnvs();
+			rmSync(dataDir, { recursive: true });
+		};
+	});
+
 	test("seeds through the injected plain storage and serves the handles", async () => {
 		const storage = {
 			read: vi.fn<ReplicantRepository["read"]>(

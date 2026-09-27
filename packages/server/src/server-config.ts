@@ -73,6 +73,9 @@ export const config = {
 	port,
 	baseUrl,
 	dataDir: Config.String("DATA_DIR").pipe(Config.withDefault("data")),
+	loginAttemptTtl: Config.Duration("LOGIN_ATTEMPT_TTL").pipe(
+		Config.withDefault(Duration.minutes(10)),
+	),
 	requireAuth: Config.Boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
 	sessionTtl: Config.Duration("SESSION_TTL").pipe(
 		Config.withDefault(Duration.days(7)),

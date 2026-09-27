@@ -119,7 +119,7 @@ export const makeOidcProvider = async (
 				});
 				return {
 					url: url.toString(),
-					stash: {
+					loginAttempt: {
 						provider: config.name,
 						state,
 						codeVerifier,
@@ -129,7 +129,7 @@ export const makeOidcProvider = async (
 			}),
 		),
 		callback: Effect.fn("OidcProvider.callback")(function* (input) {
-			if (input.searchParams.get("state") !== input.stash.state) {
+			if (input.searchParams.get("state") !== input.loginAttempt.state) {
 				return yield* new ProviderStateMismatch();
 			}
 			const tokenConfiguration = new Configuration(
@@ -152,9 +152,9 @@ export const makeOidcProvider = async (
 						tokenConfiguration,
 						callbackUrl(input.redirectUri, input.searchParams),
 						{
-							expectedState: input.stash.state,
-							expectedNonce: input.stash.nonce,
-							pkceCodeVerifier: input.stash.codeVerifier,
+							expectedState: input.loginAttempt.state,
+							expectedNonce: input.loginAttempt.nonce,
+							pkceCodeVerifier: input.loginAttempt.codeVerifier,
 						},
 					),
 				catch: (cause) =>

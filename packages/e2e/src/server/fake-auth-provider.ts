@@ -29,11 +29,11 @@ export const makeFakeAuthProvider = (
 				url.searchParams.set("identity", id);
 				return {
 					url: `${url.pathname}${url.search}`,
-					stash: { provider: name, state },
+					loginAttempt: { provider: name, state },
 				};
 			}),
 		callback: Effect.fn("FakeAuthProvider.callback")(function* (input) {
-			if (input.searchParams.get("state") !== input.stash.state) {
+			if (input.searchParams.get("state") !== input.loginAttempt.state) {
 				return yield* new ProviderStateMismatch();
 			}
 			const id = input.searchParams.get("identity") ?? "";

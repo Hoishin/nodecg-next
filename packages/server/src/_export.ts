@@ -12,7 +12,7 @@ export {
 	type AuthProvider,
 	ProviderStateMismatch,
 } from "./auth/auth-provider.ts";
-export { type AuthStash, Authentication } from "@nodecg-next/internal";
+export { type LoginAttempt, Authentication } from "@nodecg-next/internal";
 export {
 	makeOidcProvider,
 	type OidcProviderConfig,

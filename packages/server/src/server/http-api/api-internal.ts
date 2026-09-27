@@ -17,6 +17,7 @@ import { MalformedUrl, parseRelativeUrl } from "@nodecg-next/internal/utils";
 import {
 	Array,
 	Clock,
+	type Config,
 	type Duration,
 	Effect,
 	HashMap,
@@ -39,9 +40,14 @@ import {
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
+import {
+	consumeLoginAttempt,
+	createLoginAttempt,
+} from "../../auth/login-attempt.ts";
 import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
+import type { BackendError } from "../../services/repository/repository-errors.ts";
 import {
 	type RoleStore,
 	RoleStoreService,
@@ -51,7 +57,6 @@ import {
 	ServiceAccountStoreService,
 } from "../../services/service-account-store/service-account-store.ts";
 import { SessionStoreService } from "../../services/session-store/session-store.ts";
-import { StashStoreService } from "../../services/stash-store/stash-store.ts";
 import { RootApi } from "../root-api.ts";
 import { UrlPath } from "../url-path.ts";
 import {
@@ -62,7 +67,7 @@ import {
 	updateReplicant,
 } from "./shared.ts";
 
-const stashCookieName = "nodecg.login";
+const loginAttemptCookieName = "nodecg.login_attempt";
 
 const cookieOptions: NonNullable<Cookies.Cookie["options"]> = {
 	httpOnly: true,
@@ -117,11 +122,11 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 			const ttl = yield* config.sessionTtl;
 			const baseUrl = yield* config.baseUrl;
 
-			const setStash =
+			const setLoginAttemptCookie =
 				(value: string, maxAge: Duration.Input) =>
 				(response: HttpServerResponse.HttpServerResponse) =>
 					response.pipe(
-						HttpServerResponse.setCookie(stashCookieName, value, {
+						HttpServerResponse.setCookie(loginAttemptCookieName, value, {
 							...cookieOptions,
 							path: baseUrl.pathname,
 							maxAge,
@@ -132,7 +137,19 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							() => new HttpApiError.InternalServerError(),
 						),
 					);
-			const clearStash = setStash("", 0);
+			const clearLoginAttemptCookie = setLoginAttemptCookie("", 0);
+			const reportLoginAttemptFailure = <A, R>(
+				effect: Effect.Effect<A, BackendError | Config.ConfigError, R>,
+			) =>
+				effect.pipe(
+					Effect.tapError((error) =>
+						Effect.logError(`Login attempt failed: ${error.message}`),
+					),
+					Effect.catchTag(
+						["BackendError", "ConfigError"],
+						() => new HttpApiError.InternalServerError(),
+					),
+				);
 			const setSessionCookie = (value: string, maxAge: Duration.Input) =>
 				HttpApiBuilder.securitySetCookie(sessionCookieSecurity, value, {
 					...cookieOptions,
@@ -142,7 +159,6 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 
 			const registry = yield* AuthProviderRegistry;
 			const sessions = yield* SessionStoreService;
-			const stashes = yield* StashStoreService;
 			const roleStore = yield* RoleStoreService;
 
 			// superadmin claim resources
@@ -192,13 +208,17 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								{ status: 502 },
 							);
 						}
-						const stashId = yield* stashes.create({
-							...redirect.success.stash,
+						const authorized = redirect.success.loginAttempt;
+						const created = yield* createLoginAttempt({
+							provider: authorized.provider,
+							state: authorized.state,
+							codeVerifier: authorized.codeVerifier,
+							nonce: authorized.nonce,
 							returnTo: query.returnTo,
-						});
+						}).pipe(reportLoginAttemptFailure);
 						return yield* HttpServerResponse.redirect(redirect.success.url, {
 							status: 302,
-						}).pipe(setStash(stashId, "10 minutes")); // TODO: avoid hard-coded duration
+						}).pipe(setLoginAttemptCookie(created.key, created.ttl));
 					}),
 				)
 				.handle("callback", ({ params: { provider: name } }) =>
@@ -213,19 +233,22 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								},
 							);
 						}
-						const stashId = request.cookies[stashCookieName];
-						if (typeof stashId === "undefined") {
-							return HttpServerResponse.text("Invalid or missing login state", {
-								status: 400,
-							});
+						const loginAttemptKey = request.cookies[loginAttemptCookieName];
+						if (typeof loginAttemptKey === "undefined") {
+							return yield* HttpServerResponse.text(
+								"Invalid or missing login state",
+								{ status: 400 },
+							).pipe(clearLoginAttemptCookie);
 						}
-						const stash = yield* stashes.lookup(stashId);
-						if (Option.isNone(stash)) {
-							return HttpServerResponse.text("Invalid or missing login state", {
-								status: 400,
-							});
+						const loginAttempt = yield* consumeLoginAttempt(
+							loginAttemptKey,
+						).pipe(reportLoginAttemptFailure);
+						if (Option.isNone(loginAttempt)) {
+							return yield* HttpServerResponse.text(
+								"Invalid or missing login state",
+								{ status: 400 },
+							).pipe(clearLoginAttemptCookie);
 						}
-						yield* stashes.revoke(stashId);
 						const requestUrl = yield* Effect.fromResult(
 							parseRelativeUrl(request.url),
 						);
@@ -233,7 +256,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							.callback({
 								redirectUri: yield* callbackUrl(baseUrl.href, name),
 								searchParams: new URLSearchParams(requestUrl.search),
-								stash: stash.value,
+								loginAttempt: loginAttempt.value,
 							})
 							.pipe(
 								Effect.tapError((error) =>
@@ -248,41 +271,41 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Match.tag("ProviderStateMismatch", () =>
 									HttpServerResponse.text("OAuth state mismatch", {
 										status: 400,
-									}).pipe(clearStash),
+									}).pipe(clearLoginAttemptCookie),
 								),
 								Match.tag("ProviderUnavailableError", () =>
 									HttpServerResponse.text(
 										"Authentication provider unavailable",
 										{ status: 502 },
-									).pipe(clearStash),
+									).pipe(clearLoginAttemptCookie),
 								),
 								Match.tag("CredentialExchangeError", () =>
 									HttpServerResponse.text("Authentication failed", {
 										status: 400,
-									}).pipe(clearStash),
+									}).pipe(clearLoginAttemptCookie),
 								),
 								Match.tag("ProviderResponseError", () =>
 									HttpServerResponse.text(
 										"Authentication provider unavailable",
 										{ status: 502 },
-									).pipe(clearStash),
+									).pipe(clearLoginAttemptCookie),
 								),
 								Match.tag("NoIdentity", () =>
 									HttpServerResponse.text("Authentication failed", {
 										status: 400,
-									}).pipe(clearStash),
+									}).pipe(clearLoginAttemptCookie),
 								),
 								Match.exhaustive,
 							);
 						}
 						const sessionId = yield* sessions.create(account.success);
 						yield* setSessionCookie(sessionId, ttl);
-						const returnTo = stash.value.returnTo;
+						const returnTo = loginAttempt.value.returnTo;
 						return yield* (
 							typeof returnTo === "undefined"
 								? HttpServerResponse.text("Success")
 								: HttpServerResponse.redirect(returnTo, { status: 302 })
-						).pipe(clearStash);
+						).pipe(clearLoginAttemptCookie);
 					}),
 				)
 				.handle("logout", () =>

@@ -1,5 +1,7 @@
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { ConfigProvider, HashMap, Layer } from "effect";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
+import { Reactivity } from "effect/unstable/reactivity";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -14,11 +16,12 @@ import {
 } from "../auth/middleware.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
+import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
-import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 import { UrlPath } from "./url-path.ts";
@@ -33,6 +36,21 @@ const handler = () => {
 					InMemoryTopicBroker,
 					UrlPath.layer,
 					FetchHttpClient.layer,
+					DrizzleSqliteLoginAttemptRepository.pipe(
+						Layer.provide(
+							Layer.effect(
+								DrizzleSqliteDatabaseService,
+								DrizzleSqliteDatabaseService.make(":memory:"),
+							),
+						),
+						Layer.provide(
+							Layer.mergeAll(
+								NodeFileSystem.layer,
+								NodePath.layer,
+								Reactivity.layer,
+							),
+						),
+					),
 				),
 			),
 			Layer.provide(UserAuthenticationMiddlewareLive),
@@ -48,7 +66,6 @@ const handler = () => {
 				),
 			),
 			Layer.provide(InMemorySessionStore),
-			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(

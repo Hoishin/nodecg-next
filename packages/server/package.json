@@ -8,7 +8,9 @@
 		"directory": "packages/server"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"migrations",
+		"!migrations/**/snapshot.json"
 	],
 	"type": "module",
 	"exports": {
@@ -19,11 +21,16 @@
 			".": "./dist/_export.js"
 		}
 	},
+	"scripts": {
+		"drizzle-generate": "drizzle-kit generate --dialect sqlite --schema src/services/database/drizzle-sqlite/tables.ts --out migrations/drizzle-sqlite && drizzle-kit generate --dialect postgresql --schema src/services/database/drizzle-pg/tables.ts --out migrations/drizzle-pg"
+	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:",
+		"@effect/sql-sqlite-node": "catalog:",
 		"@nodecg-next/core": "workspace:*",
 		"@nodecg-next/internal": "workspace:*",
 		"@preact/signals-core": "catalog:",
+		"drizzle-orm": "1.0.0-rc.5-5935859",
 		"effect": "catalog:",
 		"openid-client": "^6.8.4",
 		"type-fest": "catalog:"
@@ -32,6 +39,7 @@
 		"@effect/vitest": "catalog:",
 		"@nodecg-next/test-utils": "workspace:*",
 		"@types/node": "catalog:",
+		"drizzle-kit": "1.0.0-rc.5-5935859",
 		"oauth2-mock-server": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"
@@ -43,5 +51,8 @@
 		"vite": {
 			"optional": true
 		}
+	},
+	"engines": {
+		"node": "^22.16.0 || >=24"
 	}
 }

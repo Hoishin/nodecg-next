@@ -23,10 +23,10 @@ import {
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { createReplicantRepositoryStub } from "./services/repository/replicant/replicant-repository.stub.ts";
 import {
-	BackendError,
 	DecodeError,
 	ReplicantRepositoryService,
 } from "./services/repository/replicant/replicant-repository.ts";
+import { BackendError } from "./services/repository/repository-errors.ts";
 
 const test = testLayer(
 	DerivationEngineService.layer.pipe(

@@ -25,6 +25,7 @@ import {
 	HttpMiddleware,
 	HttpRouter,
 } from "effect/unstable/http";
+import { Reactivity } from "effect/unstable/reactivity";
 
 import {
 	type AuthProvider,
@@ -61,7 +62,9 @@ import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { UrlPath } from "./server/url-path.ts";
 import { websocketRoute } from "./server/websocket.ts";
+import { DrizzleSqliteDatabaseService } from "./services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { OperatingSystemService } from "./services/operating-system/operating-system.ts";
+import { DrizzleSqliteLoginAttemptRepository } from "./services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { JsonFileReplicantRepository } from "./services/repository/replicant/json-file-replicant-repository.ts";
 import {
 	type ReplicantRepository,
@@ -69,7 +72,6 @@ import {
 } from "./services/repository/replicant/replicant-repository.ts";
 import { InMemoryServiceAccountStore } from "./services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "./services/session-store/in-memory-session-store.ts";
-import { InMemoryStashStore } from "./services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 import { seededRoleStore } from "./superadmin-seed.ts";
@@ -321,7 +323,6 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				Layer.provide(AdminTierMiddlewareLive),
 				Layer.provide(SuperadminMiddlewareLive),
 				Layer.provide(InMemorySessionStore),
-				Layer.provide(InMemoryStashStore),
 				Layer.provide(InMemoryServiceAccountStore),
 				Layer.provide(seededRoleStore),
 				Layer.provide(
@@ -363,6 +364,9 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 				Layer.provide(replicantRepository(options.storage)),
 			),
 			InMemoryTopicBroker,
+			DrizzleSqliteLoginAttemptRepository.pipe(
+				Layer.provide(DrizzleSqliteDatabaseService.layer),
+			),
 			BuiltNamespaceRegistry.layer,
 			Layer.effect(Scope.Scope, Effect.scope),
 			Logger.layer([Logger.consolePretty()]),
@@ -373,7 +377,11 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 				),
 			),
 			Layer.provide(
-				Layer.mergeAll(NodeServices.layer, OperatingSystemService.layer),
+				Layer.mergeAll(
+					NodeServices.layer,
+					OperatingSystemService.layer,
+					Reactivity.layer,
+				),
 			),
 		),
 	);

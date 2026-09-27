@@ -102,7 +102,7 @@ export const makeOAuth2Provider = (
 				const url = buildAuthorizationUrl(configuration, parameters);
 				return {
 					url: url.toString(),
-					stash: {
+					loginAttempt: {
 						provider: config.name,
 						state,
 						codeVerifier,
@@ -111,7 +111,7 @@ export const makeOAuth2Provider = (
 			}),
 		),
 		callback: Effect.fn("OAuth2Provider.callback")(function* (input) {
-			if (input.searchParams.get("state") !== input.stash.state) {
+			if (input.searchParams.get("state") !== input.loginAttempt.state) {
 				return yield* new ProviderStateMismatch();
 			}
 			const tokens = yield* Effect.tryPromise({
@@ -120,8 +120,8 @@ export const makeOAuth2Provider = (
 						configuration,
 						callbackUrl(input.redirectUri, input.searchParams),
 						{
-							expectedState: input.stash.state,
-							pkceCodeVerifier: input.stash.codeVerifier,
+							expectedState: input.loginAttempt.state,
+							pkceCodeVerifier: input.loginAttempt.codeVerifier,
 						},
 					),
 				catch: (cause) =>

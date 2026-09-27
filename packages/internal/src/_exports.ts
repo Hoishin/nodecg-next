@@ -44,7 +44,6 @@ export {
 } from "./messages.ts";
 export { Account, AccountId } from "./models/account.ts";
 export { ApiKey, ApiKeyId } from "./models/api-key.ts";
-export { AuthStash } from "./models/auth-stash.ts";
 export { Authentication, AuthenticationId } from "./models/authentication.ts";
 export {
 	AnonymousIdentitySchema,
@@ -53,6 +52,7 @@ export {
 	ServiceAccountIdentity,
 	UserIdentity,
 } from "./models/identity.ts";
+export { LoginAttempt } from "./models/login-attempt.ts";
 export { Login } from "./models/login.ts";
 export {
 	DeclarablePrincipalNameSchema,

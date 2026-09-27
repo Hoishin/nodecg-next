@@ -1,4 +1,4 @@
-import type { AuthStash, Authentication } from "@nodecg-next/internal";
+import type { LoginAttempt, Authentication } from "@nodecg-next/internal";
 import { Context, type Effect, HashMap, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
@@ -51,13 +51,16 @@ export interface AuthProvider {
 		readonly redirectUri: string;
 		readonly searchParams: URLSearchParams;
 	}) => Effect.Effect<
-		{ readonly url: string; readonly stash: AuthStash },
+		{
+			readonly url: string;
+			readonly loginAttempt: Omit<LoginAttempt, "returnTo">;
+		},
 		AuthorizeError
 	>;
 	readonly callback: (input: {
 		readonly redirectUri: string;
 		readonly searchParams: URLSearchParams;
-		readonly stash: AuthStash;
+		readonly loginAttempt: Omit<LoginAttempt, "returnTo">;
 	}) => Effect.Effect<Authentication, CallbackError, HttpClient.HttpClient>;
 }
 

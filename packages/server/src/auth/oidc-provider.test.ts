@@ -63,7 +63,11 @@ test("resolves a user identity end-to-end against a real local OIDC server", asy
 	);
 	const searchParams = await authorizeCode(authorized.url);
 	const identity = await runtime.runPromise(
-		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
+		provider.callback({
+			redirectUri,
+			searchParams,
+			loginAttempt: authorized.loginAttempt,
+		}),
 	);
 
 	expect(identity).toEqual({
@@ -82,7 +86,11 @@ test("derives the display name from the name claim", async () => {
 	);
 	const searchParams = await authorizeCode(authorized.url);
 	const identity = await runtime.runPromise(
-		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
+		provider.callback({
+			redirectUri,
+			searchParams,
+			loginAttempt: authorized.loginAttempt,
+		}),
 	);
 
 	expect(identity).toEqual({
@@ -101,7 +109,11 @@ test("falls back to preferred_username when the name claim is absent", async () 
 	);
 	const searchParams = await authorizeCode(authorized.url);
 	const identity = await runtime.runPromise(
-		provider.callback({ redirectUri, searchParams, stash: authorized.stash }),
+		provider.callback({
+			redirectUri,
+			searchParams,
+			loginAttempt: authorized.loginAttempt,
+		}),
 	);
 
 	expect(identity).toEqual({
@@ -123,7 +135,7 @@ test("rejects a state mismatch with ProviderStateMismatch", async () => {
 			.callback({
 				redirectUri,
 				searchParams: new URLSearchParams({ code: "code", state: "tampered" }),
-				stash: authorized.stash,
+				loginAttempt: authorized.loginAttempt,
 			})
 			.pipe(Effect.flip),
 	);
@@ -144,9 +156,9 @@ test("rejects a failed token exchange with CredentialExchangeError", async () =>
 				redirectUri,
 				searchParams: new URLSearchParams({
 					code: "never-issued",
-					state: authorized.stash.state,
+					state: authorized.loginAttempt.state,
 				}),
-				stash: authorized.stash,
+				loginAttempt: authorized.loginAttempt,
 			})
 			.pipe(Effect.flip),
 	);

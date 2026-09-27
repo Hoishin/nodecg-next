@@ -38,11 +38,11 @@ import {
 } from "effect";
 
 import {
-	BackendError,
 	DecodeError,
 	type ReplicantNotFound,
 	ReplicantRepositoryService,
 } from "./services/repository/replicant/replicant-repository.ts";
+import { BackendError } from "./services/repository/repository-errors.ts";
 
 export class ReplicantLoadError extends Schema.TaggedError<ReplicantLoadError>()(
 	"ReplicantLoadError",

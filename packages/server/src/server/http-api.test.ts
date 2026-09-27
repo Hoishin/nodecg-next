@@ -1,3 +1,4 @@
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
@@ -28,6 +29,7 @@ import {
 	HttpRouter,
 	HttpServer,
 } from "effect/unstable/http";
+import { Reactivity } from "effect/unstable/reactivity";
 import { describe, expect, vi } from "vitest";
 
 import {
@@ -52,11 +54,12 @@ import {
 	FieldRegistryService,
 	type RegisteredNamespace,
 } from "../field-registry.ts";
+import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemorySessionStore } from "../services/session-store/in-memory-session-store.ts";
-import { InMemoryStashStore } from "../services/stash-store/in-memory-stash-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 import { UrlPath } from "./url-path.ts";
@@ -198,6 +201,21 @@ const webHandler = Effect.fn(function* (
 					InMemoryTopicBroker,
 					UrlPath.layer,
 					FetchHttpClient.layer,
+					DrizzleSqliteLoginAttemptRepository.pipe(
+						Layer.provide(
+							Layer.effect(
+								DrizzleSqliteDatabaseService,
+								DrizzleSqliteDatabaseService.make(":memory:"),
+							),
+						),
+						Layer.provide(
+							Layer.mergeAll(
+								NodeFileSystem.layer,
+								NodePath.layer,
+								Reactivity.layer,
+							),
+						),
+					),
 				),
 			),
 			Layer.provide(middleware),
@@ -205,7 +223,6 @@ const webHandler = Effect.fn(function* (
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(InMemorySessionStore),
-			Layer.provide(InMemoryStashStore),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(InMemoryReplicantRepository),
@@ -309,7 +326,7 @@ describe("login and callback", () => {
 		authorize: () =>
 			Effect.succeed({
 				url: "/api/internal/authentication/callback/dev?state=s",
-				stash: { provider: "dev", state: "s" },
+				loginAttempt: { provider: "dev", state: "s" },
 			}),
 		callback: () =>
 			Effect.succeed({ issuer: "dev", subject: "alice", displayName: "Alice" }),
@@ -319,12 +336,12 @@ describe("login and callback", () => {
 	const loginHandler = () =>
 		webHandler([], undefined, undefined, { providers });
 
-	const stashCookieOf = (res: Response) => {
+	const loginAttemptCookieOf = (res: Response) => {
 		const match = (res.headers.get("set-cookie") ?? "").match(
-			/nodecg\.login=([^;]+)/,
+			/nodecg\.login_attempt=([^;]+)/,
 		);
 		if (match === null) {
-			throw new Error("login did not set the stash cookie");
+			throw new Error("login did not set the login attempt cookie");
 		}
 		return match[1];
 	};
@@ -346,7 +363,7 @@ describe("login and callback", () => {
 		}),
 	);
 
-	it.effect("a callback with a stashed returnTo redirects there", () =>
+	it.effect("a callback with a stored returnTo redirects there", () =>
 		Effect.gen(function* () {
 			const handler = yield* loginHandler();
 			const login = yield* handler(
@@ -359,7 +376,9 @@ describe("login and callback", () => {
 				new Request(
 					"http://x/api/internal/authentication/callback/dev?state=s",
 					{
-						headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
+						headers: {
+							cookie: `nodecg.login_attempt=${loginAttemptCookieOf(login)}`,
+						},
 					},
 				),
 			);
@@ -382,13 +401,31 @@ describe("login and callback", () => {
 					new Request(
 						"http://x/api/internal/authentication/callback/dev?state=s",
 						{
-							headers: { cookie: `nodecg.login=${stashCookieOf(login)}` },
+							headers: {
+								cookie: `nodecg.login_attempt=${loginAttemptCookieOf(login)}`,
+							},
 						},
 					),
 				);
 				expect(callback.status).toBe(200);
 				expect(yield* Effect.promise(() => callback.text())).toBe("Success");
 			}),
+	);
+
+	it.effect("a callback with an unknown login attempt clears its cookie", () =>
+		Effect.gen(function* () {
+			const handler = yield* loginHandler();
+			const callback = yield* handler(
+				new Request(
+					"http://x/api/internal/authentication/callback/dev?state=s",
+					{ headers: { cookie: "nodecg.login_attempt=unknown" } },
+				),
+			);
+			expect(callback.status).toBe(400);
+			expect(callback.headers.get("set-cookie")).toBe(
+				"nodecg.login_attempt=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax",
+			);
+		}),
 	);
 
 	it.effect("400 at request decode for a non-relative returnTo", () =>
@@ -406,6 +443,25 @@ describe("login and callback", () => {
 				);
 				expect(res.status).toBe(400);
 			}
+		}),
+	);
+
+	it.effect("login keeps the login attempt cookie for the configured TTL", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler(
+				[],
+				undefined,
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({ LOGIN_ATTEMPT_TTL: "5 minutes" }),
+				),
+				{ providers },
+			);
+			const login = yield* handler(
+				new Request("http://x/api/internal/authentication/login/dev"),
+			);
+			expect(login.headers.get("set-cookie")).toMatch(
+				/^nodecg\.login_attempt=[^;]+; Max-Age=300; Path=\/; HttpOnly; SameSite=Lax$/,
+			);
 		}),
 	);
 
@@ -433,7 +489,7 @@ describe("login and callback", () => {
 					captured = redirectUri;
 					return Effect.succeed({
 						url: "/done",
-						stash: { provider: "dev", state: "s" },
+						loginAttempt: { provider: "dev", state: "s" },
 					});
 				},
 				callback: () =>
