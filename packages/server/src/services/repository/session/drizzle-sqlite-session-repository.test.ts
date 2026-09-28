@@ -41,7 +41,8 @@ const second = UserSessionId.make("second");
 const logIn = Effect.gen(function* () {
 	const authentications = yield* AuthenticationRepositoryService;
 	return yield* authentications.findOrCreateAuthentication(
-		{ issuer: "dev", subject: "alice", displayName: "Alice" },
+		{ issuer: "dev", subject: "alice" },
+		"Alice",
 		0,
 	);
 });

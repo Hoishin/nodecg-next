@@ -11,6 +11,7 @@ import type { BackendError } from "../repository-errors.ts";
 export interface AuthenticationRepository {
 	readonly findOrCreateAuthentication: (
 		authentication: Authentication,
+		displayName: string,
 		now: number,
 	) => Effect.Effect<AuthenticationId, BackendError>;
 
@@ -21,6 +22,7 @@ export interface AuthenticationRepository {
 		Option.Option<{
 			readonly accountId: AccountId;
 			readonly authentication: Authentication;
+			readonly displayName: string;
 		}>,
 		BackendError
 	>;

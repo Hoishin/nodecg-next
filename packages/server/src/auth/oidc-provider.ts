@@ -75,7 +75,10 @@ const identityFromClaims = (claims: Record<string, unknown>) => {
 		pickString(claims["name"]) ??
 		pickString(claims["preferred_username"]) ??
 		subject;
-	return Authentication.make({ issuer, subject, displayName });
+	return {
+		authentication: Authentication.make({ issuer, subject }),
+		displayName,
+	};
 };
 
 const callbackUrl = (redirectUri: string, searchParams: URLSearchParams) => {

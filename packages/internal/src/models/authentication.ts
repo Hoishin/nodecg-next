@@ -8,6 +8,5 @@ export type AuthenticationId = typeof AuthenticationId.Type;
 export const Authentication = Schema.Struct({
 	issuer: Schema.String,
 	subject: Schema.String,
-	displayName: Schema.String,
 });
 export type Authentication = typeof Authentication.Type;

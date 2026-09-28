@@ -25,11 +25,7 @@ import {
 import { TransactionService } from "../services/transaction/transaction.ts";
 import { createSession, resolveSession } from "./session.ts";
 
-const alice: Authentication = {
-	issuer: "dev",
-	subject: "alice",
-	displayName: "Alice",
-};
+const alice: Authentication = { issuer: "dev", subject: "alice" };
 const aliceAuthId = AuthenticationId.make("alice");
 
 const findOrCreateAuthentication = vi.fn<
@@ -80,8 +76,12 @@ describe("createSession", () => {
 		"stores the session under the token's hash until the TTL runs out",
 		Effect.gen(function* () {
 			yield* TestClock.adjust("1 minute");
-			const token = yield* createSession(alice);
-			expect(findOrCreateAuthentication).toHaveBeenCalledWith(alice, 60_000);
+			const token = yield* createSession(alice, "Alice");
+			expect(findOrCreateAuthentication).toHaveBeenCalledWith(
+				alice,
+				"Alice",
+				60_000,
+			);
 			expect(create).toHaveBeenCalledWith(
 				hashSessionToken(token),
 				aliceAuthId,
@@ -94,7 +94,7 @@ describe("createSession", () => {
 		"stores the session under a fresh token when the drawn one is taken",
 		Effect.gen(function* () {
 			create.mockReturnValueOnce(Effect.fail(KeyTaken.make()));
-			const token = yield* createSession(alice);
+			const token = yield* createSession(alice, "Alice");
 			const [taken, stored] = create.mock.calls;
 			expect(create).toHaveBeenCalledTimes(2);
 			expect(stored?.[0]).toBe(hashSessionToken(token));
@@ -106,7 +106,7 @@ describe("createSession", () => {
 		"fails after two retries that each drew a taken token",
 		Effect.gen(function* () {
 			create.mockReturnValue(Effect.fail(KeyTaken.make()));
-			const error = yield* createSession(alice).pipe(Effect.flip);
+			const error = yield* createSession(alice, "Alice").pipe(Effect.flip);
 			expect(error).toStrictEqual(
 				BackendError.make({ cause: KeyTaken.make() }),
 			);
@@ -118,7 +118,7 @@ describe("createSession", () => {
 		"writes the authentication and the session in one transaction",
 		Effect.gen(function* () {
 			const begin = vi.fn();
-			yield* createSession(alice).pipe(
+			yield* createSession(alice, "Alice").pipe(
 				Effect.provideService(TransactionService, {
 					wrap: (effect) => {
 						begin();
@@ -143,6 +143,7 @@ describe("resolveSession", () => {
 				Effect.succeedSome({
 					accountId: AccountId.make("alice-account"),
 					authentication: alice,
+					displayName: "Alice",
 				}),
 			);
 			yield* TestClock.adjust("1 minute");

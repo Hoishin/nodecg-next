@@ -61,7 +61,11 @@ export interface AuthProvider {
 		readonly redirectUri: string;
 		readonly searchParams: URLSearchParams;
 		readonly loginAttempt: Omit<LoginAttempt, "returnTo">;
-	}) => Effect.Effect<Authentication, CallbackError, HttpClient.HttpClient>;
+	}) => Effect.Effect<
+		{ readonly authentication: Authentication; readonly displayName: string },
+		CallbackError,
+		HttpClient.HttpClient
+	>;
 }
 
 export class AuthProviderRegistry extends Context.Service<

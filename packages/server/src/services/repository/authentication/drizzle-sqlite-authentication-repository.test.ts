@@ -40,26 +40,22 @@ const test = testLayer(
 	),
 );
 
-const alice: Authentication = {
-	issuer: "dev",
-	subject: "alice",
-	displayName: "Alice",
-};
+const alice: Authentication = { issuer: "dev", subject: "alice" };
 
-const bob: Authentication = {
-	issuer: "dev",
-	subject: "bob",
-	displayName: "Bob",
-};
+const bob: Authentication = { issuer: "dev", subject: "bob" };
 
 describe("findOrCreateAuthentication", () => {
 	test(
-		"creates a user and an account named after the authentication on its first login",
+		"creates a user and an account under the given name on its first login",
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
 
-			const id = yield* repository.findOrCreateAuthentication(alice, 1000);
+			const id = yield* repository.findOrCreateAuthentication(
+				alice,
+				"Alice",
+				1000,
+			);
 
 			const [account] = yield* db.select().from(accounts);
 			const [user] = yield* db.select().from(users);
@@ -83,9 +79,14 @@ describe("findOrCreateAuthentication", () => {
 			const repository = yield* AuthenticationRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
 
-			const first = yield* repository.findOrCreateAuthentication(alice, 1000);
+			const first = yield* repository.findOrCreateAuthentication(
+				alice,
+				"Alice",
+				1000,
+			);
 			const second = yield* repository.findOrCreateAuthentication(
-				{ ...alice, displayName: "Alice Liddell" },
+				alice,
+				"Alice Liddell",
 				2000,
 			);
 
@@ -109,9 +110,14 @@ describe("findOrCreateAuthentication", () => {
 
 			const aliceAuthId = yield* repository.findOrCreateAuthentication(
 				alice,
+				"Alice",
 				1000,
 			);
-			const bobAuthId = yield* repository.findOrCreateAuthentication(bob, 1000);
+			const bobAuthId = yield* repository.findOrCreateAuthentication(
+				bob,
+				"Bob",
+				1000,
+			);
 
 			expect(bobAuthId).not.toBe(aliceAuthId);
 			expect(
@@ -130,7 +136,7 @@ describe("findOrCreateAuthentication", () => {
 			yield* db.run(sql`drop table authentications`);
 
 			const error = yield* repository
-				.findOrCreateAuthentication(alice, 1000)
+				.findOrCreateAuthentication(alice, "Alice", 1000)
 				.pipe(Effect.flip);
 
 			assert(Schema.is(BackendError)(error));
@@ -143,19 +149,21 @@ describe("resolveBySession", () => {
 	const sessionId = UserSessionId.make("session");
 
 	test(
-		"resolves a live session to its account and authentication, named after the account",
+		"resolves a live session to its account, authentication and the account's name",
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 			const sessionRepository = yield* SessionRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
 			const authentication = yield* repository.findOrCreateAuthentication(
 				alice,
+				"Alice",
 				1000,
 			);
-			yield* repository.findOrCreateAuthentication(bob, 1000);
+			yield* repository.findOrCreateAuthentication(bob, "Bob", 1000);
 			yield* sessionRepository.create(sessionId, authentication, 2000);
 			yield* repository.findOrCreateAuthentication(
-				{ ...alice, displayName: "Alice Liddell" },
+				alice,
+				"Alice Liddell",
 				1000,
 			);
 			const [account] = yield* db
@@ -165,7 +173,11 @@ describe("resolveBySession", () => {
 			assert(typeof account !== "undefined");
 
 			expect(yield* repository.resolveBySession(sessionId, 1999)).toStrictEqual(
-				Option.some({ accountId: account.id, authentication: alice }),
+				Option.some({
+					accountId: account.id,
+					authentication: alice,
+					displayName: "Alice",
+				}),
 			);
 		}),
 	);
@@ -177,6 +189,7 @@ describe("resolveBySession", () => {
 			const sessionRepository = yield* SessionRepositoryService;
 			const authentication = yield* repository.findOrCreateAuthentication(
 				alice,
+				"Alice",
 				1000,
 			);
 			yield* sessionRepository.create(sessionId, authentication, 2000);

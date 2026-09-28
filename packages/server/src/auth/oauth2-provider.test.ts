@@ -88,8 +88,7 @@ test("resolves a user identity from userinfo with the config-pinned issuer", asy
 	);
 
 	expect(identity).toEqual({
-		issuer: pinnedIssuer,
-		subject: "johndoe",
+		authentication: { issuer: pinnedIssuer, subject: "johndoe" },
 		displayName: "johndoe",
 	});
 });
@@ -113,8 +112,7 @@ test("derives the display name from the name claim", async () => {
 	);
 
 	expect(identity).toEqual({
-		issuer: pinnedIssuer,
-		subject: "johndoe",
+		authentication: { issuer: pinnedIssuer, subject: "johndoe" },
 		displayName: "Ada Lovelace",
 	});
 });
@@ -138,8 +136,7 @@ test("falls back to preferred_username when the name claim is absent", async () 
 	);
 
 	expect(identity).toEqual({
-		issuer: pinnedIssuer,
-		subject: "johndoe",
+		authentication: { issuer: pinnedIssuer, subject: "johndoe" },
 		displayName: "handle",
 	});
 });
@@ -286,8 +283,7 @@ test("maps a provider-specific userinfo shape through identityFromUserinfo", asy
 	);
 
 	expect(identity).toEqual({
-		issuer: pinnedIssuer,
-		subject: "583231",
+		authentication: { issuer: pinnedIssuer, subject: "583231" },
 		displayName: "octocat",
 	});
 });

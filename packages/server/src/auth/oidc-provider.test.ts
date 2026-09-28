@@ -71,8 +71,7 @@ test("resolves a user identity end-to-end against a real local OIDC server", asy
 	);
 
 	expect(identity).toEqual({
-		issuer,
-		subject: "johndoe",
+		authentication: { issuer, subject: "johndoe" },
 		displayName: "johndoe",
 	});
 });
@@ -94,8 +93,7 @@ test("derives the display name from the name claim", async () => {
 	);
 
 	expect(identity).toEqual({
-		issuer,
-		subject: "johndoe",
+		authentication: { issuer, subject: "johndoe" },
 		displayName: "Ada Lovelace",
 	});
 });
@@ -117,8 +115,7 @@ test("falls back to preferred_username when the name claim is absent", async () 
 	);
 
 	expect(identity).toEqual({
-		issuer,
-		subject: "johndoe",
+		authentication: { issuer, subject: "johndoe" },
 		displayName: "handle",
 	});
 });

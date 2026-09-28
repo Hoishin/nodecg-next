@@ -38,11 +38,10 @@ export const makeFakeAuthProvider = (
 			}
 			const id = input.searchParams.get("identity") ?? "";
 			const found = identities.get(id);
-			return Authentication.make({
-				issuer: name,
-				subject: id,
+			return {
+				authentication: Authentication.make({ issuer: name, subject: id }),
 				displayName: found?.displayName ?? id,
-			});
+			};
 		}),
 	};
 };

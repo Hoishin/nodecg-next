@@ -24,7 +24,8 @@ const jsonResponse = (body: unknown) =>
 const mePayload = {
 	identity: {
 		_tag: "user",
-		authentication: { issuer: "dev", subject: "alice", displayName: "Alice" },
+		authentication: { issuer: "dev", subject: "alice" },
+		displayName: "Alice",
 		roles: [],
 		globalRoles: [],
 	},

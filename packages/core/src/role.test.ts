@@ -21,17 +21,18 @@ import { getRolesForNamespace, isAdminTier } from "./role.ts";
 const authentication = Authentication.make({
 	issuer: "test",
 	subject: "subject",
-	displayName: "Tester",
 });
 const user = (...names: RoleName[]) =>
 	User.make({
 		authentication,
+		displayName: "user",
 		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],
 	});
 const adminTier = (...globalRoles: AdminRoleName[]) =>
 	User.make({
 		authentication,
+		displayName: "admin",
 		roles: [],
 		globalRoles,
 	});
@@ -94,6 +95,7 @@ describe("canRead / canWrite", () => {
 	test("a role counts only in the namespace it is held in", () => {
 		const foreign = User.make({
 			authentication,
+			displayName: "judge",
 			roles: [{ namespace: "other", name: RoleName("judge") }],
 			globalRoles: [],
 		});

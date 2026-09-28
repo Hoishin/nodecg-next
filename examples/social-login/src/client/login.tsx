@@ -47,7 +47,7 @@ export function Login() {
 		return (
 			<div>
 				<p>
-					Logged in as <strong>{authentication.displayName}</strong>{" "}
+					Logged in as <strong>{identity.displayName}</strong>{" "}
 					<button type="button" onClick={() => void session.logout()}>
 						Log out
 					</button>

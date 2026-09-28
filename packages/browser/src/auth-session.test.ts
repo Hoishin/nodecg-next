@@ -5,7 +5,8 @@ import { describe, expect, test, vi } from "vitest";
 import { authSession } from "./auth-session.ts";
 
 const userIdentity = User.make({
-	authentication: { issuer: "dev", subject: "alice", displayName: "Alice" },
+	authentication: { issuer: "dev", subject: "alice" },
+	displayName: "Alice",
 	roles: [],
 	globalRoles: [],
 });

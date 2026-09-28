@@ -8,6 +8,7 @@ export type UserId = typeof UserId.Type;
 
 export const User = Schema.TaggedStruct("user", {
 	authentication: Authentication,
+	displayName: Schema.String,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });

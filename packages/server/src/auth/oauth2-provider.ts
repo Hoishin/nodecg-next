@@ -154,11 +154,10 @@ export const makeOAuth2Provider = (
 			if (typeof subject === "undefined") {
 				return yield* new NoIdentity({ provider: config.name });
 			}
-			return Authentication.make({
-				issuer: config.issuer,
-				subject,
+			return {
+				authentication: Authentication.make({ issuer: config.issuer, subject }),
 				displayName: pickString(identity?.displayName) ?? subject,
-			});
+			};
 		}),
 	};
 };

@@ -243,7 +243,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						const requestUrl = yield* Effect.fromResult(
 							parseRelativeUrl(request.url),
 						);
-						const account = yield* provider.value
+						const authenticated = yield* provider.value
 							.callback({
 								redirectUri: yield* callbackUrl(baseUrl.href, name),
 								searchParams: new URLSearchParams(requestUrl.search),
@@ -255,8 +255,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								),
 								Effect.result,
 							);
-						if (Result.isFailure(account)) {
-							return yield* Match.value(account.failure).pipe(
+						if (Result.isFailure(authenticated)) {
+							return yield* Match.value(authenticated.failure).pipe(
 								Match.tag("ProviderStateMismatch", () =>
 									HttpServerResponse.text("OAuth state mismatch", {
 										status: 400,
@@ -287,9 +287,10 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Match.exhaustive,
 							);
 						}
-						const token = yield* createSession(account.success).pipe(
-							reportLoginAttemptFailure,
-						);
+						const token = yield* createSession(
+							authenticated.success.authentication,
+							authenticated.success.displayName,
+						).pipe(reportLoginAttemptFailure);
 						yield* setSessionCookie(token, {
 							path: baseUrl.pathname,
 							maxAge: sessionTtl,
@@ -348,10 +349,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							return yield* new HttpApiError.Forbidden();
 						}
 						const roles = yield* roleStore.grantGlobalRole(
-							{
-								issuer: identity.authentication.issuer,
-								subject: identity.authentication.subject,
-							},
+							identity.authentication,
 							"superadmin",
 						);
 						return { roles };

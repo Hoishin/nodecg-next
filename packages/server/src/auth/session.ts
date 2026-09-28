@@ -54,6 +54,7 @@ const insertSession = Effect.fn("insertSession")(
 
 export const createSession = Effect.fn("createSession")(function* (
 	authentication: Authentication,
+	displayName: string,
 ) {
 	const authentications = yield* AuthenticationRepositoryService;
 	const tx = yield* TransactionService;
@@ -63,7 +64,11 @@ export const createSession = Effect.fn("createSession")(function* (
 	return yield* tx.wrap(
 		Effect.gen(function* () {
 			const authenticationId =
-				yield* authentications.findOrCreateAuthentication(authentication, now);
+				yield* authentications.findOrCreateAuthentication(
+					authentication,
+					displayName,
+					now,
+				);
 			return yield* insertSession(
 				authenticationId,
 				now + Duration.toMillis(ttl),

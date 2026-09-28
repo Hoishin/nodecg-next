@@ -26,11 +26,17 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 		const db = yield* DrizzleSqliteDatabaseService;
 
 		const insertAuthentications = Effect.fn(function* (
-			inputs: Array.NonEmptyReadonlyArray<Authentication>,
+			inputs: Array.NonEmptyReadonlyArray<{
+				readonly authentication: Authentication;
+				readonly displayName: string;
+			}>,
 		) {
 			const rows = yield* Effect.forEach(
 				inputs,
-				Effect.fn(function* ({ issuer, subject, displayName }) {
+				Effect.fn(function* ({
+					authentication: { issuer, subject },
+					displayName,
+				}) {
 					return {
 						id: AuthenticationId.make(yield* crypto.randomUUIDv4),
 						userId: UserId.make(yield* crypto.randomUUIDv4),
@@ -90,7 +96,10 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 		}, retryOnIdCollision);
 
 		const insertMissing = Effect.fn(function* (
-			inputs: Array.NonEmptyReadonlyArray<Authentication>,
+			inputs: Array.NonEmptyReadonlyArray<{
+				readonly authentication: Authentication;
+				readonly displayName: string;
+			}>,
 			now: number,
 		) {
 			return yield* db.transaction(() =>
@@ -110,8 +119,14 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 		const findOrCreateAuthentication = Effect.fn(
 			"AuthenticationRepository.findOrCreateAuthentication",
 		)(
-			function* (authentication: Authentication, now: number) {
-				const created = Array.head(yield* insertMissing([authentication], now));
+			function* (
+				authentication: Authentication,
+				displayName: string,
+				now: number,
+			) {
+				const created = Array.head(
+					yield* insertMissing([{ authentication, displayName }], now),
+				);
 				if (Option.isSome(created)) {
 					return created.value;
 				}
@@ -160,7 +175,8 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 				return Array.head(rows).pipe(
 					Option.map(({ accountId, issuer, subject, displayName }) => ({
 						accountId,
-						authentication: { issuer, subject, displayName },
+						authentication: { issuer, subject },
+						displayName,
 					})),
 				);
 			},

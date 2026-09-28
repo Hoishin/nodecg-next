@@ -64,11 +64,8 @@ const manifest = defineNamespace("ns", {
 const scorer = Layer.succeed(
 	CurrentIdentity,
 	User.make({
-		authentication: Authentication.make({
-			issuer: "test",
-			subject: "subject",
-			displayName: "Scorer",
-		}),
+		authentication: Authentication.make({ issuer: "test", subject: "subject" }),
+		displayName: "Scorer",
 		roles: [{ namespace: "ns", name: RoleName("scorer") }],
 		globalRoles: [],
 	}),

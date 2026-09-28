@@ -306,8 +306,8 @@ describe("rpc ctx runs as the server identity", () => {
 			authentication: Authentication.make({
 				issuer: "test",
 				subject: "subject",
-				displayName: "Operator",
 			}),
+			displayName: "Operator",
 			roles: [{ namespace: "guarded", name: RoleName("operator") }],
 			globalRoles: [],
 		}),
