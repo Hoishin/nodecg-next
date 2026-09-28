@@ -1,15 +1,16 @@
 import { Schema } from "effect";
 
-import { AccountId } from "./account.ts";
+import { GlobalRoleName, Role } from "./role.ts";
 
 export const ServiceAccountId = Schema.String.pipe(
 	Schema.brand("ServiceAccountId"),
 );
 export type ServiceAccountId = typeof ServiceAccountId.Type;
 
-export const ServiceAccount = Schema.Struct({
-	id: ServiceAccountId,
-	accountId: AccountId,
-	createdBy: Schema.optionalKey(AccountId),
+export const ServiceAccount = Schema.TaggedStruct("serviceAccount", {
+	id: Schema.String,
+	displayName: Schema.String,
+	roles: Schema.Array(Role),
+	globalRoles: Schema.Array(GlobalRoleName),
 });
 export type ServiceAccount = typeof ServiceAccount.Type;

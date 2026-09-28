@@ -1,4 +1,4 @@
-import { UserIdentity, AnonymousIdentitySchema } from "@nodecg-next/internal";
+import { User, AnonymousIdentitySchema } from "@nodecg-next/internal";
 import { Effect, Option } from "effect";
 
 import type { RoleStore } from "../services/role-store/role-store.ts";
@@ -19,6 +19,6 @@ export const resolveSessionIdentity =
 				subject: authentication.subject,
 			});
 			return Option.some(
-				UserIdentity.make({ account: authentication, roles, globalRoles }),
+				User.make({ account: authentication, roles, globalRoles }),
 			);
 		});

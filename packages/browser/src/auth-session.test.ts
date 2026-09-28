@@ -1,10 +1,10 @@
 import type { AuthClient, MePayload } from "@nodecg-next/client";
-import { AnonymousIdentitySchema, UserIdentity } from "@nodecg-next/internal";
+import { AnonymousIdentitySchema, User } from "@nodecg-next/internal";
 import { describe, expect, test, vi } from "vitest";
 
 import { authSession } from "./auth-session.ts";
 
-const userIdentity = UserIdentity.make({
+const userIdentity = User.make({
 	account: { issuer: "dev", subject: "alice", displayName: "Alice" },
 	roles: [],
 	globalRoles: [],

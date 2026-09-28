@@ -2,7 +2,7 @@ import {
 	loadAuthClient,
 	loginUrl,
 	type AuthClient,
-	type UserIdentity,
+	type User,
 	type Identity,
 	type LoginProvider,
 	type MePayload,
@@ -32,7 +32,7 @@ export interface AuthSession {
 		readonly get: () => Identity | undefined;
 		readonly subscribe: (callback: () => void) => () => void;
 	};
-	readonly popupLogin: (provider: LoginProvider) => Promise<UserIdentity>;
+	readonly popupLogin: (provider: LoginProvider) => Promise<User>;
 	readonly logout: () => Promise<void>;
 	readonly refresh: () => Promise<MePayload>;
 }
@@ -52,7 +52,7 @@ const watchLoginSession = (client: AuthClient, popup: Window) =>
 	}).pipe(
 		Effect.repeat({
 			schedule: Schedule.spaced(Duration.millis(500)),
-			until: Option.isSome<UserIdentity>,
+			until: Option.isSome<User>,
 		}),
 		Effect.map((found) => found.value),
 		Effect.timeoutOrElse({

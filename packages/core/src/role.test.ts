@@ -1,8 +1,8 @@
 import {
 	type AdminRoleName,
 	Authentication,
-	UserIdentity,
-	ServiceAccountIdentity,
+	User,
+	ServiceAccount,
 	AnonymousIdentitySchema,
 	RoleName,
 	ServerIdentity,
@@ -23,19 +23,19 @@ const account = Authentication.make({
 	displayName: "Tester",
 });
 const user = (...names: RoleName[]) =>
-	UserIdentity.make({
+	User.make({
 		account,
 		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],
 	});
 const adminTier = (...globalRoles: AdminRoleName[]) =>
-	UserIdentity.make({
+	User.make({
 		account,
 		roles: [],
 		globalRoles,
 	});
 const serviceAccount = (...names: RoleName[]) =>
-	ServiceAccountIdentity.make({
+	ServiceAccount.make({
 		id: "robot",
 		displayName: "Bot",
 		roles: names.map((name) => ({ namespace: "match", name })),
@@ -91,7 +91,7 @@ describe("canRead / canWrite", () => {
 	});
 
 	test("a role counts only in the namespace it is held in", () => {
-		const foreign = UserIdentity.make({
+		const foreign = User.make({
 			account,
 			roles: [{ namespace: "other", name: RoleName("judge") }],
 			globalRoles: [],

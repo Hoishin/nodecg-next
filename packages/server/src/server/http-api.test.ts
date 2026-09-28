@@ -5,7 +5,7 @@ import {
 	UserAuthenticationMiddleware,
 	AnonymousIdentitySchema,
 	CurrentIdentity,
-	UserIdentity,
+	User,
 	type Identity,
 	RoleName,
 } from "@nodecg-next/internal";
@@ -304,7 +304,7 @@ describe("me", () => {
 					),
 				],
 				asIdentity(
-					UserIdentity.make({
+					User.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: [{ namespace: "perms", name: RoleName("producer") }],
 						globalRoles: [],
@@ -651,7 +651,7 @@ describe("roles", () => {
 	}
 
 	const admin = asIdentity(
-		UserIdentity.make({
+		User.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -675,7 +675,7 @@ describe("roles", () => {
 			const handler = yield* webHandler(
 				[],
 				asIdentity(
-					UserIdentity.make({
+					User.make({
 						account: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: [{ namespace: "show", name: RoleName("producer") }],
 						globalRoles: [],
@@ -739,7 +739,7 @@ describe("admin roles", () => {
 	};
 
 	const superadmin = asIdentity(
-		UserIdentity.make({
+		User.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
 			roles: [],
 			globalRoles: ["superadmin"],
@@ -747,7 +747,7 @@ describe("admin roles", () => {
 	);
 
 	const admin = asIdentity(
-		UserIdentity.make({
+		User.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -856,7 +856,7 @@ describe("claim superadmin", () => {
 	const claimRequest = (token: string) => postRequest(claimUrl, { token });
 
 	const user = asIdentity(
-		UserIdentity.make({
+		User.make({
 			account: { issuer: "dev", subject: "founder", displayName: "Founder" },
 			roles: [],
 			globalRoles: [],
@@ -937,7 +937,7 @@ describe("claim superadmin", () => {
 						httpEffect,
 						CurrentIdentity,
 						Redacted.value(credential) === "founder"
-							? UserIdentity.make({
+							? User.make({
 									account: {
 										issuer: "dev",
 										subject: "founder",
@@ -969,12 +969,12 @@ describe("claim superadmin", () => {
 });
 
 describe("roles export/import", () => {
-	const founderIdentity = UserIdentity.make({
+	const founderIdentity = User.make({
 		account: { issuer: "dev", subject: "founder", displayName: "Founder" },
 		roles: [],
 		globalRoles: [],
 	});
-	const adminIdentity = UserIdentity.make({
+	const adminIdentity = User.make({
 		account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 		roles: [],
 		globalRoles: ["admin"],
@@ -995,7 +995,7 @@ describe("roles export/import", () => {
 	const tiered = identityBySubject({
 		founder: founderIdentity,
 		boss: adminIdentity,
-		root: UserIdentity.make({
+		root: User.make({
 			account: { issuer: "dev", subject: "root", displayName: "Root" },
 			roles: [],
 			globalRoles: ["superadmin"],
@@ -1370,7 +1370,7 @@ describe("service accounts", () => {
 		});
 
 	const admin = asIdentity(
-		UserIdentity.make({
+		User.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
@@ -1932,7 +1932,7 @@ describe("public surface (v0) with bearer token", () => {
 	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
 
 	const admin = asIdentity(
-		UserIdentity.make({
+		User.make({
 			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
