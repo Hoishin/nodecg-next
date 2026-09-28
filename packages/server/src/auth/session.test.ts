@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
-import { type Authentication, AuthenticationId } from "@nodecg-next/internal";
+import {
+	AccountId,
+	type Authentication,
+	AuthenticationId,
+} from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { ConfigProvider, Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
@@ -135,7 +139,12 @@ describe("resolveSession", () => {
 	test(
 		"looks the session up by the token's hash and extends its TTL",
 		Effect.gen(function* () {
-			resolveBySession.mockReturnValueOnce(Effect.succeedSome(alice));
+			resolveBySession.mockReturnValueOnce(
+				Effect.succeedSome({
+					accountId: AccountId.make("alice-account"),
+					authentication: alice,
+				}),
+			);
 			yield* TestClock.adjust("1 minute");
 			yield* resolveSession("token");
 			expect(resolveBySession).toHaveBeenCalledWith(

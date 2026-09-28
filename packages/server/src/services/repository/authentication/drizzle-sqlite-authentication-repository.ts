@@ -144,6 +144,7 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 			function* (sessionId: UserSessionId, now: number) {
 				const rows = yield* db
 					.select({
+						accountId: accounts.id,
 						issuer: authentications.issuer,
 						subject: authentications.subject,
 						displayName: accounts.displayName,
@@ -156,7 +157,12 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 					.innerJoin(users, eq(authentications.userId, users.id))
 					.innerJoin(accounts, eq(users.accountId, accounts.id))
 					.where(and(eq(sessions.id, sessionId), gt(sessions.expiresAt, now)));
-				return Array.head(rows);
+				return Array.head(rows).pipe(
+					Option.map(({ accountId, issuer, subject, displayName }) => ({
+						accountId,
+						authentication: { issuer, subject, displayName },
+					})),
+				);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),

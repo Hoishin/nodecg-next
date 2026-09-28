@@ -6,6 +6,7 @@ import { GlobalRoleName, Role } from "./role.ts";
 export const AnonymousIdentitySchema = Schema.TaggedStruct("anonymous", {});
 
 export const UserIdentity = Schema.TaggedStruct("user", {
+	// TODO: correct naming of account and authentication
 	account: Authentication,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),

@@ -1,7 +1,7 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { type Authentication, UserSessionId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Effect, Layer, Option, Schema } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
@@ -143,22 +143,29 @@ describe("resolveBySession", () => {
 	const sessionId = UserSessionId.make("session");
 
 	test(
-		"resolves a live session to its authentication, named after the account",
+		"resolves a live session to its account and authentication, named after the account",
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 			const sessionRepository = yield* SessionRepositoryService;
+			const db = yield* DrizzleSqliteDatabaseService;
 			const authentication = yield* repository.findOrCreateAuthentication(
 				alice,
 				1000,
 			);
+			yield* repository.findOrCreateAuthentication(bob, 1000);
 			yield* sessionRepository.create(sessionId, authentication, 2000);
 			yield* repository.findOrCreateAuthentication(
 				{ ...alice, displayName: "Alice Liddell" },
 				1000,
 			);
+			const [account] = yield* db
+				.select({ id: accounts.id })
+				.from(accounts)
+				.where(eq(accounts.displayName, "Alice"));
+			assert(typeof account !== "undefined");
 
 			expect(yield* repository.resolveBySession(sessionId, 1999)).toStrictEqual(
-				Option.some(alice),
+				Option.some({ accountId: account.id, authentication: alice }),
 			);
 		}),
 	);

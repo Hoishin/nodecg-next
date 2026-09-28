@@ -13,10 +13,12 @@ export const resolveSessionIdentity =
 			if (Option.isNone(resolved)) {
 				return Option.none();
 			}
-			const account = resolved.value;
+			const { authentication } = resolved.value;
 			const { roles, globalRoles } = yield* deps.roleStore.get({
-				issuer: account.issuer,
-				subject: account.subject,
+				issuer: authentication.issuer,
+				subject: authentication.subject,
 			});
-			return Option.some(UserIdentity.make({ account, roles, globalRoles }));
+			return Option.some(
+				UserIdentity.make({ account: authentication, roles, globalRoles }),
+			);
 		});

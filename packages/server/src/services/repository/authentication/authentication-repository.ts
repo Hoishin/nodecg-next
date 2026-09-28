@@ -1,4 +1,5 @@
 import type {
+	AccountId,
 	Authentication,
 	AuthenticationId,
 	UserSessionId,
@@ -16,7 +17,13 @@ export interface AuthenticationRepository {
 	readonly resolveBySession: (
 		sessionId: UserSessionId,
 		now: number,
-	) => Effect.Effect<Option.Option<Authentication>, BackendError>;
+	) => Effect.Effect<
+		Option.Option<{
+			readonly accountId: AccountId;
+			readonly authentication: Authentication;
+		}>,
+		BackendError
+	>;
 }
 
 export class AuthenticationRepositoryService extends Context.Service<
