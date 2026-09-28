@@ -6,6 +6,7 @@ import {
 	AnonymousIdentitySchema,
 	RoleName,
 	ServerIdentity,
+	ServiceAccountId,
 } from "@nodecg-next/internal";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
@@ -36,7 +37,7 @@ const adminTier = (...globalRoles: AdminRoleName[]) =>
 	});
 const serviceAccount = (...names: RoleName[]) =>
 	ServiceAccount.make({
-		id: "robot",
+		id: ServiceAccountId.make("robot"),
 		displayName: "Bot",
 		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],

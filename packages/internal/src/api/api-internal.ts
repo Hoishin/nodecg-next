@@ -20,6 +20,7 @@ import {
 	Role,
 	RoleNameSchema,
 } from "../models/role.ts";
+import { ServiceAccountId } from "../models/service-account.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
@@ -129,7 +130,7 @@ export const UserAssignmentSchema = Schema.TaggedStruct("user", {
 export const ServiceAccountAssignmentSchema = Schema.TaggedStruct(
 	"serviceAccount",
 	{
-		id: Schema.String,
+		id: ServiceAccountId,
 		roles: Schema.Array(Role),
 		globalRoles: Schema.Array(GlobalRoleName),
 	},

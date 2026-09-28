@@ -8,7 +8,7 @@ export const ServiceAccountId = Schema.String.pipe(
 export type ServiceAccountId = typeof ServiceAccountId.Type;
 
 export const ServiceAccount = Schema.TaggedStruct("serviceAccount", {
-	id: Schema.String,
+	id: ServiceAccountId,
 	displayName: Schema.String,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),

@@ -1,12 +1,9 @@
-import type { GlobalRoleName, Role } from "@nodecg-next/internal";
+import type {
+	GlobalRoleName,
+	Role,
+	ServiceAccount,
+} from "@nodecg-next/internal";
 import { Context, type Effect, type Option, type Redacted } from "effect";
-
-export interface ServiceAccount {
-	readonly id: string;
-	readonly displayName: string;
-	readonly roles: ReadonlyArray<Role>;
-	readonly globalRoles: ReadonlyArray<GlobalRoleName>;
-}
 
 export interface CreatedApiKey {
 	readonly id: string;

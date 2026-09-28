@@ -1,12 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { GlobalRoleName, Role } from "@nodecg-next/internal";
+import {
+	ServiceAccountId,
+	type GlobalRoleName,
+	type Role,
+	ServiceAccount,
+} from "@nodecg-next/internal";
 import { Array, Effect, HashMap, Layer, Option, Redacted, Ref } from "effect";
 
-import {
-	type ServiceAccount,
-	ServiceAccountStoreService,
-} from "./service-account-store.ts";
+import { ServiceAccountStoreService } from "./service-account-store.ts";
 
 type Clients = HashMap.HashMap<Redacted.Redacted<string>, ServiceAccount>;
 
@@ -28,12 +30,12 @@ export const InMemoryServiceAccountStore = Layer.effect(
 				Ref.modify(clients, (map) => {
 					const id = randomBytes(16).toString("base64url");
 					const token = newToken();
-					const client: ServiceAccount = {
-						id,
+					const client = ServiceAccount.make({
+						id: ServiceAccountId.make(id),
 						displayName: input.displayName,
 						roles: [],
 						globalRoles: [],
-					};
+					});
 					return [
 						{ id, displayName: input.displayName, token: Redacted.make(token) },
 						HashMap.set(map, hashToken(token), client),

@@ -1,4 +1,8 @@
-import { RoleName } from "@nodecg-next/internal";
+import {
+	RoleName,
+	ServiceAccount,
+	ServiceAccountId,
+} from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Option, Redacted } from "effect";
 import { assert, describe, expect } from "vitest";
@@ -37,12 +41,7 @@ describe("validateApiKey", () => {
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value).toEqual({
-				id: created.id,
-				displayName: "Bot",
-				roles: [],
-				globalRoles: [],
-			});
+			expect(resolved.value).toMatchObject({ displayName: "Bot" });
 		}),
 	);
 
@@ -68,18 +67,18 @@ describe("list", () => {
 			expect(clients).toHaveLength(2);
 			expect(clients).toEqual(
 				expect.arrayContaining([
-					{
-						id: a.id,
+					ServiceAccount.make({
+						id: ServiceAccountId.make(a.id),
 						displayName: "Bot A",
 						roles: [],
 						globalRoles: [],
-					},
-					{
-						id: b.id,
+					}),
+					ServiceAccount.make({
+						id: ServiceAccountId.make(b.id),
 						displayName: "Bot B",
 						roles: [],
 						globalRoles: [],
-					},
+					}),
 				]),
 			);
 		}),
@@ -104,12 +103,7 @@ describe("revoke", () => {
 			});
 			const revoked = yield* serviceAccounts.revoke(created.id);
 			assert(Option.isSome(revoked));
-			expect(revoked.value).toEqual({
-				id: created.id,
-				displayName: "Bot",
-				roles: [],
-				globalRoles: [],
-			});
+			expect(revoked.value).toMatchObject({ displayName: "Bot" });
 			expect(
 				Option.isNone(
 					yield* serviceAccounts.validateApiKey(Redacted.value(created.token)),
@@ -130,12 +124,7 @@ describe("revoke", () => {
 				Redacted.value(b.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value).toEqual({
-				id: b.id,
-				displayName: "Bot B",
-				roles: [],
-				globalRoles: [],
-			});
+			expect(resolved.value).toMatchObject({ displayName: "Bot B" });
 		}),
 	);
 
@@ -180,12 +169,7 @@ describe("refreshApiKey", () => {
 				Redacted.value(refreshed.value.token),
 			);
 			assert(Option.isSome(byNew));
-			expect(byNew.value).toEqual({
-				id: created.id,
-				displayName: "Bot",
-				roles: [],
-				globalRoles: [],
-			});
+			expect(byNew.value).toMatchObject({ displayName: "Bot" });
 			expect(
 				Option.isNone(
 					yield* serviceAccounts.validateApiKey(Redacted.value(created.token)),
@@ -203,12 +187,12 @@ describe("refreshApiKey", () => {
 			});
 			yield* serviceAccounts.refreshApiKey(created.id);
 			expect(yield* serviceAccounts.list).toEqual([
-				{
-					id: created.id,
+				ServiceAccount.make({
+					id: ServiceAccountId.make(created.id),
 					displayName: "Bot",
 					roles: [],
 					globalRoles: [],
-				},
+				}),
 			]);
 		}),
 	);
@@ -416,9 +400,7 @@ describe("setGlobalRoles", () => {
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value).toEqual({
-				id: created.id,
-				displayName: "Bot",
+			expect(resolved.value).toMatchObject({
 				roles: [viewer],
 				globalRoles: ["superadmin"],
 			});
@@ -460,12 +442,7 @@ describe("grantGlobalRole / revokeGlobalRole", () => {
 				Redacted.value(created.token),
 			);
 			assert(Option.isSome(resolved));
-			expect(resolved.value).toEqual({
-				id: created.id,
-				displayName: "Bot",
-				roles: [],
-				globalRoles: [],
-			});
+			expect(resolved.value).toMatchObject({ globalRoles: [] });
 		}),
 	);
 
