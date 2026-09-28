@@ -45,7 +45,7 @@ export function Login() {
 	if (identity._tag === "user") {
 		return (
 			<p>
-				Logged in as <strong>{identity.account.displayName}</strong>{" "}
+				Logged in as <strong>{identity.authentication.displayName}</strong>{" "}
 				<button type="button" onClick={() => void session.logout()}>
 					Log out
 				</button>

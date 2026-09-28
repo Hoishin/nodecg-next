@@ -43,20 +43,20 @@ export function Login() {
 	}
 
 	if (identity._tag === "user") {
-		const account = identity.account;
+		const authentication = identity.authentication;
 		return (
 			<div>
 				<p>
-					Logged in as <strong>{account.displayName}</strong>{" "}
+					Logged in as <strong>{authentication.displayName}</strong>{" "}
 					<button type="button" onClick={() => void session.logout()}>
 						Log out
 					</button>
 				</p>
 				<dl>
 					<dt>issuer</dt>
-					<dd>{account.issuer}</dd>
+					<dd>{authentication.issuer}</dd>
 					<dt>subject</dt>
-					<dd>{account.subject}</dd>
+					<dd>{authentication.subject}</dd>
 				</dl>
 			</div>
 		);

@@ -64,7 +64,7 @@ const manifest = defineNamespace("ns", {
 const scorer = Layer.succeed(
 	CurrentIdentity,
 	User.make({
-		account: Authentication.make({
+		authentication: Authentication.make({
 			issuer: "test",
 			subject: "subject",
 			displayName: "Scorer",

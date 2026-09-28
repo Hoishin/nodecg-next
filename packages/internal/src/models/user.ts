@@ -7,8 +7,7 @@ export const UserId = Schema.String.pipe(Schema.brand("UserId"));
 export type UserId = typeof UserId.Type;
 
 export const User = Schema.TaggedStruct("user", {
-	// TODO: correct naming of account and authentication
-	account: Authentication,
+	authentication: Authentication,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });

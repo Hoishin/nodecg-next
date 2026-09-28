@@ -349,8 +349,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						const roles = yield* roleStore.grantGlobalRole(
 							{
-								issuer: identity.account.issuer,
-								subject: identity.account.subject,
+								issuer: identity.authentication.issuer,
+								subject: identity.authentication.subject,
 							},
 							"superadmin",
 						);

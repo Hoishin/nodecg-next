@@ -303,7 +303,7 @@ describe("rpc ctx runs as the server identity", () => {
 	const operator = Layer.succeed(
 		CurrentIdentity,
 		User.make({
-			account: Authentication.make({
+			authentication: Authentication.make({
 				issuer: "test",
 				subject: "subject",
 				displayName: "Operator",

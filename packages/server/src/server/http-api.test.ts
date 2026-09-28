@@ -305,7 +305,7 @@ describe("me", () => {
 				],
 				asIdentity(
 					User.make({
-						account: { issuer: "dev", subject: "op", displayName: "Op" },
+						authentication: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: [{ namespace: "perms", name: RoleName("producer") }],
 						globalRoles: [],
 					}),
@@ -316,7 +316,7 @@ describe("me", () => {
 			expect(yield* json(res)).toEqual({
 				identity: {
 					_tag: "user",
-					account: { issuer: "dev", subject: "op", displayName: "Op" },
+					authentication: { issuer: "dev", subject: "op", displayName: "Op" },
 					roles: [{ namespace: "perms", name: "producer" }],
 					globalRoles: [],
 				},
@@ -460,7 +460,11 @@ describe("login and callback", () => {
 				expect(yield* json(me)).toEqual({
 					identity: {
 						_tag: "user",
-						account: { issuer: "dev", subject: "alice", displayName: "Alice" },
+						authentication: {
+							issuer: "dev",
+							subject: "alice",
+							displayName: "Alice",
+						},
 						roles: [],
 						globalRoles: [],
 					},
@@ -652,7 +656,7 @@ describe("roles", () => {
 
 	const admin = asIdentity(
 		User.make({
-			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			authentication: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
 		}),
@@ -676,7 +680,7 @@ describe("roles", () => {
 				[],
 				asIdentity(
 					User.make({
-						account: { issuer: "dev", subject: "op", displayName: "Op" },
+						authentication: { issuer: "dev", subject: "op", displayName: "Op" },
 						roles: [{ namespace: "show", name: RoleName("producer") }],
 						globalRoles: [],
 					}),
@@ -740,7 +744,7 @@ describe("admin roles", () => {
 
 	const superadmin = asIdentity(
 		User.make({
-			account: { issuer: "dev", subject: "root", displayName: "Root" },
+			authentication: { issuer: "dev", subject: "root", displayName: "Root" },
 			roles: [],
 			globalRoles: ["superadmin"],
 		}),
@@ -748,7 +752,7 @@ describe("admin roles", () => {
 
 	const admin = asIdentity(
 		User.make({
-			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			authentication: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
 		}),
@@ -857,7 +861,11 @@ describe("claim superadmin", () => {
 
 	const user = asIdentity(
 		User.make({
-			account: { issuer: "dev", subject: "founder", displayName: "Founder" },
+			authentication: {
+				issuer: "dev",
+				subject: "founder",
+				displayName: "Founder",
+			},
 			roles: [],
 			globalRoles: [],
 		}),
@@ -938,7 +946,7 @@ describe("claim superadmin", () => {
 						CurrentIdentity,
 						Redacted.value(credential) === "founder"
 							? User.make({
-									account: {
+									authentication: {
 										issuer: "dev",
 										subject: "founder",
 										displayName: "Founder",
@@ -970,12 +978,16 @@ describe("claim superadmin", () => {
 
 describe("roles export/import", () => {
 	const founderIdentity = User.make({
-		account: { issuer: "dev", subject: "founder", displayName: "Founder" },
+		authentication: {
+			issuer: "dev",
+			subject: "founder",
+			displayName: "Founder",
+		},
 		roles: [],
 		globalRoles: [],
 	});
 	const adminIdentity = User.make({
-		account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+		authentication: { issuer: "dev", subject: "boss", displayName: "Boss" },
 		roles: [],
 		globalRoles: ["admin"],
 	});
@@ -996,7 +1008,7 @@ describe("roles export/import", () => {
 		founder: founderIdentity,
 		boss: adminIdentity,
 		root: User.make({
-			account: { issuer: "dev", subject: "root", displayName: "Root" },
+			authentication: { issuer: "dev", subject: "root", displayName: "Root" },
 			roles: [],
 			globalRoles: ["superadmin"],
 		}),
@@ -1371,7 +1383,7 @@ describe("service accounts", () => {
 
 	const admin = asIdentity(
 		User.make({
-			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			authentication: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
 		}),
@@ -1933,7 +1945,7 @@ describe("public surface (v0) with bearer token", () => {
 
 	const admin = asIdentity(
 		User.make({
-			account: { issuer: "dev", subject: "boss", displayName: "Boss" },
+			authentication: { issuer: "dev", subject: "boss", displayName: "Boss" },
 			roles: [],
 			globalRoles: ["admin"],
 		}),

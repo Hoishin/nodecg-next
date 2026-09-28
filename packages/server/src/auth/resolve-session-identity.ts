@@ -18,7 +18,5 @@ export const resolveSessionIdentity =
 				issuer: authentication.issuer,
 				subject: authentication.subject,
 			});
-			return Option.some(
-				User.make({ account: authentication, roles, globalRoles }),
-			);
+			return Option.some(User.make({ authentication, roles, globalRoles }));
 		});

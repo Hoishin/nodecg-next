@@ -34,7 +34,11 @@ const provideRegistry = Effect.provide(
 
 const user = (...roles: ReadonlyArray<Role>) =>
 	User.make({
-		account: { issuer: "dev", subject: "subject", displayName: "Subject" },
+		authentication: {
+			issuer: "dev",
+			subject: "subject",
+			displayName: "Subject",
+		},
 		roles,
 		globalRoles: [],
 	});
@@ -85,7 +89,7 @@ describe("listPermissions", () => {
 				AnonymousIdentitySchema.make({}),
 				ServerIdentity.make({}),
 				User.make({
-					account: {
+					authentication: {
 						issuer: "dev",
 						subject: "subject",
 						displayName: "Subject",

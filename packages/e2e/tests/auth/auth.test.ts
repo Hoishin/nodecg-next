@@ -23,7 +23,7 @@ describe("browser login", () => {
 
 		expect((await me()).identity).toEqual({
 			_tag: "user",
-			account: { issuer: "dev", subject: "alice", displayName: "Alice" },
+			authentication: { issuer: "dev", subject: "alice", displayName: "Alice" },
 			roles: [],
 			globalRoles: [],
 		});
@@ -98,7 +98,7 @@ describe("authSession", () => {
 		assert(dev);
 
 		const user = await session.popupLogin(dev);
-		expect(user.account.subject).toBe("alice");
+		expect(user.authentication.subject).toBe("alice");
 		expect(session.identity.get()).toEqual(user);
 		expect(changed).toHaveBeenCalled();
 		await vi.waitFor(async () => {
