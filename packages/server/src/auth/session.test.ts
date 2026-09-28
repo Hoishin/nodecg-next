@@ -4,6 +4,7 @@ import {
 	AccountId,
 	type Authentication,
 	AuthenticationId,
+	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { ConfigProvider, Effect, Layer } from "effect";
@@ -142,6 +143,7 @@ describe("resolveSession", () => {
 			resolveBySession.mockReturnValueOnce(
 				Effect.succeedSome({
 					accountId: AccountId.make("alice-account"),
+					userId: UserId.make("1"),
 					authentication: alice,
 					displayName: "Alice",
 				}),

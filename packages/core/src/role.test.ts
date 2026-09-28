@@ -7,6 +7,7 @@ import {
 	RoleName,
 	ServerIdentity,
 	ServiceAccountId,
+	UserId,
 } from "@nodecg-next/internal";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
@@ -24,6 +25,7 @@ const authentication = Authentication.make({
 });
 const user = (...names: RoleName[]) =>
 	User.make({
+		id: UserId.make("1"),
 		authentication,
 		displayName: "user",
 		roles: names.map((name) => ({ namespace: "match", name })),
@@ -31,6 +33,7 @@ const user = (...names: RoleName[]) =>
 	});
 const adminTier = (...globalRoles: AdminRoleName[]) =>
 	User.make({
+		id: UserId.make("2"),
 		authentication,
 		displayName: "admin",
 		roles: [],
@@ -94,6 +97,7 @@ describe("canRead / canWrite", () => {
 
 	test("a role counts only in the namespace it is held in", () => {
 		const foreign = User.make({
+			id: UserId.make("3"),
 			authentication,
 			displayName: "judge",
 			roles: [{ namespace: "other", name: RoleName("judge") }],

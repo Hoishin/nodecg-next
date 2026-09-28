@@ -3,6 +3,7 @@ import {
 	CurrentIdentity,
 	Authentication,
 	User,
+	UserId,
 	RoleName,
 	ServerIdentity,
 } from "@nodecg-next/internal";
@@ -303,6 +304,7 @@ describe("rpc ctx runs as the server identity", () => {
 	const operator = Layer.succeed(
 		CurrentIdentity,
 		User.make({
+			id: UserId.make("operator"),
 			authentication: Authentication.make({
 				issuer: "test",
 				subject: "subject",

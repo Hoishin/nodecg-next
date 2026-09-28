@@ -7,6 +7,7 @@ export const UserId = Schema.String.pipe(Schema.brand("UserId"));
 export type UserId = typeof UserId.Type;
 
 export const User = Schema.TaggedStruct("user", {
+	id: UserId,
 	authentication: Authentication,
 	displayName: Schema.String,
 	roles: Schema.Array(Role),

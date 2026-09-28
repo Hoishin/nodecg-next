@@ -171,10 +171,16 @@ describe("resolveBySession", () => {
 				.from(accounts)
 				.where(eq(accounts.displayName, "Alice"));
 			assert(typeof account !== "undefined");
+			const [user] = yield* db
+				.select({ id: users.id })
+				.from(users)
+				.where(eq(users.accountId, account.id));
+			assert(typeof user !== "undefined");
 
 			expect(yield* repository.resolveBySession(sessionId, 1999)).toStrictEqual(
 				Option.some({
 					accountId: account.id,
+					userId: user.id,
 					authentication: alice,
 					displayName: "Alice",
 				}),

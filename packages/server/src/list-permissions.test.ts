@@ -2,6 +2,7 @@ import { it } from "@effect/vitest";
 import {
 	AnonymousIdentitySchema,
 	User,
+	UserId,
 	type Role,
 	RoleName,
 	ServerIdentity,
@@ -34,6 +35,7 @@ const provideRegistry = Effect.provide(
 
 const user = (...roles: ReadonlyArray<Role>) =>
 	User.make({
+		id: UserId.make("subject"),
 		authentication: { issuer: "dev", subject: "subject" },
 		displayName: "Subject",
 		roles,
@@ -86,6 +88,7 @@ describe("listPermissions", () => {
 				AnonymousIdentitySchema.make({}),
 				ServerIdentity.make({}),
 				User.make({
+					id: UserId.make("subject"),
 					authentication: { issuer: "dev", subject: "subject" },
 					displayName: "Subject",
 					roles: [],

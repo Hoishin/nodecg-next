@@ -4,6 +4,7 @@ import {
 	CurrentIdentity,
 	Authentication,
 	User,
+	UserId,
 	RoleName,
 	ServerIdentity,
 } from "@nodecg-next/internal";
@@ -64,6 +65,7 @@ const manifest = defineNamespace("ns", {
 const scorer = Layer.succeed(
 	CurrentIdentity,
 	User.make({
+		id: UserId.make("scorer"),
 		authentication: Authentication.make({ issuer: "test", subject: "subject" }),
 		displayName: "Scorer",
 		roles: [{ namespace: "ns", name: RoleName("scorer") }],

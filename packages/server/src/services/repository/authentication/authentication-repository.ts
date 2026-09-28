@@ -2,6 +2,7 @@ import type {
 	AccountId,
 	Authentication,
 	AuthenticationId,
+	UserId,
 	UserSessionId,
 } from "@nodecg-next/internal";
 import { Context, type Effect, type Option } from "effect";
@@ -21,6 +22,7 @@ export interface AuthenticationRepository {
 	) => Effect.Effect<
 		Option.Option<{
 			readonly accountId: AccountId;
+			readonly userId: UserId;
 			readonly authentication: Authentication;
 			readonly displayName: string;
 		}>,

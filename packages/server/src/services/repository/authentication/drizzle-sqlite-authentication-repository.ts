@@ -160,6 +160,7 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 				const rows = yield* db
 					.select({
 						accountId: accounts.id,
+						userId: users.id,
 						issuer: authentications.issuer,
 						subject: authentications.subject,
 						displayName: accounts.displayName,
@@ -173,8 +174,9 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 					.innerJoin(accounts, eq(users.accountId, accounts.id))
 					.where(and(eq(sessions.id, sessionId), gt(sessions.expiresAt, now)));
 				return Array.head(rows).pipe(
-					Option.map(({ accountId, issuer, subject, displayName }) => ({
+					Option.map(({ accountId, userId, issuer, subject, displayName }) => ({
 						accountId,
+						userId,
 						authentication: { issuer, subject },
 						displayName,
 					})),

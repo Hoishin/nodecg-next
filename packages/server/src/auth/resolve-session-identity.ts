@@ -13,9 +13,15 @@ export const resolveSessionIdentity =
 			if (Option.isNone(resolved)) {
 				return Option.none();
 			}
-			const { authentication, displayName } = resolved.value;
+			const { userId, authentication, displayName } = resolved.value;
 			const { roles, globalRoles } = yield* deps.roleStore.get(authentication);
 			return Option.some(
-				User.make({ authentication, displayName, roles, globalRoles }),
+				User.make({
+					id: userId,
+					authentication,
+					displayName,
+					roles,
+					globalRoles,
+				}),
 			);
 		});

@@ -23,6 +23,7 @@ describe("browser login", () => {
 
 		expect((await me()).identity).toEqual({
 			_tag: "user",
+			id: expect.any(String),
 			authentication: { issuer: "dev", subject: "alice" },
 			displayName: "Alice",
 			roles: [],

@@ -6,6 +6,7 @@ import {
 	AnonymousIdentitySchema,
 	CurrentIdentity,
 	User,
+	UserId,
 	type Identity,
 	RoleName,
 } from "@nodecg-next/internal";
@@ -305,6 +306,7 @@ describe("me", () => {
 				],
 				asIdentity(
 					User.make({
+						id: UserId.make("op"),
 						authentication: { issuer: "dev", subject: "op" },
 						displayName: "Op",
 						roles: [{ namespace: "perms", name: RoleName("producer") }],
@@ -317,6 +319,7 @@ describe("me", () => {
 			expect(yield* json(res)).toEqual({
 				identity: {
 					_tag: "user",
+					id: "op",
 					authentication: { issuer: "dev", subject: "op" },
 					displayName: "Op",
 					roles: [{ namespace: "perms", name: "producer" }],
@@ -465,6 +468,7 @@ describe("login and callback", () => {
 				expect(yield* json(me)).toEqual({
 					identity: {
 						_tag: "user",
+						id: expect.any(String),
 						authentication: { issuer: "dev", subject: "alice" },
 						displayName: "Alice",
 						roles: [],
@@ -661,6 +665,7 @@ describe("roles", () => {
 
 	const admin = asIdentity(
 		User.make({
+			id: UserId.make("boss"),
 			authentication: { issuer: "dev", subject: "boss" },
 			displayName: "Boss",
 			roles: [],
@@ -686,6 +691,7 @@ describe("roles", () => {
 				[],
 				asIdentity(
 					User.make({
+						id: UserId.make("op"),
 						authentication: { issuer: "dev", subject: "op" },
 						displayName: "Op",
 						roles: [{ namespace: "show", name: RoleName("producer") }],
@@ -751,6 +757,7 @@ describe("admin roles", () => {
 
 	const superadmin = asIdentity(
 		User.make({
+			id: UserId.make("root"),
 			authentication: { issuer: "dev", subject: "root" },
 			displayName: "Root",
 			roles: [],
@@ -760,6 +767,7 @@ describe("admin roles", () => {
 
 	const admin = asIdentity(
 		User.make({
+			id: UserId.make("boss"),
 			authentication: { issuer: "dev", subject: "boss" },
 			displayName: "Boss",
 			roles: [],
@@ -870,6 +878,7 @@ describe("claim superadmin", () => {
 
 	const user = asIdentity(
 		User.make({
+			id: UserId.make("founder"),
 			authentication: { issuer: "dev", subject: "founder" },
 			displayName: "Founder",
 			roles: [],
@@ -952,6 +961,7 @@ describe("claim superadmin", () => {
 						CurrentIdentity,
 						Redacted.value(credential) === "founder"
 							? User.make({
+									id: UserId.make("founder"),
 									authentication: { issuer: "dev", subject: "founder" },
 									displayName: "Founder",
 									roles: [],
@@ -981,12 +991,14 @@ describe("claim superadmin", () => {
 
 describe("roles export/import", () => {
 	const founderIdentity = User.make({
+		id: UserId.make("founder"),
 		authentication: { issuer: "dev", subject: "founder" },
 		displayName: "Founder",
 		roles: [],
 		globalRoles: [],
 	});
 	const adminIdentity = User.make({
+		id: UserId.make("boss"),
 		authentication: { issuer: "dev", subject: "boss" },
 		displayName: "Boss",
 		roles: [],
@@ -1009,6 +1021,7 @@ describe("roles export/import", () => {
 		founder: founderIdentity,
 		boss: adminIdentity,
 		root: User.make({
+			id: UserId.make("root"),
 			authentication: { issuer: "dev", subject: "root" },
 			displayName: "Root",
 			roles: [],
@@ -1390,6 +1403,7 @@ describe("service accounts", () => {
 
 	const admin = asIdentity(
 		User.make({
+			id: UserId.make("boss"),
 			authentication: { issuer: "dev", subject: "boss" },
 			displayName: "Boss",
 			roles: [],
@@ -1953,6 +1967,7 @@ describe("public surface (v0) with bearer token", () => {
 
 	const admin = asIdentity(
 		User.make({
+			id: UserId.make("boss"),
 			authentication: { issuer: "dev", subject: "boss" },
 			displayName: "Boss",
 			roles: [],
