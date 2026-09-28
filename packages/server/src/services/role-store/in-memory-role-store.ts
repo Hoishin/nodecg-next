@@ -1,4 +1,8 @@
-import type { GlobalRoleName, Login, Role } from "@nodecg-next/internal";
+import type {
+	GlobalRoleName,
+	Authentication,
+	Role,
+} from "@nodecg-next/internal";
 import { Array, Effect, Layer, MutableHashMap, Option } from "effect";
 
 import { type RoleGrants, RoleStoreService } from "./role-store.ts";
@@ -6,14 +10,14 @@ import { type RoleGrants, RoleStoreService } from "./role-store.ts";
 const unassigned: RoleGrants = { roles: [], globalRoles: [] };
 
 export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
-	const assignments = MutableHashMap.empty<Login, RoleGrants>();
+	const assignments = MutableHashMap.empty<Authentication, RoleGrants>();
 
-	const current = (key: Login): RoleGrants =>
+	const current = (key: Authentication): RoleGrants =>
 		MutableHashMap.get(assignments, key).pipe(
 			Option.getOrElse(() => unassigned),
 		);
 
-	const get = Effect.fn("RoleStore.get")((key: Login) =>
+	const get = Effect.fn("RoleStore.get")((key: Authentication) =>
 		Effect.sync(() => current(key)),
 	);
 
@@ -26,7 +30,7 @@ export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
 	);
 
 	const setRoles = Effect.fn("RoleStore.setRoles")(
-		(key: Login, roles: ReadonlyArray<Role>) =>
+		(key: Authentication, roles: ReadonlyArray<Role>) =>
 			Effect.sync(() => {
 				MutableHashMap.set(assignments, key, {
 					roles: Array.dedupe(roles),
@@ -35,20 +39,21 @@ export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
 			}),
 	);
 
-	const grantRole = Effect.fn("RoleStore.grantRole")((key: Login, role: Role) =>
-		Effect.sync(() => {
-			const grants = current(key);
-			const roles = Array.union(grants.roles, [role]);
-			MutableHashMap.set(assignments, key, {
-				roles,
-				globalRoles: grants.globalRoles,
-			});
-			return roles;
-		}),
+	const grantRole = Effect.fn("RoleStore.grantRole")(
+		(key: Authentication, role: Role) =>
+			Effect.sync(() => {
+				const grants = current(key);
+				const roles = Array.union(grants.roles, [role]);
+				MutableHashMap.set(assignments, key, {
+					roles,
+					globalRoles: grants.globalRoles,
+				});
+				return roles;
+			}),
 	);
 
 	const revokeRole = Effect.fn("RoleStore.revokeRole")(
-		(key: Login, role: Role) =>
+		(key: Authentication, role: Role) =>
 			Effect.sync(() => {
 				const existing = MutableHashMap.get(assignments, key);
 				if (Option.isNone(existing)) {
@@ -64,7 +69,7 @@ export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
 	);
 
 	const setGlobalRoles = Effect.fn("RoleStore.setGlobalRoles")(
-		(key: Login, globalRoles: ReadonlyArray<GlobalRoleName>) =>
+		(key: Authentication, globalRoles: ReadonlyArray<GlobalRoleName>) =>
 			Effect.sync(() => {
 				MutableHashMap.set(assignments, key, {
 					roles: current(key).roles,
@@ -74,7 +79,7 @@ export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
 	);
 
 	const grantGlobalRole = Effect.fn("RoleStore.grantGlobalRole")(
-		(key: Login, role: GlobalRoleName) =>
+		(key: Authentication, role: GlobalRoleName) =>
 			Effect.sync(() => {
 				const grants = current(key);
 				const globalRoles = Array.union(grants.globalRoles, [role]);
@@ -87,7 +92,7 @@ export const InMemoryRoleStore = Layer.sync(RoleStoreService, () => {
 	);
 
 	const revokeGlobalRole = Effect.fn("RoleStore.revokeGlobalRole")(
-		(key: Login, role: GlobalRoleName) =>
+		(key: Authentication, role: GlobalRoleName) =>
 			Effect.sync(() => {
 				const existing = MutableHashMap.get(assignments, key);
 				if (Option.isNone(existing)) {

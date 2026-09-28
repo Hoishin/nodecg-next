@@ -652,7 +652,7 @@ describe("roles", () => {
 		return new Request(`http://x/api/internal/roles/${action}`, {
 			method: "POST",
 			body: JSON.stringify({
-				login: { issuer: "dev", subject: "operator" },
+				authentication: { issuer: "dev", subject: "operator" },
 				role: { namespace, name },
 			}),
 			headers: { "content-type": "application/json" },
@@ -746,7 +746,7 @@ describe("admin roles", () => {
 
 	const user = {
 		_tag: "user",
-		login: { issuer: "dev", subject: "operator" },
+		authentication: { issuer: "dev", subject: "operator" },
 	};
 
 	const superadmin = asIdentity(
@@ -1018,7 +1018,10 @@ describe("roles export/import", () => {
 
 	const grantFounderAdminRequest = () =>
 		postRequest("http://x/api/internal/admin-roles/grant", {
-			target: { _tag: "user", login: { issuer: "dev", subject: "founder" } },
+			target: {
+				_tag: "user",
+				authentication: { issuer: "dev", subject: "founder" },
+			},
 			role: "admin",
 		});
 
@@ -1051,7 +1054,7 @@ describe("roles export/import", () => {
 
 	const grantRequest = (subject: string, role: string) =>
 		postRequest("http://x/api/internal/roles/grant", {
-			login: { issuer: "dev", subject },
+			authentication: { issuer: "dev", subject },
 			role: { namespace: "show", name: role },
 		});
 
@@ -1075,7 +1078,7 @@ describe("roles export/import", () => {
 		Schema.Struct({
 			assignments: Schema.Array(
 				Schema.Struct({
-					login: Schema.Struct({ subject: Schema.String }),
+					authentication: Schema.Struct({ subject: Schema.String }),
 					roles: Schema.Array(
 						Schema.Struct({ namespace: Schema.String, name: Schema.String }),
 					),
@@ -1100,7 +1103,7 @@ describe("roles export/import", () => {
 				assignments: [
 					{
 						_tag: "user",
-						login: { issuer: "dev", subject: "operator" },
+						authentication: { issuer: "dev", subject: "operator" },
 						roles: [{ namespace: "show", name: "producer" }],
 						globalRoles: [],
 					},
@@ -1126,7 +1129,7 @@ describe("roles export/import", () => {
 					importRequest("merge", [
 						{
 							_tag: "user",
-							login: { issuer: "dev", subject: "operator" },
+							authentication: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "viewer" }],
 							globalRoles: [],
 						},
@@ -1138,9 +1141,11 @@ describe("roles export/import", () => {
 				);
 				expect(doc.assignments).toHaveLength(2);
 				const operator = doc.assignments.find(
-					(a) => a.login.subject === "operator",
+					(a) => a.authentication.subject === "operator",
 				);
-				const other = doc.assignments.find((a) => a.login.subject === "other");
+				const other = doc.assignments.find(
+					(a) => a.authentication.subject === "other",
+				);
 				expect(operator?.roles).toHaveLength(2);
 				expect(operator?.roles).toEqual(
 					expect.arrayContaining([
@@ -1161,7 +1166,7 @@ describe("roles export/import", () => {
 				importRequest("replace", [
 					{
 						_tag: "user",
-						login: { issuer: "dev", subject: "operator" },
+						authentication: { issuer: "dev", subject: "operator" },
 						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
 					},
@@ -1173,7 +1178,7 @@ describe("roles export/import", () => {
 				assignments: [
 					{
 						_tag: "user",
-						login: { issuer: "dev", subject: "operator" },
+						authentication: { issuer: "dev", subject: "operator" },
 						roles: [{ namespace: "show", name: "viewer" }],
 						globalRoles: [],
 					},
@@ -1218,7 +1223,7 @@ describe("roles export/import", () => {
 				assignments: [
 					{
 						_tag: "user",
-						login: { issuer: "dev", subject: "founder" },
+						authentication: { issuer: "dev", subject: "founder" },
 						roles: [{ namespace: "show", name: "producer" }],
 						globalRoles: [],
 					},
@@ -1249,7 +1254,7 @@ describe("roles export/import", () => {
 						importRequest("merge", [
 							{
 								_tag: "user",
-								login: { issuer: "dev", subject: "founder" },
+								authentication: { issuer: "dev", subject: "founder" },
 								roles: [{ namespace: "show", name: "viewer" }],
 								globalRoles: [],
 							},
@@ -1296,7 +1301,7 @@ describe("roles export/import", () => {
 				importRequest("merge", [
 					{
 						_tag: "user",
-						login: { issuer: "dev", subject: "operator" },
+						authentication: { issuer: "dev", subject: "operator" },
 						roles: [],
 						globalRoles: ["superadmin"],
 					},
@@ -1306,7 +1311,7 @@ describe("roles export/import", () => {
 			expect(yield* json(res)).toEqual({
 				_tag: "RoleImportError",
 				message:
-					'role "superadmin" cannot be assigned via import (entry {"_tag":"user","login":{"issuer":"dev","subject":"operator"}})',
+					'role "superadmin" cannot be assigned via import (entry {"_tag":"user","authentication":{"issuer":"dev","subject":"operator"}})',
 			});
 		}),
 	);
@@ -1319,7 +1324,7 @@ describe("roles export/import", () => {
 					importRequest("merge", [
 						{
 							_tag: "user",
-							login: { issuer: "dev", subject: "operator" },
+							authentication: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "server" }],
 							globalRoles: [],
 						},
@@ -1358,13 +1363,13 @@ describe("roles export/import", () => {
 					importRequest("merge", [
 						{
 							_tag: "user",
-							login: { issuer: "dev", subject: "operator" },
+							authentication: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "viewer" }],
 							globalRoles: [],
 						},
 						{
 							_tag: "user",
-							login: { issuer: "dev", subject: "operator" },
+							authentication: { issuer: "dev", subject: "operator" },
 							roles: [{ namespace: "show", name: "judge" }],
 							globalRoles: [],
 						},

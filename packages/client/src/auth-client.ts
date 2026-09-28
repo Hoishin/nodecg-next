@@ -1,6 +1,6 @@
 import {
 	InternalApi,
-	type Login,
+	type Authentication,
 	type Role,
 	RoleName,
 	type LoginProvider,
@@ -19,7 +19,7 @@ export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 }
 
 export interface RoleAssignment {
-	readonly login: Login;
+	readonly authentication: Authentication;
 	readonly role: typeof Role.Encoded;
 }
 
@@ -69,7 +69,7 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	) {
 		const result = yield* api.Roles.grant({
 			payload: {
-				login: assignment.login,
+				authentication: assignment.authentication,
 				role: {
 					namespace: assignment.role.namespace,
 					name: RoleName(assignment.role.name),
@@ -84,7 +84,7 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	) {
 		const result = yield* api.Roles.revoke({
 			payload: {
-				login: assignment.login,
+				authentication: assignment.authentication,
 				role: {
 					namespace: assignment.role.namespace,
 					name: RoleName(assignment.role.name),

@@ -51,7 +51,6 @@ export {
 	ServerIdentity,
 } from "./models/identity.ts";
 export { LoginAttempt } from "./models/login-attempt.ts";
-export { Login } from "./models/login.ts";
 export {
 	DeclarablePrincipalNameSchema,
 	Principal,

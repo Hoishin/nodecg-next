@@ -366,9 +366,9 @@ const mutateAdminRole = (
 		| ServiceAccountStore["revokeGlobalRole"],
 ) =>
 	Match.value(target).pipe(
-		Match.tag("user", ({ login }) =>
+		Match.tag("user", ({ authentication }) =>
 			Effect.gen(function* () {
-				const roles = yield* userOp(login, role);
+				const roles = yield* userOp(authentication, role);
 				return { roles };
 			}),
 		),
@@ -411,7 +411,10 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 
 const assignmentKey = (entry: RoleAssignmentsDocument["assignments"][number]) =>
 	Match.value(entry).pipe(
-		Match.tag("user", ({ login }) => ({ _tag: "user", login })),
+		Match.tag("user", ({ authentication }) => ({
+			_tag: "user",
+			authentication,
+		})),
 		Match.tag("serviceAccount", ({ id }) => ({ _tag: "serviceAccount", id })),
 		Match.exhaustive,
 	);
@@ -483,19 +486,19 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 		const serviceAccounts = yield* ServiceAccountStoreService;
 
 		return handlers
-			.handle("grant", ({ payload: { login, role } }) =>
+			.handle("grant", ({ payload: { authentication, role } }) =>
 				Effect.gen(function* () {
 					const { declaredRoles } = yield* FieldRegistryService;
 					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 						return yield* new HttpApiError.Forbidden();
 					}
-					const roles = yield* roleStore.grantRole(login, role);
+					const roles = yield* roleStore.grantRole(authentication, role);
 					return { roles };
 				}),
 			)
-			.handle("revoke", ({ payload: { login, role } }) =>
+			.handle("revoke", ({ payload: { authentication, role } }) =>
 				Effect.gen(function* () {
-					const roles = yield* roleStore.revokeRole(login, role);
+					const roles = yield* roleStore.revokeRole(authentication, role);
 					return { roles };
 				}),
 			)
@@ -509,7 +512,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 							...users
 								.map(({ key, roles, globalRoles }) =>
 									UserAssignmentSchema.make({
-										login: key,
+										authentication: key,
 										roles,
 										globalRoles: Array.difference(globalRoles, ADMIN_TIER),
 									}),
@@ -587,7 +590,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					// Admin roles are outside of import and export
 					const current = yield* roleStore.list;
 					const userTarget = HashSet.fromIterable(
-						userEntries.map(({ login }) => login),
+						userEntries.map(({ authentication }) => authentication),
 					);
 
 					// Clear roles of users that are not in the import
@@ -605,15 +608,15 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 
 					// Replace or add roles on top of existing roles
 					for (const entry of userEntries) {
-						const existing = yield* roleStore.get(entry.login);
+						const existing = yield* roleStore.get(entry.authentication);
 						yield* roleStore.setRoles(
-							entry.login,
+							entry.authentication,
 							mode === "merge"
 								? Array.union(existing.roles, entry.roles)
 								: entry.roles,
 						);
 						yield* roleStore.setGlobalRoles(
-							entry.login,
+							entry.authentication,
 							mode === "merge"
 								? Array.union(existing.globalRoles, entry.globalRoles)
 								: Array.union(

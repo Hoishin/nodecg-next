@@ -3,4 +3,4 @@
 "@nodecg-next/server": patch
 ---
 
-Nest role target under `login`
+Nest role target under `authentication`
