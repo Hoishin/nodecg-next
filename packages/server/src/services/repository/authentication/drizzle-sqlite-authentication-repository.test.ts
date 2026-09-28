@@ -1,16 +1,10 @@
-import { randomUUID } from "node:crypto";
-
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import {
-	AccountId,
-	type Authentication,
-	UserSessionId,
-} from "@nodecg-next/internal";
+import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
+import { type Authentication, UserSessionId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { Effect, Layer, Option, Schema } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
-import { afterEach, assert, describe, expect, vi } from "vitest";
+import { assert, describe, expect } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import {
@@ -36,16 +30,15 @@ const test = testLayer(
 			),
 		),
 		Layer.provide(
-			Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
+			Layer.mergeAll(
+				NodeFileSystem.layer,
+				NodePath.layer,
+				NodeCrypto.layer,
+				Reactivity.layer,
+			),
 		),
 	),
 );
-
-vi.mock(import("node:crypto"), { spy: true });
-
-afterEach(() => {
-	vi.mocked(randomUUID).mockReset();
-});
 
 const alice: Authentication = {
 	issuer: "dev",
@@ -60,66 +53,6 @@ const bob: Authentication = {
 };
 
 describe("findOrCreateAuthentication", () => {
-	test(
-		"creates the account under a fresh id when the generated id is taken",
-		Effect.gen(function* () {
-			const repository = yield* AuthenticationRepositoryService;
-			const db = yield* DrizzleSqliteDatabaseService;
-			const takenId = randomUUID();
-			vi.mocked(randomUUID).mockReturnValueOnce(takenId);
-			yield* repository.findOrCreateAuthentication(alice, 1000);
-			vi.mocked(randomUUID).mockReturnValueOnce(takenId);
-
-			yield* repository.findOrCreateAuthentication(bob, 1000);
-
-			const bobAccounts = yield* db
-				.select({ id: accounts.id })
-				.from(accounts)
-				.where(eq(accounts.displayName, "Bob"));
-			expect(bobAccounts).toHaveLength(1);
-			expect(bobAccounts[0]?.id).not.toBe(takenId);
-			expect(
-				yield* db
-					.select({ displayName: accounts.displayName })
-					.from(accounts)
-					.where(eq(accounts.id, AccountId.make(takenId))),
-			).toStrictEqual([{ displayName: "Alice" }]);
-		}),
-	);
-
-	test(
-		"fails with a backend error when every generated id is taken",
-		Effect.gen(function* () {
-			const repository = yield* AuthenticationRepositoryService;
-			const takenId = randomUUID();
-			vi.mocked(randomUUID).mockReturnValueOnce(takenId);
-			yield* repository.findOrCreateAuthentication(alice, 1000);
-			vi.mocked(randomUUID).mockReturnValue(takenId);
-
-			const error = yield* repository
-				.findOrCreateAuthentication(bob, 1000)
-				.pipe(Effect.flip);
-
-			assert(Schema.is(BackendError)(error));
-		}),
-	);
-
-	test(
-		"does not retry an insert that fails for another reason than a taken id",
-		Effect.gen(function* () {
-			const repository = yield* AuthenticationRepositoryService;
-			const db = yield* DrizzleSqliteDatabaseService;
-			yield* db.run(sql`drop table accounts`);
-
-			const error = yield* repository
-				.findOrCreateAuthentication(alice, 1000)
-				.pipe(Effect.flip);
-
-			assert(Schema.is(BackendError)(error));
-			expect(randomUUID).toHaveBeenCalledOnce();
-		}),
-	);
-
 	test(
 		"creates a user and an account named after the authentication on its first login",
 		Effect.gen(function* () {

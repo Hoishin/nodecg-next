@@ -1,10 +1,15 @@
-import type { Authentication, UserSessionId } from "@nodecg-next/internal";
-import { and, eq, gt } from "drizzle-orm";
-import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Array, Cause, Effect, Layer, Option, Schema } from "effect";
-import { SqlError } from "effect/unstable/sql";
+import {
+	AccountId,
+	type Authentication,
+	AuthenticationId,
+	UserId,
+	type UserSessionId,
+} from "@nodecg-next/internal";
+import { and, eq, gt, sql } from "drizzle-orm";
+import { Array, Crypto, Effect, Layer, Option } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-collision.ts";
 import {
 	accounts,
 	authentications,
@@ -14,73 +19,121 @@ import {
 import { BackendError } from "../repository-errors.ts";
 import { AuthenticationRepositoryService } from "./authentication-repository.ts";
 
-// https://www.sqlite.org/rescode.html#constraint_primarykey
-const isSqlitePrimaryKeyViolation = Schema.is(
-	Schema.Struct({ errcode: Schema.Literal(1555) }),
-);
-
 export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 	AuthenticationRepositoryService,
 	Effect.gen(function* () {
+		const crypto = yield* Crypto.Crypto;
 		const db = yield* DrizzleSqliteDatabaseService;
 
-		const retryOnIdCollision = <A, R>(
-			insert: Effect.Effect<A, EffectDrizzleQueryError, R>,
-		) =>
-			insert.pipe(
-				Effect.retry({
-					times: 2,
-					while: ({ cause }) =>
-						Cause.isCause(cause) &&
-						Cause.findErrorOption(cause).pipe(
-							Option.filter(SqlError.isSqlError),
-							Option.map(({ reason }) => reason),
-							Option.filter(Schema.is(SqlError.ConstraintError)),
-							Option.map(({ cause }) => cause),
-							Option.exists(isSqlitePrimaryKeyViolation),
-						),
+		const insertAuthentications = Effect.fn(function* (
+			inputs: Array.NonEmptyReadonlyArray<Authentication>,
+		) {
+			const rows = yield* Effect.forEach(
+				inputs,
+				Effect.fn(function* ({ issuer, subject, displayName }) {
+					return {
+						id: AuthenticationId.make(yield* crypto.randomUUIDv4),
+						userId: UserId.make(yield* crypto.randomUUIDv4),
+						issuer,
+						subject,
+						displayName,
+					};
 				}),
 			);
+			const insertedRows = yield* db
+				.insert(authentications)
+				.values(
+					rows.map(({ id, userId, issuer, subject }) => ({
+						id,
+						userId,
+						issuer,
+						subject,
+					})),
+				)
+				.onConflictDoNothing({
+					target: [authentications.issuer, authentications.subject],
+				})
+				.returning({ userId: authentications.userId });
+			const insertedUserIds = new Set(insertedRows.map(({ userId }) => userId));
+			return rows.filter(({ userId }) => insertedUserIds.has(userId));
+		}, retryOnIdCollision);
+
+		const insertUsers = Effect.fn(function* (
+			created: Array.NonEmptyReadonlyArray<{
+				readonly userId: UserId;
+				readonly displayName: string;
+			}>,
+			now: number,
+		) {
+			const rows = yield* Effect.forEach(
+				created,
+				Effect.fn(function* ({ userId, displayName }) {
+					return {
+						userId,
+						displayName,
+						accountId: AccountId.make(yield* crypto.randomUUIDv4),
+					};
+				}),
+			);
+			yield* db.insert(accounts).values(
+				rows.map(({ accountId, displayName }) => ({
+					id: accountId,
+					displayName,
+					createdAt: now,
+				})),
+			);
+			yield* db
+				.insert(users)
+				.values(
+					rows.map(({ userId, accountId }) => ({ id: userId, accountId })),
+				);
+		}, retryOnIdCollision);
+
+		const insertMissing = Effect.fn(function* (
+			inputs: Array.NonEmptyReadonlyArray<Authentication>,
+			now: number,
+		) {
+			return yield* db.transaction(() =>
+				Effect.gen(function* () {
+					// Check foreign keys at commit, not at insert
+					yield* db.run(sql`PRAGMA defer_foreign_keys = ON`);
+					const created = yield* insertAuthentications(inputs);
+					if (!Array.isReadonlyArrayNonEmpty(created)) {
+						return [];
+					}
+					yield* insertUsers(created, now);
+					return created.map(({ id }) => id);
+				}),
+			);
+		});
 
 		const findOrCreateAuthentication = Effect.fn(
 			"AuthenticationRepository.findOrCreateAuthentication",
 		)(
-			function* (
-				{ issuer, subject, displayName }: Authentication,
-				now: number,
-			) {
+			function* (authentication: Authentication, now: number) {
+				const created = Array.head(yield* insertMissing([authentication], now));
+				if (Option.isSome(created)) {
+					return created.value;
+				}
 				const existing = yield* db
 					.select({ id: authentications.id })
 					.from(authentications)
 					.where(
 						and(
-							eq(authentications.issuer, issuer),
-							eq(authentications.subject, subject),
+							eq(authentications.issuer, authentication.issuer),
+							eq(authentications.subject, authentication.subject),
 						),
 					)
-					.pipe(Effect.map(Array.head));
-				if (Option.isSome(existing)) {
-					return existing.value.id;
-				}
-				const account = yield* db
-					.insert(accounts)
-					.values({ displayName, createdAt: now })
-					.returning({ id: accounts.id })
-					.pipe(retryOnIdCollision, Effect.head);
-				const user = yield* db
-					.insert(users)
-					.values({ accountId: account.id })
-					.returning({ id: users.id })
-					.pipe(retryOnIdCollision, Effect.head);
-				const authentication = yield* db
-					.insert(authentications)
-					.values({ userId: user.id, issuer, subject })
-					.returning({ id: authentications.id })
-					.pipe(retryOnIdCollision, Effect.head);
-				return authentication.id;
+					.pipe(Effect.head);
+				return existing.id;
 			},
 			Effect.catchTag(
-				["EffectDrizzleQueryError", "NoSuchElementError"],
+				[
+					"EffectDrizzleQueryError",
+					"SqlError",
+					"PlatformError",
+					"NoSuchElementError",
+				],
 				(cause) => BackendError.make({ cause }),
 			),
 		);

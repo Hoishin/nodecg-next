@@ -1,4 +1,4 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
@@ -239,7 +239,12 @@ const webHandler = Effect.fn(function* (
 				),
 			),
 			Layer.provide(
-				Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
+				Layer.mergeAll(
+					NodeFileSystem.layer,
+					NodePath.layer,
+					NodeCrypto.layer,
+					Reactivity.layer,
+				),
 			),
 			Layer.provide(environment),
 			Layer.provide(HttpServer.layerServices),

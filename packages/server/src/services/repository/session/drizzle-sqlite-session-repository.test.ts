@@ -1,4 +1,4 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
@@ -25,7 +25,12 @@ const test = testLayer(
 			),
 		),
 		Layer.provide(
-			Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
+			Layer.mergeAll(
+				NodeFileSystem.layer,
+				NodePath.layer,
+				NodeCrypto.layer,
+				Reactivity.layer,
+			),
 		),
 	),
 );

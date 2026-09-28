@@ -1,4 +1,4 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { ConfigProvider, HashMap, Layer } from "effect";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 import { Reactivity } from "effect/unstable/reactivity";
@@ -75,7 +75,12 @@ const handler = () => {
 				),
 			),
 			Layer.provide(
-				Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
+				Layer.mergeAll(
+					NodeFileSystem.layer,
+					NodePath.layer,
+					NodeCrypto.layer,
+					Reactivity.layer,
+				),
 			),
 			Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
 			Layer.provide(HttpServer.layerServices),
