@@ -7,7 +7,7 @@ import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
-import { BackendError } from "../repository-errors.ts";
+import { BackendError, KeyTaken } from "../repository-errors.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "./drizzle-sqlite-login-attempt-repository.ts";
 import { LoginAttemptRepositoryService } from "./login-attempt-repository.ts";
 
@@ -68,6 +68,21 @@ describe("LoginAttemptRepository", () => {
 			const repository = yield* LoginAttemptRepositoryService;
 			const withKey = { ...loginAttempt, key: "other" };
 			yield* repository.create("k", withKey, 1000);
+			expect(yield* repository.consume("k", 0)).toStrictEqual(
+				Option.some(loginAttempt),
+			);
+		}),
+	);
+
+	test(
+		"fails with KeyTaken and keeps the stored login attempt when the key is taken",
+		Effect.gen(function* () {
+			const repository = yield* LoginAttemptRepositoryService;
+			yield* repository.create("k", loginAttempt, 1000);
+			const error = yield* repository
+				.create("k", { provider: "other", state: "s" }, 2000)
+				.pipe(Effect.flip);
+			expect(error).toStrictEqual(KeyTaken.make());
 			expect(yield* repository.consume("k", 0)).toStrictEqual(
 				Option.some(loginAttempt),
 			);

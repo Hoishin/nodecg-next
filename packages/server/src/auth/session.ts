@@ -2,14 +2,19 @@ import { createHash, randomBytes } from "node:crypto";
 
 import {
 	type Authentication,
+	type AuthenticationId,
 	sessionCookieSecurity,
 	UserSessionId,
 } from "@nodecg-next/internal";
-import { Clock, Duration, Effect, Option } from "effect";
+import { Clock, Duration, Effect, Option, Schema } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 
 import { config } from "../server-config.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
+import {
+	BackendError,
+	KeyTaken,
+} from "../services/repository/repository-errors.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { TransactionService } from "../services/transaction/transaction.ts";
 
@@ -32,29 +37,39 @@ export const setSessionCookie = (
 		maxAge: options.maxAge,
 	});
 
+const insertSession = Effect.fn("insertSession")(
+	function* (authenticationId: AuthenticationId, expiresAt: number) {
+		const sessions = yield* SessionRepositoryService;
+		const token = randomBytes(32).toString("base64url");
+		yield* sessions.create(
+			hashSessionToken(token),
+			authenticationId,
+			expiresAt,
+		);
+		return token;
+	},
+	Effect.retry({ times: 2, while: Schema.is(KeyTaken) }),
+	Effect.catchTag("KeyTaken", (cause) => BackendError.make({ cause })),
+);
+
 export const createSession = Effect.fn("createSession")(function* (
 	authentication: Authentication,
 ) {
 	const authentications = yield* AuthenticationRepositoryService;
-	const sessions = yield* SessionRepositoryService;
 	const tx = yield* TransactionService;
 	const ttl = yield* config.sessionTtl;
 	const now = yield* Clock.currentTimeMillis;
 
-	const token = randomBytes(32).toString("base64url");
-	const id = hashSessionToken(token);
-	yield* tx.wrap(
+	return yield* tx.wrap(
 		Effect.gen(function* () {
 			const authenticationId =
 				yield* authentications.findOrCreateAuthentication(authentication, now);
-			yield* sessions.create(
-				id,
+			return yield* insertSession(
 				authenticationId,
 				now + Duration.toMillis(ttl),
 			);
 		}),
 	);
-	return token;
 });
 
 export const resolveSession = Effect.fn("resolveSession")(function* (

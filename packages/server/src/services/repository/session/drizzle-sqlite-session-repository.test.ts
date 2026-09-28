@@ -9,7 +9,7 @@ import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/driz
 import { sessions } from "../../database/drizzle-sqlite/tables.ts";
 import { AuthenticationRepositoryService } from "../authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../authentication/drizzle-sqlite-authentication-repository.ts";
-import { BackendError } from "../repository-errors.ts";
+import { BackendError, KeyTaken } from "../repository-errors.ts";
 import { DrizzleSqliteSessionRepository } from "./drizzle-sqlite-session-repository.ts";
 import { SessionRepositoryService } from "./session-repository.ts";
 
@@ -55,6 +55,22 @@ describe("create", () => {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
 			yield* repository.create(first, authentication, 1000);
+			expect(yield* storedSessions).toStrictEqual([
+				{ id: first, authenticationId: authentication, expiresAt: 1000 },
+			]);
+		}),
+	);
+
+	test(
+		"fails with KeyTaken and keeps the stored session when the id is taken",
+		Effect.gen(function* () {
+			const repository = yield* SessionRepositoryService;
+			const authentication = yield* logIn;
+			yield* repository.create(first, authentication, 1000);
+			const error = yield* repository
+				.create(first, authentication, 2000)
+				.pipe(Effect.flip);
+			expect(error).toStrictEqual(KeyTaken.make());
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: first, authenticationId: authentication, expiresAt: 1000 },
 			]);

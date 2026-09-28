@@ -4,7 +4,7 @@ import { Array, Effect, Layer, Option } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { loginAttempts } from "../../database/drizzle-sqlite/tables.ts";
-import { BackendError } from "../repository-errors.ts";
+import { BackendError, KeyTaken } from "../repository-errors.ts";
 import { LoginAttemptRepositoryService } from "./login-attempt-repository.ts";
 
 export const DrizzleSqliteLoginAttemptRepository = Layer.effect(
@@ -18,15 +18,22 @@ export const DrizzleSqliteLoginAttemptRepository = Layer.effect(
 				{ provider, state, codeVerifier, nonce, returnTo }: LoginAttempt,
 				expiresAt: number,
 			) {
-				yield* db.insert(loginAttempts).values({
-					key,
-					provider,
-					state,
-					codeVerifier,
-					nonce,
-					returnTo,
-					expiresAt,
-				});
+				const inserted = yield* db
+					.insert(loginAttempts)
+					.values({
+						key,
+						provider,
+						state,
+						codeVerifier,
+						nonce,
+						returnTo,
+						expiresAt,
+					})
+					.onConflictDoNothing({ target: loginAttempts.key })
+					.returning({ key: loginAttempts.key });
+				if (inserted.length === 0) {
+					return yield* KeyTaken.make();
+				}
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),

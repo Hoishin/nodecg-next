@@ -1,14 +1,14 @@
 import type { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
 import { Context, type Effect } from "effect";
 
-import type { BackendError } from "../repository-errors.ts";
+import type { BackendError, KeyTaken } from "../repository-errors.ts";
 
 export interface SessionRepository {
 	readonly create: (
 		id: UserSessionId,
 		authenticationId: AuthenticationId,
 		expiresAt: number,
-	) => Effect.Effect<void, BackendError>;
+	) => Effect.Effect<void, KeyTaken | BackendError>;
 
 	readonly refreshTTL: (
 		id: UserSessionId,

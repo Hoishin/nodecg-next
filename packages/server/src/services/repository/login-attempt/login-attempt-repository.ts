@@ -1,14 +1,14 @@
 import type { LoginAttempt } from "@nodecg-next/internal";
 import { Context, type Effect, type Option } from "effect";
 
-import type { BackendError } from "../repository-errors.ts";
+import type { BackendError, KeyTaken } from "../repository-errors.ts";
 
 export interface LoginAttemptRepository {
 	readonly create: (
 		key: string,
 		loginAttempt: LoginAttempt,
 		expiresAt: number,
-	) => Effect.Effect<void, BackendError>;
+	) => Effect.Effect<void, KeyTaken | BackendError>;
 
 	readonly consume: (
 		key: string,

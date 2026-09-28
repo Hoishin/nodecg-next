@@ -4,7 +4,7 @@ import { Effect, Layer } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { sessions } from "../../database/drizzle-sqlite/tables.ts";
-import { BackendError } from "../repository-errors.ts";
+import { BackendError, KeyTaken } from "../repository-errors.ts";
 import { SessionRepositoryService } from "./session-repository.ts";
 
 export const DrizzleSqliteSessionRepository = Layer.effect(
@@ -18,7 +18,14 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 				authenticationId: AuthenticationId,
 				expiresAt: number,
 			) {
-				yield* db.insert(sessions).values({ id, authenticationId, expiresAt });
+				const inserted = yield* db
+					.insert(sessions)
+					.values({ id, authenticationId, expiresAt })
+					.onConflictDoNothing({ target: sessions.id })
+					.returning({ id: sessions.id });
+				if (inserted.length === 0) {
+					return yield* KeyTaken.make();
+				}
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),

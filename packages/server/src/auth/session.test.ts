@@ -10,7 +10,10 @@ import {
 	type AuthenticationRepository,
 	AuthenticationRepositoryService,
 } from "../services/repository/authentication/authentication-repository.ts";
-import { BackendError } from "../services/repository/repository-errors.ts";
+import {
+	BackendError,
+	KeyTaken,
+} from "../services/repository/repository-errors.ts";
 import {
 	type SessionRepository,
 	SessionRepositoryService,
@@ -80,6 +83,30 @@ describe("createSession", () => {
 				aliceAuthId,
 				3_660_000,
 			);
+		}),
+	);
+
+	test(
+		"stores the session under a fresh token when the drawn one is taken",
+		Effect.gen(function* () {
+			create.mockReturnValueOnce(Effect.fail(KeyTaken.make()));
+			const token = yield* createSession(alice);
+			const [taken, stored] = create.mock.calls;
+			expect(create).toHaveBeenCalledTimes(2);
+			expect(stored?.[0]).toBe(hashSessionToken(token));
+			expect(taken?.[0]).not.toBe(hashSessionToken(token));
+		}),
+	);
+
+	test(
+		"fails after two retries that each drew a taken token",
+		Effect.gen(function* () {
+			create.mockReturnValue(Effect.fail(KeyTaken.make()));
+			const error = yield* createSession(alice).pipe(Effect.flip);
+			expect(error).toStrictEqual(
+				BackendError.make({ cause: KeyTaken.make() }),
+			);
+			expect(create).toHaveBeenCalledTimes(3);
 		}),
 	);
 

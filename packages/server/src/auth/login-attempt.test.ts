@@ -8,6 +8,10 @@ import {
 	type LoginAttemptRepository,
 	LoginAttemptRepositoryService,
 } from "../services/repository/login-attempt/login-attempt-repository.ts";
+import {
+	BackendError,
+	KeyTaken,
+} from "../services/repository/repository-errors.ts";
 import { consumeLoginAttempt, createLoginAttempt } from "./login-attempt.ts";
 
 const create = vi.fn<LoginAttemptRepository["create"]>(() => Effect.void);
@@ -50,6 +54,30 @@ describe("createLoginAttempt", () => {
 			yield* TestClock.adjust("1 minute");
 			const key = yield* createLoginAttempt(loginAttempt);
 			expect(create).toHaveBeenCalledWith(key, loginAttempt, 360_000);
+		}),
+	);
+
+	test(
+		"stores the login attempt under a fresh key when the drawn key is taken",
+		Effect.gen(function* () {
+			create.mockReturnValueOnce(Effect.fail(KeyTaken.make()));
+			const key = yield* createLoginAttempt(loginAttempt);
+			const [taken, stored] = create.mock.calls;
+			expect(create).toHaveBeenCalledTimes(2);
+			expect(stored?.[0]).toBe(key);
+			expect(taken?.[0]).not.toBe(key);
+		}),
+	);
+
+	test(
+		"fails after two retries that each drew a taken key",
+		Effect.gen(function* () {
+			create.mockReturnValue(Effect.fail(KeyTaken.make()));
+			const error = yield* createLoginAttempt(loginAttempt).pipe(Effect.flip);
+			expect(error).toStrictEqual(
+				BackendError.make({ cause: KeyTaken.make() }),
+			);
+			expect(create).toHaveBeenCalledTimes(3);
 		}),
 	);
 
