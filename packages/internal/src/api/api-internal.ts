@@ -226,6 +226,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 		HttpApiEndpoint.post("grant", "/roles/grant", {
 			payload: RoleAssignmentSchema,
 			success: RoleAssignmentResultSchema,
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(

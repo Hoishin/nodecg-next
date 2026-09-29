@@ -42,6 +42,7 @@ import {
 	consumeLoginAttempt,
 	createLoginAttempt,
 } from "../../auth/login-attempt.ts";
+import { grantGlobalRole, grantRole } from "../../auth/roles.ts";
 import {
 	cookieOptions,
 	createSession,
@@ -52,14 +53,8 @@ import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
 import type { BackendError } from "../../services/repository/repository-errors.ts";
-import {
-	type RoleStore,
-	RoleStoreService,
-} from "../../services/role-store/role-store.ts";
-import {
-	type ServiceAccountStore,
-	ServiceAccountStoreService,
-} from "../../services/service-account-store/service-account-store.ts";
+import { RoleStoreService } from "../../services/role-store/role-store.ts";
+import { ServiceAccountStoreService } from "../../services/service-account-store/service-account-store.ts";
 import { RootApi } from "../root-api.ts";
 import { UrlPath } from "../url-path.ts";
 import {
@@ -111,6 +106,18 @@ const tokenEquals = (
 const CLAIM_ATTEMPT_LIMIT = 5;
 const CLAIM_ATTEMPT_WINDOW_MILLIS = 60_000;
 
+const reportBackendFailure = <A, E, R>(
+	effect: Effect.Effect<A, E | BackendError | Config.ConfigError, R>,
+) =>
+	effect.pipe(
+		Effect.tapDefect((defect) => Effect.logError("Backend failed", defect)),
+		Effect.catchTag(["BackendError", "ConfigError"], (error) =>
+			Effect.logError("Backend failed", error).pipe(
+				Effect.andThen(HttpApiError.InternalServerError.make()),
+			),
+		),
+	);
+
 const AuthenticationGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"Authentication",
@@ -136,18 +143,6 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						),
 					);
 			const clearLoginAttemptCookie = setLoginAttemptCookie("", 0);
-			const reportLoginAttemptFailure = <A, R>(
-				effect: Effect.Effect<A, BackendError | Config.ConfigError, R>,
-			) =>
-				effect.pipe(
-					Effect.tapCause((cause) =>
-						Effect.logError("Login attempt failed", cause),
-					),
-					Effect.catchTag(
-						["BackendError", "ConfigError"],
-						() => new HttpApiError.InternalServerError(),
-					),
-				);
 
 			const registry = yield* AuthProviderRegistry;
 			const roleStore = yield* RoleStoreService;
@@ -206,7 +201,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							codeVerifier: authorized.codeVerifier,
 							nonce: authorized.nonce,
 							returnTo: query.returnTo,
-						}).pipe(reportLoginAttemptFailure);
+						}).pipe(reportBackendFailure);
 						return yield* HttpServerResponse.redirect(redirect.success.url, {
 							status: 302,
 						}).pipe(setLoginAttemptCookie(key, loginAttemptTtl));
@@ -231,9 +226,10 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								{ status: 400 },
 							).pipe(clearLoginAttemptCookie);
 						}
-						const loginAttempt = yield* consumeLoginAttempt(
-							loginAttemptKey,
-						).pipe(reportLoginAttemptFailure);
+						const loginAttempt =
+							yield* consumeLoginAttempt(loginAttemptKey).pipe(
+								reportBackendFailure,
+							);
 						if (Option.isNone(loginAttempt)) {
 							return yield* HttpServerResponse.text(
 								"Invalid or missing login state",
@@ -290,7 +286,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						const token = yield* createSession(
 							authenticated.success.authentication,
 							authenticated.success.displayName,
-						).pipe(reportLoginAttemptFailure);
+						).pipe(reportBackendFailure);
 						yield* setSessionCookie(token, {
 							path: baseUrl.pathname,
 							maxAge: sessionTtl,
@@ -360,21 +356,37 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 
 const mutateAdminRole = (
 	{ target, role }: AdminRoleAssignment,
-	userOp: RoleStore["grantGlobalRole"] | RoleStore["revokeGlobalRole"],
-	serviceAccountOp:
-		| ServiceAccountStore["grantGlobalRole"]
-		| ServiceAccountStore["revokeGlobalRole"],
+	action: "grant" | "revoke",
 ) =>
 	Match.value(target).pipe(
 		Match.tag("user", ({ authentication }) =>
 			Effect.gen(function* () {
-				const roles = yield* userOp(authentication, role);
+				const roleStore = yield* RoleStoreService;
+				const roles = yield* Match.value(action).pipe(
+					Match.when("grant", () => grantGlobalRole(authentication, role)),
+					Match.when("revoke", () =>
+						roleStore.revokeGlobalRole(authentication, role),
+					),
+					Match.exhaustive,
+				);
 				return { roles };
-			}),
+			}).pipe(
+				Effect.catchTag("UnknownAuthentication", () =>
+					HttpApiError.NotFound.make(),
+				),
+				reportBackendFailure,
+			),
 		),
 		Match.tag("serviceAccount", ({ id }) =>
 			Effect.gen(function* () {
-				const roles = yield* serviceAccountOp(id, role);
+				const serviceAccounts = yield* ServiceAccountStoreService;
+				const roles = yield* Match.value(action).pipe(
+					Match.when("grant", () => serviceAccounts.grantGlobalRole(id, role)),
+					Match.when("revoke", () =>
+						serviceAccounts.revokeGlobalRole(id, role),
+					),
+					Match.exhaustive,
+				);
 				if (Option.isNone(roles)) {
 					return yield* new HttpApiError.NotFound();
 				}
@@ -388,25 +400,11 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"AdminRoles",
 	(handlers) =>
-		Effect.gen(function* () {
-			const roleStore = yield* RoleStoreService;
-			const serviceAccounts = yield* ServiceAccountStoreService;
-			return handlers
-				.handle("grantAdmin", ({ payload }) =>
-					mutateAdminRole(
-						payload,
-						roleStore.grantGlobalRole,
-						serviceAccounts.grantGlobalRole,
-					),
-				)
-				.handle("revokeAdmin", ({ payload }) =>
-					mutateAdminRole(
-						payload,
-						roleStore.revokeGlobalRole,
-						serviceAccounts.revokeGlobalRole,
-					),
-				);
-		}),
+		handlers
+			.handle("grantAdmin", ({ payload }) => mutateAdminRole(payload, "grant"))
+			.handle("revokeAdmin", ({ payload }) =>
+				mutateAdminRole(payload, "revoke"),
+			),
 );
 
 const assignmentKey = (entry: RoleAssignmentsDocument["assignments"][number]) =>
@@ -492,9 +490,14 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 						return yield* new HttpApiError.Forbidden();
 					}
-					const roles = yield* roleStore.grantRole(authentication, role);
+					const roles = yield* grantRole(authentication, role);
 					return { roles };
-				}),
+				}).pipe(
+					Effect.catchTag("UnknownAuthentication", () =>
+						HttpApiError.NotFound.make(),
+					),
+					reportBackendFailure,
+				),
 			)
 			.handle("revoke", ({ payload: { authentication, role } }) =>
 				Effect.gen(function* () {

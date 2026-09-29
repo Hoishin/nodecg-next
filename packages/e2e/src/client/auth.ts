@@ -18,6 +18,11 @@ export const makeAuthHelpers = (baseUrl: string) => {
 	const logout = () => client.logout();
 	const me = () => client.me();
 
+	const createAccount = async (subject: string) => {
+		await login(subject);
+		await logout();
+	};
+
 	const grantRole = (subject: string, role: RoleAssignment["role"]) =>
 		client.grantRole({ authentication: { issuer: "dev", subject }, role });
 
@@ -46,6 +51,7 @@ export const makeAuthHelpers = (baseUrl: string) => {
 		login,
 		logout,
 		me,
+		createAccount,
 		grantRole,
 		revokeRole,
 		grantAsAdmin,

@@ -17,11 +17,14 @@ import {
 } from "../../src/shared/manifests.ts";
 
 const base = suiteBase("replicant-sync");
-const { grantAsAdmin, login, logout, revokeAsAdmin } = makeAuthHelpers(base);
+const { createAccount, grantAsAdmin, login, logout, revokeAsAdmin } =
+	makeAuthHelpers(base);
 
 // Assign the roles the field-access tests rely on once, so those tests just log
 // in as the subject. Grant/revoke behavior itself is covered in auth.test.ts.
 beforeAll(async () => {
+	await createAccount("prod");
+	await createAccount("view");
 	await grantAsAdmin("prod", { namespace: "e2e", name: "producer" });
 	await grantAsAdmin("prod", { namespace: "e2e-extend", name: "producer" });
 	await grantAsAdmin("view", { namespace: "e2e", name: "viewer" });
@@ -407,6 +410,7 @@ describe("role-gated field access (HTTP)", () => {
 	});
 
 	test("a role granted in one namespace does not reach another declaring the same role", async () => {
+		await createAccount("single");
 		await grantAsAdmin("single", { namespace: "e2e", name: "producer" });
 		onTestFinished(async () => {
 			await revokeAsAdmin("single", { namespace: "e2e", name: "producer" });

@@ -57,6 +57,8 @@ import {
 	type RegisteredNamespace,
 } from "../field-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import { DrizzleSqliteAccountRepository } from "../services/repository/account/drizzle-sqlite-account-repository.ts";
+import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
@@ -195,13 +197,27 @@ const webHandler = Effect.fn(function* (
 	),
 	options?: {
 		providers?: HashMap.HashMap<string, AuthProvider>;
+		loggedIn?: ReadonlyArray<string>;
 	},
 ) {
 	const repositories = Layer.mergeAll(
 		DrizzleSqliteLoginAttemptRepository,
 		DrizzleSqliteAuthenticationRepository,
 		DrizzleSqliteSessionRepository,
+		DrizzleSqliteAccountRepository,
 		DrizzleSqliteTransaction,
+	);
+	const loggedIn = Layer.effectDiscard(
+		Effect.gen(function* () {
+			const authentications = yield* AuthenticationRepositoryService;
+			yield* Effect.forEach(options?.loggedIn ?? [], (subject) =>
+				authentications.findOrCreateAuthentication(
+					{ issuer: "dev", subject },
+					subject,
+					0,
+				),
+			);
+		}),
 	);
 	const handler = yield* HttpRouter.toHttpEffect(
 		RootApiLive.pipe(
@@ -212,12 +228,15 @@ const webHandler = Effect.fn(function* (
 					UrlPath.layer,
 					FetchHttpClient.layer,
 					repositories,
+					InMemoryRoleStore,
+					InMemoryServiceAccountStore,
 				),
 			),
 			Layer.provide(middleware),
 			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
+			Layer.provide(loggedIn),
 			Layer.provide(repositories),
 			Layer.provide(InMemoryRoleStore),
 			Layer.provide(InMemoryServiceAccountStore),
@@ -709,7 +728,9 @@ describe("roles", () => {
 		"grant returns the updated set, revoke removes it for an admin",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([show], admin);
+				const handler = yield* webHandler([show], admin, undefined, {
+					loggedIn: ["operator"],
+				});
 				const grant = yield* handler(rolesRequest("grant", "producer"));
 				expect(grant.status).toBe(200);
 				expect(yield* json(grant)).toEqual({
@@ -719,6 +740,17 @@ describe("roles", () => {
 				const revoke = yield* handler(rolesRequest("revoke", "producer"));
 				expect(revoke.status).toBe(200);
 				expect(yield* json(revoke)).toEqual({ roles: [] });
+			}),
+	);
+
+	it.effect(
+		"404 when an admin grants to an authentication without an account",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([show], admin);
+				expect((yield* handler(rolesRequest("grant", "producer"))).status).toBe(
+					404,
+				);
 			}),
 	);
 
@@ -813,7 +845,9 @@ describe("admin roles", () => {
 
 	it.effect("superadmin grants and revokes the admin tier for a user", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], superadmin);
+			const handler = yield* webHandler([], superadmin, undefined, {
+				loggedIn: ["operator"],
+			});
 			const grant = yield* handler(adminRoleRequest("grant", user, "admin"));
 			expect(grant.status).toBe(200);
 			expect(yield* json(grant)).toEqual({ roles: ["admin"] });
@@ -826,11 +860,24 @@ describe("admin roles", () => {
 
 	it.effect("superadmin grants superadmin to a user", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([], superadmin);
+			const handler = yield* webHandler([], superadmin, undefined, {
+				loggedIn: ["operator"],
+			});
 			const res = yield* handler(adminRoleRequest("grant", user, "superadmin"));
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toEqual({ roles: ["superadmin"] });
 		}),
+	);
+
+	it.effect(
+		"404 when granting the admin tier to an authentication without an account",
+		() =>
+			Effect.gen(function* () {
+				const handler = yield* webHandler([], superadmin);
+				expect(
+					(yield* handler(adminRoleRequest("grant", user, "admin"))).status,
+				).toBe(404);
+			}),
 	);
 
 	it.effect("400 for a payload role outside the admin tier", () =>
@@ -1102,7 +1149,9 @@ describe("roles export/import", () => {
 
 	it.effect("exports user and service account assignments for an admin", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([show], admin);
+			const handler = yield* webHandler([show], admin, undefined, {
+				loggedIn: ["operator"],
+			});
 			yield* handler(grantRequest("operator", "producer"));
 			const { id } = decodeId(
 				yield* json(yield* handler(createServiceAccountRequest("scoreboard"))),
@@ -1135,7 +1184,9 @@ describe("roles export/import", () => {
 		"merge adds roles to the named identities and leaves others alone",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([show], admin);
+				const handler = yield* webHandler([show], admin, undefined, {
+					loggedIn: ["operator", "other"],
+				});
 				yield* handler(grantRequest("operator", "producer"));
 				yield* handler(grantRequest("other", "judge"));
 				const res = yield* handler(
@@ -1224,7 +1275,9 @@ describe("roles export/import", () => {
 
 	it.effect("excludes the admin tier from the export", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([show], tiered, withClaimToken);
+			const handler = yield* webHandler([show], tiered, withClaimToken, {
+				loggedIn: ["founder"],
+			});
 			expect((yield* handler(withSid(claimRequest(), "founder"))).status).toBe(
 				200,
 			);
@@ -1259,7 +1312,9 @@ describe("roles export/import", () => {
 
 	it.effect("merge keeps an admin tier the document does not mention", () =>
 		Effect.gen(function* () {
-			const handler = yield* webHandler([show], tiered, withClaimToken);
+			const handler = yield* webHandler([show], tiered, withClaimToken, {
+				loggedIn: ["founder"],
+			});
 			yield* handler(withSid(claimRequest(), "founder"));
 			expect(
 				(yield* handler(
@@ -1290,7 +1345,9 @@ describe("roles export/import", () => {
 		"replace keeps the admin tier of an identity absent from the document",
 		() =>
 			Effect.gen(function* () {
-				const handler = yield* webHandler([show], tiered, withClaimToken);
+				const handler = yield* webHandler([show], tiered, withClaimToken, {
+					loggedIn: ["founder"],
+				});
 				yield* handler(withSid(claimRequest(), "founder"));
 				yield* handler(withSid(grantRequest("founder", "producer"), "boss"));
 				expect(

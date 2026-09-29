@@ -7,8 +7,15 @@ import { makeAuthHelpers } from "../../src/client/auth.ts";
 import { suiteBase } from "../../src/client/suite-base.ts";
 
 const base = suiteBase("auth");
-const { grantAsAdmin, grantRole, login, logout, me, revokeAsAdmin } =
-	makeAuthHelpers(base);
+const {
+	createAccount,
+	grantAsAdmin,
+	grantRole,
+	login,
+	logout,
+	me,
+	revokeAsAdmin,
+} = makeAuthHelpers(base);
 
 describe("anonymous identity", () => {
 	test("a request without a session resolves to the anonymous identity", async () => {
@@ -42,6 +49,7 @@ describe("role reporting", () => {
 	});
 
 	test("a held declared role reports for its namespace, capabilities or not", async () => {
+		await createAccount("permsviewer");
 		await grantAsAdmin("permsviewer", { namespace: "e2e", name: "viewer" });
 		await login("permsviewer");
 		onTestFinished(async () => {
@@ -162,6 +170,19 @@ describe("runtime role assignment", () => {
 		await expect(
 			grantRole("operator", { namespace: "e2e", name: "superadmin" }),
 		).rejects.toThrow("Authentication request failed");
+	});
+
+	test("an admin cannot grant a role to someone who never logged in", async () => {
+		await login("root");
+		onTestFinished(async () => {
+			await logout();
+		});
+		await expect(
+			grantRole("stranger", { namespace: "e2e", name: "viewer" }),
+		).rejects.toMatchObject({
+			_tag: "AuthRequestFailed",
+			cause: { _tag: "NotFound" },
+		});
 	});
 
 	test("a caller without the admin tier cannot grant", async () => {
