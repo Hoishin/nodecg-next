@@ -45,6 +45,7 @@ import {
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
 import { type BuiltNamespace } from "../build-fields.ts";
+import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import {
 	DerivationEngineService,
 	UnknownReplicant,
@@ -230,6 +231,7 @@ const webHandler = Effect.fn(function* (
 					repositories,
 					InMemoryRoleStore,
 					InMemoryServiceAccountStore,
+					ConfiguredSuperadmins.layer,
 				),
 			),
 			Layer.provide(middleware),
@@ -239,6 +241,7 @@ const webHandler = Effect.fn(function* (
 			Layer.provide(loggedIn),
 			Layer.provide(repositories),
 			Layer.provide(InMemoryRoleStore),
+			Layer.provide(ConfiguredSuperadmins.layer),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(
@@ -858,6 +861,40 @@ describe("admin roles", () => {
 		}),
 	);
 
+	it.effect("403 when revoking superadmin from a superadmin in config", () =>
+		Effect.gen(function* () {
+			const dev: AuthProvider = {
+				name: "dev",
+				issuer: "dev",
+				authorize: () => Effect.die("unused"),
+				callback: () => Effect.die("unused"),
+			};
+			const handler = yield* webHandler(
+				[],
+				superadmin,
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({ SUPERADMINS: "dev:root" }),
+				),
+				{ providers: HashMap.make(["dev", dev] as const) },
+			);
+			const res = yield* handler(
+				adminRoleRequest(
+					"revoke",
+					{
+						_tag: "user",
+						authentication: { issuer: "dev", subject: "root" },
+					},
+					"superadmin",
+				),
+			);
+			expect(res.status).toBe(403);
+			expect(yield* json(res)).toMatchObject({
+				message:
+					"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
+			});
+		}),
+	);
+
 	it.effect("superadmin grants superadmin to a user", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], superadmin, undefined, {
@@ -970,6 +1007,31 @@ describe("claim superadmin", () => {
 	it.effect("403 for an anonymous caller", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], undefined, withClaimToken);
+			expect(
+				(yield* handler(claimRequest("super-secret-claim-token"))).status,
+			).toBe(403);
+		}),
+	);
+
+	it.effect("403 while a superadmin is configured", () =>
+		Effect.gen(function* () {
+			const dev: AuthProvider = {
+				name: "dev",
+				issuer: "dev",
+				authorize: () => Effect.die("unused"),
+				callback: () => Effect.die("unused"),
+			};
+			const handler = yield* webHandler(
+				[],
+				user,
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({
+						SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+						SUPERADMINS: "dev:root",
+					}),
+				),
+				{ providers: HashMap.make(["dev", dev]) },
+			);
 			expect(
 				(yield* handler(claimRequest("super-secret-claim-token"))).status,
 			).toBe(403);

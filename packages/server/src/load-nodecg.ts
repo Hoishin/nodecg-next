@@ -44,6 +44,7 @@ import {
 	makeUseCross,
 } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
+import { ConfiguredSuperadmins } from "./configured-superadmins.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import {
@@ -69,10 +70,10 @@ import {
 	type ReplicantRepository,
 	ReplicantRepositoryService,
 } from "./services/repository/replicant/replicant-repository.ts";
+import { InMemoryRoleStore } from "./services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "./services/service-account-store/in-memory-service-account-store.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
-import { seededRoleStore } from "./superadmin-seed.ts";
 
 export type StorageOption =
 	| ReplicantRepository
@@ -321,7 +322,8 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				Layer.provide(AdminTierMiddlewareLive),
 				Layer.provide(SuperadminMiddlewareLive),
 				Layer.provide(InMemoryServiceAccountStore),
-				Layer.provide(seededRoleStore),
+				Layer.provide(InMemoryRoleStore),
+				Layer.provide(ConfiguredSuperadmins.layer),
 				Layer.provide(
 					Layer.succeed(
 						AuthProviderRegistry,

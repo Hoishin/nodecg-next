@@ -34,6 +34,11 @@ export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
 	{ message: Schema.String },
 ) {}
 
+export class PermissionDenied extends Schema.TaggedError<PermissionDenied>()(
+	"PermissionDenied",
+	{ message: Schema.String },
+) {}
+
 const RoleAssignmentResultSchema = Schema.Struct({
 	roles: Schema.Array(Role),
 });
@@ -266,14 +271,20 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
 			payload: AdminRoleAssignmentSchema,
 			success: GlobalRoleAssignmentResultSchema,
-			error: HttpApiError.NotFound,
+			error: [
+				HttpApiError.NotFound,
+				PermissionDenied.pipe(HttpApiSchema.status(403)),
+			],
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke", {
 			payload: AdminRoleAssignmentSchema,
 			success: GlobalRoleAssignmentResultSchema,
-			error: HttpApiError.NotFound,
+			error: [
+				HttpApiError.NotFound,
+				PermissionDenied.pipe(HttpApiSchema.status(403)),
+			],
 		}),
 	)
 	.middleware(SuperadminMiddleware);

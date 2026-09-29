@@ -34,11 +34,11 @@ import {
 import { HttpApiBuilder, HttpApiSecurity } from "effect/unstable/httpapi";
 import type { Socket } from "effect/unstable/socket";
 
-import { resolveServiceAccountIdentity } from "../auth/resolve-service-account-identity.ts";
 import {
 	anonymousIdentity,
+	resolveServiceAccountIdentity,
 	resolveSessionIdentity,
-} from "../auth/resolve-session-identity.ts";
+} from "../auth/identity.ts";
 import {
 	type ComputedComputeError,
 	type ComputedNotFound,
@@ -55,7 +55,6 @@ import {
 } from "../field-registry.ts";
 import { config } from "../server-config.ts";
 import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
-import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
 
@@ -314,13 +313,11 @@ export const websocketRoute = HttpRouter.use((router) =>
 		});
 
 		const requireAuth = yield* config.requireAuth;
-		const roleStore = yield* RoleStoreService;
 		const serviceAccounts = yield* ServiceAccountStoreService;
 		const broker = yield* TopicBrokerService;
 		const engine = yield* DerivationEngineService;
 
 		// TODO: keep contexts contexts, pass it to handler if needed
-		const resolveSession = resolveSessionIdentity({ roleStore });
 		const resolveServiceAccount = resolveServiceAccountIdentity({
 			serviceAccounts,
 		});
@@ -340,7 +337,9 @@ export const websocketRoute = HttpRouter.use((router) =>
 				);
 				const value = Redacted.value(credential);
 				const resolved =
-					value.length > 0 ? yield* resolveSession(value) : Option.none();
+					value.length > 0
+						? yield* resolveSessionIdentity(value)
+						: Option.none();
 				if (Option.isNone(resolved) && requireAuth) {
 					return HttpServerResponse.empty({ status: 401 });
 				}

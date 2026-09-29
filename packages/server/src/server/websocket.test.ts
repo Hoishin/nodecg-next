@@ -14,6 +14,7 @@ import {
 	ServiceAccountAuthenticationMiddlewareLive,
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
+import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { FieldRegistryService } from "../field-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
@@ -49,6 +50,7 @@ const handler = () => {
 					repositories,
 					InMemoryRoleStore,
 					InMemoryServiceAccountStore,
+					ConfiguredSuperadmins.layer,
 				),
 			),
 			Layer.provide(UserAuthenticationMiddlewareLive),
@@ -65,6 +67,7 @@ const handler = () => {
 				),
 			),
 			Layer.provide(InMemoryRoleStore),
+			Layer.provide(ConfiguredSuperadmins.layer),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(
 				Layer.succeed(

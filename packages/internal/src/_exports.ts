@@ -10,6 +10,7 @@ export {
 	LoginProviderSchema,
 	ServiceAccountAssignmentSchema,
 	MePayload,
+	PermissionDenied,
 	RoleAssignmentsDocument,
 	RoleImportError,
 	TooManyRequests,

@@ -6,19 +6,20 @@ import {
 	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
-import { Context, Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
+import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { config } from "../server-config.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
-import { resolveServiceAccountIdentity } from "./resolve-service-account-identity.ts";
 import {
 	anonymousIdentity,
+	resolveServiceAccountIdentity,
 	resolveSessionIdentity,
-} from "./resolve-session-identity.ts";
+} from "./identity.ts";
 import { setSessionCookie } from "./session.ts";
 
 export const UserAuthenticationMiddlewareLive = Layer.effect(
@@ -28,15 +29,14 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 		const baseUrl = yield* config.baseUrl;
 		const sessionTtl = yield* config.sessionTtl;
 		const context = yield* Effect.context<
-			AuthenticationRepositoryService | SessionRepositoryService
+			| AuthenticationRepositoryService
+			| SessionRepositoryService
+			| RoleStoreService
+			| ConfiguredSuperadmins
 		>();
-		const repositories = context.pipe(
-			Context.pick(AuthenticationRepositoryService, SessionRepositoryService),
-		);
-		const roleStore = yield* RoleStoreService;
 		const resolve = (token: string) =>
-			resolveSessionIdentity({ roleStore })(token).pipe(
-				Effect.provide(repositories),
+			resolveSessionIdentity(token).pipe(
+				Effect.provide(context),
 				Effect.tapCause((cause) =>
 					Effect.logError("Session lookup failed", cause),
 				),

@@ -6,6 +6,7 @@ import {
 	CurrentIdentity,
 	UserAssignmentSchema,
 	isUndeclarableRole,
+	PermissionDenied,
 	ServiceAccountAssignmentSchema,
 	type RoleAssignmentsDocument,
 	RoleImportError,
@@ -42,7 +43,12 @@ import {
 	consumeLoginAttempt,
 	createLoginAttempt,
 } from "../../auth/login-attempt.ts";
-import { grantGlobalRole, grantRole } from "../../auth/roles.ts";
+import {
+	grantGlobalRole,
+	grantRole,
+	superadminExists,
+	revokeGlobalRole,
+} from "../../auth/roles.ts";
 import {
 	cookieOptions,
 	createSession,
@@ -337,11 +343,10 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						if (Option.isNone(claimToken)) {
 							return yield* new HttpApiError.Forbidden();
 						}
-						const assignments = yield* roleStore.list;
-						const hasSuperadmin = assignments.some(({ globalRoles }) =>
-							globalRoles.includes("superadmin"),
-						);
-						if (hasSuperadmin || !tokenEquals(claimToken.value, token)) {
+						if (
+							(yield* superadminExists()) ||
+							!tokenEquals(claimToken.value, token)
+						) {
 							return yield* new HttpApiError.Forbidden();
 						}
 						const roles = yield* roleStore.grantGlobalRole(
@@ -361,19 +366,21 @@ const mutateAdminRole = (
 	Match.value(target).pipe(
 		Match.tag("user", ({ authentication }) =>
 			Effect.gen(function* () {
-				const roleStore = yield* RoleStoreService;
 				const roles = yield* Match.value(action).pipe(
 					Match.when("grant", () => grantGlobalRole(authentication, role)),
-					Match.when("revoke", () =>
-						roleStore.revokeGlobalRole(authentication, role),
-					),
+					Match.when("revoke", () => revokeGlobalRole(authentication, role)),
 					Match.exhaustive,
 				);
 				return { roles };
 			}).pipe(
-				Effect.catchTag("UnknownAuthentication", () =>
-					HttpApiError.NotFound.make(),
-				),
+				Effect.catchTags({
+					UnknownAuthentication: () => HttpApiError.NotFound.make(),
+					SuperadminInConfig: () =>
+						PermissionDenied.make({
+							message:
+								"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
+						}),
+				}),
 				reportBackendFailure,
 			),
 		),
