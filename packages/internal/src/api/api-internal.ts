@@ -43,10 +43,6 @@ const RoleAssignmentResultSchema = Schema.Struct({
 	roles: Schema.Array(Role),
 });
 
-const GlobalRoleAssignmentResultSchema = Schema.Struct({
-	roles: Schema.Array(GlobalRoleName),
-});
-
 const NamespacePermissionsSchema = Schema.Struct({
 	roles: Schema.Array(RoleNameSchema),
 });
@@ -112,7 +108,7 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 			"/authentication/claim-superadmin",
 			{
 				payload: ClaimSuperadminRequestSchema,
-				success: GlobalRoleAssignmentResultSchema,
+				success: HttpApiSchema.Empty(204),
 				error: [
 					HttpApiError.Forbidden,
 					TooManyRequests.pipe(HttpApiSchema.status(429)),
@@ -230,14 +226,15 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
 		HttpApiEndpoint.post("grant", "/roles/grant", {
 			payload: RoleAssignmentSchema,
-			success: RoleAssignmentResultSchema,
+			success: HttpApiSchema.Empty(204),
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("revoke", "/roles/revoke", {
 			payload: RoleAssignmentSchema,
-			success: RoleAssignmentResultSchema,
+			success: HttpApiSchema.Empty(204),
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
@@ -270,7 +267,7 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 	.add(
 		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
 			payload: AdminRoleAssignmentSchema,
-			success: GlobalRoleAssignmentResultSchema,
+			success: HttpApiSchema.Empty(204),
 			error: [
 				HttpApiError.NotFound,
 				PermissionDenied.pipe(HttpApiSchema.status(403)),
@@ -280,7 +277,7 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 	.add(
 		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke", {
 			payload: AdminRoleAssignmentSchema,
-			success: GlobalRoleAssignmentResultSchema,
+			success: HttpApiSchema.Empty(204),
 			error: [
 				HttpApiError.NotFound,
 				PermissionDenied.pipe(HttpApiSchema.status(403)),

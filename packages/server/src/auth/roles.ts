@@ -7,8 +7,7 @@ import { Array, Effect, Match, Option, Schema } from "effect";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
-import { RoleStoreService } from "../services/role-store/role-store.ts";
-
+import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 export class UnknownAuthentication extends Schema.TaggedError<UnknownAuthentication>()(
 	"UnknownAuthentication",
 	{ issuer: Schema.String, subject: Schema.String },
@@ -16,7 +15,7 @@ export class UnknownAuthentication extends Schema.TaggedError<UnknownAuthenticat
 	override readonly message = `No account has "${this.subject}" of "${this.issuer}"`;
 }
 
-const requireAccount = Effect.fnUntraced(function* (
+const resolveAccountId = Effect.fnUntraced(function* (
 	authentication: Authentication,
 ) {
 	const accounts = yield* AccountRepositoryService;
@@ -27,6 +26,7 @@ const requireAccount = Effect.fnUntraced(function* (
 			subject: authentication.subject,
 		});
 	}
+	return accountId.value;
 });
 
 export class SuperadminInConfig extends Schema.TaggedError<SuperadminInConfig>()(
@@ -42,23 +42,20 @@ const isConfiguredSuperadmin = Effect.fnUntraced(function* (
 	return Array.contains(yield* ConfiguredSuperadmins, authentication);
 });
 
-const overlaySuperadmin = Effect.fnUntraced(function* (
-	authentication: Authentication,
-	globalRoles: ReadonlyArray<GlobalRoleName>,
-) {
-	return (yield* isConfiguredSuperadmin(authentication))
-		? Array.union(globalRoles, ["superadmin"] as const)
-		: globalRoles;
-});
-
 export const getRoles = Effect.fn("getRoles")(function* (
 	authentication: Authentication,
 ) {
-	const roleStore = yield* RoleStoreService;
-	const { roles, globalRoles } = yield* roleStore.get(authentication);
+	const accounts = yield* AccountRepositoryService;
+	const roleRepository = yield* RoleRepositoryService;
+	const accountId = yield* accounts.resolveByAuthentication(authentication);
+	const { roles, globalRoles } = Option.isNone(accountId)
+		? { roles: [], globalRoles: [] }
+		: yield* roleRepository.read(accountId.value);
 	return {
 		roles,
-		globalRoles: yield* overlaySuperadmin(authentication, globalRoles),
+		globalRoles: (yield* isConfiguredSuperadmin(authentication))
+			? Array.union(globalRoles, ["superadmin"] as const)
+			: globalRoles,
 	};
 });
 
@@ -67,37 +64,42 @@ export const superadminExists = Effect.fn("superadminExists")(function* () {
 	if (superadmins.length > 0) {
 		return true;
 	}
-	const roleStore = yield* RoleStoreService;
-	const assignments = yield* roleStore.list;
-	return assignments.some(({ globalRoles }) =>
-		globalRoles.includes("superadmin"),
-	);
+	const roleRepository = yield* RoleRepositoryService;
+	return yield* roleRepository.globalRoleExists("superadmin");
 });
 
 export const grantRole = Effect.fn("grantRole")(function* (
 	authentication: Authentication,
 	role: Role,
 ) {
-	const roleStore = yield* RoleStoreService;
-	yield* requireAccount(authentication);
-	return yield* roleStore.grantRole(authentication, role);
+	const roleRepository = yield* RoleRepositoryService;
+	const accountId = yield* resolveAccountId(authentication);
+	yield* roleRepository.grantRole(accountId, role);
+});
+
+export const revokeRole = Effect.fn("revokeRole")(function* (
+	authentication: Authentication,
+	role: Role,
+) {
+	const roleRepository = yield* RoleRepositoryService;
+	const accountId = yield* resolveAccountId(authentication);
+	yield* roleRepository.revokeRole(accountId, role);
 });
 
 export const grantGlobalRole = Effect.fn("grantGlobalRole")(function* (
 	authentication: Authentication,
 	role: GlobalRoleName,
 ) {
-	const roleStore = yield* RoleStoreService;
-	yield* requireAccount(authentication);
-	const globalRoles = yield* roleStore.grantGlobalRole(authentication, role);
-	return yield* overlaySuperadmin(authentication, globalRoles);
+	const roleRepository = yield* RoleRepositoryService;
+	const accountId = yield* resolveAccountId(authentication);
+	yield* roleRepository.grantGlobalRole(accountId, role);
 });
 
 export const revokeGlobalRole = Effect.fn("revokeGlobalRole")(function* (
 	authentication: Authentication,
 	role: GlobalRoleName,
 ) {
-	const roleStore = yield* RoleStoreService;
+	const roleRepository = yield* RoleRepositoryService;
 	const refused = yield* Match.value(role).pipe(
 		Match.when("superadmin", () => isConfiguredSuperadmin(authentication)),
 		Match.when("admin", () => Effect.succeed(false)),
@@ -109,6 +111,6 @@ export const revokeGlobalRole = Effect.fn("revokeGlobalRole")(function* (
 			subject: authentication.subject,
 		});
 	}
-	const globalRoles = yield* roleStore.revokeGlobalRole(authentication, role);
-	return yield* overlaySuperadmin(authentication, globalRoles);
+	const accountId = yield* resolveAccountId(authentication);
+	yield* roleRepository.revokeGlobalRole(accountId, role);
 });

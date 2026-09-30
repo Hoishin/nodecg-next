@@ -27,12 +27,8 @@ export interface AuthClient {
 	readonly providers: () => Promise<ReadonlyArray<LoginProvider>>;
 	readonly me: () => Promise<MePayload>;
 	readonly logout: () => Promise<void>;
-	readonly grantRole: (
-		assignment: RoleAssignment,
-	) => Promise<ReadonlyArray<Role>>;
-	readonly revokeRole: (
-		assignment: RoleAssignment,
-	) => Promise<ReadonlyArray<Role>>;
+	readonly grantRole: (assignment: RoleAssignment) => Promise<void>;
+	readonly revokeRole: (assignment: RoleAssignment) => Promise<void>;
 	readonly dispose: () => void;
 	readonly [Symbol.dispose]: () => void;
 }
@@ -67,7 +63,7 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	const grantRole = Effect.fn("grantRole")(function* (
 		assignment: RoleAssignment,
 	) {
-		const result = yield* api.Roles.grant({
+		yield* api.Roles.grant({
 			payload: {
 				authentication: assignment.authentication,
 				role: {
@@ -76,13 +72,12 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 				},
 			},
 		}).pipe(Effect.mapError(requestFailed));
-		return result.roles;
 	});
 
 	const revokeRole = Effect.fn("revokeRole")(function* (
 		assignment: RoleAssignment,
 	) {
-		const result = yield* api.Roles.revoke({
+		yield* api.Roles.revoke({
 			payload: {
 				authentication: assignment.authentication,
 				role: {
@@ -91,7 +86,6 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 				},
 			},
 		}).pipe(Effect.mapError(requestFailed));
-		return result.roles;
 	});
 
 	return { providers, me, logout, grantRole, revokeRole };

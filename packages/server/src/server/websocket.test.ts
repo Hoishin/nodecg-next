@@ -22,8 +22,8 @@ import { DrizzleSqliteAccountRepository } from "../services/repository/account/d
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
+import { DrizzleSqliteRoleRepository } from "../services/repository/role/drizzle-sqlite-role-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../services/repository/session/drizzle-sqlite-session-repository.ts";
-import { InMemoryRoleStore } from "../services/role-store/in-memory-role-store.ts";
 import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../services/transaction/drizzle-sqlite-transaction.ts";
@@ -37,6 +37,7 @@ const handler = () => {
 		DrizzleSqliteAuthenticationRepository,
 		DrizzleSqliteSessionRepository,
 		DrizzleSqliteAccountRepository,
+		DrizzleSqliteRoleRepository,
 		DrizzleSqliteTransaction,
 	);
 	const { handler } = HttpRouter.toWebHandler(
@@ -48,7 +49,6 @@ const handler = () => {
 					UrlPath.layer,
 					FetchHttpClient.layer,
 					repositories,
-					InMemoryRoleStore,
 					InMemoryServiceAccountStore,
 					ConfiguredSuperadmins.layer,
 				),
@@ -66,7 +66,6 @@ const handler = () => {
 					Layer.provide(InMemoryReplicantRepository),
 				),
 			),
-			Layer.provide(InMemoryRoleStore),
 			Layer.provide(ConfiguredSuperadmins.layer),
 			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(

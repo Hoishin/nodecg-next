@@ -111,7 +111,6 @@
 					"acquireReleaseDisposable": "message",
 					"allOfMapToForEach": "message",
 					"effectFnOpportunity": "message",
-					"lazyEffect": "message",
 					"leakingRequirements": "message",
 					"newPromise": "message",
 					"raceFirstWithSleepToTimeout": "message",
@@ -125,6 +124,7 @@
 					"unnecessaryTypeofType": "message",
 
 					// Hints
+					"lazyEffect": "suggestion",
 					"missedPipeableOpportunity": "suggestion",
 					"newSchemaClass": "suggestion",
 					"preferSchemaOverJson": "suggestion"

@@ -9,48 +9,52 @@ import {
 	AccountRepositoryService,
 } from "../services/repository/account/account-repository.ts";
 import {
-	type RoleStore,
-	RoleStoreService,
-} from "../services/role-store/role-store.ts";
+	type RoleRepository,
+	RoleRepositoryService,
+} from "../services/repository/role/role-repository.ts";
 import {
 	getRoles,
 	grantGlobalRole,
 	grantRole,
-	superadminExists,
 	revokeGlobalRole,
+	revokeRole,
+	superadminExists,
 	SuperadminInConfig,
 	UnknownAuthentication,
 } from "./roles.ts";
 
 const alice = { issuer: "dev", subject: "alice" };
 const root = { issuer: "dev", subject: "root" };
+const accountId = AccountId.make("some-account");
 const viewer: Role = { namespace: "show", name: RoleName("viewer") };
 
 const resolveByAuthentication = vi.fn<
 	AccountRepository["resolveByAuthentication"]
->(() => Effect.succeedSome(AccountId.make("alice-account")));
-const storeGet = vi.fn<RoleStore["get"]>(() =>
+>(() => Effect.succeedSome(accountId));
+const read = vi.fn<RoleRepository["read"]>(() =>
 	Effect.succeed({ roles: [viewer], globalRoles: ["admin"] }),
 );
-const storeList = vi.fn<() => RoleStore["list"]>(() => Effect.succeed([]));
-const storeGrantRole = vi.fn<RoleStore["grantRole"]>(() =>
-	Effect.succeed([viewer]),
+const globalRoleExists = vi.fn<RoleRepository["globalRoleExists"]>(() =>
+	Effect.succeed(false),
 );
-const storeGrantGlobalRole = vi.fn<RoleStore["grantGlobalRole"]>(() =>
-	Effect.succeed(["admin"]),
+const insertRole = vi.fn<RoleRepository["grantRole"]>(() => Effect.void);
+const deleteRole = vi.fn<RoleRepository["revokeRole"]>(() => Effect.void);
+const insertGlobalRole = vi.fn<RoleRepository["grantGlobalRole"]>(
+	() => Effect.void,
 );
-const storeRevokeGlobalRole = vi.fn<RoleStore["revokeGlobalRole"]>(() =>
-	Effect.succeed([]),
+const deleteGlobalRole = vi.fn<RoleRepository["revokeGlobalRole"]>(
+	() => Effect.void,
 );
 
 afterEach(() => {
 	for (const mock of [
 		resolveByAuthentication,
-		storeGet,
-		storeList,
-		storeGrantRole,
-		storeGrantGlobalRole,
-		storeRevokeGlobalRole,
+		read,
+		globalRoleExists,
+		insertRole,
+		deleteRole,
+		insertGlobalRole,
+		deleteGlobalRole,
 	]) {
 		mock.mockReset();
 	}
@@ -59,15 +63,15 @@ afterEach(() => {
 const test = testLayer(
 	Layer.mergeAll(
 		Layer.succeed(AccountRepositoryService, { resolveByAuthentication }),
-		Layer.succeed(RoleStoreService, {
-			get: storeGet,
-			list: Effect.suspend(storeList),
-			setRoles: vi.fn(),
-			grantRole: storeGrantRole,
-			revokeRole: vi.fn(),
-			setGlobalRoles: vi.fn(),
-			grantGlobalRole: storeGrantGlobalRole,
-			revokeGlobalRole: storeRevokeGlobalRole,
+		Layer.succeed(RoleRepositoryService, {
+			read,
+			listAll: vi.fn(),
+			globalRoleExists,
+			grantRole: insertRole,
+			revokeRole: deleteRole,
+			grantGlobalRole: insertGlobalRole,
+			revokeGlobalRole: deleteGlobalRole,
+			revokeAllRoles: vi.fn(),
 		}),
 		Layer.succeed(ConfiguredSuperadmins, [root]),
 	),
@@ -81,7 +85,7 @@ describe("getRoles", () => {
 				roles: [viewer],
 				globalRoles: ["admin", "superadmin"],
 			});
-			expect(storeGet).toHaveBeenCalledExactlyOnceWith(root);
+			expect(read).toHaveBeenCalledExactlyOnceWith(accountId);
 		}),
 	);
 
@@ -94,55 +98,50 @@ describe("getRoles", () => {
 			});
 		}),
 	);
+
+	test(
+		"reports only the configured superadmin for an authentication without an account",
+		Effect.gen(function* () {
+			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
+			expect(yield* getRoles(root)).toStrictEqual({
+				roles: [],
+				globalRoles: ["superadmin"],
+			});
+			expect(read).not.toHaveBeenCalled();
+		}),
+	);
 });
 
 describe("superadminExists", () => {
 	test(
-		"reports a superadmin in config without reading the store",
+		"reports a superadmin in config without reading the repository",
 		Effect.gen(function* () {
 			expect(yield* superadminExists()).toBe(true);
-			expect(storeList).not.toHaveBeenCalled();
+			expect(globalRoleExists).not.toHaveBeenCalled();
 		}),
 	);
 
 	test(
-		"reports a superadmin granted in the store when none is in config",
+		"asks the repository for a superadmin grant when none is in config",
 		Effect.gen(function* () {
-			storeList.mockReturnValueOnce(
-				Effect.succeed([
-					{ key: alice, roles: [], globalRoles: ["superadmin"] },
-				]),
-			);
+			globalRoleExists.mockReturnValueOnce(Effect.succeed(true));
 			expect(
 				yield* superadminExists().pipe(
 					Effect.provideService(ConfiguredSuperadmins, []),
 				),
 			).toBe(true);
-		}),
-	);
-
-	test(
-		"reports none when neither config nor the store has a superadmin",
-		Effect.gen(function* () {
-			storeList.mockReturnValueOnce(
-				Effect.succeed([{ key: alice, roles: [], globalRoles: ["admin"] }]),
-			);
-			expect(
-				yield* superadminExists().pipe(
-					Effect.provideService(ConfiguredSuperadmins, []),
-				),
-			).toBe(false);
+			expect(globalRoleExists).toHaveBeenCalledExactlyOnceWith("superadmin");
 		}),
 	);
 });
 
 describe("grantRole", () => {
 	test(
-		"grants the role to an authentication with an account",
+		"grants the role to the authentication's account",
 		Effect.gen(function* () {
 			yield* grantRole(alice, viewer);
 			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
-			expect(storeGrantRole).toHaveBeenCalledExactlyOnceWith(alice, viewer);
+			expect(insertRole).toHaveBeenCalledExactlyOnceWith(accountId, viewer);
 		}),
 	);
 
@@ -154,19 +153,42 @@ describe("grantRole", () => {
 			expect(error).toStrictEqual(
 				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
 			);
-			expect(storeGrantRole).not.toHaveBeenCalled();
+			expect(insertRole).not.toHaveBeenCalled();
+		}),
+	);
+});
+
+describe("revokeRole", () => {
+	test(
+		"revokes the role from the authentication's account",
+		Effect.gen(function* () {
+			yield* revokeRole(alice, viewer);
+			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
+			expect(deleteRole).toHaveBeenCalledExactlyOnceWith(accountId, viewer);
+		}),
+	);
+
+	test(
+		"fails with UnknownAuthentication and revokes nothing without an account",
+		Effect.gen(function* () {
+			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
+			const error = yield* revokeRole(alice, viewer).pipe(Effect.flip);
+			expect(error).toStrictEqual(
+				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
+			);
+			expect(deleteRole).not.toHaveBeenCalled();
 		}),
 	);
 });
 
 describe("grantGlobalRole", () => {
 	test(
-		"grants the global role to an authentication with an account",
+		"grants the global role to the authentication's account",
 		Effect.gen(function* () {
 			yield* grantGlobalRole(alice, "admin");
 			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
-			expect(storeGrantGlobalRole).toHaveBeenCalledExactlyOnceWith(
-				alice,
+			expect(insertGlobalRole).toHaveBeenCalledExactlyOnceWith(
+				accountId,
 				"admin",
 			);
 		}),
@@ -180,17 +202,7 @@ describe("grantGlobalRole", () => {
 			expect(error).toStrictEqual(
 				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
 			);
-			expect(storeGrantGlobalRole).not.toHaveBeenCalled();
-		}),
-	);
-
-	test(
-		"reports superadmin for a configured superadmin",
-		Effect.gen(function* () {
-			expect(yield* grantGlobalRole(root, "admin")).toStrictEqual([
-				"admin",
-				"superadmin",
-			]);
+			expect(insertGlobalRole).not.toHaveBeenCalled();
 		}),
 	);
 });
@@ -205,11 +217,9 @@ describe("revokeGlobalRole", () => {
 			expect(error).toStrictEqual(
 				SuperadminInConfig.make({ issuer: "dev", subject: "root" }),
 			);
-			expect(yield* revokeGlobalRole(root, "admin")).toStrictEqual([
-				"superadmin",
-			]);
-			expect(storeRevokeGlobalRole).toHaveBeenCalledExactlyOnceWith(
-				root,
+			yield* revokeGlobalRole(root, "admin");
+			expect(deleteGlobalRole).toHaveBeenCalledExactlyOnceWith(
+				accountId,
 				"admin",
 			);
 		}),
@@ -218,11 +228,23 @@ describe("revokeGlobalRole", () => {
 	test(
 		"revokes superadmin from an authentication not in config",
 		Effect.gen(function* () {
-			expect(yield* revokeGlobalRole(alice, "superadmin")).toStrictEqual([]);
-			expect(storeRevokeGlobalRole).toHaveBeenCalledExactlyOnceWith(
-				alice,
+			yield* revokeGlobalRole(alice, "superadmin");
+			expect(deleteGlobalRole).toHaveBeenCalledExactlyOnceWith(
+				accountId,
 				"superadmin",
 			);
+		}),
+	);
+
+	test(
+		"fails with UnknownAuthentication and revokes nothing without an account",
+		Effect.gen(function* () {
+			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
+			const error = yield* revokeGlobalRole(alice, "admin").pipe(Effect.flip);
+			expect(error).toStrictEqual(
+				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
+			);
+			expect(deleteGlobalRole).not.toHaveBeenCalled();
 		}),
 	);
 });

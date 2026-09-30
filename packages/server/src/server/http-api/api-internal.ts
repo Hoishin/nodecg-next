@@ -8,7 +8,7 @@ import {
 	isUndeclarableRole,
 	PermissionDenied,
 	ServiceAccountAssignmentSchema,
-	type RoleAssignmentsDocument,
+	RoleAssignmentsDocument,
 	RoleImportError,
 	sessionCookieName,
 	TooManyRequests,
@@ -21,7 +21,6 @@ import {
 	type Duration,
 	Effect,
 	HashMap,
-	HashSet,
 	Layer,
 	Match,
 	MutableHashSet,
@@ -48,6 +47,7 @@ import {
 	grantRole,
 	superadminExists,
 	revokeGlobalRole,
+	revokeRole,
 } from "../../auth/roles.ts";
 import {
 	cookieOptions,
@@ -58,9 +58,11 @@ import {
 import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
+import { AccountRepositoryService } from "../../services/repository/account/account-repository.ts";
 import type { BackendError } from "../../services/repository/repository-errors.ts";
-import { RoleStoreService } from "../../services/role-store/role-store.ts";
+import { RoleRepositoryService } from "../../services/repository/role/role-repository.ts";
 import { ServiceAccountStoreService } from "../../services/service-account-store/service-account-store.ts";
+import { TransactionService } from "../../services/transaction/transaction.ts";
 import { RootApi } from "../root-api.ts";
 import { UrlPath } from "../url-path.ts";
 import {
@@ -151,7 +153,6 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 			const clearLoginAttemptCookie = setLoginAttemptCookie("", 0);
 
 			const registry = yield* AuthProviderRegistry;
-			const roleStore = yield* RoleStoreService;
 
 			// superadmin claim resources
 			const claimToken = yield* config.superadminClaimToken;
@@ -349,12 +350,14 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						) {
 							return yield* new HttpApiError.Forbidden();
 						}
-						const roles = yield* roleStore.grantGlobalRole(
-							identity.authentication,
-							"superadmin",
-						);
-						return { roles };
-					}).pipe(claimLock.withPermits(1)),
+						yield* grantGlobalRole(identity.authentication, "superadmin");
+					}).pipe(
+						Effect.catchTag("UnknownAuthentication", () =>
+							HttpApiError.Forbidden.make(),
+						),
+						reportBackendFailure,
+						claimLock.withPermits(1),
+					),
 				);
 		}),
 );
@@ -365,14 +368,10 @@ const mutateAdminRole = (
 ) =>
 	Match.value(target).pipe(
 		Match.tag("user", ({ authentication }) =>
-			Effect.gen(function* () {
-				const roles = yield* Match.value(action).pipe(
-					Match.when("grant", () => grantGlobalRole(authentication, role)),
-					Match.when("revoke", () => revokeGlobalRole(authentication, role)),
-					Match.exhaustive,
-				);
-				return { roles };
-			}).pipe(
+			Match.value(action).pipe(
+				Match.when("grant", () => grantGlobalRole(authentication, role)),
+				Match.when("revoke", () => revokeGlobalRole(authentication, role)),
+				Match.exhaustive,
 				Effect.catchTags({
 					UnknownAuthentication: () => HttpApiError.NotFound.make(),
 					SuperadminInConfig: () =>
@@ -397,7 +396,6 @@ const mutateAdminRole = (
 				if (Option.isNone(roles)) {
 					return yield* new HttpApiError.NotFound();
 				}
-				return { roles: roles.value };
 			}),
 		),
 		Match.exhaustive,
@@ -487,7 +485,6 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 
 const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	Effect.gen(function* () {
-		const roleStore = yield* RoleStoreService;
 		const serviceAccounts = yield* ServiceAccountStoreService;
 
 		return handlers
@@ -497,8 +494,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 						return yield* new HttpApiError.Forbidden();
 					}
-					const roles = yield* grantRole(authentication, role);
-					return { roles };
+					yield* grantRole(authentication, role);
 				}).pipe(
 					Effect.catchTag("UnknownAuthentication", () =>
 						HttpApiError.NotFound.make(),
@@ -507,22 +503,25 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 				),
 			)
 			.handle("revoke", ({ payload: { authentication, role } }) =>
-				Effect.gen(function* () {
-					const roles = yield* roleStore.revokeRole(authentication, role);
-					return { roles };
-				}),
+				revokeRole(authentication, role).pipe(
+					Effect.catchTag("UnknownAuthentication", () =>
+						HttpApiError.NotFound.make(),
+					),
+					reportBackendFailure,
+				),
 			)
 			.handle("export", () =>
 				Effect.gen(function* () {
-					const users = yield* roleStore.list;
+					const roleRepository = yield* RoleRepositoryService;
+					const users = yield* roleRepository.listAll();
 					const serviceAccountList = yield* serviceAccounts.list;
-					return {
+					return RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
 							...users
-								.map(({ key, roles, globalRoles }) =>
+								.map(({ authentication, roles, globalRoles }) =>
 									UserAssignmentSchema.make({
-										authentication: key,
+										authentication,
 										roles,
 										globalRoles: Array.difference(globalRoles, ADMIN_TIER),
 									}),
@@ -547,11 +546,10 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 										roles.length > 0 || globalRoles.length > 0,
 								),
 						],
-					};
-				}),
+					});
+				}).pipe(reportBackendFailure),
 			)
 			.handle("import", ({ payload: { mode, document } }) =>
-				// TODO: role store needs to support abstracted transaction interface (platform agnostic)
 				Effect.gen(function* () {
 					const seen = MutableHashSet.empty<ReturnType<typeof assignmentKey>>();
 					for (const entry of document.assignments) {
@@ -597,44 +595,36 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 						}
 					}
 
-					// Admin roles are outside of import and export
-					const current = yield* roleStore.list;
-					const userTarget = HashSet.fromIterable(
-						userEntries.map(({ authentication }) => authentication),
+					const accounts = yield* AccountRepositoryService;
+					const userGrants = yield* Effect.forEach(userEntries, (entry) =>
+						Effect.gen(function* () {
+							const accountId = yield* accounts.resolveByAuthentication(
+								entry.authentication,
+							);
+							if (Option.isNone(accountId)) {
+								return yield* RoleImportError.make({
+									message: `unknown authentication for user "${entry.authentication.subject}" of "${entry.authentication.issuer}"`,
+								});
+							}
+							return { accountId: accountId.value, entry };
+						}),
 					);
 
-					// Clear roles of users that are not in the import
-					if (mode === "replace") {
-						for (const assignment of current) {
-							if (!HashSet.has(userTarget, assignment.key)) {
-								yield* roleStore.setRoles(assignment.key, []);
-								yield* roleStore.setGlobalRoles(
-									assignment.key,
-									Array.intersection(assignment.globalRoles, ADMIN_TIER),
-								);
+					// Admin roles are outside of import and export
+					const roleRepository = yield* RoleRepositoryService;
+					const transaction = yield* TransactionService;
+					yield* transaction.wrap(
+						Effect.gen(function* () {
+							if (mode === "replace") {
+								yield* roleRepository.revokeAllRoles();
 							}
-						}
-					}
-
-					// Replace or add roles on top of existing roles
-					for (const entry of userEntries) {
-						const existing = yield* roleStore.get(entry.authentication);
-						yield* roleStore.setRoles(
-							entry.authentication,
-							mode === "merge"
-								? Array.union(existing.roles, entry.roles)
-								: entry.roles,
-						);
-						yield* roleStore.setGlobalRoles(
-							entry.authentication,
-							mode === "merge"
-								? Array.union(existing.globalRoles, entry.globalRoles)
-								: Array.union(
-										entry.globalRoles,
-										Array.intersection(existing.globalRoles, ADMIN_TIER),
-									),
-						);
-					}
+							for (const { accountId, entry } of userGrants) {
+								for (const role of entry.roles) {
+									yield* roleRepository.grantRole(accountId, role);
+								}
+							}
+						}),
+					);
 
 					const serviceAccountTarget = new Map(
 						serviceAccountEntries.map((entry) => [entry.id, entry]),
@@ -667,7 +657,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 									),
 						);
 					}
-				}),
+				}).pipe(reportBackendFailure),
 			);
 	}),
 );

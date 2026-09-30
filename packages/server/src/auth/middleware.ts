@@ -11,9 +11,10 @@ import { HttpApiError } from "effect/unstable/httpapi";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { config } from "../server-config.ts";
+import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
+import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
-import { RoleStoreService } from "../services/role-store/role-store.ts";
 import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
 import {
 	anonymousIdentity,
@@ -31,7 +32,8 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 		const context = yield* Effect.context<
 			| AuthenticationRepositoryService
 			| SessionRepositoryService
-			| RoleStoreService
+			| AccountRepositoryService
+			| RoleRepositoryService
 			| ConfiguredSuperadmins
 		>();
 		const resolve = (token: string) =>

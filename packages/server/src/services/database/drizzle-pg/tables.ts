@@ -1,10 +1,19 @@
 import type {
 	AccountId,
 	AuthenticationId,
+	GlobalRoleName,
+	RoleName,
 	UserId,
 	UserSessionId,
 } from "@nodecg-next/internal";
-import { bigint, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import {
+	bigint,
+	pgTable,
+	primaryKey,
+	text,
+	unique,
+	uuid,
+} from "drizzle-orm/pg-core";
 
 export const loginAttempts = pgTable("login_attempts", {
 	key: text("key").primaryKey(),
@@ -53,3 +62,32 @@ export const sessions = pgTable("sessions", {
 		.references(() => authentications.id, { onDelete: "cascade" }),
 	expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
 });
+
+export const roleGrants = pgTable(
+	"role_grants",
+	{
+		accountId: uuid("account_id")
+			.$type<AccountId>()
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		namespace: text("namespace").notNull(),
+		roleName: text("role_name").$type<RoleName>().notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [table.accountId, table.namespace, table.roleName],
+		}),
+	],
+);
+
+export const globalRoleGrants = pgTable(
+	"global_role_grants",
+	{
+		accountId: uuid("account_id")
+			.$type<AccountId>()
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		roleName: text("role_name").$type<GlobalRoleName>().notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.accountId, table.roleName] })],
+);

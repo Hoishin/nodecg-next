@@ -5,6 +5,7 @@ import { DrizzleSqliteTransaction } from "../transaction/drizzle-sqlite-transact
 import { DrizzleSqliteAccountRepository } from "./account/drizzle-sqlite-account-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "./authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "./login-attempt/drizzle-sqlite-login-attempt-repository.ts";
+import { DrizzleSqliteRoleRepository } from "./role/drizzle-sqlite-role-repository.ts";
 import { DrizzleSqliteSessionRepository } from "./session/drizzle-sqlite-session-repository.ts";
 
 export const DrizzleSqliteRepositories = Layer.mergeAll(
@@ -12,5 +13,6 @@ export const DrizzleSqliteRepositories = Layer.mergeAll(
 	DrizzleSqliteAuthenticationRepository,
 	DrizzleSqliteSessionRepository,
 	DrizzleSqliteAccountRepository,
+	DrizzleSqliteRoleRepository,
 	DrizzleSqliteTransaction,
 ).pipe(Layer.provide(DrizzleSqliteDatabaseService.layer));

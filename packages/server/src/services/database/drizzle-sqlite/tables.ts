@@ -3,10 +3,18 @@ import { randomUUID } from "node:crypto";
 import {
 	AccountId,
 	AuthenticationId,
+	type GlobalRoleName,
+	type RoleName,
 	UserId,
 	type UserSessionId,
 } from "@nodecg-next/internal";
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import {
+	integer,
+	primaryKey,
+	sqliteTable,
+	text,
+	unique,
+} from "drizzle-orm/sqlite-core";
 
 export const loginAttempts = sqliteTable("login_attempts", {
 	key: text("key").primaryKey(),
@@ -64,3 +72,32 @@ export const sessions = sqliteTable("sessions", {
 		.references(() => authentications.id, { onDelete: "cascade" }),
 	expiresAt: integer("expires_at").notNull(),
 });
+
+export const roleGrants = sqliteTable(
+	"role_grants",
+	{
+		accountId: text("account_id")
+			.$type<AccountId>()
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		namespace: text("namespace").notNull(),
+		roleName: text("role_name").$type<RoleName>().notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [table.accountId, table.namespace, table.roleName],
+		}),
+	],
+);
+
+export const globalRoleGrants = sqliteTable(
+	"global_role_grants",
+	{
+		accountId: text("account_id")
+			.$type<AccountId>()
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		roleName: text("role_name").$type<GlobalRoleName>().notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.accountId, table.roleName] })],
+);
