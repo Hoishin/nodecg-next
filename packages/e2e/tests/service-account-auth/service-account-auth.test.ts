@@ -73,7 +73,7 @@ describe("public /api/v0 bearer authentication", () => {
 	});
 
 	test("an unknown bearer token is rejected", async () => {
-		expect((await readV0("count", "ncg_unknown-token")).status).toBe(401);
+		expect((await readV0("count", "unknown-token")).status).toBe(401);
 	});
 
 	test("a provisioned key reads an unrestricted field", async () => {
@@ -93,10 +93,7 @@ describe("public /api/v0 bearer authentication", () => {
 		expect((await readV0("producerOnly", token)).status).toBe(403);
 
 		const grant = await grantServiceAccountRole(id, "producer");
-		expect(grant.status).toBe(200);
-		expect(await grant.json()).toEqual({
-			roles: [{ namespace: "e2e", name: "producer" }],
-		});
+		expect(grant.status).toBe(204);
 
 		const read = await readV0("producerOnly", token);
 		expect(read.status).toBe(200);

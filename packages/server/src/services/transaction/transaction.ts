@@ -11,4 +11,7 @@ export interface Transaction {
 export class TransactionService extends Context.Service<
 	TransactionService,
 	Transaction
->()("Transaction") {}
+>()("Transaction") {
+	static readonly wrap = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+		TransactionService.use((tx) => tx.wrap(effect));
+}

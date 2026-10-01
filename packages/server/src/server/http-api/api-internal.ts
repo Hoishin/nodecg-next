@@ -2,7 +2,6 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
 	ADMIN_TIER,
-	type AdminRoleAssignment,
 	CurrentIdentity,
 	UserAssignmentSchema,
 	isUndeclarableRole,
@@ -25,6 +24,7 @@ import {
 	Match,
 	MutableHashSet,
 	Option,
+	type PlatformError,
 	Redacted,
 	Ref,
 	Result,
@@ -50,6 +50,11 @@ import {
 	revokeRole,
 } from "../../auth/roles.ts";
 import {
+	createServiceAccount,
+	hashApiKey,
+	newApiKey,
+} from "../../auth/service-accounts.ts";
+import {
 	cookieOptions,
 	createSession,
 	revokeSession,
@@ -61,7 +66,7 @@ import { config } from "../../server-config.ts";
 import { AccountRepositoryService } from "../../services/repository/account/account-repository.ts";
 import type { BackendError } from "../../services/repository/repository-errors.ts";
 import { RoleRepositoryService } from "../../services/repository/role/role-repository.ts";
-import { ServiceAccountStoreService } from "../../services/service-account-store/service-account-store.ts";
+import { ServiceAccountRepositoryService } from "../../services/repository/service-account/service-account-repository.ts";
 import { TransactionService } from "../../services/transaction/transaction.ts";
 import { RootApi } from "../root-api.ts";
 import { UrlPath } from "../url-path.ts";
@@ -115,11 +120,15 @@ const CLAIM_ATTEMPT_LIMIT = 5;
 const CLAIM_ATTEMPT_WINDOW_MILLIS = 60_000;
 
 const reportBackendFailure = <A, E, R>(
-	effect: Effect.Effect<A, E | BackendError | Config.ConfigError, R>,
+	effect: Effect.Effect<
+		A,
+		E | BackendError | Config.ConfigError | PlatformError.PlatformError,
+		R
+	>,
 ) =>
 	effect.pipe(
 		Effect.tapDefect((defect) => Effect.logError("Backend failed", defect)),
-		Effect.catchTag(["BackendError", "ConfigError"], (error) =>
+		Effect.catchTag(["BackendError", "ConfigError", "PlatformError"], (error) =>
 			Effect.logError("Backend failed", error).pipe(
 				Effect.andThen(HttpApiError.InternalServerError.make()),
 			),
@@ -362,53 +371,57 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 		}),
 );
 
-const mutateAdminRole = (
-	{ target, role }: AdminRoleAssignment,
-	action: "grant" | "revoke",
-) =>
-	Match.value(target).pipe(
-		Match.tag("user", ({ authentication }) =>
-			Match.value(action).pipe(
-				Match.when("grant", () => grantGlobalRole(authentication, role)),
-				Match.when("revoke", () => revokeGlobalRole(authentication, role)),
-				Match.exhaustive,
-				Effect.catchTags({
-					UnknownAuthentication: () => HttpApiError.NotFound.make(),
-					SuperadminInConfig: () =>
-						PermissionDenied.make({
-							message:
-								"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
-						}),
-				}),
-				reportBackendFailure,
-			),
-		),
-		Match.tag("serviceAccount", ({ id }) =>
-			Effect.gen(function* () {
-				const serviceAccounts = yield* ServiceAccountStoreService;
-				const roles = yield* Match.value(action).pipe(
-					Match.when("grant", () => serviceAccounts.grantGlobalRole(id, role)),
-					Match.when("revoke", () =>
-						serviceAccounts.revokeGlobalRole(id, role),
-					),
-					Match.exhaustive,
-				);
-				if (Option.isNone(roles)) {
-					return yield* new HttpApiError.NotFound();
-				}
-			}),
-		),
-		Match.exhaustive,
-	);
-
 const AdminRolesGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"AdminRoles",
 	(handlers) =>
 		handlers
-			.handle("grantAdmin", ({ payload }) => mutateAdminRole(payload, "grant"))
-			.handle("revokeAdmin", ({ payload }) =>
-				mutateAdminRole(payload, "revoke"),
+			.handle("grantAdmin", ({ payload: { target, role } }) =>
+				Match.value(target).pipe(
+					Match.tag("user", ({ authentication }) =>
+						grantGlobalRole(authentication, role),
+					),
+					Match.tag("serviceAccount", ({ id }) =>
+						Effect.gen(function* () {
+							const serviceAccounts = yield* ServiceAccountRepositoryService;
+							const found = yield* serviceAccounts.grantGlobalRole(id, role);
+							if (!found) {
+								return yield* HttpApiError.NotFound.make();
+							}
+						}),
+					),
+					Match.exhaustive,
+					Effect.catchTag("UnknownAuthentication", () =>
+						HttpApiError.NotFound.make(),
+					),
+					reportBackendFailure,
+				),
+			)
+			.handle("revokeAdmin", ({ payload: { target, role } }) =>
+				Match.value(target).pipe(
+					Match.tag("user", ({ authentication }) =>
+						revokeGlobalRole(authentication, role),
+					),
+					Match.tag("serviceAccount", ({ id }) =>
+						Effect.gen(function* () {
+							const serviceAccounts = yield* ServiceAccountRepositoryService;
+							const found = yield* serviceAccounts.revokeGlobalRole(id, role);
+							if (!found) {
+								return yield* HttpApiError.NotFound.make();
+							}
+						}),
+					),
+					Match.exhaustive,
+					Effect.catchTags({
+						UnknownAuthentication: () => HttpApiError.NotFound.make(),
+						SuperadminInConfig: () =>
+							PermissionDenied.make({
+								message:
+									"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
+							}),
+					}),
+					reportBackendFailure,
+				),
 			),
 );
 
@@ -426,240 +439,226 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"ServiceAccounts",
 	(handlers) =>
-		Effect.gen(function* () {
-			const serviceAccounts = yield* ServiceAccountStoreService;
-			return handlers
-				.handle("createApiKey", ({ payload: { displayName } }) =>
-					serviceAccounts.createApiKey({ displayName }),
-				)
-				.handle("list", () =>
-					Effect.gen(function* () {
-						const serviceAccountList = yield* serviceAccounts.list;
-						return { serviceAccounts: serviceAccountList };
+		handlers
+			.handle("createApiKey", ({ payload: { displayName } }) =>
+				Effect.gen(function* () {
+					const creator = yield* CurrentIdentity;
+					return yield* createServiceAccount(displayName, creator);
+				}).pipe(
+					Effect.catchTags({
+						NotAUser: () => HttpApiError.Forbidden.make(),
+						ServerCreatorNotImplemented: () =>
+							HttpApiError.NotImplemented.make(),
 					}),
-				)
-				.handle("revoke", ({ params: { id } }) =>
-					Effect.gen(function* () {
-						const revoked = yield* serviceAccounts.revoke(id);
-						if (Option.isNone(revoked)) {
-							return yield* new HttpApiError.NotFound();
-						}
-					}),
-				)
-				.handle("refresh", ({ params: { id } }) =>
-					Effect.gen(function* () {
-						const refreshed = yield* serviceAccounts.refreshApiKey(id);
-						if (Option.isNone(refreshed)) {
-							return yield* new HttpApiError.NotFound();
-						}
-						return refreshed.value;
-					}),
-				)
-				.handle("grantRole", ({ params: { id }, payload: role }) =>
-					Effect.gen(function* () {
-						const { declaredRoles } = yield* FieldRegistryService;
-						if (!declaredRoles.get(role.namespace)?.has(role.name)) {
-							return yield* new HttpApiError.Forbidden();
-						}
-						const roles = yield* serviceAccounts.grantRole(id, role);
-						if (Option.isNone(roles)) {
-							return yield* new HttpApiError.NotFound();
-						}
-						return { roles: roles.value };
-					}),
-				)
-				.handle("revokeRole", ({ params: { id, namespace, name } }) =>
-					Effect.gen(function* () {
-						const roles = yield* serviceAccounts.revokeRole(id, {
-							namespace,
-							name,
-						});
-						if (Option.isNone(roles)) {
-							return yield* new HttpApiError.NotFound();
-						}
-						return { roles: roles.value };
-					}),
-				);
-		}),
-);
-
-const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
-	Effect.gen(function* () {
-		const serviceAccounts = yield* ServiceAccountStoreService;
-
-		return handlers
-			.handle("grant", ({ payload: { authentication, role } }) =>
+					reportBackendFailure,
+				),
+			)
+			.handle("list", () =>
+				Effect.gen(function* () {
+					const serviceAccounts = yield* ServiceAccountRepositoryService;
+					return { serviceAccounts: yield* serviceAccounts.listAll() };
+				}).pipe(reportBackendFailure),
+			)
+			.handle("revoke", ({ params: { id } }) =>
+				Effect.gen(function* () {
+					const serviceAccounts = yield* ServiceAccountRepositoryService;
+					const found = yield* serviceAccounts.delete(id);
+					if (!found) {
+						return yield* HttpApiError.NotFound.make();
+					}
+				}).pipe(reportBackendFailure),
+			)
+			.handle("refresh", ({ params: { id } }) =>
+				Effect.gen(function* () {
+					const serviceAccounts = yield* ServiceAccountRepositoryService;
+					const token = yield* newApiKey();
+					const hash = yield* hashApiKey(Redacted.value(token));
+					const now = yield* Clock.currentTimeMillis;
+					const replaced = yield* serviceAccounts.replaceKey(
+						id,
+						{ hash, label: "" },
+						now,
+					);
+					if (Option.isNone(replaced)) {
+						return yield* HttpApiError.NotFound.make();
+					}
+					return { id, displayName: replaced.value.displayName, token };
+				}).pipe(reportBackendFailure),
+			)
+			.handle("grantRole", ({ params: { id }, payload: role }) =>
 				Effect.gen(function* () {
 					const { declaredRoles } = yield* FieldRegistryService;
 					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 						return yield* new HttpApiError.Forbidden();
 					}
-					yield* grantRole(authentication, role);
-				}).pipe(
-					Effect.catchTag("UnknownAuthentication", () =>
-						HttpApiError.NotFound.make(),
-					),
-					reportBackendFailure,
-				),
+					const serviceAccounts = yield* ServiceAccountRepositoryService;
+					const found = yield* serviceAccounts.grantRole(id, role);
+					if (!found) {
+						return yield* HttpApiError.NotFound.make();
+					}
+				}).pipe(reportBackendFailure),
 			)
-			.handle("revoke", ({ payload: { authentication, role } }) =>
-				revokeRole(authentication, role).pipe(
-					Effect.catchTag("UnknownAuthentication", () =>
-						HttpApiError.NotFound.make(),
-					),
-					reportBackendFailure,
-				),
-			)
-			.handle("export", () =>
+			.handle("revokeRole", ({ params: { id, namespace, name } }) =>
 				Effect.gen(function* () {
-					const roleRepository = yield* RoleRepositoryService;
-					const users = yield* roleRepository.listAll();
-					const serviceAccountList = yield* serviceAccounts.list;
-					return RoleAssignmentsDocument.make({
-						version: 0,
-						assignments: [
-							...users
-								.map(({ authentication, roles, globalRoles }) =>
-									UserAssignmentSchema.make({
-										authentication,
-										roles,
-										globalRoles: Array.difference(globalRoles, ADMIN_TIER),
-									}),
-								)
-								.filter(
-									({ roles, globalRoles }) =>
-										roles.length > 0 || globalRoles.length > 0,
-								),
-							...serviceAccountList
-								.map((client) =>
-									ServiceAccountAssignmentSchema.make({
-										id: client.id,
-										roles: client.roles,
-										globalRoles: Array.difference(
-											client.globalRoles,
-											ADMIN_TIER,
-										),
-									}),
-								)
-								.filter(
-									({ roles, globalRoles }) =>
-										roles.length > 0 || globalRoles.length > 0,
-								),
-						],
+					const serviceAccounts = yield* ServiceAccountRepositoryService;
+					const found = yield* serviceAccounts.revokeRole(id, {
+						namespace,
+						name,
 					});
+					if (!found) {
+						return yield* HttpApiError.NotFound.make();
+					}
 				}).pipe(reportBackendFailure),
-			)
-			.handle("import", ({ payload: { mode, document } }) =>
-				Effect.gen(function* () {
-					const seen = MutableHashSet.empty<ReturnType<typeof assignmentKey>>();
-					for (const entry of document.assignments) {
-						const key = assignmentKey(entry);
-						if (MutableHashSet.has(seen, key)) {
-							return yield* new RoleImportError({
-								message: `duplicate assignment entry for ${JSON.stringify(key)}`,
-							});
-						}
-						MutableHashSet.add(seen, key);
-						for (const role of entry.roles) {
-							if (isUndeclarableRole(role.name)) {
-								return yield* new RoleImportError({
-									message: `role "${role.name}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
-								});
-							}
-						}
-						const [tierRole] = Array.intersection(
-							entry.globalRoles,
-							ADMIN_TIER,
-						);
-						if (typeof tierRole !== "undefined") {
-							return yield* new RoleImportError({
-								message: `role "${tierRole}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
-							});
-						}
-					}
-					const userEntries = document.assignments.filter(
-						(entry) => entry._tag === "user",
-					);
-					const serviceAccountEntries = document.assignments.filter(
-						(entry) => entry._tag === "serviceAccount",
-					);
-					const serviceAccountList = yield* serviceAccounts.list;
-					const serviceAccountIds = new Set(
-						serviceAccountList.map((client) => client.id),
-					);
-					for (const entry of serviceAccountEntries) {
-						if (!serviceAccountIds.has(entry.id)) {
-							return yield* new RoleImportError({
-								message: `unknown service account id "${entry.id}"`,
-							});
-						}
-					}
+			),
+);
 
-					const accounts = yield* AccountRepositoryService;
-					const userGrants = yield* Effect.forEach(userEntries, (entry) =>
+const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
+	handlers
+		.handle("grant", ({ payload: { authentication, role } }) =>
+			Effect.gen(function* () {
+				const { declaredRoles } = yield* FieldRegistryService;
+				if (!declaredRoles.get(role.namespace)?.has(role.name)) {
+					return yield* new HttpApiError.Forbidden();
+				}
+				yield* grantRole(authentication, role);
+			}).pipe(
+				Effect.catchTag("UnknownAuthentication", () =>
+					HttpApiError.NotFound.make(),
+				),
+				reportBackendFailure,
+			),
+		)
+		.handle("revoke", ({ payload: { authentication, role } }) =>
+			revokeRole(authentication, role).pipe(
+				Effect.catchTag("UnknownAuthentication", () =>
+					HttpApiError.NotFound.make(),
+				),
+				reportBackendFailure,
+			),
+		)
+		.handle("export", () =>
+			Effect.gen(function* () {
+				const roleRepository = yield* RoleRepositoryService;
+				const users = yield* roleRepository.listAll();
+				const serviceAccounts = yield* ServiceAccountRepositoryService;
+				const serviceAccountList = yield* serviceAccounts.listAll();
+				return RoleAssignmentsDocument.make({
+					version: 0,
+					assignments: [
+						...users
+							.map(({ authentication, roles, globalRoles }) =>
+								UserAssignmentSchema.make({
+									authentication,
+									roles,
+									globalRoles: Array.difference(globalRoles, ADMIN_TIER),
+								}),
+							)
+							.filter(
+								({ roles, globalRoles }) =>
+									roles.length > 0 || globalRoles.length > 0,
+							),
+						...serviceAccountList
+							.map((client) =>
+								ServiceAccountAssignmentSchema.make({
+									id: client.id,
+									roles: client.roles,
+									globalRoles: Array.difference(client.globalRoles, ADMIN_TIER),
+								}),
+							)
+							.filter(
+								({ roles, globalRoles }) =>
+									roles.length > 0 || globalRoles.length > 0,
+							),
+					],
+				});
+			}).pipe(reportBackendFailure),
+		)
+		.handle("import", ({ payload: { mode, document } }) =>
+			Effect.gen(function* () {
+				const seen = MutableHashSet.empty<ReturnType<typeof assignmentKey>>();
+				for (const entry of document.assignments) {
+					const key = assignmentKey(entry);
+					if (MutableHashSet.has(seen, key)) {
+						return yield* new RoleImportError({
+							message: `duplicate assignment entry for ${JSON.stringify(key)}`,
+						});
+					}
+					MutableHashSet.add(seen, key);
+					for (const role of entry.roles) {
+						if (isUndeclarableRole(role.name)) {
+							return yield* new RoleImportError({
+								message: `role "${role.name}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
+							});
+						}
+					}
+					const [tierRole] = Array.intersection(entry.globalRoles, ADMIN_TIER);
+					if (typeof tierRole !== "undefined") {
+						return yield* new RoleImportError({
+							message: `role "${tierRole}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
+						});
+					}
+				}
+				const userEntries = document.assignments.filter(
+					(entry) => entry._tag === "user",
+				);
+				const serviceAccountEntries = document.assignments.filter(
+					(entry) => entry._tag === "serviceAccount",
+				);
+				const serviceAccounts = yield* ServiceAccountRepositoryService;
+				const found = yield* serviceAccounts.resolveMany(
+					serviceAccountEntries.map(({ id }) => id),
+				);
+				const accountIds = new Map(
+					found.map(({ id, accountId }) => [id, accountId]),
+				);
+				const serviceAccountGrants = yield* Effect.forEach(
+					serviceAccountEntries,
+					(entry) =>
 						Effect.gen(function* () {
-							const accountId = yield* accounts.resolveByAuthentication(
-								entry.authentication,
-							);
-							if (Option.isNone(accountId)) {
+							const accountId = accountIds.get(entry.id);
+							if (typeof accountId === "undefined") {
 								return yield* RoleImportError.make({
-									message: `unknown authentication for user "${entry.authentication.subject}" of "${entry.authentication.issuer}"`,
+									message: `unknown service account id "${entry.id}"`,
 								});
 							}
-							return { accountId: accountId.value, entry };
+							return { accountId, entry };
 						}),
-					);
+				);
 
-					// Admin roles are outside of import and export
-					const roleRepository = yield* RoleRepositoryService;
-					const transaction = yield* TransactionService;
-					yield* transaction.wrap(
-						Effect.gen(function* () {
-							if (mode === "replace") {
-								yield* roleRepository.revokeAllRoles();
-							}
-							for (const { accountId, entry } of userGrants) {
-								for (const role of entry.roles) {
-									yield* roleRepository.grantRole(accountId, role);
-								}
-							}
-						}),
-					);
-
-					const serviceAccountTarget = new Map(
-						serviceAccountEntries.map((entry) => [entry.id, entry]),
-					);
-					for (const client of serviceAccountList) {
-						const entry = serviceAccountTarget.get(client.id);
-						if (typeof entry === "undefined") {
-							if (mode === "replace") {
-								yield* serviceAccounts.setRoles(client.id, []);
-								yield* serviceAccounts.setGlobalRoles(
-									client.id,
-									Array.intersection(client.globalRoles, ADMIN_TIER),
-								);
-							}
-							continue;
+				const accounts = yield* AccountRepositoryService;
+				const userGrants = yield* Effect.forEach(userEntries, (entry) =>
+					Effect.gen(function* () {
+						const accountId = yield* accounts.resolveByAuthentication(
+							entry.authentication,
+						);
+						if (Option.isNone(accountId)) {
+							return yield* RoleImportError.make({
+								message: `unknown authentication for user "${entry.authentication.subject}" of "${entry.authentication.issuer}"`,
+							});
 						}
-						yield* serviceAccounts.setRoles(
-							client.id,
-							mode === "merge"
-								? Array.union(client.roles, entry.roles)
-								: entry.roles,
-						);
-						yield* serviceAccounts.setGlobalRoles(
-							client.id,
-							mode === "merge"
-								? Array.union(client.globalRoles, entry.globalRoles)
-								: Array.union(
-										entry.globalRoles,
-										Array.intersection(client.globalRoles, ADMIN_TIER),
-									),
-						);
-					}
-				}).pipe(reportBackendFailure),
-			);
-	}),
+						return { accountId: accountId.value, entry };
+					}),
+				);
+
+				// Admin roles are outside of import and export
+				const roleRepository = yield* RoleRepositoryService;
+				yield* TransactionService.wrap(
+					Effect.gen(function* () {
+						if (mode === "replace") {
+							yield* roleRepository.revokeAllRoles();
+						}
+						for (const { accountId, entry } of Array.appendAll(
+							userGrants,
+							serviceAccountGrants,
+						)) {
+							for (const role of entry.roles) {
+								yield* roleRepository.grantRole(accountId, role);
+							}
+						}
+					}),
+				);
+			}).pipe(reportBackendFailure),
+		),
 );
 
 export const InternalGroupsLive = Layer.mergeAll(

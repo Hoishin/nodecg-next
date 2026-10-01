@@ -41,6 +41,6 @@ export class ServiceAccountAuthenticationMiddleware extends HttpApiMiddleware.Se
 	ServiceAccountAuthenticationMiddleware,
 	{ provides: CurrentIdentity }
 >()("ServiceAccountAuthentication", {
-	error: HttpApiError.Unauthorized,
+	error: [HttpApiError.Unauthorized, HttpApiError.InternalServerError],
 	security: { bearer: HttpApiSecurity.bearer },
 }) {}

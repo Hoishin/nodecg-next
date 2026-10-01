@@ -1,6 +1,5 @@
 export { RpcCallError } from "./api/shared.ts";
 export {
-	type AdminRoleAssignment,
 	AdminRoleAssignmentSchema,
 	type AdminTarget,
 	AdminTargetSchema,

@@ -23,8 +23,8 @@ import { DrizzleSqliteAuthenticationRepository } from "../services/repository/au
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { DrizzleSqliteRoleRepository } from "../services/repository/role/drizzle-sqlite-role-repository.ts";
+import { DrizzleSqliteServiceAccountRepository } from "../services/repository/service-account/drizzle-sqlite-service-account-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../services/repository/session/drizzle-sqlite-session-repository.ts";
-import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../services/transaction/drizzle-sqlite-transaction.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
@@ -38,6 +38,7 @@ const handler = () => {
 		DrizzleSqliteSessionRepository,
 		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
+		DrizzleSqliteServiceAccountRepository,
 		DrizzleSqliteTransaction,
 	);
 	const { handler } = HttpRouter.toWebHandler(
@@ -49,9 +50,8 @@ const handler = () => {
 					UrlPath.layer,
 					FetchHttpClient.layer,
 					repositories,
-					InMemoryServiceAccountStore,
 					ConfiguredSuperadmins.layer,
-				),
+				).pipe(Layer.provideMerge(NodeCrypto.layer)),
 			),
 			Layer.provide(UserAuthenticationMiddlewareLive),
 			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
@@ -67,7 +67,6 @@ const handler = () => {
 				),
 			),
 			Layer.provide(ConfiguredSuperadmins.layer),
-			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,
@@ -104,7 +103,7 @@ describe("public streaming surface (/ws/v0)", () => {
 	test("401 with an unknown bearer", async () => {
 		const res = await handler()(
 			new Request("http://x/ws/v0", {
-				headers: { authorization: "Bearer ncg_nope" },
+				headers: { authorization: "Bearer nope" },
 			}),
 		);
 		expect(res.status).toBe(401);

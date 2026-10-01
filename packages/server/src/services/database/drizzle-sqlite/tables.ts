@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import {
 	AccountId,
+	type ApiKeyId,
 	AuthenticationId,
 	type GlobalRoleName,
 	type RoleName,
+	type ServiceAccountId,
 	UserId,
 	type UserSessionId,
 } from "@nodecg-next/internal";
@@ -71,6 +73,30 @@ export const sessions = sqliteTable("sessions", {
 		.notNull()
 		.references(() => authentications.id, { onDelete: "cascade" }),
 	expiresAt: integer("expires_at").notNull(),
+});
+
+export const serviceAccounts = sqliteTable("service_accounts", {
+	id: text("id").$type<ServiceAccountId>().primaryKey(),
+	accountId: text("account_id")
+		.$type<AccountId>()
+		.notNull()
+		.unique()
+		.references(() => accounts.id, { onDelete: "cascade" }),
+	createdBy: text("created_by")
+		.$type<AccountId>()
+		.references(() => accounts.id, { onDelete: "set null" }),
+});
+
+export const apiKeys = sqliteTable("api_keys", {
+	id: text("id").$type<ApiKeyId>().primaryKey(),
+	serviceAccountId: text("service_account_id")
+		.$type<ServiceAccountId>()
+		.notNull()
+		.references(() => serviceAccounts.id, { onDelete: "cascade" }),
+	keyHash: text("key_hash").notNull().unique(),
+	label: text("label").notNull(),
+	createdAt: integer("created_at").notNull(),
+	expiresAt: integer("expires_at"),
 });
 
 export const roleGrants = sqliteTable(

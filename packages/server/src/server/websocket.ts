@@ -55,7 +55,6 @@ import {
 } from "../field-registry.ts";
 import { config } from "../server-config.ts";
 import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
-import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
 
 const decodeClientMessage = Schema.decodeEffect(
@@ -313,14 +312,8 @@ export const websocketRoute = HttpRouter.use((router) =>
 		});
 
 		const requireAuth = yield* config.requireAuth;
-		const serviceAccounts = yield* ServiceAccountStoreService;
 		const broker = yield* TopicBrokerService;
 		const engine = yield* DerivationEngineService;
-
-		// TODO: keep contexts contexts, pass it to handler if needed
-		const resolveServiceAccount = resolveServiceAccountIdentity({
-			serviceAccounts,
-		});
 
 		const serveWebsocket = (identity: Identity) =>
 			wsHandler(identity).pipe(
@@ -358,7 +351,7 @@ export const websocketRoute = HttpRouter.use((router) =>
 				const value = Redacted.value(credential);
 				const resolved =
 					value.length > 0
-						? yield* resolveServiceAccount(value)
+						? yield* resolveServiceAccountIdentity(value)
 						: Option.none();
 				if (Option.isNone(resolved)) {
 					return HttpServerResponse.empty({ status: 401 });

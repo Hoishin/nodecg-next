@@ -39,10 +39,6 @@ export class PermissionDenied extends Schema.TaggedError<PermissionDenied>()(
 	{ message: Schema.String },
 ) {}
 
-const RoleAssignmentResultSchema = Schema.Struct({
-	roles: Schema.Array(Role),
-});
-
 const NamespacePermissionsSchema = Schema.Struct({
 	roles: Schema.Array(RoleNameSchema),
 });
@@ -176,6 +172,7 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 		HttpApiEndpoint.post("createApiKey", "/service-accounts", {
 			payload: CreateApiKeyRequestSchema,
 			success: CreateApiKeyResultSchema,
+			error: HttpApiError.NotImplemented,
 		}),
 	)
 	.add(
@@ -185,23 +182,23 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 	)
 	.add(
 		HttpApiEndpoint.delete("revoke", "/service-accounts/:id", {
-			params: { id: Schema.String },
+			params: { id: ServiceAccountId },
 			success: HttpApiSchema.Empty(204),
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("refresh", "/service-accounts/:id/refresh", {
-			params: { id: Schema.String },
+			params: { id: ServiceAccountId },
 			success: CreateApiKeyResultSchema,
 			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
 		HttpApiEndpoint.post("grantRole", "/service-accounts/:id/roles", {
-			params: { id: Schema.String },
+			params: { id: ServiceAccountId },
 			payload: Role,
-			success: RoleAssignmentResultSchema,
+			success: HttpApiSchema.Empty(204),
 			error: HttpApiError.NotFound,
 		}),
 	)
@@ -211,11 +208,11 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 			"/service-accounts/:id/namespaces/:namespace/roles/:name",
 			{
 				params: {
-					id: Schema.String,
+					id: ServiceAccountId,
 					namespace: Schema.String,
 					name: RoleNameSchema,
 				},
-				success: RoleAssignmentResultSchema,
+				success: HttpApiSchema.Empty(204),
 				error: HttpApiError.NotFound,
 			},
 		),
@@ -253,7 +250,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 
 export const AdminTargetSchema = Schema.Union([
 	Schema.TaggedStruct("user", { authentication: Authentication }),
-	Schema.TaggedStruct("serviceAccount", { id: Schema.String }),
+	Schema.TaggedStruct("serviceAccount", { id: ServiceAccountId }),
 ]);
 export type AdminTarget = typeof AdminTargetSchema.Type;
 
@@ -261,7 +258,6 @@ export const AdminRoleAssignmentSchema = Schema.Struct({
 	target: AdminTargetSchema,
 	role: AdminRoleName,
 });
-export type AdminRoleAssignment = typeof AdminRoleAssignmentSchema.Type;
 
 const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 	.add(

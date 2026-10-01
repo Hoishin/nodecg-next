@@ -6,7 +6,7 @@ import {
 	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
-import { Effect, Layer, Option, Redacted } from "effect";
+import { type Crypto, Effect, Layer, Option, Redacted } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -14,8 +14,8 @@ import { config } from "../server-config.ts";
 import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
+import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
-import { ServiceAccountStoreService } from "../services/service-account-store/service-account-store.ts";
 import {
 	anonymousIdentity,
 	resolveServiceAccountIdentity,
@@ -99,8 +99,19 @@ export const SuperadminMiddlewareLive = Layer.succeed(
 export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 	ServiceAccountAuthenticationMiddleware,
 	Effect.gen(function* () {
-		const serviceAccounts = yield* ServiceAccountStoreService;
-		const resolve = resolveServiceAccountIdentity({ serviceAccounts });
+		const context = yield* Effect.context<
+			ServiceAccountRepositoryService | RoleRepositoryService | Crypto.Crypto
+		>();
+		const resolve = (token: string) =>
+			resolveServiceAccountIdentity(token).pipe(
+				Effect.provide(context),
+				Effect.tapCause((cause) =>
+					Effect.logError("API key lookup failed", cause),
+				),
+				Effect.catchTag(["BackendError", "PlatformError"], () =>
+					HttpApiError.InternalServerError.make(),
+				),
+			);
 
 		return {
 			bearer: (httpEffect, { credential }) =>

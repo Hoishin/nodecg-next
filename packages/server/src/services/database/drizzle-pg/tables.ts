@@ -1,8 +1,10 @@
 import type {
 	AccountId,
+	ApiKeyId,
 	AuthenticationId,
 	GlobalRoleName,
 	RoleName,
+	ServiceAccountId,
 	UserId,
 	UserSessionId,
 } from "@nodecg-next/internal";
@@ -61,6 +63,30 @@ export const sessions = pgTable("sessions", {
 		.notNull()
 		.references(() => authentications.id, { onDelete: "cascade" }),
 	expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+});
+
+export const serviceAccounts = pgTable("service_accounts", {
+	id: uuid("id").$type<ServiceAccountId>().primaryKey(),
+	accountId: uuid("account_id")
+		.$type<AccountId>()
+		.notNull()
+		.unique()
+		.references(() => accounts.id, { onDelete: "cascade" }),
+	createdBy: uuid("created_by")
+		.$type<AccountId>()
+		.references(() => accounts.id, { onDelete: "set null" }),
+});
+
+export const apiKeys = pgTable("api_keys", {
+	id: uuid("id").$type<ApiKeyId>().primaryKey(),
+	serviceAccountId: uuid("service_account_id")
+		.$type<ServiceAccountId>()
+		.notNull()
+		.references(() => serviceAccounts.id, { onDelete: "cascade" }),
+	keyHash: text("key_hash").notNull().unique(),
+	label: text("label").notNull(),
+	createdAt: bigint("created_at", { mode: "number" }).notNull(),
+	expiresAt: bigint("expires_at", { mode: "number" }),
 });
 
 export const roleGrants = pgTable(

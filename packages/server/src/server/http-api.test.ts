@@ -64,8 +64,8 @@ import { DrizzleSqliteAuthenticationRepository } from "../services/repository/au
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { DrizzleSqliteRoleRepository } from "../services/repository/role/drizzle-sqlite-role-repository.ts";
+import { DrizzleSqliteServiceAccountRepository } from "../services/repository/service-account/drizzle-sqlite-service-account-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../services/repository/session/drizzle-sqlite-session-repository.ts";
-import { InMemoryServiceAccountStore } from "../services/service-account-store/in-memory-service-account-store.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../services/transaction/drizzle-sqlite-transaction.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
@@ -207,6 +207,7 @@ const webHandler = Effect.fn(function* (
 		DrizzleSqliteSessionRepository,
 		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
+		DrizzleSqliteServiceAccountRepository,
 		DrizzleSqliteTransaction,
 	);
 	const loggedIn = Layer.effectDiscard(
@@ -230,9 +231,8 @@ const webHandler = Effect.fn(function* (
 					UrlPath.layer,
 					FetchHttpClient.layer,
 					repositories,
-					InMemoryServiceAccountStore,
 					ConfiguredSuperadmins.layer,
-				),
+				).pipe(Layer.provideMerge(NodeCrypto.layer)),
 			),
 			Layer.provide(middleware),
 			Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
@@ -241,7 +241,6 @@ const webHandler = Effect.fn(function* (
 			Layer.provide(loggedIn),
 			Layer.provide(repositories),
 			Layer.provide(ConfiguredSuperadmins.layer),
-			Layer.provide(InMemoryServiceAccountStore),
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(
 				DerivationEngineService.layer.pipe(
@@ -968,6 +967,26 @@ describe("admin roles", () => {
 		}),
 	);
 
+	it.effect("superadmin revokes the admin tier from a service account", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([], superadmin);
+			const { id } = yield* createServiceAccount(handler);
+			const target = { _tag: "serviceAccount", id };
+			yield* handler(adminRoleRequest("grant", target, "admin"));
+
+			const res = yield* handler(adminRoleRequest("revoke", target, "admin"));
+			expect(res.status).toBe(204);
+			const list = yield* handler(
+				new Request("http://x/api/internal/service-accounts"),
+			);
+			expect(yield* json(list)).toEqual({
+				serviceAccounts: [
+					{ id, displayName: "bot", roles: [], globalRoles: [] },
+				],
+			});
+		}),
+	);
+
 	it.effect(
 		"404 when granting the admin tier to an unknown service account",
 		() =>
@@ -1539,7 +1558,7 @@ describe("service accounts", () => {
 		}),
 	);
 
-	it.effect("mints an api key with an id and prefixed token for an admin", () =>
+	it.effect("mints an api key with an id and token for an admin", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([show], admin);
 			const res = yield* handler(createRequest());
@@ -1547,7 +1566,7 @@ describe("service accounts", () => {
 			expect(yield* json(res)).toEqual({
 				id: expect.any(String),
 				displayName: "scoreboard",
-				token: expect.stringMatching(/^ncg_/),
+				token: expect.any(String),
 			});
 		}),
 	);
@@ -1616,8 +1635,15 @@ describe("service accounts", () => {
 			expect(yield* json(res)).toEqual({
 				id: created.id,
 				displayName: "scoreboard",
-				token: expect.stringMatching(/^ncg_/),
+				token: expect.any(String),
 			});
+		}),
+	);
+
+	it.effect("404 when refreshing an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([show], admin);
+			expect((yield* handler(refreshRequest("ghost"))).status).toBe(404);
 		}),
 	);
 
@@ -1634,20 +1660,27 @@ describe("service accounts", () => {
 			{ method: "DELETE" },
 		);
 
-	it.effect(
-		"grants a named role and returns the updated set for an admin",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([show], admin);
-				const { id } = decodeCreated(
-					yield* json(yield* handler(createRequest())),
-				);
-				const res = yield* handler(grantRoleRequest(id, "viewer"));
-				expect(res.status).toBe(200);
-				expect(yield* json(res)).toEqual({
-					roles: [{ namespace: "show", name: "viewer" }],
-				});
-			}),
+	it.effect("an admin grants a named role to a service account", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([show], admin);
+			const created = yield* handler(createRequest());
+			const { id } = decodeCreated(yield* json(created));
+
+			const res = yield* handler(grantRoleRequest(id, "viewer"));
+			expect(res.status).toBe(204);
+			const listed = yield* handler(listRequest());
+			const serviceAccounts = yield* json(listed);
+			expect(serviceAccounts).toEqual({
+				serviceAccounts: [
+					{
+						id,
+						displayName: "scoreboard",
+						roles: [{ namespace: "show", name: "viewer" }],
+						globalRoles: [],
+					},
+				],
+			});
+		}),
 	);
 
 	it.effect(
@@ -1667,22 +1700,47 @@ describe("service accounts", () => {
 			}),
 	);
 
-	it.effect(
-		"revokes a named role and returns the remaining set for an admin",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([show], admin);
-				const { id } = decodeCreated(
-					yield* json(yield* handler(createRequest())),
-				);
-				yield* handler(grantRoleRequest(id, "viewer"));
-				yield* handler(grantRoleRequest(id, "judge"));
-				const res = yield* handler(revokeRoleRequest(id, "viewer"));
-				expect(res.status).toBe(200);
-				expect(yield* json(res)).toEqual({
-					roles: [{ namespace: "show", name: "judge" }],
-				});
-			}),
+	it.effect("an admin revokes a named role from a service account", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([show], admin);
+			const created = yield* handler(createRequest());
+			const { id } = decodeCreated(yield* json(created));
+			yield* handler(grantRoleRequest(id, "viewer"));
+			yield* handler(grantRoleRequest(id, "judge"));
+
+			const res = yield* handler(revokeRoleRequest(id, "viewer"));
+			expect(res.status).toBe(204);
+			const listed = yield* handler(listRequest());
+			const serviceAccounts = yield* json(listed);
+			expect(serviceAccounts).toEqual({
+				serviceAccounts: [
+					{
+						id,
+						displayName: "scoreboard",
+						roles: [{ namespace: "show", name: "judge" }],
+						globalRoles: [],
+					},
+				],
+			});
+		}),
+	);
+
+	it.effect("404 when granting a role to an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([show], admin);
+			expect((yield* handler(grantRoleRequest("ghost", "viewer"))).status).toBe(
+				404,
+			);
+		}),
+	);
+
+	it.effect("404 when revoking a role from an unknown id for an admin", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([show], admin);
+			expect(
+				(yield* handler(revokeRoleRequest("ghost", "viewer"))).status,
+			).toBe(404);
+		}),
 	);
 });
 
@@ -2096,8 +2154,8 @@ describe("public surface (v0) with bearer token", () => {
 		}),
 	);
 
-	const decodeToken = Schema.decodeUnknownSync(
-		Schema.Struct({ token: Schema.String }),
+	const decodeKey = Schema.decodeUnknownSync(
+		Schema.Struct({ id: Schema.String, token: Schema.String }),
 	);
 
 	const mintKey = Effect.fn(function* (
@@ -2110,8 +2168,7 @@ describe("public surface (v0) with bearer token", () => {
 				headers: { "content-type": "application/json" },
 			}),
 		);
-		const { token } = decodeToken(yield* json(res));
-		return token;
+		return decodeKey(yield* json(res));
 	});
 
 	it.effect("401 for a resource request without a bearer", () =>
@@ -2136,7 +2193,7 @@ describe("public surface (v0) with bearer token", () => {
 	it.effect("authenticates a request bearing a provisioned api key", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([countNamespace()], admin);
-			const token = yield* mintKey(handler);
+			const { token } = yield* mintKey(handler);
 			const res = yield* handler(
 				new Request(publicGetUrl, {
 					headers: { authorization: `Bearer ${token}` },
@@ -2144,6 +2201,35 @@ describe("public surface (v0) with bearer token", () => {
 			);
 			expect(res.status).toBe(200);
 			expect(yield* json(res)).toBe(42);
+		}),
+	);
+
+	it.effect("a refreshed key replaces the old one", () =>
+		Effect.gen(function* () {
+			const handler = yield* webHandler([countNamespace()], admin);
+			const created = yield* mintKey(handler);
+			const refreshed = decodeKey(
+				yield* json(
+					yield* handler(
+						new Request(
+							`http://x/api/internal/service-accounts/${created.id}/refresh`,
+							{ method: "POST" },
+						),
+					),
+				),
+			);
+
+			const withOld = yield* handler(
+				new Request(publicGetUrl, {
+					headers: { authorization: `Bearer ${created.token}` },
+				}),
+			);
+			const withNew = yield* handler(
+				new Request(publicGetUrl, {
+					headers: { authorization: `Bearer ${refreshed.token}` },
+				}),
+			);
+			expect([withOld.status, withNew.status]).toStrictEqual([401, 200]);
 		}),
 	);
 });
