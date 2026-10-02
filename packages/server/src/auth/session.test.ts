@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { NodeCrypto } from "@effect/platform-node";
 import {
 	AccountId,
 	type Authentication,
@@ -69,6 +70,7 @@ const test = testLayer(
 			revoke,
 		}),
 		Layer.succeed(TransactionService, { wrap: (effect) => effect }),
+		NodeCrypto.layer,
 		ConfigProvider.layer(
 			ConfigProvider.fromEnvRecord({ SESSION_TTL: "1 hour" }),
 		),

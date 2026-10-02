@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
-
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { AccountId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { sql } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer } from "effect";
+import { Crypto, Effect, Layer } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, vi } from "vitest";
 
@@ -12,50 +11,61 @@ import { DrizzleSqliteDatabaseService } from "./drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "./retry-on-id-collision.ts";
 import { accounts } from "./tables.ts";
 
+const randomBytes = vi.fn((size: number) =>
+	crypto.getRandomValues(new Uint8Array(size)),
+);
+
+afterEach(() => {
+	randomBytes.mockReset();
+});
+
 const test = testLayer(
-	Layer.effect(
-		DrizzleSqliteDatabaseService,
-		DrizzleSqliteDatabaseService.make(":memory:"),
-	).pipe(
-		Layer.provide(
-			Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
+	Layer.mergeAll(
+		Layer.effect(
+			DrizzleSqliteDatabaseService,
+			DrizzleSqliteDatabaseService.make(":memory:"),
+		).pipe(
+			Layer.provide(
+				Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
+			),
 		),
+		Layer.succeed(Crypto.Crypto, Crypto.make({ randomBytes, digest: vi.fn() })),
 	),
 );
 
-vi.mock(import("node:crypto"), { spy: true });
-
-afterEach(() => {
-	vi.mocked(randomUUID).mockReset();
-});
-
 const insertAccount = Effect.fn(function* (displayName: string) {
+	const crypto = yield* Crypto.Crypto;
 	const db = yield* DrizzleSqliteDatabaseService;
 	return yield* db
 		.insert(accounts)
-		.values({ displayName, createdAt: 0 })
+		.values({
+			id: AccountId.make(yield* crypto.randomUUIDv4),
+			displayName,
+			createdAt: 0,
+		})
 		.returning()
-		.pipe(retryOnIdCollision);
-});
+		.pipe(Effect.head);
+}, retryOnIdCollision);
 
 describe("retryOnIdCollision", () => {
 	test(
 		"inserts under a fresh id when the generated id is taken",
 		Effect.gen(function* () {
 			const db = yield* DrizzleSqliteDatabaseService;
-			const takenId = randomUUID();
-			vi.mocked(randomUUID).mockReturnValueOnce(takenId);
-			yield* insertAccount("Alice");
-			vi.mocked(randomUUID).mockReturnValueOnce(takenId);
+			randomBytes.mockReturnValueOnce(new Uint8Array(16).fill(1));
+			const alice = yield* insertAccount("Alice");
+			randomBytes.mockReturnValueOnce(new Uint8Array(16).fill(1));
 
-			const [bob] = yield* insertAccount("Bob");
+			const bob = yield* insertAccount("Bob");
 
-			expect(bob?.id).not.toBe(takenId);
-			expect(
-				yield* db.select().from(accounts).orderBy(accounts.displayName),
-			).toStrictEqual([
-				{ id: takenId, displayName: "Alice", createdAt: 0 },
-				{ id: bob?.id, displayName: "Bob", createdAt: 0 },
+			expect(bob.id).not.toBe(alice.id);
+			const rows = yield* db
+				.select()
+				.from(accounts)
+				.orderBy(accounts.displayName);
+			expect(rows).toStrictEqual([
+				{ id: alice.id, displayName: "Alice", createdAt: 0 },
+				{ id: bob.id, displayName: "Bob", createdAt: 0 },
 			]);
 		}),
 	);
@@ -63,16 +73,15 @@ describe("retryOnIdCollision", () => {
 	test(
 		"fails after two retries that each drew a taken id",
 		Effect.gen(function* () {
-			const takenId = randomUUID();
-			vi.mocked(randomUUID).mockReturnValueOnce(takenId);
+			randomBytes.mockReturnValueOnce(new Uint8Array(16).fill(1));
 			yield* insertAccount("Alice");
-			vi.mocked(randomUUID).mockReset();
-			vi.mocked(randomUUID).mockReturnValue(takenId);
+			randomBytes.mockReset();
+			randomBytes.mockImplementation(() => new Uint8Array(16).fill(1));
 
 			const error = yield* insertAccount("Bob").pipe(Effect.flip);
 
 			expect(error).toBeInstanceOf(EffectDrizzleQueryError);
-			expect(randomUUID).toHaveBeenCalledTimes(3);
+			expect(randomBytes).toHaveBeenCalledTimes(3);
 		}),
 	);
 
@@ -85,7 +94,7 @@ describe("retryOnIdCollision", () => {
 			const error = yield* insertAccount("Alice").pipe(Effect.flip);
 
 			expect(error).toBeInstanceOf(EffectDrizzleQueryError);
-			expect(randomUUID).toHaveBeenCalledOnce();
+			expect(randomBytes).toHaveBeenCalledOnce();
 		}),
 	);
 });

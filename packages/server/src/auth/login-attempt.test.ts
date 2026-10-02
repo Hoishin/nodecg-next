@@ -1,3 +1,4 @@
+import { NodeCrypto } from "@effect/platform-node";
 import type { LoginAttempt } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { ConfigProvider, Effect, Layer } from "effect";
@@ -35,6 +36,7 @@ const test = testLayer(
 			consume,
 			deleteExpired,
 		}),
+		NodeCrypto.layer,
 		ConfigProvider.layer(
 			ConfigProvider.fromEnvRecord({ LOGIN_ATTEMPT_TTL: "5 minutes" }),
 		),

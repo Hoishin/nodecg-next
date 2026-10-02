@@ -1,4 +1,5 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { AccountId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
@@ -34,9 +35,11 @@ describe("wrap", () => {
 			const error = yield* tx
 				.wrap(
 					Effect.gen(function* () {
-						yield* db
-							.insert(accounts)
-							.values({ displayName: "Alice", createdAt: 0 });
+						yield* db.insert(accounts).values({
+							id: AccountId.make("alice"),
+							displayName: "Alice",
+							createdAt: 0,
+						});
 						return yield* Abort.make({});
 					}),
 				)

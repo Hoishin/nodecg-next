@@ -1,7 +1,5 @@
-import { createHash } from "node:crypto";
-
 import { Authentication } from "@nodecg-next/internal";
-import { Effect } from "effect";
+import { Crypto, Effect, Encoding } from "effect";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
@@ -84,32 +82,33 @@ export const makeOAuth2Provider = (
 	return {
 		name: config.name,
 		issuer: config.issuer,
-		authorize: Effect.fn("OAuth2Provider.authorize")((input) =>
-			Effect.sync(() => {
-				const codeVerifier = randomPKCECodeVerifier();
-				const state = randomState();
-				const parameters: Record<string, string> = {
-					redirect_uri: input.redirectUri,
+		authorize: Effect.fn("OAuth2Provider.authorize")(function* (input) {
+			const crypto = yield* Crypto.Crypto;
+			const codeVerifier = randomPKCECodeVerifier();
+			const state = randomState();
+			const codeChallenge = yield* crypto.digest(
+				"SHA-256",
+				new TextEncoder().encode(codeVerifier),
+			);
+			const parameters: Record<string, string> = {
+				redirect_uri: input.redirectUri,
+				state,
+				code_challenge: Encoding.encodeBase64Url(codeChallenge),
+				code_challenge_method: "S256",
+			};
+			if (scope.length > 0) {
+				parameters["scope"] = scope;
+			}
+			const url = buildAuthorizationUrl(configuration, parameters);
+			return {
+				url: url.toString(),
+				loginAttempt: {
+					provider: config.name,
 					state,
-					code_challenge: createHash("sha256")
-						.update(codeVerifier)
-						.digest("base64url"),
-					code_challenge_method: "S256",
-				};
-				if (scope.length > 0) {
-					parameters["scope"] = scope;
-				}
-				const url = buildAuthorizationUrl(configuration, parameters);
-				return {
-					url: url.toString(),
-					loginAttempt: {
-						provider: config.name,
-						state,
-						codeVerifier,
-					},
-				};
-			}),
-		),
+					codeVerifier,
+				},
+			};
+		}),
 		callback: Effect.fn("OAuth2Provider.callback")(function* (input) {
 			if (input.searchParams.get("state") !== input.loginAttempt.state) {
 				return yield* new ProviderStateMismatch();

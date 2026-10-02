@@ -35,6 +35,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 			| AccountRepositoryService
 			| RoleRepositoryService
 			| ConfiguredSuperadmins
+			| Crypto.Crypto
 		>();
 		const resolve = (token: string) =>
 			resolveSessionIdentity(token).pipe(
@@ -42,7 +43,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 				Effect.tapCause((cause) =>
 					Effect.logError("Session lookup failed", cause),
 				),
-				Effect.catchTag(["BackendError", "ConfigError"], () =>
+				Effect.catchTag(["BackendError", "ConfigError", "PlatformError"], () =>
 					HttpApiError.InternalServerError.make(),
 				),
 			);

@@ -1,5 +1,12 @@
 import type { LoginAttempt, Authentication } from "@nodecg-next/internal";
-import { Context, type Effect, HashMap, Schema } from "effect";
+import {
+	Context,
+	type Crypto,
+	type Effect,
+	HashMap,
+	type PlatformError,
+	Schema,
+} from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
 export class ProviderStateMismatch extends Schema.TaggedError<ProviderStateMismatch>()(
@@ -36,7 +43,9 @@ export class ProviderResponseError extends Schema.TaggedError<ProviderResponseEr
 	override readonly message = `Userinfo request failed for authentication provider "${this.provider}"`;
 }
 
-export type AuthorizeError = ProviderUnavailableError;
+export type AuthorizeError =
+	| ProviderUnavailableError
+	| PlatformError.PlatformError;
 export type CallbackError =
 	| ProviderStateMismatch
 	| ProviderUnavailableError
@@ -55,7 +64,8 @@ export interface AuthProvider {
 			readonly url: string;
 			readonly loginAttempt: Omit<LoginAttempt, "returnTo">;
 		},
-		AuthorizeError
+		AuthorizeError,
+		Crypto.Crypto
 	>;
 	readonly callback: (input: {
 		readonly redirectUri: string;

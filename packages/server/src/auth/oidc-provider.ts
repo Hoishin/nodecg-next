@@ -1,7 +1,5 @@
-import { createHash } from "node:crypto";
-
 import { Authentication } from "@nodecg-next/internal";
-import { Effect, Function, Schema } from "effect";
+import { Crypto, Effect, Encoding, Function, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import {
 	allowInsecureRequests,
@@ -105,32 +103,33 @@ export const makeOidcProvider = async (
 	return {
 		name: config.name,
 		issuer: configuration.serverMetadata().issuer,
-		authorize: Effect.fn("OidcProvider.authorize")((input) =>
-			Effect.sync(() => {
-				const codeVerifier = randomPKCECodeVerifier();
-				const state = randomState();
-				const nonce = randomNonce();
-				const url = buildAuthorizationUrl(configuration, {
-					redirect_uri: input.redirectUri,
-					scope,
+		authorize: Effect.fn("OidcProvider.authorize")(function* (input) {
+			const crypto = yield* Crypto.Crypto;
+			const codeVerifier = randomPKCECodeVerifier();
+			const state = randomState();
+			const nonce = randomNonce();
+			const codeChallenge = yield* crypto.digest(
+				"SHA-256",
+				new TextEncoder().encode(codeVerifier),
+			);
+			const url = buildAuthorizationUrl(configuration, {
+				redirect_uri: input.redirectUri,
+				scope,
+				state,
+				nonce,
+				code_challenge: Encoding.encodeBase64Url(codeChallenge),
+				code_challenge_method: "S256",
+			});
+			return {
+				url: url.toString(),
+				loginAttempt: {
+					provider: config.name,
 					state,
+					codeVerifier,
 					nonce,
-					code_challenge: createHash("sha256")
-						.update(codeVerifier)
-						.digest("base64url"),
-					code_challenge_method: "S256",
-				});
-				return {
-					url: url.toString(),
-					loginAttempt: {
-						provider: config.name,
-						state,
-						codeVerifier,
-						nonce,
-					},
-				};
-			}),
-		),
+				},
+			};
+		}),
 		callback: Effect.fn("OidcProvider.callback")(function* (input) {
 			if (input.searchParams.get("state") !== input.loginAttempt.state) {
 				return yield* new ProviderStateMismatch();

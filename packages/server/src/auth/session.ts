@@ -1,12 +1,18 @@
-import { createHash, randomBytes } from "node:crypto";
-
 import {
 	type Authentication,
 	type AuthenticationId,
 	sessionCookieSecurity,
 	UserSessionId,
 } from "@nodecg-next/internal";
-import { DateTime, type Duration, Effect, Option, Schema } from "effect";
+import {
+	Crypto,
+	DateTime,
+	type Duration,
+	Effect,
+	Encoding,
+	Option,
+	Schema,
+} from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 
 import { config } from "../server-config.ts";
@@ -18,8 +24,14 @@ import {
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { TransactionService } from "../services/transaction/transaction.ts";
 
-const hashSessionToken = (token: string) =>
-	UserSessionId.make(createHash("sha256").update(token).digest("base64url"));
+const hashSessionToken = Effect.fnUntraced(function* (token: string) {
+	const crypto = yield* Crypto.Crypto;
+	const digest = yield* crypto.digest(
+		"SHA-256",
+		new TextEncoder().encode(token),
+	);
+	return UserSessionId.make(Encoding.encodeBase64Url(digest));
+});
 
 export const cookieOptions = {
 	httpOnly: true,
@@ -39,13 +51,12 @@ export const setSessionCookie = (
 
 const insertSession = Effect.fn("insertSession")(
 	function* (authenticationId: AuthenticationId, expiresAt: DateTime.DateTime) {
+		const crypto = yield* Crypto.Crypto;
 		const sessions = yield* SessionRepositoryService;
-		const token = randomBytes(32).toString("base64url");
-		yield* sessions.create(
-			hashSessionToken(token),
-			authenticationId,
-			expiresAt,
-		);
+		const bytes = yield* crypto.randomBytes(32);
+		const token = Encoding.encodeBase64Url(bytes);
+		const id = yield* hashSessionToken(token);
+		yield* sessions.create(id, authenticationId, expiresAt);
 		return token;
 	},
 	Effect.retry({ times: 2, while: Schema.is(KeyTaken) }),
@@ -84,7 +95,7 @@ export const resolveSession = Effect.fn("resolveSession")(function* (
 	const ttl = yield* config.sessionTtl;
 	const now = yield* DateTime.now;
 
-	const id = hashSessionToken(token);
+	const id = yield* hashSessionToken(token);
 	const authentication = yield* authentications.resolveBySession(id);
 	if (Option.isSome(authentication)) {
 		yield* sessions.refreshTTL(id, DateTime.addDuration(now, ttl));
@@ -96,5 +107,6 @@ export const revokeSession = Effect.fn("revokeSession")(function* (
 	token: string,
 ) {
 	const sessions = yield* SessionRepositoryService;
-	yield* sessions.revoke(hashSessionToken(token));
+	const id = yield* hashSessionToken(token);
+	yield* sessions.revoke(id);
 });

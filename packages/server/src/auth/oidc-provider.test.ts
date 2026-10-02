@@ -1,11 +1,14 @@
-import { Effect, ManagedRuntime } from "effect";
+import { NodeCrypto } from "@effect/platform-node";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { type MutableToken, OAuth2Server } from "oauth2-mock-server";
 import { afterEach, expect, test } from "vitest";
 
 import { makeOidcProvider } from "./oidc-provider.ts";
 
-const runtime = ManagedRuntime.make(FetchHttpClient.layer);
+const runtime = ManagedRuntime.make(
+	Layer.merge(FetchHttpClient.layer, NodeCrypto.layer),
+);
 
 const redirectUri =
 	"http://localhost:3000/api/internal/authentication/callback/local";

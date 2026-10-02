@@ -1,14 +1,12 @@
-import { randomUUID } from "node:crypto";
-
-import {
+import type {
 	AccountId,
-	type ApiKeyId,
+	ApiKeyId,
 	AuthenticationId,
-	type GlobalRoleName,
-	type RoleName,
-	type ServiceAccountId,
+	GlobalRoleName,
+	RoleName,
+	ServiceAccountId,
 	UserId,
-	type UserSessionId,
+	UserSessionId,
 } from "@nodecg-next/internal";
 import {
 	integer,
@@ -29,19 +27,13 @@ export const loginAttempts = sqliteTable("login_attempts", {
 });
 
 export const accounts = sqliteTable("accounts", {
-	id: text("id")
-		.$type<AccountId>()
-		.primaryKey()
-		.$defaultFn(() => AccountId.make(randomUUID())),
+	id: text("id").$type<AccountId>().primaryKey(),
 	displayName: text("display_name").notNull(),
 	createdAt: integer("created_at").notNull(),
 });
 
 export const users = sqliteTable("users", {
-	id: text("id")
-		.$type<UserId>()
-		.primaryKey()
-		.$defaultFn(() => UserId.make(randomUUID())),
+	id: text("id").$type<UserId>().primaryKey(),
 	accountId: text("account_id")
 		.$type<AccountId>()
 		.notNull()
@@ -52,10 +44,7 @@ export const users = sqliteTable("users", {
 export const authentications = sqliteTable(
 	"authentications",
 	{
-		id: text("id")
-			.$type<AuthenticationId>()
-			.primaryKey()
-			.$defaultFn(() => AuthenticationId.make(randomUUID())),
+		id: text("id").$type<AuthenticationId>().primaryKey(),
 		userId: text("user_id")
 			.$type<UserId>()
 			.notNull()

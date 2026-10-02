@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 
 import {
 	CurrentIdentity,
@@ -16,6 +16,7 @@ import {
 	Array,
 	Clock,
 	type Config,
+	Crypto,
 	type Duration,
 	Effect,
 	HashMap,
@@ -106,16 +107,22 @@ const loginPath = Effect.fn("loginPath")(function* (
 	return path.join(basePath, "api/internal/authentication/login", provider);
 });
 
-const digest = (value: string) => createHash("sha256").update(value).digest();
-
-const tokenEquals = (
+const tokenEquals = Effect.fnUntraced(function* (
 	expected: Redacted.Redacted<string>,
 	provided: Redacted.Redacted<string>,
-) =>
-	timingSafeEqual(
-		digest(Redacted.value(expected)),
-		digest(Redacted.value(provided)),
+) {
+	const crypto = yield* Crypto.Crypto;
+	const encoder = new TextEncoder();
+	const expectedDigest = yield* crypto.digest(
+		"SHA-256",
+		encoder.encode(Redacted.value(expected)),
 	);
+	const providedDigest = yield* crypto.digest(
+		"SHA-256",
+		encoder.encode(Redacted.value(provided)),
+	);
+	return timingSafeEqual(expectedDigest, providedDigest);
+});
 
 const CLAIM_ATTEMPT_LIMIT = 5;
 const CLAIM_ATTEMPT_WINDOW_MILLIS = 60_000;
@@ -325,7 +332,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Effect.tapCause((cause) =>
 									Effect.logError("Logout failed", cause),
 								),
-								Effect.catchTag("BackendError", () =>
+								Effect.catchTag(["BackendError", "PlatformError"], () =>
 									HttpApiError.InternalServerError.make(),
 								),
 							);
@@ -356,7 +363,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						if (
 							(yield* superadminExists()) ||
-							!tokenEquals(claimToken.value, token)
+							!(yield* tokenEquals(claimToken.value, token))
 						) {
 							return yield* new HttpApiError.Forbidden();
 						}

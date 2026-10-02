@@ -1,7 +1,5 @@
-import { randomBytes } from "node:crypto";
-
 import type { LoginAttempt } from "@nodecg-next/internal";
-import { Clock, Duration, Effect, Schema } from "effect";
+import { Clock, Crypto, Duration, Effect, Encoding, Schema } from "effect";
 
 import { config } from "../server-config.ts";
 import { LoginAttemptRepositoryService } from "../services/repository/login-attempt/login-attempt-repository.ts";
@@ -12,8 +10,10 @@ import {
 
 const insertLoginAttempt = Effect.fn("insertLoginAttempt")(
 	function* (loginAttempt: LoginAttempt, expiresAt: number) {
+		const crypto = yield* Crypto.Crypto;
 		const repository = yield* LoginAttemptRepositoryService;
-		const key = randomBytes(32).toString("base64url");
+		const bytes = yield* crypto.randomBytes(32);
+		const key = Encoding.encodeBase64Url(bytes);
 		yield* repository.create(key, loginAttempt, expiresAt);
 		return key;
 	},
