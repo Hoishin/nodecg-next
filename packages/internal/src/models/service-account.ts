@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { GlobalRoleName, Role } from "./role.ts";
 
-export const ServiceAccountId = Schema.String.pipe(
+export const ServiceAccountId = Schema.String.check(Schema.isUUID()).pipe(
 	Schema.brand("ServiceAccountId"),
 );
 export type ServiceAccountId = typeof ServiceAccountId.Type;

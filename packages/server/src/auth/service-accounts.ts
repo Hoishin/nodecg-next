@@ -1,10 +1,10 @@
 import type { Identity } from "@nodecg-next/internal";
 import {
-	Clock,
 	Crypto,
 	Effect,
 	Encoding,
 	Match,
+	Option,
 	Redacted,
 	Schema,
 } from "effect";
@@ -46,7 +46,6 @@ export const createServiceAccount = Effect.fn("createServiceAccount")(
 		const accounts = yield* AccountRepositoryService;
 		const token = yield* newApiKey();
 		const hash = yield* hashApiKey(Redacted.value(token));
-		const now = yield* Clock.currentTimeMillis;
 		const id = yield* TransactionService.wrap(
 			Effect.gen(function* () {
 				const createdBy = yield* Match.value(creator).pipe(
@@ -57,9 +56,15 @@ export const createServiceAccount = Effect.fn("createServiceAccount")(
 					Match.tag("server", () => ServerCreatorNotImplemented.make()),
 					Match.exhaustive,
 				);
-				const id = yield* repository.create({ displayName, createdBy, now });
-				yield* repository.addKey(id, { hash, label: "" }, now);
-				return id;
+				if (Option.isNone(createdBy)) {
+					return yield* NotAUser.make();
+				}
+				const { serviceAccountId } = yield* repository.create({
+					displayName,
+					createdBy: createdBy.value,
+				});
+				yield* repository.addKey(serviceAccountId, { hash, label: "" });
+				return serviceAccountId;
 			}),
 		);
 		return { id, displayName, token };

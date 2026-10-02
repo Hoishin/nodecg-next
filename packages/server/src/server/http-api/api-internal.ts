@@ -1,16 +1,15 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
-	ADMIN_TIER,
 	CurrentIdentity,
 	UserAssignmentSchema,
-	isUndeclarableRole,
 	PermissionDenied,
 	ServiceAccountAssignmentSchema,
 	RoleAssignmentsDocument,
-	RoleImportError,
 	sessionCookieName,
 	TooManyRequests,
+	AccountId,
+	Role,
 } from "@nodecg-next/internal";
 import { MalformedUrl, parseRelativeUrl } from "@nodecg-next/internal/utils";
 import {
@@ -20,9 +19,10 @@ import {
 	type Duration,
 	Effect,
 	HashMap,
+	HashSet,
 	Layer,
 	Match,
-	MutableHashSet,
+	MutableHashMap,
 	Option,
 	type PlatformError,
 	Redacted,
@@ -64,6 +64,7 @@ import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
 import { AccountRepositoryService } from "../../services/repository/account/account-repository.ts";
+import { AuthenticationRepositoryService } from "../../services/repository/authentication/authentication-repository.ts";
 import type { BackendError } from "../../services/repository/repository-errors.ts";
 import { RoleRepositoryService } from "../../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../../services/repository/service-account/service-account-repository.ts";
@@ -425,16 +426,6 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 			),
 );
 
-const assignmentKey = (entry: RoleAssignmentsDocument["assignments"][number]) =>
-	Match.value(entry).pipe(
-		Match.tag("user", ({ authentication }) => ({
-			_tag: "user",
-			authentication,
-		})),
-		Match.tag("serviceAccount", ({ id }) => ({ _tag: "serviceAccount", id })),
-		Match.exhaustive,
-	);
-
 const ServiceAccountsGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"ServiceAccounts",
@@ -473,12 +464,10 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 					const serviceAccounts = yield* ServiceAccountRepositoryService;
 					const token = yield* newApiKey();
 					const hash = yield* hashApiKey(Redacted.value(token));
-					const now = yield* Clock.currentTimeMillis;
-					const replaced = yield* serviceAccounts.replaceKey(
-						id,
-						{ hash, label: "" },
-						now,
-					);
+					const replaced = yield* serviceAccounts.replaceKey(id, {
+						hash,
+						label: "",
+					});
 					if (Option.isNone(replaced)) {
 						return yield* HttpApiError.NotFound.make();
 					}
@@ -546,114 +535,101 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					version: 0,
 					assignments: [
 						...users
-							.map(({ authentication, roles, globalRoles }) =>
+							.map(({ authentication, displayName, roles }) =>
 								UserAssignmentSchema.make({
 									authentication,
+									displayName,
 									roles,
-									globalRoles: Array.difference(globalRoles, ADMIN_TIER),
+									globalRoles: [],
 								}),
 							)
-							.filter(
-								({ roles, globalRoles }) =>
-									roles.length > 0 || globalRoles.length > 0,
-							),
+							.filter(({ roles }) => roles.length > 0),
 						...serviceAccountList
 							.map((client) =>
 								ServiceAccountAssignmentSchema.make({
 									id: client.id,
 									roles: client.roles,
-									globalRoles: Array.difference(client.globalRoles, ADMIN_TIER),
+									globalRoles: [],
 								}),
 							)
-							.filter(
-								({ roles, globalRoles }) =>
-									roles.length > 0 || globalRoles.length > 0,
-							),
+							.filter(({ roles }) => roles.length > 0),
 					],
 				});
 			}).pipe(reportBackendFailure),
 		)
 		.handle("import", ({ payload: { mode, document } }) =>
 			Effect.gen(function* () {
-				const seen = MutableHashSet.empty<ReturnType<typeof assignmentKey>>();
-				for (const entry of document.assignments) {
-					const key = assignmentKey(entry);
-					if (MutableHashSet.has(seen, key)) {
-						return yield* new RoleImportError({
-							message: `duplicate assignment entry for ${JSON.stringify(key)}`,
-						});
-					}
-					MutableHashSet.add(seen, key);
-					for (const role of entry.roles) {
-						if (isUndeclarableRole(role.name)) {
-							return yield* new RoleImportError({
-								message: `role "${role.name}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
-							});
-						}
-					}
-					const [tierRole] = Array.intersection(entry.globalRoles, ADMIN_TIER);
-					if (typeof tierRole !== "undefined") {
-						return yield* new RoleImportError({
-							message: `role "${tierRole}" cannot be assigned via import (entry ${JSON.stringify(key)})`,
-						});
-					}
-				}
-				const userEntries = document.assignments.filter(
-					(entry) => entry._tag === "user",
-				);
-				const serviceAccountEntries = document.assignments.filter(
-					(entry) => entry._tag === "serviceAccount",
-				);
-				const serviceAccounts = yield* ServiceAccountRepositoryService;
-				const found = yield* serviceAccounts.resolveMany(
-					serviceAccountEntries.map(({ id }) => id),
-				);
-				const accountIds = new Map(
-					found.map(({ id, accountId }) => [id, accountId]),
-				);
-				const serviceAccountGrants = yield* Effect.forEach(
-					serviceAccountEntries,
-					(entry) =>
-						Effect.gen(function* () {
-							const accountId = accountIds.get(entry.id);
-							if (typeof accountId === "undefined") {
-								return yield* RoleImportError.make({
-									message: `unknown service account id "${entry.id}"`,
-								});
-							}
-							return { accountId, entry };
-						}),
-				);
-
 				const accounts = yield* AccountRepositoryService;
-				const userGrants = yield* Effect.forEach(userEntries, (entry) =>
-					Effect.gen(function* () {
-						const accountId = yield* accounts.resolveByAuthentication(
-							entry.authentication,
-						);
-						if (Option.isNone(accountId)) {
-							return yield* RoleImportError.make({
-								message: `unknown authentication for user "${entry.authentication.subject}" of "${entry.authentication.issuer}"`,
-							});
-						}
-						return { accountId: accountId.value, entry };
-					}),
-				);
+				const authentications = yield* AuthenticationRepositoryService;
+				const serviceAccounts = yield* ServiceAccountRepositoryService;
+
+				const accountRoleMap = MutableHashMap.empty<
+					AccountId,
+					HashSet.HashSet<Role>
+				>();
 
 				// Admin roles are outside of import and export
 				const roleRepository = yield* RoleRepositoryService;
 				yield* TransactionService.wrap(
 					Effect.gen(function* () {
+						for (const entry of document.assignments) {
+							const accountId = yield* Match.value(entry).pipe(
+								Match.tag("user", ({ authentication, displayName }) =>
+									Effect.gen(function* () {
+										const accountId =
+											yield* accounts.resolveByAuthentication(authentication);
+										if (Option.isSome(accountId)) {
+											return accountId.value;
+										}
+										const upsertResult =
+											yield* authentications.findOrCreateAuthentication(
+												authentication,
+												displayName,
+											);
+										return upsertResult.accountId;
+									}),
+								),
+								Match.tag("serviceAccount", ({ id }) =>
+									Effect.gen(function* () {
+										const account = yield* serviceAccounts.resolveById(id);
+										if (Option.isSome(account)) {
+											return account.value.accountId;
+										}
+										const creatorIdentity = yield* CurrentIdentity;
+										if (creatorIdentity._tag !== "user") {
+											return yield* HttpApiError.Forbidden.make();
+										}
+										const creatorAccountId =
+											yield* accounts.resolveByAuthentication(
+												creatorIdentity.authentication,
+											);
+										if (Option.isNone(creatorAccountId)) {
+											return yield* HttpApiError.Forbidden.make();
+										}
+										const { accountId } = yield* serviceAccounts.createWithId({
+											id,
+											displayName: "", // TODO: import display name from the document
+											createdBy: creatorAccountId.value,
+										});
+										return accountId;
+									}),
+								),
+								Match.exhaustive,
+							);
+							MutableHashMap.modifyAt(accountRoleMap, accountId, (existing) =>
+								existing.pipe(
+									Option.getOrElse(() => HashSet.empty<Role>()),
+									HashSet.union(HashSet.fromIterable(entry.roles)),
+									Option.some,
+								),
+							);
+						}
+
 						if (mode === "replace") {
 							yield* roleRepository.revokeAllRoles();
 						}
-						for (const { accountId, entry } of Array.appendAll(
-							userGrants,
-							serviceAccountGrants,
-						)) {
-							for (const role of entry.roles) {
-								yield* roleRepository.grantRole(accountId, role);
-							}
+						for (const [accountId, roles] of accountRoleMap) {
+							yield* roleRepository.grantRoles(accountId, roles);
 						}
 					}),
 				);

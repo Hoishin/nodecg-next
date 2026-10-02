@@ -41,7 +41,7 @@ const adminTier = (...globalRoles: AdminRoleName[]) =>
 	});
 const serviceAccount = (...names: RoleName[]) =>
 	ServiceAccount.make({
-		id: ServiceAccountId.make("robot"),
+		id: ServiceAccountId.make("00000000-0000-4000-8000-000000000001"),
 		displayName: "Bot",
 		roles: names.map((name) => ({ namespace: "match", name })),
 		globalRoles: [],

@@ -1,10 +1,11 @@
-import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { type Authentication, UserSessionId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq, sql } from "drizzle-orm";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
-import { assert, describe, expect } from "vitest";
+import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import {
@@ -17,6 +18,14 @@ import { DrizzleSqliteSessionRepository } from "../session/drizzle-sqlite-sessio
 import { SessionRepositoryService } from "../session/session-repository.ts";
 import { AuthenticationRepositoryService } from "./authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "./drizzle-sqlite-authentication-repository.ts";
+
+const randomBytes = vi.fn((size: number) =>
+	crypto.getRandomValues(new Uint8Array(size)),
+);
+
+afterEach(() => {
+	randomBytes.mockReset();
+});
 
 const test = testLayer(
 	Layer.mergeAll(
@@ -33,7 +42,10 @@ const test = testLayer(
 			Layer.mergeAll(
 				NodeFileSystem.layer,
 				NodePath.layer,
-				NodeCrypto.layer,
+				Layer.succeed(
+					Crypto.Crypto,
+					Crypto.make({ randomBytes, digest: vi.fn() }),
+				),
 				Reactivity.layer,
 			),
 		),
@@ -50,26 +62,36 @@ describe("findOrCreateAuthentication", () => {
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
+			yield* TestClock.setTime(1000);
 
-			const id = yield* repository.findOrCreateAuthentication(
+			const created = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
-				1000,
 			);
 
-			const [account] = yield* db.select().from(accounts);
-			const [user] = yield* db.select().from(users);
-			assert(typeof account !== "undefined");
-			assert(typeof user !== "undefined");
+			const account = yield* db.select().from(accounts).pipe(Effect.head);
+			const user = yield* db.select().from(users).pipe(Effect.head);
+			const authentication = yield* db
+				.select()
+				.from(authentications)
+				.pipe(Effect.head);
+			expect(created).toStrictEqual({
+				authenticationId: authentication.id,
+				userId: user.id,
+				accountId: account.id,
+			});
 			expect(account).toStrictEqual({
 				id: account.id,
 				displayName: "Alice",
 				createdAt: 1000,
 			});
 			expect(user).toStrictEqual({ id: user.id, accountId: account.id });
-			expect(yield* db.select().from(authentications)).toStrictEqual([
-				{ id, userId: user.id, issuer: "dev", subject: "alice" },
-			]);
+			expect(authentication).toStrictEqual({
+				id: authentication.id,
+				userId: user.id,
+				issuer: "dev",
+				subject: "alice",
+			});
 		}),
 	);
 
@@ -79,18 +101,18 @@ describe("findOrCreateAuthentication", () => {
 			const repository = yield* AuthenticationRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
 
+			yield* TestClock.setTime(1000);
 			const first = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
-				1000,
 			);
+			yield* TestClock.setTime(2000);
 			const second = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice Liddell",
-				2000,
 			);
 
-			expect(second).toBe(first);
+			expect(second).toStrictEqual(first);
 			expect(
 				yield* db
 					.select({
@@ -108,23 +130,51 @@ describe("findOrCreateAuthentication", () => {
 			const repository = yield* AuthenticationRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
 
-			const aliceAuthId = yield* repository.findOrCreateAuthentication(
+			const created = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
-				1000,
 			);
-			const bobAuthId = yield* repository.findOrCreateAuthentication(
-				bob,
-				"Bob",
-				1000,
-			);
+			const other = yield* repository.findOrCreateAuthentication(bob, "Bob");
 
-			expect(bobAuthId).not.toBe(aliceAuthId);
+			expect(other.accountId).not.toBe(created.accountId);
 			expect(
 				(yield* db.select({ displayName: accounts.displayName }).from(accounts))
 					.map(({ displayName }) => displayName)
 					.toSorted(),
 			).toStrictEqual(["Alice", "Bob"]);
+		}),
+	);
+
+	test(
+		"retries a first login from scratch when its drawn user id is taken",
+		Effect.gen(function* () {
+			const repository = yield* AuthenticationRepositoryService;
+			const db = yield* DrizzleSqliteDatabaseService;
+			const authenticationId = new Uint8Array(16).fill(1);
+			const userId = new Uint8Array(16).fill(2);
+			randomBytes
+				.mockReturnValueOnce(authenticationId)
+				.mockReturnValueOnce(userId);
+			const aliceIds = yield* repository.findOrCreateAuthentication(
+				alice,
+				"Alice",
+			);
+			randomBytes
+				.mockReturnValueOnce(new Uint8Array(16).fill(3))
+				.mockReturnValueOnce(userId);
+
+			const bobIds = yield* repository.findOrCreateAuthentication(bob, "Bob");
+
+			// 3 ids times 3 attempts
+			expect(randomBytes).toHaveBeenCalledTimes(9);
+			const accountRows = yield* db
+				.select()
+				.from(accounts)
+				.orderBy(accounts.displayName);
+			expect(accountRows).toStrictEqual([
+				{ id: aliceIds.accountId, displayName: "Alice", createdAt: 0 },
+				{ id: bobIds.accountId, displayName: "Bob", createdAt: 0 },
+			]);
 		}),
 	);
 
@@ -136,7 +186,7 @@ describe("findOrCreateAuthentication", () => {
 			yield* db.run(sql`drop table authentications`);
 
 			const error = yield* repository
-				.findOrCreateAuthentication(alice, "Alice", 1000)
+				.findOrCreateAuthentication(alice, "Alice")
 				.pipe(Effect.flip);
 
 			assert(Schema.is(BackendError)(error));
@@ -154,30 +204,32 @@ describe("resolveBySession", () => {
 			const repository = yield* AuthenticationRepositoryService;
 			const sessionRepository = yield* SessionRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
-			const authentication = yield* repository.findOrCreateAuthentication(
+			const now = yield* DateTime.now;
+			const { authenticationId } = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
-				1000,
 			);
-			yield* repository.findOrCreateAuthentication(bob, "Bob", 1000);
-			yield* sessionRepository.create(sessionId, authentication, 2000);
-			yield* repository.findOrCreateAuthentication(
-				alice,
-				"Alice Liddell",
-				1000,
+			yield* repository.findOrCreateAuthentication(bob, "Bob");
+			yield* sessionRepository.create(
+				sessionId,
+				authenticationId,
+				DateTime.addDuration(now, 2000),
 			);
-			const [account] = yield* db
+			yield* repository.findOrCreateAuthentication(alice, "Alice Liddell");
+			const account = yield* db
 				.select({ id: accounts.id })
 				.from(accounts)
-				.where(eq(accounts.displayName, "Alice"));
-			assert(typeof account !== "undefined");
-			const [user] = yield* db
+				.where(eq(accounts.displayName, "Alice"))
+				.pipe(Effect.head);
+			const user = yield* db
 				.select({ id: users.id })
 				.from(users)
-				.where(eq(users.accountId, account.id));
-			assert(typeof user !== "undefined");
+				.where(eq(users.accountId, account.id))
+				.pipe(Effect.head);
+			yield* TestClock.setTime(1999);
 
-			expect(yield* repository.resolveBySession(sessionId, 1999)).toStrictEqual(
+			const resolved = yield* repository.resolveBySession(sessionId);
+			expect(resolved).toStrictEqual(
 				Option.some({
 					accountId: account.id,
 					userId: user.id,
@@ -193,16 +245,20 @@ describe("resolveBySession", () => {
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 			const sessionRepository = yield* SessionRepositoryService;
-			const authentication = yield* repository.findOrCreateAuthentication(
+			const now = yield* DateTime.now;
+			const { authenticationId } = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
-				1000,
 			);
-			yield* sessionRepository.create(sessionId, authentication, 2000);
+			yield* sessionRepository.create(
+				sessionId,
+				authenticationId,
+				DateTime.addDuration(now, 2000),
+			);
+			yield* TestClock.setTime(2000);
 
-			expect(yield* repository.resolveBySession(sessionId, 2000)).toStrictEqual(
-				Option.none(),
-			);
+			const resolved = yield* repository.resolveBySession(sessionId);
+			expect(resolved).toStrictEqual(Option.none());
 		}),
 	);
 
@@ -210,9 +266,8 @@ describe("resolveBySession", () => {
 		"treats an unknown session as absent",
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
-			expect(yield* repository.resolveBySession(sessionId, 0)).toStrictEqual(
-				Option.none(),
-			);
+			const resolved = yield* repository.resolveBySession(sessionId);
+			expect(resolved).toStrictEqual(Option.none());
 		}),
 	);
 });

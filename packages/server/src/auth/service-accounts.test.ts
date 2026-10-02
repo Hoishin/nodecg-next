@@ -10,7 +10,7 @@ import {
 	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Redacted } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import {
@@ -28,11 +28,14 @@ import {
 	ServerCreatorNotImplemented,
 } from "./service-accounts.ts";
 
-const id = ServiceAccountId.make("scoreboard-id");
+const id = ServiceAccountId.make("00000000-0000-4000-8000-000000000001");
 const bossAccountId = AccountId.make("boss-account");
 
 const create = vi.fn<ServiceAccountRepository["create"]>(() =>
-	Effect.succeed(id),
+	Effect.succeed({
+		serviceAccountId: id,
+		accountId: AccountId.make("scoreboard-account"),
+	}),
 );
 const resolveByAuthentication = vi.fn<
 	AccountRepository["resolveByAuthentication"]
@@ -50,7 +53,8 @@ const test = testLayer(
 		NodeCrypto.layer,
 		Layer.succeed(ServiceAccountRepositoryService, {
 			create,
-			resolveMany: vi.fn(),
+			createWithId: vi.fn(),
+			resolveById: vi.fn(),
 			resolveByKeyHash: vi.fn(),
 			listAll: vi.fn(),
 			addKey,
@@ -88,14 +92,23 @@ describe("createServiceAccount", () => {
 			);
 			expect(create).toHaveBeenCalledExactlyOnceWith({
 				displayName: "scoreboard",
-				createdBy: Option.some(bossAccountId),
-				now: 0,
+				createdBy: bossAccountId,
 			});
-			expect(addKey).toHaveBeenCalledExactlyOnceWith(
-				id,
-				{ hash, label: "" },
-				0,
+			expect(addKey).toHaveBeenCalledExactlyOnceWith(id, { hash, label: "" });
+		}),
+	);
+
+	test(
+		"fails with NotAUser when the creating user has no account",
+		Effect.gen(function* () {
+			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
+
+			const error = yield* createServiceAccount("scoreboard", admin).pipe(
+				Effect.flip,
 			);
+
+			expect(error).toStrictEqual(NotAUser.make());
+			expect(create).not.toHaveBeenCalled();
 		}),
 	);
 
@@ -103,7 +116,7 @@ describe("createServiceAccount", () => {
 		"fails with NotAUser when a service account creates one",
 		Effect.gen(function* () {
 			const provisioner = ServiceAccount.make({
-				id: ServiceAccountId.make("provisioner-id"),
+				id: ServiceAccountId.make("00000000-0000-4000-8000-000000000002"),
 				displayName: "provisioner",
 				roles: [],
 				globalRoles: ["admin"],

@@ -2,7 +2,8 @@ import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { type Role, RoleName, ServiceAccountId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq } from "drizzle-orm";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
 
@@ -11,6 +12,9 @@ import {
 	apiKeys,
 	serviceAccounts,
 } from "../../database/drizzle-sqlite/tables.ts";
+import { AuthenticationRepositoryService } from "../authentication/authentication-repository.ts";
+import { DrizzleSqliteAuthenticationRepository } from "../authentication/drizzle-sqlite-authentication-repository.ts";
+import { BackendError } from "../repository-errors.ts";
 import { DrizzleSqliteRoleRepository } from "../role/drizzle-sqlite-role-repository.ts";
 import { RoleRepositoryService } from "../role/role-repository.ts";
 import { DrizzleSqliteServiceAccountRepository } from "./drizzle-sqlite-service-account-repository.ts";
@@ -20,6 +24,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		DrizzleSqliteServiceAccountRepository,
 		DrizzleSqliteRoleRepository,
+		DrizzleSqliteAuthenticationRepository,
 	).pipe(
 		Layer.provideMerge(
 			Layer.effect(
@@ -39,24 +44,28 @@ const test = testLayer(
 );
 
 const viewer: Role = { namespace: "show", name: RoleName("viewer") };
-const ghost = ServiceAccountId.make("ghost");
+const ghost = ServiceAccountId.make("00000000-0000-4000-8000-0000000000ff");
 
 const createBot = Effect.fn(function* (displayName: string, hash: string) {
 	const repository = yield* ServiceAccountRepositoryService;
-	const id = yield* repository.create({
+	const authentications = yield* AuthenticationRepositoryService;
+	const boss = yield* authentications.findOrCreateAuthentication(
+		{ issuer: "dev", subject: "boss" },
+		"Boss",
+	);
+	const { serviceAccountId } = yield* repository.create({
 		displayName,
-		createdBy: Option.none(),
-		now: 0,
+		createdBy: boss.accountId,
 	});
-	yield* repository.addKey(id, { hash, label: "" }, 0);
-	return id;
+	yield* repository.addKey(serviceAccountId, { hash, label: "" });
+	return serviceAccountId;
 });
 
 const findAccountId = Effect.fn(function* (id: ServiceAccountId) {
 	const repository = yield* ServiceAccountRepositoryService;
-	const [found] = yield* repository.resolveMany([id]);
-	assert(typeof found !== "undefined");
-	return found.accountId;
+	const found = yield* repository.resolveById(id);
+	assert(Option.isSome(found));
+	return found.value.accountId;
 });
 
 const createdBy = Effect.fn(function* (id: ServiceAccountId) {
@@ -89,42 +98,109 @@ describe("create", () => {
 			const provisioner = yield* createBot("provisioner", "hash-1");
 			const provisionerAccount = yield* findAccountId(provisioner);
 
-			const id = yield* repository.create({
+			const created = yield* repository.create({
 				displayName: "scoreboard",
-				createdBy: Option.some(provisionerAccount),
-				now: 0,
+				createdBy: provisionerAccount,
 			});
 
-			const rows = yield* createdBy(id);
+			const rows = yield* createdBy(created.serviceAccountId);
 			expect(rows).toStrictEqual([{ createdBy: provisionerAccount }]);
+			const accountId = yield* findAccountId(created.serviceAccountId);
+			expect(created.accountId).toBe(accountId);
 		}),
 	);
 });
 
-describe("resolveMany", () => {
+describe("createWithId", () => {
 	test(
-		"resolves the known ids among those asked for",
+		"creates a service account under the given id",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const scoreboard = yield* createBot("scoreboard", "hash-1");
-			const timer = yield* createBot("timer", "hash-2");
-			yield* createBot("ignored", "hash-3");
-
-			const resolved = yield* repository.resolveMany([
-				scoreboard,
-				timer,
-				ghost,
-			]);
-
-			expect(
-				resolved.map(({ id, displayName }) => ({ id, displayName })),
-			).toEqual(
-				expect.arrayContaining([
-					{ id: scoreboard, displayName: "scoreboard" },
-					{ id: timer, displayName: "timer" },
-				]),
+			const authentications = yield* AuthenticationRepositoryService;
+			const boss = yield* authentications.findOrCreateAuthentication(
+				{ issuer: "dev", subject: "boss" },
+				"Boss",
 			);
-			expect(resolved).toHaveLength(2);
+
+			const created = yield* repository.createWithId({
+				id: ghost,
+				displayName: "scoreboard",
+				createdBy: boss.accountId,
+			});
+
+			expect(created.serviceAccountId).toBe(ghost);
+			const resolved = yield* repository.resolveById(ghost);
+			expect(resolved).toStrictEqual(
+				Option.some({
+					id: ghost,
+					accountId: created.accountId,
+					displayName: "scoreboard",
+				}),
+			);
+			const rows = yield* createdBy(ghost);
+			expect(rows).toStrictEqual([{ createdBy: boss.accountId }]);
+		}),
+	);
+
+	test(
+		"fails with BackendError when the id is taken",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+			const authentications = yield* AuthenticationRepositoryService;
+			const boss = yield* authentications.findOrCreateAuthentication(
+				{ issuer: "dev", subject: "boss" },
+				"Boss",
+			);
+			yield* repository.createWithId({
+				id: ghost,
+				displayName: "scoreboard",
+				createdBy: boss.accountId,
+			});
+
+			const error = yield* repository
+				.createWithId({
+					id: ghost,
+					displayName: "timer",
+					createdBy: boss.accountId,
+				})
+				.pipe(Effect.flip);
+
+			assert(Schema.is(BackendError)(error));
+			expect(error.message).toContain(
+				"UNIQUE constraint failed: service_accounts.id",
+			);
+			const listed = yield* repository.listAll();
+			expect(listed).toStrictEqual([
+				{ id: ghost, displayName: "scoreboard", roles: [], globalRoles: [] },
+			]);
+		}),
+	);
+});
+
+describe("resolveById", () => {
+	test(
+		"resolves an id to its service account",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+			yield* createBot("timer", "hash-1");
+			const scoreboard = yield* createBot("scoreboard", "hash-2");
+			const accountId = yield* findAccountId(scoreboard);
+
+			const resolved = yield* repository.resolveById(scoreboard);
+			expect(resolved).toStrictEqual(
+				Option.some({ id: scoreboard, accountId, displayName: "scoreboard" }),
+			);
+		}),
+	);
+
+	test(
+		"treats an unknown id as absent",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+			yield* createBot("scoreboard", "hash-1");
+
+			const resolved = yield* repository.resolveById(ghost);
+			expect(resolved).toStrictEqual(Option.none());
 		}),
 	);
 });
@@ -137,7 +213,7 @@ describe("resolveByKeyHash", () => {
 			const id = yield* createBot("scoreboard", "hash-1");
 			const accountId = yield* findAccountId(id);
 
-			const byKey = yield* repository.resolveByKeyHash("hash-1", 0);
+			const byKey = yield* repository.resolveByKeyHash("hash-1");
 
 			expect(byKey).toStrictEqual(
 				Option.some({ id, accountId, displayName: "scoreboard" }),
@@ -151,7 +227,7 @@ describe("resolveByKeyHash", () => {
 			const repository = yield* ServiceAccountRepositoryService;
 			yield* createBot("scoreboard", "hash-1");
 
-			const resolved = yield* repository.resolveByKeyHash("hash-2", 0);
+			const resolved = yield* repository.resolveByKeyHash("hash-2");
 
 			expect(resolved).toStrictEqual(Option.none());
 		}),
@@ -168,9 +244,11 @@ describe("resolveByKeyHash", () => {
 				.set({ expiresAt: 100 })
 				.where(eq(apiKeys.serviceAccountId, id));
 
-			const before = yield* repository.resolveByKeyHash("hash-1", 99);
+			yield* TestClock.setTime(99);
+			const before = yield* repository.resolveByKeyHash("hash-1");
 			assert(Option.isSome(before));
-			const at = yield* repository.resolveByKeyHash("hash-1", 100);
+			yield* TestClock.setTime(100);
+			const at = yield* repository.resolveByKeyHash("hash-1");
 			expect(at).toStrictEqual(Option.none());
 		}),
 	);
@@ -211,18 +289,17 @@ describe("replaceKey", () => {
 			const repository = yield* ServiceAccountRepositoryService;
 			const id = yield* createBot("scoreboard", "hash-1");
 
-			const replaced = yield* repository.replaceKey(
-				id,
-				{ hash: "hash-2", label: "" },
-				0,
-			);
+			const replaced = yield* repository.replaceKey(id, {
+				hash: "hash-2",
+				label: "",
+			});
 
 			expect(replaced).toStrictEqual(
 				Option.some({ displayName: "scoreboard" }),
 			);
-			const old = yield* repository.resolveByKeyHash("hash-1", 0);
+			const old = yield* repository.resolveByKeyHash("hash-1");
 			expect(old).toStrictEqual(Option.none());
-			const current = yield* repository.resolveByKeyHash("hash-2", 0);
+			const current = yield* repository.resolveByKeyHash("hash-2");
 			assert(Option.isSome(current));
 			expect(current.value.id).toBe(id);
 		}),
@@ -233,14 +310,13 @@ describe("replaceKey", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 
-			const replaced = yield* repository.replaceKey(
-				ghost,
-				{ hash: "hash-1", label: "" },
-				0,
-			);
+			const replaced = yield* repository.replaceKey(ghost, {
+				hash: "hash-1",
+				label: "",
+			});
 
 			expect(replaced).toStrictEqual(Option.none());
-			const byKey = yield* repository.resolveByKeyHash("hash-1", 0);
+			const byKey = yield* repository.resolveByKeyHash("hash-1");
 			expect(byKey).toStrictEqual(Option.none());
 		}),
 	);
@@ -261,7 +337,7 @@ describe("delete", () => {
 			expect(found).toBe(true);
 			const listed = yield* repository.listAll();
 			expect(listed).toStrictEqual([]);
-			const byKey = yield* repository.resolveByKeyHash("hash-1", 0);
+			const byKey = yield* repository.resolveByKeyHash("hash-1");
 			expect(byKey).toStrictEqual(Option.none());
 			const grants = yield* roleRepository.read(accountId);
 			expect(grants).toStrictEqual({ roles: [], globalRoles: [] });
@@ -287,15 +363,14 @@ describe("delete", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const provisioner = yield* createBot("provisioner", "hash-1");
-			const id = yield* repository.create({
+			const { serviceAccountId } = yield* repository.create({
 				displayName: "scoreboard",
-				createdBy: Option.some(yield* findAccountId(provisioner)),
-				now: 0,
+				createdBy: yield* findAccountId(provisioner),
 			});
 
 			yield* repository.delete(provisioner);
 
-			const rows = yield* createdBy(id);
+			const rows = yield* createdBy(serviceAccountId);
 			expect(rows).toStrictEqual([{ createdBy: null }]);
 		}),
 	);

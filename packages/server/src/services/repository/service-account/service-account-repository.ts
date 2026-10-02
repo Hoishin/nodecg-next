@@ -16,12 +16,29 @@ export interface NewApiKey {
 export interface ServiceAccountRepository {
 	readonly create: (input: {
 		readonly displayName: string;
-		readonly createdBy: Option.Option<AccountId>;
-		readonly now: number;
-	}) => Effect.Effect<ServiceAccountId, BackendError>;
+		readonly createdBy: AccountId;
+	}) => Effect.Effect<
+		{
+			serviceAccountId: ServiceAccountId;
+			accountId: AccountId;
+		},
+		BackendError
+	>;
 
-	readonly resolveMany: (ids: ReadonlyArray<ServiceAccountId>) => Effect.Effect<
-		ReadonlyArray<{
+	readonly createWithId: (input: {
+		readonly id: ServiceAccountId;
+		readonly displayName: string;
+		readonly createdBy: AccountId;
+	}) => Effect.Effect<
+		{
+			serviceAccountId: ServiceAccountId;
+			accountId: AccountId;
+		},
+		BackendError
+	>;
+
+	readonly resolveById: (id: ServiceAccountId) => Effect.Effect<
+		Option.Option<{
 			readonly id: ServiceAccountId;
 			readonly accountId: AccountId;
 			readonly displayName: string;
@@ -29,10 +46,7 @@ export interface ServiceAccountRepository {
 		BackendError
 	>;
 
-	readonly resolveByKeyHash: (
-		hash: string,
-		now: number,
-	) => Effect.Effect<
+	readonly resolveByKeyHash: (hash: string) => Effect.Effect<
 		Option.Option<{
 			readonly id: ServiceAccountId;
 			readonly accountId: AccountId;
@@ -54,13 +68,11 @@ export interface ServiceAccountRepository {
 	readonly addKey: (
 		id: ServiceAccountId,
 		key: NewApiKey,
-		now: number,
 	) => Effect.Effect<void, BackendError>;
 
 	readonly replaceKey: (
 		id: ServiceAccountId,
 		key: NewApiKey,
-		now: number,
 	) => Effect.Effect<
 		Option.Option<{ readonly displayName: string }>,
 		BackendError

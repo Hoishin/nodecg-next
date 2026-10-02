@@ -1,7 +1,8 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
 
@@ -40,11 +41,12 @@ const second = UserSessionId.make("second");
 
 const logIn = Effect.gen(function* () {
 	const authentications = yield* AuthenticationRepositoryService;
-	return yield* authentications.findOrCreateAuthentication(
-		{ issuer: "dev", subject: "alice" },
-		"Alice",
-		0,
-	);
+	const { authenticationId } =
+		yield* authentications.findOrCreateAuthentication(
+			{ issuer: "dev", subject: "alice" },
+			"Alice",
+		);
+	return authenticationId;
 });
 
 const storedSessions = Effect.gen(function* () {
@@ -60,7 +62,12 @@ describe("create", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
-			yield* repository.create(first, authentication, 1000);
+			const start = yield* DateTime.now;
+			yield* repository.create(
+				first,
+				authentication,
+				DateTime.addDuration(start, 1000),
+			);
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: first, authenticationId: authentication, expiresAt: 1000 },
 			]);
@@ -72,9 +79,14 @@ describe("create", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
-			yield* repository.create(first, authentication, 1000);
+			const start = yield* DateTime.now;
+			yield* repository.create(
+				first,
+				authentication,
+				DateTime.addDuration(start, 1000),
+			);
 			const error = yield* repository
-				.create(first, authentication, 2000)
+				.create(first, authentication, DateTime.addDuration(start, 2000))
 				.pipe(Effect.flip);
 			expect(error).toStrictEqual(KeyTaken.make());
 			expect(yield* storedSessions).toStrictEqual([
@@ -88,7 +100,7 @@ describe("create", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const error = yield* repository
-				.create(first, AuthenticationId.make("ghost"), 1000)
+				.create(first, AuthenticationId.make("ghost"), yield* DateTime.now)
 				.pipe(Effect.flip);
 			assert(Schema.is(BackendError)(error));
 			expect(error.message).toContain("FOREIGN KEY");
@@ -102,8 +114,14 @@ describe("refreshTTL", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
-			yield* repository.create(first, authentication, 1000);
-			yield* repository.refreshTTL(first, 5000, 999);
+			const start = yield* DateTime.now;
+			yield* repository.create(
+				first,
+				authentication,
+				DateTime.addDuration(start, 1000),
+			);
+			yield* TestClock.setTime(999);
+			yield* repository.refreshTTL(first, DateTime.addDuration(start, 5000));
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: first, authenticationId: authentication, expiresAt: 5000 },
 			]);
@@ -115,8 +133,14 @@ describe("refreshTTL", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
-			yield* repository.create(first, authentication, 1000);
-			yield* repository.refreshTTL(first, 5000, 1000);
+			const start = yield* DateTime.now;
+			yield* repository.create(
+				first,
+				authentication,
+				DateTime.addDuration(start, 1000),
+			);
+			yield* TestClock.setTime(1000);
+			yield* repository.refreshTTL(first, DateTime.addDuration(start, 5000));
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: first, authenticationId: authentication, expiresAt: 1000 },
 			]);
@@ -130,8 +154,9 @@ describe("revoke", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
-			yield* repository.create(first, authentication, 1000);
-			yield* repository.create(second, authentication, 1000);
+			const expiresAt = DateTime.addDuration(yield* DateTime.now, 1000);
+			yield* repository.create(first, authentication, expiresAt);
+			yield* repository.create(second, authentication, expiresAt);
 			yield* repository.revoke(first);
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: second, authenticationId: authentication, expiresAt: 1000 },

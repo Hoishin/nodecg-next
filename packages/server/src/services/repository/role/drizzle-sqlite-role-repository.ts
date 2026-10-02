@@ -1,9 +1,10 @@
 import type { AccountId, GlobalRoleName, Role } from "@nodecg-next/internal";
 import { and, eq } from "drizzle-orm";
-import { Array, Effect, Layer } from "effect";
+import { Array, Effect, type HashSet, Layer } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import {
+	accounts,
 	authentications,
 	globalRoleGrants,
 	roleGrants,
@@ -47,10 +48,12 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 						authenticationId: authentications.id,
 						issuer: authentications.issuer,
 						subject: authentications.subject,
+						displayName: accounts.displayName,
 						namespace: roleGrants.namespace,
 						name: roleGrants.roleName,
 					})
 					.from(roleGrants)
+					.innerJoin(accounts, eq(accounts.id, roleGrants.accountId))
 					.innerJoin(users, eq(users.accountId, roleGrants.accountId))
 					.innerJoin(authentications, eq(authentications.userId, users.id));
 				const globalRoleRows = yield* db
@@ -58,9 +61,11 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 						authenticationId: authentications.id,
 						issuer: authentications.issuer,
 						subject: authentications.subject,
+						displayName: accounts.displayName,
 						name: globalRoleGrants.roleName,
 					})
 					.from(globalRoleGrants)
+					.innerJoin(accounts, eq(accounts.id, globalRoleGrants.accountId))
 					.innerJoin(users, eq(users.accountId, globalRoleGrants.accountId))
 					.innerJoin(authentications, eq(authentications.userId, users.id));
 				const rolesByAuthentication = Array.groupBy(
@@ -73,24 +78,27 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 				);
 				const holders = new Map(
 					Array.appendAll(roleRows, globalRoleRows).map(
-						({ authenticationId, issuer, subject }) => [
+						({ authenticationId, issuer, subject, displayName }) => [
 							authenticationId,
-							{ issuer, subject },
+							{ issuer, subject, displayName },
 						],
 					),
 				);
-				return Array.fromIterable(holders).map(([id, authentication]) => ({
-					authentication,
-					roles: (rolesByAuthentication[id] ?? []).map(
-						({ namespace, name }) => ({
-							namespace,
-							name,
-						}),
-					),
-					globalRoles: (globalRolesByAuthentication[id] ?? []).map(
-						({ name }) => name,
-					),
-				}));
+				return Array.fromIterable(holders).map(
+					([id, { issuer, subject, displayName }]) => ({
+						authentication: { issuer, subject },
+						displayName,
+						roles: (rolesByAuthentication[id] ?? []).map(
+							({ namespace, name }) => ({
+								namespace,
+								name,
+							}),
+						),
+						globalRoles: (globalRolesByAuthentication[id] ?? []).map(
+							({ name }) => name,
+						),
+					}),
+				);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
@@ -111,12 +119,17 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 			),
 		);
 
-		const grantRole = Effect.fn("RoleRepository.grantRole")(
-			function* (accountId: AccountId, role: Role) {
-				yield* db
-					.insert(roleGrants)
-					.values({ accountId, namespace: role.namespace, roleName: role.name })
-					.onConflictDoNothing();
+		const grantRoles = Effect.fn("RoleRepository.grantRoles")(
+			function* (accountId: AccountId, roles: HashSet.HashSet<Role>) {
+				const rows = Array.fromIterable(roles).map(({ namespace, name }) => ({
+					accountId,
+					namespace,
+					roleName: name,
+				}));
+				if (Array.isArrayEmpty(rows)) {
+					return;
+				}
+				yield* db.insert(roleGrants).values(rows).onConflictDoNothing();
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
@@ -181,7 +194,7 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 			read,
 			listAll,
 			globalRoleExists,
-			grantRole,
+			grantRoles,
 			revokeRole,
 			grantGlobalRole,
 			revokeGlobalRole,

@@ -17,6 +17,7 @@ import { Identity } from "../models/identity.ts";
 import {
 	AdminRoleName,
 	GlobalRoleName,
+	isUndeclarableRole,
 	Role,
 	RoleNameSchema,
 } from "../models/role.ts";
@@ -27,11 +28,6 @@ import { fieldGroup } from "./shared.ts";
 export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
 	"TooManyRequests",
 	{},
-) {}
-
-export class RoleImportError extends Schema.TaggedError<RoleImportError>()(
-	"RoleImportError",
-	{ message: Schema.String },
 ) {}
 
 export class PermissionDenied extends Schema.TaggedError<PermissionDenied>()(
@@ -118,18 +114,30 @@ const RoleAssignmentSchema = Schema.Struct({
 	role: Role,
 });
 
+const DeclarableRole = Role.check(
+	Schema.makeFilter(({ name }) =>
+		isUndeclarableRole(name)
+			? {
+					path: ["name"],
+					issue: `role "${name}" cannot be assigned via import`,
+				}
+			: undefined,
+	),
+);
+
 export const UserAssignmentSchema = Schema.TaggedStruct("user", {
 	authentication: Authentication,
-	roles: Schema.Array(Role),
-	globalRoles: Schema.Array(GlobalRoleName),
+	displayName: Schema.String,
+	roles: Schema.Array(DeclarableRole),
+	globalRoles: Schema.Tuple([]),
 });
 
 export const ServiceAccountAssignmentSchema = Schema.TaggedStruct(
 	"serviceAccount",
 	{
 		id: ServiceAccountId,
-		roles: Schema.Array(Role),
-		globalRoles: Schema.Array(GlobalRoleName),
+		roles: Schema.Array(DeclarableRole),
+		globalRoles: Schema.Tuple([]),
 	},
 );
 
@@ -243,7 +251,6 @@ const RolesGroup = HttpApiGroup.make("Roles")
 		HttpApiEndpoint.post("import", "/roles/import", {
 			payload: ImportAssignmentsRequestSchema,
 			success: HttpApiSchema.Empty(204),
-			error: RoleImportError.pipe(HttpApiSchema.status(400)),
 		}),
 	)
 	.middleware(AdminTierMiddleware);

@@ -3,7 +3,7 @@ import {
 	AnonymousIdentitySchema,
 	ServiceAccount,
 } from "@nodecg-next/internal";
-import { Clock, Effect, Option } from "effect";
+import { Effect, Option } from "effect";
 
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
@@ -38,9 +38,8 @@ export const resolveServiceAccountIdentity = Effect.fn(
 )(function* (token: string) {
 	const serviceAccounts = yield* ServiceAccountRepositoryService;
 	const roleRepository = yield* RoleRepositoryService;
-	const now = yield* Clock.currentTimeMillis;
 	const hash = yield* hashApiKey(token);
-	const resolved = yield* serviceAccounts.resolveByKeyHash(hash, now);
+	const resolved = yield* serviceAccounts.resolveByKeyHash(hash);
 	if (Option.isNone(resolved)) {
 		return Option.none();
 	}

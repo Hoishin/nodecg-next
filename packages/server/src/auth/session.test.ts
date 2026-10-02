@@ -7,7 +7,7 @@ import {
 	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { ConfigProvider, Effect, Layer } from "effect";
+import { ConfigProvider, DateTime, Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, vi } from "vitest";
 
@@ -31,7 +31,13 @@ const aliceAuthId = AuthenticationId.make("alice");
 
 const findOrCreateAuthentication = vi.fn<
 	AuthenticationRepository["findOrCreateAuthentication"]
->(() => Effect.succeed(aliceAuthId));
+>(() =>
+	Effect.succeed({
+		authenticationId: aliceAuthId,
+		userId: UserId.make("alice-user"),
+		accountId: AccountId.make("alice-account"),
+	}),
+);
 const resolveBySession = vi.fn<AuthenticationRepository["resolveBySession"]>(
 	() => Effect.succeedNone,
 );
@@ -78,15 +84,12 @@ describe("createSession", () => {
 		Effect.gen(function* () {
 			yield* TestClock.adjust("1 minute");
 			const token = yield* createSession(alice, "Alice");
-			expect(findOrCreateAuthentication).toHaveBeenCalledWith(
-				alice,
-				"Alice",
-				60_000,
-			);
+			const now = yield* DateTime.now;
+			expect(findOrCreateAuthentication).toHaveBeenCalledWith(alice, "Alice");
 			expect(create).toHaveBeenCalledWith(
 				hashSessionToken(token),
 				aliceAuthId,
-				3_660_000,
+				DateTime.addDuration(now, "1 hour"),
 			);
 		}),
 	);
@@ -150,14 +153,11 @@ describe("resolveSession", () => {
 			);
 			yield* TestClock.adjust("1 minute");
 			yield* resolveSession("token");
-			expect(resolveBySession).toHaveBeenCalledWith(
-				hashSessionToken("token"),
-				60_000,
-			);
+			const now = yield* DateTime.now;
+			expect(resolveBySession).toHaveBeenCalledWith(hashSessionToken("token"));
 			expect(refreshTTL).toHaveBeenCalledWith(
 				hashSessionToken("token"),
-				3_660_000,
-				60_000,
+				DateTime.addDuration(now, "1 hour"),
 			);
 		}),
 	);

@@ -6,7 +6,7 @@ import {
 	sessionCookieSecurity,
 	UserSessionId,
 } from "@nodecg-next/internal";
-import { Clock, Duration, Effect, Option, Schema } from "effect";
+import { DateTime, type Duration, Effect, Option, Schema } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 
 import { config } from "../server-config.ts";
@@ -38,7 +38,7 @@ export const setSessionCookie = (
 	});
 
 const insertSession = Effect.fn("insertSession")(
-	function* (authenticationId: AuthenticationId, expiresAt: number) {
+	function* (authenticationId: AuthenticationId, expiresAt: DateTime.DateTime) {
 		const sessions = yield* SessionRepositoryService;
 		const token = randomBytes(32).toString("base64url");
 		yield* sessions.create(
@@ -59,19 +59,18 @@ export const createSession = Effect.fn("createSession")(function* (
 	const authentications = yield* AuthenticationRepositoryService;
 	const tx = yield* TransactionService;
 	const ttl = yield* config.sessionTtl;
-	const now = yield* Clock.currentTimeMillis;
+	const now = yield* DateTime.now;
 
 	return yield* tx.wrap(
 		Effect.gen(function* () {
-			const authenticationId =
+			const { authenticationId } =
 				yield* authentications.findOrCreateAuthentication(
 					authentication,
 					displayName,
-					now,
 				);
 			return yield* insertSession(
 				authenticationId,
-				now + Duration.toMillis(ttl),
+				DateTime.addDuration(now, ttl),
 			);
 		}),
 	);
@@ -83,12 +82,12 @@ export const resolveSession = Effect.fn("resolveSession")(function* (
 	const authentications = yield* AuthenticationRepositoryService;
 	const sessions = yield* SessionRepositoryService;
 	const ttl = yield* config.sessionTtl;
-	const now = yield* Clock.currentTimeMillis;
+	const now = yield* DateTime.now;
 
 	const id = hashSessionToken(token);
-	const authentication = yield* authentications.resolveBySession(id, now);
+	const authentication = yield* authentications.resolveBySession(id);
 	if (Option.isSome(authentication)) {
-		yield* sessions.refreshTTL(id, now + Duration.toMillis(ttl), now);
+		yield* sessions.refreshTTL(id, DateTime.addDuration(now, ttl));
 	}
 	return authentication;
 });

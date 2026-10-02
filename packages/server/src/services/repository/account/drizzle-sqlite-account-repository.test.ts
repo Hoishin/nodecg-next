@@ -45,12 +45,10 @@ describe("resolveByAuthentication", () => {
 			yield* authentications.findOrCreateAuthentication(
 				{ issuer: "dev", subject: "bob" },
 				"Bob",
-				0,
 			);
 			yield* authentications.findOrCreateAuthentication(
 				{ issuer: "dev", subject: "alice" },
 				"Alice",
-				0,
 			);
 			const alice = yield* db
 				.select({ id: accounts.id })
@@ -75,7 +73,6 @@ describe("resolveByAuthentication", () => {
 			yield* authentications.findOrCreateAuthentication(
 				{ issuer: "dev", subject: "alice" },
 				"Alice",
-				0,
 			);
 
 			expect(

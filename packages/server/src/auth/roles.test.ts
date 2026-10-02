@@ -1,6 +1,6 @@
 import { AccountId, type Role, RoleName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer } from "effect";
+import { Effect, HashSet, Layer } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -37,7 +37,7 @@ const read = vi.fn<RoleRepository["read"]>(() =>
 const globalRoleExists = vi.fn<RoleRepository["globalRoleExists"]>(() =>
 	Effect.succeed(false),
 );
-const insertRole = vi.fn<RoleRepository["grantRole"]>(() => Effect.void);
+const insertRoles = vi.fn<RoleRepository["grantRoles"]>(() => Effect.void);
 const deleteRole = vi.fn<RoleRepository["revokeRole"]>(() => Effect.void);
 const insertGlobalRole = vi.fn<RoleRepository["grantGlobalRole"]>(
 	() => Effect.void,
@@ -51,7 +51,7 @@ afterEach(() => {
 		resolveByAuthentication,
 		read,
 		globalRoleExists,
-		insertRole,
+		insertRoles,
 		deleteRole,
 		insertGlobalRole,
 		deleteGlobalRole,
@@ -67,7 +67,7 @@ const test = testLayer(
 			read,
 			listAll: vi.fn(),
 			globalRoleExists,
-			grantRole: insertRole,
+			grantRoles: insertRoles,
 			revokeRole: deleteRole,
 			grantGlobalRole: insertGlobalRole,
 			revokeGlobalRole: deleteGlobalRole,
@@ -141,7 +141,10 @@ describe("grantRole", () => {
 		Effect.gen(function* () {
 			yield* grantRole(alice, viewer);
 			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
-			expect(insertRole).toHaveBeenCalledExactlyOnceWith(accountId, viewer);
+			expect(insertRoles).toHaveBeenCalledExactlyOnceWith(
+				accountId,
+				HashSet.make(viewer),
+			);
 		}),
 	);
 
@@ -153,7 +156,7 @@ describe("grantRole", () => {
 			expect(error).toStrictEqual(
 				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
 			);
-			expect(insertRole).not.toHaveBeenCalled();
+			expect(insertRoles).not.toHaveBeenCalled();
 		}),
 	);
 });

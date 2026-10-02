@@ -4,7 +4,7 @@ import type {
 	GlobalRoleName,
 	Role,
 } from "@nodecg-next/internal";
-import { Context, type Effect } from "effect";
+import { Context, HashSet, type Effect } from "effect";
 
 import type { BackendError } from "../repository-errors.ts";
 
@@ -15,6 +15,7 @@ export interface RoleGrants {
 
 export interface RoleAssignment {
 	readonly authentication: Authentication;
+	readonly displayName: string;
 	readonly roles: ReadonlyArray<Role>;
 	readonly globalRoles: ReadonlyArray<GlobalRoleName>;
 }
@@ -33,9 +34,9 @@ export interface RoleRepository {
 		role: GlobalRoleName,
 	) => Effect.Effect<boolean, BackendError>;
 
-	readonly grantRole: (
+	readonly grantRoles: (
 		accountId: AccountId,
-		role: Role,
+		roles: HashSet.HashSet<Role>,
 	) => Effect.Effect<void, BackendError>;
 
 	readonly revokeRole: (

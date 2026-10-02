@@ -1,6 +1,6 @@
 import type { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
 import { and, eq, gt } from "drizzle-orm";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { sessions } from "../../database/drizzle-sqlite/tables.ts";
@@ -16,11 +16,15 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 			function* (
 				id: UserSessionId,
 				authenticationId: AuthenticationId,
-				expiresAt: number,
+				expiresAt: DateTime.DateTime,
 			) {
 				const inserted = yield* db
 					.insert(sessions)
-					.values({ id, authenticationId, expiresAt })
+					.values({
+						id,
+						authenticationId,
+						expiresAt: DateTime.toEpochMillis(expiresAt),
+					})
 					.onConflictDoNothing({ target: sessions.id })
 					.returning({ id: sessions.id });
 				if (inserted.length === 0) {
@@ -33,11 +37,17 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 		);
 
 		const refreshTTL = Effect.fn("SessionRepository.refreshTTL")(
-			function* (id: UserSessionId, expiresAt: number, now: number) {
+			function* (id: UserSessionId, expiresAt: DateTime.DateTime) {
+				const now = yield* DateTime.now;
 				yield* db
 					.update(sessions)
-					.set({ expiresAt })
-					.where(and(eq(sessions.id, id), gt(sessions.expiresAt, now)));
+					.set({ expiresAt: DateTime.toEpochMillis(expiresAt) })
+					.where(
+						and(
+							eq(sessions.id, id),
+							gt(sessions.expiresAt, DateTime.toEpochMillis(now)),
+						),
+					);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),

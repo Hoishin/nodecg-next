@@ -11,7 +11,6 @@ export {
 	MePayload,
 	PermissionDenied,
 	RoleAssignmentsDocument,
-	RoleImportError,
 	TooManyRequests,
 } from "./api/api-internal.ts";
 export { PublicApi } from "./api/api-v0.ts";

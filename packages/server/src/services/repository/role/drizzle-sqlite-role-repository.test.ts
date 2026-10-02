@@ -1,7 +1,7 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { AccountId, type Role, RoleName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, HashSet, Layer, Option, Schema } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
 
@@ -41,13 +41,15 @@ const viewer: Role = { namespace: "show", name: RoleName("viewer") };
 const producer: Role = { namespace: "show", name: RoleName("producer") };
 const otherViewer: Role = { namespace: "other", name: RoleName("viewer") };
 
-const createAccount = Effect.fn(function* (subject: string) {
+const createAccount = Effect.fn(function* (
+	subject: string,
+	displayName: string = subject,
+) {
 	const authentications = yield* AuthenticationRepositoryService;
 	const accounts = yield* AccountRepositoryService;
 	yield* authentications.findOrCreateAuthentication(
 		{ issuer: "dev", subject },
-		subject,
-		0,
+		displayName,
 	);
 	const accountId = yield* accounts.resolveByAuthentication({
 		issuer: "dev",
@@ -64,9 +66,9 @@ describe("read", () => {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
 			const bob = yield* createAccount("bob");
-			yield* repository.grantRole(alice, viewer);
+			yield* repository.grantRoles(alice, HashSet.make(viewer));
 			yield* repository.grantGlobalRole(alice, "admin");
-			yield* repository.grantRole(bob, producer);
+			yield* repository.grantRoles(bob, HashSet.make(producer));
 			yield* repository.grantGlobalRole(bob, "superadmin");
 
 			expect(yield* repository.read(alice)).toStrictEqual({
@@ -77,16 +79,40 @@ describe("read", () => {
 	);
 });
 
-describe("grantRole", () => {
+describe("grantRoles", () => {
 	test(
-		"keeps one grant when the same role is inserted twice",
+		"inserts every role of the set for the account only, keeping one grant per role",
 		Effect.gen(function* () {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
-			yield* repository.grantRole(alice, viewer);
-			yield* repository.grantRole(alice, viewer);
+			const bob = yield* createAccount("bob");
+			yield* repository.grantRoles(alice, HashSet.make(viewer));
 
-			expect((yield* repository.read(alice)).roles).toStrictEqual([viewer]);
+			yield* repository.grantRoles(
+				alice,
+				HashSet.make(viewer, producer, otherViewer),
+			);
+
+			const { roles } = yield* repository.read(alice);
+			expect(roles).toHaveLength(3);
+			expect(roles).toEqual(
+				expect.arrayContaining([viewer, producer, otherViewer]),
+			);
+			const bobGrants = yield* repository.read(bob);
+			expect(bobGrants.roles).toStrictEqual([]);
+		}),
+	);
+
+	test(
+		"inserts nothing for an empty set",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const alice = yield* createAccount("alice");
+
+			yield* repository.grantRoles(alice, HashSet.empty());
+
+			const grants = yield* repository.read(alice);
+			expect(grants.roles).toStrictEqual([]);
 		}),
 	);
 
@@ -96,7 +122,7 @@ describe("grantRole", () => {
 			const repository = yield* RoleRepositoryService;
 
 			const error = yield* repository
-				.grantRole(AccountId.make("missing"), viewer)
+				.grantRoles(AccountId.make("missing"), HashSet.make(viewer))
 				.pipe(Effect.flip);
 
 			assert(Schema.is(BackendError)(error));
@@ -110,8 +136,7 @@ describe("revokeRole", () => {
 		Effect.gen(function* () {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
-			yield* repository.grantRole(alice, viewer);
-			yield* repository.grantRole(alice, otherViewer);
+			yield* repository.grantRoles(alice, HashSet.make(viewer, otherViewer));
 
 			yield* repository.revokeRole(alice, viewer);
 
@@ -172,24 +197,26 @@ describe("globalRoleExists", () => {
 
 describe("listAll", () => {
 	test(
-		"lists each authentication with its account's grants and leaves out accounts without grants",
+		"lists each authentication with its account's name and grants and leaves out accounts without grants",
 		Effect.gen(function* () {
 			const repository = yield* RoleRepositoryService;
-			const alice = yield* createAccount("alice");
-			const bob = yield* createAccount("bob");
+			const alice = yield* createAccount("alice", "Alice");
+			const bob = yield* createAccount("bob", "Bob");
 			yield* createAccount("carol");
-			yield* repository.grantRole(alice, viewer);
+			yield* repository.grantRoles(alice, HashSet.make(viewer));
 			yield* repository.grantGlobalRole(bob, "admin");
 
 			const assignments = yield* repository.listAll();
 			expect(assignments).toStrictEqual([
 				{
 					authentication: { issuer: "dev", subject: "alice" },
+					displayName: "Alice",
 					roles: [viewer],
 					globalRoles: [],
 				},
 				{
 					authentication: { issuer: "dev", subject: "bob" },
+					displayName: "Bob",
 					roles: [],
 					globalRoles: ["admin"],
 				},
@@ -205,9 +232,9 @@ describe("revokeAllRoles", () => {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
 			const bob = yield* createAccount("bob");
-			yield* repository.grantRole(alice, viewer);
+			yield* repository.grantRoles(alice, HashSet.make(viewer));
 			yield* repository.grantGlobalRole(alice, "admin");
-			yield* repository.grantRole(bob, producer);
+			yield* repository.grantRoles(bob, HashSet.make(producer));
 
 			yield* repository.revokeAllRoles();
 

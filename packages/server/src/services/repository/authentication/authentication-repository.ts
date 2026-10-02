@@ -13,13 +13,16 @@ export interface AuthenticationRepository {
 	readonly findOrCreateAuthentication: (
 		authentication: Authentication,
 		displayName: string,
-		now: number,
-	) => Effect.Effect<AuthenticationId, BackendError>;
-
-	readonly resolveBySession: (
-		sessionId: UserSessionId,
-		now: number,
 	) => Effect.Effect<
+		{
+			readonly authenticationId: AuthenticationId;
+			readonly userId: UserId;
+			readonly accountId: AccountId;
+		},
+		BackendError
+	>;
+
+	readonly resolveBySession: (sessionId: UserSessionId) => Effect.Effect<
 		Option.Option<{
 			readonly accountId: AccountId;
 			readonly userId: UserId;

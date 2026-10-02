@@ -6,7 +6,7 @@ import {
 	ServiceAccountId,
 } from "@nodecg-next/internal";
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
-import { Array, Crypto, Effect, Layer, Option } from "effect";
+import { Array, Crypto, DateTime, Effect, Layer, Option } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-collision.ts";
@@ -40,43 +40,53 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		const insertKey = Effect.fn(function* (
 			serviceAccountId: ServiceAccountId,
 			key: NewApiKey,
-			now: number,
 		) {
+			const now = yield* DateTime.now;
 			yield* db.insert(apiKeys).values({
 				id: ApiKeyId.make(yield* crypto.randomUUIDv4),
 				serviceAccountId,
 				keyHash: key.hash,
 				label: key.label,
-				createdAt: now,
+				createdAt: DateTime.toEpochMillis(now),
 			});
 		}, retryOnIdCollision);
 
-		const insertServiceAccount = Effect.fn(function* (
-			displayName: string,
-			createdBy: Option.Option<AccountId>,
-			now: number,
-		) {
-			const accountId = AccountId.make(yield* crypto.randomUUIDv4);
-			const id = ServiceAccountId.make(yield* crypto.randomUUIDv4);
-			yield* db
-				.insert(accounts)
-				.values({ id: accountId, displayName, createdAt: now });
-			yield* db.insert(serviceAccounts).values({
+		const insertAccount = Effect.fn(function* (displayName: string) {
+			const now = yield* DateTime.now;
+			const uuid = yield* crypto.randomUUIDv4;
+			const id = AccountId.make(uuid);
+			yield* db.insert(accounts).values({
 				id,
-				accountId,
-				createdBy: Option.getOrNull(createdBy),
+				displayName,
+				createdAt: DateTime.toEpochMillis(now),
 			});
+			return id;
+		}, retryOnIdCollision);
+
+		const insertServiceAccount = Effect.fn(function* (
+			accountId: AccountId,
+			createdBy: AccountId,
+		) {
+			const uuid = yield* crypto.randomUUIDv4;
+			const id = ServiceAccountId.make(uuid);
+			yield* db.insert(serviceAccounts).values({ id, accountId, createdBy });
 			return id;
 		}, retryOnIdCollision);
 
 		const create = Effect.fn("ServiceAccountRepository.create")(
 			function* (input: {
 				readonly displayName: string;
-				readonly createdBy: Option.Option<AccountId>;
-				readonly now: number;
+				readonly createdBy: AccountId;
 			}) {
 				return yield* db.transaction(() =>
-					insertServiceAccount(input.displayName, input.createdBy, input.now),
+					Effect.gen(function* () {
+						const accountId = yield* insertAccount(input.displayName);
+						const serviceAccountId = yield* insertServiceAccount(
+							accountId,
+							input.createdBy,
+						);
+						return { serviceAccountId, accountId };
+					}),
 				);
 			},
 			Effect.catchTag(
@@ -85,9 +95,33 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			),
 		);
 
-		const resolveMany = Effect.fn("ServiceAccountRepository.resolveMany")(
-			function* (ids: ReadonlyArray<ServiceAccountId>) {
-				return yield* db
+		const createWithId = Effect.fn("ServiceAccountRepository.createWithId")(
+			function* (input: {
+				readonly id: ServiceAccountId;
+				readonly displayName: string;
+				readonly createdBy: AccountId;
+			}) {
+				return yield* db.transaction(() =>
+					Effect.gen(function* () {
+						const accountId = yield* insertAccount(input.displayName);
+						yield* db.insert(serviceAccounts).values({
+							id: input.id,
+							accountId,
+							createdBy: input.createdBy,
+						});
+						return { serviceAccountId: input.id, accountId };
+					}),
+				);
+			},
+			Effect.catchTag(
+				["EffectDrizzleQueryError", "SqlError", "PlatformError"],
+				(cause) => BackendError.make({ cause }),
+			),
+		);
+
+		const resolveById = Effect.fn("ServiceAccountRepository.resolveById")(
+			function* (id: ServiceAccountId) {
+				const rows = yield* db
 					.select({
 						id: serviceAccounts.id,
 						accountId: serviceAccounts.accountId,
@@ -95,7 +129,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					})
 					.from(serviceAccounts)
 					.innerJoin(accounts, eq(accounts.id, serviceAccounts.accountId))
-					.where(inArray(serviceAccounts.id, ids));
+					.where(eq(serviceAccounts.id, id));
+				return Array.head(rows);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
@@ -105,7 +140,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		const resolveByKeyHash = Effect.fn(
 			"ServiceAccountRepository.resolveByKeyHash",
 		)(
-			function* (hash: string, now: number) {
+			function* (hash: string) {
+				const now = yield* DateTime.now;
 				const rows = yield* db
 					.select({
 						id: serviceAccounts.id,
@@ -121,7 +157,10 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					.where(
 						and(
 							eq(apiKeys.keyHash, hash),
-							or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, now)),
+							or(
+								isNull(apiKeys.expiresAt),
+								gt(apiKeys.expiresAt, DateTime.toEpochMillis(now)),
+							),
 						),
 					);
 				return Array.head(rows);
@@ -187,8 +226,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		);
 
 		const addKey = Effect.fn("ServiceAccountRepository.addKey")(
-			function* (id: ServiceAccountId, key: NewApiKey, now: number) {
-				yield* insertKey(id, key, now);
+			function* (id: ServiceAccountId, key: NewApiKey) {
+				yield* insertKey(id, key);
 			},
 			Effect.catchTag(["EffectDrizzleQueryError", "PlatformError"], (cause) =>
 				BackendError.make({ cause }),
@@ -196,7 +235,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		);
 
 		const replaceKey = Effect.fn("ServiceAccountRepository.replaceKey")(
-			function* (id: ServiceAccountId, key: NewApiKey, now: number) {
+			function* (id: ServiceAccountId, key: NewApiKey) {
 				return yield* db.transaction(() =>
 					Effect.gen(function* () {
 						const found = Array.head(
@@ -210,7 +249,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 							return found;
 						}
 						yield* db.delete(apiKeys).where(eq(apiKeys.serviceAccountId, id));
-						yield* insertKey(id, key, now);
+						yield* insertKey(id, key);
 						return found;
 					}),
 				);
@@ -345,7 +384,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 
 		return {
 			create,
-			resolveMany,
+			createWithId,
+			resolveById,
 			resolveByKeyHash,
 			listAll,
 			addKey,
