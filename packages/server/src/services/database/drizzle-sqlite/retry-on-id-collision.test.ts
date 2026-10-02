@@ -39,7 +39,7 @@ const insertAccount = Effect.fn(function* (displayName: string) {
 	return yield* db
 		.insert(accounts)
 		.values({
-			id: AccountId.make(yield* crypto.randomUUIDv4),
+			id: AccountId.make(yield* crypto.randomUUIDv7),
 			displayName,
 			createdAt: 0,
 		})

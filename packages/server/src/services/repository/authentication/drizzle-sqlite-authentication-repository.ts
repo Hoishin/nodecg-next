@@ -42,8 +42,8 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 								displayName,
 							}) {
 								return {
-									id: AuthenticationId.make(yield* crypto.randomUUIDv4),
-									userId: UserId.make(yield* crypto.randomUUIDv4),
+									id: AuthenticationId.make(yield* crypto.randomUUIDv7),
+									userId: UserId.make(yield* crypto.randomUUIDv7),
 									issuer,
 									subject,
 									displayName,
@@ -88,7 +88,7 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 									authenticationId,
 									userId,
 									displayName,
-									accountId: AccountId.make(yield* crypto.randomUUIDv4),
+									accountId: AccountId.make(yield* crypto.randomUUIDv7),
 								};
 							}),
 						);
