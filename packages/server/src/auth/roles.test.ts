@@ -1,6 +1,6 @@
 import { AccountId, type Role, RoleName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, HashSet, Layer } from "effect";
+import { Effect, HashMap, HashSet, Layer } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -142,8 +142,7 @@ describe("grantRole", () => {
 			yield* grantRole(alice, viewer);
 			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
 			expect(insertRoles).toHaveBeenCalledExactlyOnceWith(
-				accountId,
-				HashSet.make(viewer),
+				HashMap.make([accountId, HashSet.make(viewer)]),
 			);
 		}),
 	);

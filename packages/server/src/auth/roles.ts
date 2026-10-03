@@ -3,7 +3,7 @@ import type {
 	GlobalRoleName,
 	Role,
 } from "@nodecg-next/internal";
-import { Array, Effect, HashSet, Match, Option, Schema } from "effect";
+import { Array, Effect, HashMap, HashSet, Match, Option, Schema } from "effect";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
@@ -74,7 +74,9 @@ export const grantRole = Effect.fn("grantRole")(function* (
 ) {
 	const roleRepository = yield* RoleRepositoryService;
 	const accountId = yield* resolveAccountId(authentication);
-	yield* roleRepository.grantRoles(accountId, HashSet.make(role));
+	yield* roleRepository.grantRoles(
+		HashMap.make([accountId, HashSet.make(role)]),
+	);
 });
 
 export const revokeRole = Effect.fn("revokeRole")(function* (

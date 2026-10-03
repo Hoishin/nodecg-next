@@ -1,7 +1,9 @@
 import { SqliteClient } from "@effect/sql-sqlite-node";
+import { sql } from "drizzle-orm";
 import * as SQLiteNodeDrizzle from "drizzle-orm/effect-sqlite-node";
 import { migrate } from "drizzle-orm/effect-sqlite-node/migrator";
 import {
+	Array,
 	Context,
 	Effect,
 	FileSystem,
@@ -80,3 +82,27 @@ export class DrizzleSqliteDatabaseService extends Context.Service<DrizzleSqliteD
 		systemDatabaseFile.pipe(Effect.flatMap(this.make)),
 	);
 }
+
+const decodeMaxVariableNumber = Schema.decodeUnknownEffect(
+	Schema.NonEmptyArray(
+		Schema.Struct({
+			value: Schema.TemplateLiteralParser([
+				"MAX_VARIABLE_NUMBER=",
+				Schema.FiniteFromString,
+			]),
+		}),
+	),
+);
+
+export const readMaxVariableNumber = Effect.gen(function* () {
+	const db = yield* DrizzleSqliteDatabaseService;
+	const rows = yield* db.all(
+		sql`
+			SELECT compile_options AS value
+			FROM pragma_compile_options
+			WHERE compile_options LIKE 'MAX_VARIABLE_NUMBER=%'
+		`,
+	);
+	const limits = yield* decodeMaxVariableNumber(rows);
+	return Array.headNonEmpty(limits).value[1];
+});

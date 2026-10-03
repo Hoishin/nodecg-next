@@ -1,8 +1,11 @@
 import type { AccountId, GlobalRoleName, Role } from "@nodecg-next/internal";
 import { and, eq } from "drizzle-orm";
-import { Array, Effect, type HashSet, Layer } from "effect";
+import { Array, Effect, HashMap, type HashSet, Layer } from "effect";
 
-import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import {
+	DrizzleSqliteDatabaseService,
+	readMaxVariableNumber,
+} from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import {
 	accounts,
 	authentications,
@@ -17,6 +20,7 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 	RoleRepositoryService,
 	Effect.gen(function* () {
 		const db = yield* DrizzleSqliteDatabaseService;
+		const maxVariableNumber = yield* readMaxVariableNumber;
 
 		const read = Effect.fn("RoleRepository.read")(
 			function* (accountId: AccountId) {
@@ -120,16 +124,23 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 		);
 
 		const grantRoles = Effect.fn("RoleRepository.grantRoles")(
-			function* (accountId: AccountId, roles: HashSet.HashSet<Role>) {
-				const rows = Array.fromIterable(roles).map(({ namespace, name }) => ({
-					accountId,
-					namespace,
-					roleName: name,
-				}));
-				if (Array.isArrayEmpty(rows)) {
+			function* (grants: HashMap.HashMap<AccountId, HashSet.HashSet<Role>>) {
+				const rows = HashMap.toEntries(grants).flatMap(([accountId, roles]) =>
+					Array.fromIterable(roles).map(({ namespace, name }) => ({
+						accountId,
+						namespace,
+						roleName: name,
+					})),
+				);
+				if (!Array.isArrayNonEmpty(rows)) {
 					return;
 				}
-				yield* db.insert(roleGrants).values(rows).onConflictDoNothing();
+				const variablesPerRow = Object.keys(Array.headNonEmpty(rows)).length;
+				yield* Effect.forEach(
+					Array.chunksOf(rows, Math.floor(maxVariableNumber / variablesPerRow)),
+					(chunk) => db.insert(roleGrants).values(chunk).onConflictDoNothing(),
+					{ discard: true },
+				);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),

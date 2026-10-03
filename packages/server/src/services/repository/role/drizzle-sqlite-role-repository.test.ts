@@ -1,7 +1,7 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { AccountId, type Role, RoleName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, HashSet, Layer, Option, Schema } from "effect";
+import { Array, Effect, HashMap, HashSet, Layer, Option, Schema } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
 
@@ -66,9 +66,9 @@ describe("read", () => {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
 			const bob = yield* createAccount("bob");
-			yield* repository.grantRoles(alice, HashSet.make(viewer));
+			yield* repository.grantRoles(HashMap.make([alice, HashSet.make(viewer)]));
 			yield* repository.grantGlobalRole(alice, "admin");
-			yield* repository.grantRoles(bob, HashSet.make(producer));
+			yield* repository.grantRoles(HashMap.make([bob, HashSet.make(producer)]));
 			yield* repository.grantGlobalRole(bob, "superadmin");
 
 			expect(yield* repository.read(alice)).toStrictEqual({
@@ -86,11 +86,10 @@ describe("grantRoles", () => {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
 			const bob = yield* createAccount("bob");
-			yield* repository.grantRoles(alice, HashSet.make(viewer));
+			yield* repository.grantRoles(HashMap.make([alice, HashSet.make(viewer)]));
 
 			yield* repository.grantRoles(
-				alice,
-				HashSet.make(viewer, producer, otherViewer),
+				HashMap.make([alice, HashSet.make(viewer, producer, otherViewer)]),
 			);
 
 			const { roles } = yield* repository.read(alice);
@@ -104,12 +103,52 @@ describe("grantRoles", () => {
 	);
 
 	test(
+		"inserts each account's own roles when given several accounts",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const alice = yield* createAccount("alice");
+			const bob = yield* createAccount("bob");
+
+			yield* repository.grantRoles(
+				HashMap.make(
+					[alice, HashSet.make(viewer)],
+					[bob, HashSet.make(producer)],
+				),
+			);
+
+			const aliceGrants = yield* repository.read(alice);
+			expect(aliceGrants.roles).toStrictEqual([viewer]);
+			const bobGrants = yield* repository.read(bob);
+			expect(bobGrants.roles).toStrictEqual([producer]);
+		}),
+	);
+
+	test(
+		"inserts more roles than fit in one statement",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const alice = yield* createAccount("alice");
+			const roles = Array.makeBy(10_923, (index) => ({
+				namespace: "show",
+				name: RoleName(`role-${index}`),
+			}));
+
+			yield* repository.grantRoles(
+				HashMap.make([alice, HashSet.fromIterable(roles)]),
+			);
+
+			const grants = yield* repository.read(alice);
+			expect(grants.roles).toHaveLength(10_923);
+		}),
+	);
+
+	test(
 		"inserts nothing for an empty set",
 		Effect.gen(function* () {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
 
-			yield* repository.grantRoles(alice, HashSet.empty());
+			yield* repository.grantRoles(HashMap.make([alice, HashSet.empty()]));
 
 			const grants = yield* repository.read(alice);
 			expect(grants.roles).toStrictEqual([]);
@@ -122,7 +161,9 @@ describe("grantRoles", () => {
 			const repository = yield* RoleRepositoryService;
 
 			const error = yield* repository
-				.grantRoles(AccountId.make("missing"), HashSet.make(viewer))
+				.grantRoles(
+					HashMap.make([AccountId.make("missing"), HashSet.make(viewer)]),
+				)
 				.pipe(Effect.flip);
 
 			assert(Schema.is(BackendError)(error));
@@ -136,7 +177,9 @@ describe("revokeRole", () => {
 		Effect.gen(function* () {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
-			yield* repository.grantRoles(alice, HashSet.make(viewer, otherViewer));
+			yield* repository.grantRoles(
+				HashMap.make([alice, HashSet.make(viewer, otherViewer)]),
+			);
 
 			yield* repository.revokeRole(alice, viewer);
 
@@ -203,7 +246,7 @@ describe("listAll", () => {
 			const alice = yield* createAccount("alice", "Alice");
 			const bob = yield* createAccount("bob", "Bob");
 			yield* createAccount("carol");
-			yield* repository.grantRoles(alice, HashSet.make(viewer));
+			yield* repository.grantRoles(HashMap.make([alice, HashSet.make(viewer)]));
 			yield* repository.grantGlobalRole(bob, "admin");
 
 			const assignments = yield* repository.listAll();
@@ -232,9 +275,9 @@ describe("revokeAllRoles", () => {
 			const repository = yield* RoleRepositoryService;
 			const alice = yield* createAccount("alice");
 			const bob = yield* createAccount("bob");
-			yield* repository.grantRoles(alice, HashSet.make(viewer));
+			yield* repository.grantRoles(HashMap.make([alice, HashSet.make(viewer)]));
 			yield* repository.grantGlobalRole(alice, "admin");
-			yield* repository.grantRoles(bob, HashSet.make(producer));
+			yield* repository.grantRoles(HashMap.make([bob, HashSet.make(producer)]));
 
 			yield* repository.revokeAllRoles();
 

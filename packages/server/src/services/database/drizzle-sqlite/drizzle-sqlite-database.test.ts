@@ -22,6 +22,7 @@ import { assert, describe, expect } from "vitest";
 import {
 	DrizzleSqliteDatabaseService,
 	MigrationsNotFound,
+	readMaxVariableNumber,
 } from "./drizzle-sqlite-database.ts";
 import {
 	accounts,
@@ -142,6 +143,21 @@ describe("layer", () => {
 			expect(yield* TestConsole.logLines).toContain(
 				`Storing system data in ${path.join(dataDir, "nodecg.sqlite3")}`,
 			);
+		}),
+	);
+});
+
+describe("readMaxVariableNumber", () => {
+	test(
+		"reads the variable limit SQLite was compiled with",
+		Effect.gen(function* () {
+			const db = yield* DrizzleSqliteDatabaseService.make(":memory:");
+
+			const limit = yield* readMaxVariableNumber.pipe(
+				Effect.provideService(DrizzleSqliteDatabaseService, db),
+			);
+
+			expect(limit).toBe(32_766);
 		}),
 	);
 });

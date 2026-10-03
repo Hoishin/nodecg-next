@@ -635,9 +635,9 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 						if (mode === "replace") {
 							yield* roleRepository.revokeAllRoles();
 						}
-						for (const [accountId, roles] of accountRoleMap) {
-							yield* roleRepository.grantRoles(accountId, roles);
-						}
+						yield* roleRepository.grantRoles(
+							HashMap.fromIterable(accountRoleMap),
+						);
 					}),
 				);
 			}).pipe(reportBackendFailure),
