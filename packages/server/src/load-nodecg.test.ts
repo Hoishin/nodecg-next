@@ -350,7 +350,12 @@ describe("loadNodeCG", () => {
 		vi.stubEnv("NODECG_DATA_DIR", dataDir);
 		return () => {
 			vi.unstubAllEnvs();
-			rmSync(dataDir, { recursive: true });
+			try {
+				rmSync(dataDir, { recursive: true });
+			} catch (error) {
+				// @effect-diagnostics-next-line globalConsole:off
+				console.warn(`Could not remove temp data dir ${dataDir}:`, error);
+			}
 		};
 	});
 
