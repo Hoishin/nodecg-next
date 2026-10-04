@@ -1,12 +1,13 @@
 import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	AdminTierMiddleware,
+	AnonymousIdentitySchema,
 	CurrentIdentity,
 	UserAuthenticationMiddleware,
 	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
-import { type Crypto, Effect, Layer, Option, Redacted } from "effect";
+import { type Crypto, Effect, Layer, Option, Redacted, Schema } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -22,6 +23,8 @@ import {
 	resolveSessionIdentity,
 } from "./identity.ts";
 import { setSessionCookie } from "./session.ts";
+
+const isAnonymous = Schema.is(AnonymousIdentitySchema);
 
 export const UserAuthenticationMiddlewareLive = Layer.effect(
 	UserAuthenticationMiddleware,
@@ -78,6 +81,9 @@ export const AdminTierMiddlewareLive = Layer.succeed(
 	(httpEffect) =>
 		Effect.gen(function* () {
 			const identity = yield* CurrentIdentity;
+			if (isAnonymous(identity)) {
+				return yield* HttpApiError.Unauthorized.make();
+			}
 			if (!isAdminTier(identity)) {
 				return yield* new HttpApiError.Forbidden();
 			}
@@ -90,6 +96,9 @@ export const SuperadminMiddlewareLive = Layer.succeed(
 	(httpEffect) =>
 		Effect.gen(function* () {
 			const identity = yield* CurrentIdentity;
+			if (isAnonymous(identity)) {
+				return yield* HttpApiError.Unauthorized.make();
+			}
 			if (!isSuperadmin(identity)) {
 				return yield* new HttpApiError.Forbidden();
 			}

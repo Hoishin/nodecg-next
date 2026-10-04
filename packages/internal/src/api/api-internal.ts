@@ -102,6 +102,7 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 				payload: ClaimSuperadminRequestSchema,
 				success: HttpApiSchema.Empty(204),
 				error: [
+					HttpApiError.Unauthorized,
 					HttpApiError.Forbidden,
 					TooManyRequests.pipe(HttpApiSchema.status(429)),
 				],
@@ -158,7 +159,7 @@ const CreateApiKeyRequestSchema = Schema.Struct({
 	displayName: Schema.String,
 });
 
-const CreateApiKeyResultSchema = Schema.Struct({
+export const CreateApiKeyResultSchema = Schema.Struct({
 	id: Schema.String,
 	displayName: Schema.String,
 	token: Schema.Redacted(Schema.String),
@@ -255,9 +256,16 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	)
 	.middleware(AdminTierMiddleware);
 
+export const AdminUserTargetSchema = Schema.TaggedStruct("user", {
+	authentication: Authentication,
+});
+export const AdminServiceAccountTargetSchema = Schema.TaggedStruct(
+	"serviceAccount",
+	{ id: ServiceAccountId },
+);
 export const AdminTargetSchema = Schema.Union([
-	Schema.TaggedStruct("user", { authentication: Authentication }),
-	Schema.TaggedStruct("serviceAccount", { id: ServiceAccountId }),
+	AdminUserTargetSchema,
+	AdminServiceAccountTargetSchema,
 ]);
 export type AdminTarget = typeof AdminTargetSchema.Type;
 

@@ -30,12 +30,16 @@ export class UserAuthenticationMiddleware extends HttpApiMiddleware.Service<
 export class AdminTierMiddleware extends HttpApiMiddleware.Service<
 	AdminTierMiddleware,
 	{ requires: CurrentIdentity }
->()("AdminTier", { error: HttpApiError.Forbidden }) {}
+>()("AdminTier", {
+	error: [HttpApiError.Unauthorized, HttpApiError.Forbidden],
+}) {}
 
 export class SuperadminMiddleware extends HttpApiMiddleware.Service<
 	SuperadminMiddleware,
 	{ requires: CurrentIdentity }
->()("Superadmin", { error: HttpApiError.Forbidden }) {}
+>()("Superadmin", {
+	error: [HttpApiError.Unauthorized, HttpApiError.Forbidden],
+}) {}
 
 export class ServiceAccountAuthenticationMiddleware extends HttpApiMiddleware.Service<
 	ServiceAccountAuthenticationMiddleware,

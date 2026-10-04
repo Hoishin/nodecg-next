@@ -345,9 +345,14 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 					Effect.gen(function* () {
 						const identity = yield* CurrentIdentity;
 						// Gate unauthenticated users to consume rate limit
-						if (identity._tag !== "user") {
-							return yield* new HttpApiError.Forbidden();
-						}
+						const authentication = yield* Match.value(identity).pipe(
+							Match.tag("user", (user) => Effect.succeed(user.authentication)),
+							Match.tag("serviceAccount", "server", () =>
+								HttpApiError.Forbidden.make(),
+							),
+							Match.tag("anonymous", () => HttpApiError.Unauthorized.make()),
+							Match.exhaustive,
+						);
 
 						const now = yield* Clock.currentTimeMillis;
 						const recent = (yield* Ref.get(claimAttempts)).filter(
@@ -367,7 +372,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						) {
 							return yield* new HttpApiError.Forbidden();
 						}
-						yield* grantGlobalRole(identity.authentication, "superadmin");
+						yield* grantGlobalRole(authentication, "superadmin");
 					}).pipe(
 						Effect.catchTag("UnknownAuthentication", () =>
 							HttpApiError.Forbidden.make(),

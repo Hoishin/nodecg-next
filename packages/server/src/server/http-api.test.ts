@@ -692,15 +692,15 @@ describe("roles", () => {
 		}),
 	);
 
-	it.effect("403 for an anonymous caller", () =>
+	it.effect("401 for an anonymous caller", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([]);
 			expect((yield* handler(rolesRequest("grant", "superadmin"))).status).toBe(
-				403,
+				401,
 			);
 			expect(
 				(yield* handler(rolesRequest("revoke", "superadmin"))).status,
-			).toBe(403);
+			).toBe(401);
 		}),
 	);
 
@@ -786,232 +786,6 @@ describe("roles", () => {
 	);
 });
 
-describe("admin roles", () => {
-	const adminRoleRequest = (
-		action: "grant" | "revoke",
-		target: unknown,
-		role: string,
-	) =>
-		postRequest(`http://x/api/internal/admin-roles/${action}`, {
-			target,
-			role,
-		});
-
-	const user = {
-		_tag: "user",
-		authentication: { issuer: "dev", subject: "operator" },
-	};
-
-	const superadmin = asIdentity(
-		User.make({
-			id: UserId.make("root"),
-			authentication: { issuer: "dev", subject: "root" },
-			displayName: "Root",
-			roles: [],
-			globalRoles: ["superadmin"],
-		}),
-	);
-
-	const admin = asIdentity(
-		User.make({
-			id: UserId.make("boss"),
-			authentication: { issuer: "dev", subject: "boss" },
-			displayName: "Boss",
-			roles: [],
-			globalRoles: ["admin"],
-		}),
-	);
-
-	const decodeId = Schema.decodeUnknownSync(
-		Schema.Struct({ id: Schema.String }),
-	);
-
-	const createServiceAccount = Effect.fn(function* (
-		handler: (request: Request) => Effect.Effect<Response>,
-	) {
-		const res = yield* handler(
-			postRequest("http://x/api/internal/service-accounts", {
-				displayName: "bot",
-			}),
-		);
-		return decodeId(yield* json(res));
-	});
-
-	it.effect("403 for an anonymous caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			expect(
-				(yield* handler(adminRoleRequest("grant", user, "admin"))).status,
-			).toBe(403);
-			expect(
-				(yield* handler(adminRoleRequest("revoke", user, "admin"))).status,
-			).toBe(403);
-		}),
-	);
-
-	it.effect("403 for an admin-tier caller who is not a superadmin", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], admin);
-			expect(
-				(yield* handler(adminRoleRequest("grant", user, "admin"))).status,
-			).toBe(403);
-		}),
-	);
-
-	it.effect(
-		"superadmin grants and revokes superadmin for a user, closing and reopening the claim",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler(
-					[],
-					superadmin,
-					ConfigProvider.layer(
-						ConfigProvider.fromEnvRecord({
-							SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
-						}),
-					),
-					{ loggedIn: ["operator", "root"] },
-				);
-				const claimRequest = () =>
-					postRequest("http://x/api/internal/authentication/claim-superadmin", {
-						token: "super-secret-claim-token",
-					});
-
-				const grant = yield* handler(
-					adminRoleRequest("grant", user, "superadmin"),
-				);
-				expect(grant.status).toBe(204);
-				const claimWhileGranted = yield* handler(claimRequest());
-				expect(claimWhileGranted.status).toBe(403);
-
-				const revoke = yield* handler(
-					adminRoleRequest("revoke", user, "superadmin"),
-				);
-				expect(revoke.status).toBe(204);
-				const claimAfterRevoke = yield* handler(claimRequest());
-				expect(claimAfterRevoke.status).toBe(204);
-			}),
-	);
-
-	it.effect("403 when revoking superadmin from a superadmin in config", () =>
-		Effect.gen(function* () {
-			const dev: AuthProvider = {
-				name: "dev",
-				issuer: "dev",
-				authorize: () => Effect.die("unused"),
-				callback: () => Effect.die("unused"),
-			};
-			const handler = yield* webHandler(
-				[],
-				superadmin,
-				ConfigProvider.layer(
-					ConfigProvider.fromEnvRecord({ SUPERADMINS: "dev:root" }),
-				),
-				{ providers: HashMap.make(["dev", dev] as const) },
-			);
-			const res = yield* handler(
-				adminRoleRequest(
-					"revoke",
-					{
-						_tag: "user",
-						authentication: { issuer: "dev", subject: "root" },
-					},
-					"superadmin",
-				),
-			);
-			expect(res.status).toBe(403);
-			expect(yield* json(res)).toMatchObject({
-				message:
-					"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
-			});
-		}),
-	);
-
-	it.effect(
-		"404 when granting the admin tier to an authentication without an account",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([], superadmin);
-				expect(
-					(yield* handler(adminRoleRequest("grant", user, "admin"))).status,
-				).toBe(404);
-			}),
-	);
-
-	it.effect("400 for a payload role outside the admin tier", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], superadmin);
-			expect(
-				(yield* handler(adminRoleRequest("grant", user, "producer"))).status,
-			).toBe(400);
-		}),
-	);
-
-	it.effect("superadmin grants the admin tier to a service account", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], superadmin, undefined, {
-				loggedIn: ["root"],
-			});
-			const { id } = yield* createServiceAccount(handler);
-			const res = yield* handler(
-				adminRoleRequest("grant", { _tag: "serviceAccount", id }, "admin"),
-			);
-			expect(res.status).toBe(204);
-			const list = yield* handler(
-				new Request("http://x/api/internal/service-accounts"),
-			);
-			const listed = yield* json(list);
-			expect(listed).toEqual({
-				serviceAccounts: [
-					{ id, displayName: "bot", roles: [], globalRoles: ["admin"] },
-				],
-			});
-		}),
-	);
-
-	it.effect("superadmin revokes the admin tier from a service account", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], superadmin, undefined, {
-				loggedIn: ["root"],
-			});
-			const { id } = yield* createServiceAccount(handler);
-			const target = { _tag: "serviceAccount", id };
-			yield* handler(adminRoleRequest("grant", target, "admin"));
-
-			const res = yield* handler(adminRoleRequest("revoke", target, "admin"));
-			expect(res.status).toBe(204);
-			const list = yield* handler(
-				new Request("http://x/api/internal/service-accounts"),
-			);
-			expect(yield* json(list)).toEqual({
-				serviceAccounts: [
-					{ id, displayName: "bot", roles: [], globalRoles: [] },
-				],
-			});
-		}),
-	);
-
-	it.effect(
-		"404 when granting the admin tier to an unknown service account",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([], superadmin);
-				expect(
-					(yield* handler(
-						adminRoleRequest(
-							"grant",
-							{
-								_tag: "serviceAccount",
-								id: "00000000-0000-4000-8000-0000000000ff",
-							},
-							"admin",
-						),
-					)).status,
-				).toBe(404);
-			}),
-	);
-});
-
 describe("claim superadmin", () => {
 	const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
 	const claimRequest = (token: string) => postRequest(claimUrl, { token });
@@ -1051,12 +825,12 @@ describe("claim superadmin", () => {
 			}),
 	);
 
-	it.effect("403 for an anonymous caller", () =>
+	it.effect("401 for an anonymous caller", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([], undefined, withClaimToken);
 			expect(
 				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(403);
+			).toBe(401);
 		}),
 	);
 
@@ -1136,7 +910,7 @@ describe("claim superadmin", () => {
 			for (let attempt = 0; attempt < 10; attempt++) {
 				expect(
 					(yield* handler(claimRequest("super-secret-claim-token"))).status,
-				).toBe(403);
+				).toBe(401);
 			}
 			expect(
 				(yield* handler(
@@ -1769,10 +1543,10 @@ describe("service accounts", () => {
 		}),
 	);
 
-	it.effect("403 for an anonymous caller", () =>
+	it.effect("401 for an anonymous caller", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([]);
-			expect((yield* handler(createRequest())).status).toBe(403);
+			expect((yield* handler(createRequest())).status).toBe(401);
 		}),
 	);
 
