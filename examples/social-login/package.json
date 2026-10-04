@@ -5,6 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "vite build",
+		"dev": "NODECG_DEV=true node src/server/server.ts",
 		"start": "node src/server/server.ts"
 	},
 	"dependencies": {

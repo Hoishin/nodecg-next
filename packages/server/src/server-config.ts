@@ -73,6 +73,7 @@ export const config = {
 	port,
 	baseUrl,
 	dataDir: Config.String("DATA_DIR").pipe(Config.withDefault("data")),
+	dev: Config.Boolean("DEV").pipe(Config.withDefault(false)),
 	loginAttemptTtl: Config.Duration("LOGIN_ATTEMPT_TTL").pipe(
 		Config.withDefault(Duration.minutes(10)),
 	),

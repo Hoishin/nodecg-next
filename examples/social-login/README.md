@@ -19,9 +19,10 @@ Twitch note: exposing `preferred_username` requires the OIDC `claims` request pa
 ## Run
 
 ```sh
-DISCORD_CLIENT_ID=… DISCORD_CLIENT_SECRET=… pnpm start
+DISCORD_CLIENT_ID=… DISCORD_CLIENT_SECRET=… pnpm dev
 ```
 
 Open http://localhost:3000/frontend/namespaces/social-login/
 
-`pnpm start` serves the frontend through Vite in dev mode; for the built output run `pnpm build`, then start with `NODE_ENV=production`.
+- `pnpm dev` serves the frontend through Vite (`NODECG_DEV=true`)
+- For the built output run `pnpm build`, then `pnpm start`.

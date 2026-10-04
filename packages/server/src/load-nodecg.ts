@@ -20,11 +20,7 @@ import {
 	Schema,
 	Scope,
 } from "effect";
-import {
-	FetchHttpClient,
-	HttpMiddleware,
-	HttpRouter,
-} from "effect/unstable/http";
+import { HttpRouter } from "effect/unstable/http";
 import { Reactivity } from "effect/unstable/reactivity";
 
 import {
@@ -32,19 +28,12 @@ import {
 	AuthProviderRegistry,
 } from "./auth/auth-provider.ts";
 import {
-	AdminTierMiddlewareLive,
-	ServiceAccountAuthenticationMiddlewareLive,
-	UserAuthenticationMiddlewareLive,
-	SuperadminMiddlewareLive,
-} from "./auth/middleware.ts";
-import {
 	type BuiltNamespace,
 	BuiltNamespaceRegistry,
 	LoadedNamespacesService,
 	makeUseCross,
 } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
-import { ConfiguredSuperadmins } from "./configured-superadmins.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import {
@@ -52,17 +41,14 @@ import {
 	type RegisteredNamespace,
 } from "./field-registry.ts";
 import {
+	type FrontendConfig,
 	type ImplementedNamespace,
 	type LoadedNamespace,
 	type BaseNamespaceShape,
 	type WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
-import { basePathMiddleware } from "./server/base-path.ts";
-import { frontendRoutes } from "./server/frontend-serving.ts";
-import { RootApiLive } from "./server/http-api/build-root-api.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
-import { UrlPath } from "./server/url-path.ts";
-import { websocketRoute } from "./server/websocket.ts";
+import { routes } from "./server/routes.ts";
 import { OperatingSystemService } from "./services/operating-system/operating-system.ts";
 import { DrizzleSqliteRepositories } from "./services/repository/drizzle-sqlite-repositories.ts";
 import { JsonFileReplicantRepository } from "./services/repository/replicant/json-file-replicant-repository.ts";
@@ -86,7 +72,6 @@ export type LoadNodeCGOptions<
 	};
 	storage?: StorageOption;
 	authProviders?: ReadonlyArray<AuthProvider>;
-	dev?: boolean;
 	onReady?: (address?: string) => void;
 };
 
@@ -143,6 +128,7 @@ interface PreparedNamespace<S extends BaseNamespaceShape> {
 		S["rpc"]
 	>;
 	readonly declaredRoles: ReadonlySet<RoleName>;
+	readonly frontend: FrontendConfig | undefined;
 	readonly runOnLoad: Effect.Effect<void, OnLoadError, Scope.Scope>;
 }
 
@@ -258,6 +244,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				built,
 				loaded: handle,
 				declaredRoles: declaredRoleNames(implemented.manifest),
+				frontend: implemented.impl?.frontend,
 				runOnLoad,
 			};
 			return prepared;
@@ -272,9 +259,10 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			Record<string, PreparedNamespace<NamespaceShapeTarget>>
 		> = prepared;
 		const registered = Object.values(preparedRecord).map(
-			({ built, declaredRoles }): RegisteredNamespace => ({
+			({ built, declaredRoles, frontend }): RegisteredNamespace => ({
 				namespace: built.namespace,
 				declaredRoles,
+				frontend,
 				fields: built,
 			}),
 		);
@@ -296,30 +284,15 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			LoadedNamespaceLambda
 		>((preparedNamespace) => preparedNamespace.loaded)<Shapes>(prepared);
 
+		const routeLayer = yield* routes;
+
 		const start = Effect.gen(function* () {
 			const httpServer = yield* makeNodeHttpServer({
 				onReady: options.onReady,
 			});
-			const AppLive = Layer.mergeAll(
-				RootApiLive,
-				websocketRoute,
-				frontendRoutes({
-					namespaces: Object.values(widenedNamespaces),
-					dev: options.dev ?? false,
-				}),
-				HttpRouter.middleware(yield* basePathMiddleware, { global: true }),
-				HttpRouter.middleware(HttpMiddleware.compression(), {
-					global: true,
-				}),
-			);
-			const ServerLive = HttpRouter.serve(AppLive).pipe(
+			const ServerLive = HttpRouter.serve(routeLayer).pipe(
 				Layer.provide(FieldRegistryService.layer(registered)),
 				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
-				Layer.provide(UserAuthenticationMiddlewareLive),
-				Layer.provide(ServiceAccountAuthenticationMiddlewareLive),
-				Layer.provide(AdminTierMiddlewareLive),
-				Layer.provide(SuperadminMiddlewareLive),
-				Layer.provide(ConfiguredSuperadmins.layer),
 				Layer.provide(
 					Layer.succeed(
 						AuthProviderRegistry,
@@ -333,8 +306,6 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 					),
 				),
 				Layer.provide(httpServer),
-				Layer.provide(UrlPath.layer),
-				Layer.provide(FetchHttpClient.layer),
 			);
 			return yield* Layer.launch(ServerLive);
 		});

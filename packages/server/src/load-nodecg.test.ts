@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Cause, Effect, Layer, Result, Schema } from "effect";
+import { Cause, ConfigProvider, Effect, Layer, Result, Schema } from "effect";
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
@@ -29,6 +29,7 @@ const testInMemory = testLayer(
 			Layer.provide(InMemoryReplicantRepository),
 		),
 		BuiltNamespaceRegistry.layer,
+		ConfigProvider.layer(ConfigProvider.fromEnvRecord({})),
 	),
 );
 

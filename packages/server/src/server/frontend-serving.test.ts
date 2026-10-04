@@ -1,22 +1,17 @@
 import { NodeHttpServer } from "@effect/platform-node";
-import { defineNamespace } from "@nodecg-next/core";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { HttpEffect, HttpRouter } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
-import {
-	type FrontendConfig,
-	implementNamespace,
-} from "../implement-namespace.ts";
+import { FieldRegistryService } from "../field-registry.ts";
+import type { FrontendConfig } from "../implement-namespace.ts";
 import { frontendRoutes } from "./frontend-serving.ts";
 import { UrlPath } from "./url-path.ts";
 
 const test = testLayer(
 	Layer.merge(NodeHttpServer.layerHttpServices, UrlPath.layer),
 );
-
-const manifest = defineNamespace("ns", {});
 
 const fixtures = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem;
@@ -42,11 +37,17 @@ const fixtures = Effect.gen(function* () {
 });
 
 const serve = Effect.fn(function* (frontend: FrontendConfig) {
-	const handler = yield* HttpRouter.toHttpEffect(
-		frontendRoutes({
-			namespaces: [implementNamespace(manifest, { frontend })],
-			dev: false,
-		}),
+	const handler = yield* HttpRouter.toHttpEffect(frontendRoutes).pipe(
+		Effect.provide(
+			FieldRegistryService.layer([
+				{
+					namespace: "ns",
+					declaredRoles: new Set(),
+					frontend,
+					fields: { replicant: {}, computed: {}, topic: {}, rpc: {} },
+				},
+			]),
+		),
 	);
 	const web = HttpEffect.toWebHandler(handler);
 	return (pathname: string, init?: RequestInit) =>

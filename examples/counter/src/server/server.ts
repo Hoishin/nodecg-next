@@ -46,7 +46,6 @@ process.env["NODECG_SUPERADMINS"] = "local:johndoe";
 const nodecg = await loadNodeCG({
 	namespaces: { counter: extendedCounter, settings },
 	authProviders: [localProvider],
-	dev: process.env["NODE_ENV"] !== "production",
 });
 
 await nodecg.namespaces.counter.computed.parity.subscribe((parity) => {

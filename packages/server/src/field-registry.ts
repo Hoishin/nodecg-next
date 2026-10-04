@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from "effect";
 
 import { type BuiltNamespace } from "./build-fields.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
+import type { FrontendConfig } from "./implement-namespace.ts";
 
 // Exclude Decoded types
 export type ReplicantFieldInternal = Pick<
@@ -31,11 +32,13 @@ export interface FieldRegistry {
 	readonly topic: ReadonlyMap<string, ReadonlyMap<string, TopicFieldInternal>>;
 	readonly rpc: ReadonlyMap<string, ReadonlyMap<string, RpcFieldInternal>>;
 	readonly declaredRoles: ReadonlyMap<string, ReadonlySet<RoleName>>;
+	readonly frontend: ReadonlyMap<string, FrontendConfig>;
 }
 
 export interface RegisteredNamespace {
 	readonly namespace: string;
 	readonly declaredRoles: ReadonlySet<RoleName>;
+	readonly frontend?: FrontendConfig;
 	readonly fields: {
 		readonly replicant: Record<
 			string,
@@ -56,6 +59,7 @@ export interface RegisteredNamespace {
 	};
 }
 
+// TODO: rename to NamespaceRegistryService
 // transport lookup on single field by name, encoded types only
 export class FieldRegistryService extends Context.Service<FieldRegistryService>()(
 	"FieldRegistry",
@@ -70,9 +74,13 @@ export class FieldRegistryService extends Context.Service<FieldRegistryService>(
 				const topic = new Map<string, Map<string, TopicFieldInternal>>();
 				const rpc = new Map<string, Map<string, RpcFieldInternal>>();
 				const declaredRoles = new Map<string, ReadonlySet<RoleName>>();
+				const frontend = new Map<string, FrontendConfig>();
 				for (const registered of namespaces) {
 					const { namespace, fields } = registered;
 					declaredRoles.set(namespace, registered.declaredRoles);
+					if (typeof registered.frontend !== "undefined") {
+						frontend.set(namespace, registered.frontend);
+					}
 					const replicantFields = new Map<string, ReplicantFieldInternal>();
 					for (const [name, field] of Object.entries(fields.replicant)) {
 						replicantFields.set(name, field[fieldInternal]);
@@ -94,7 +102,7 @@ export class FieldRegistryService extends Context.Service<FieldRegistryService>(
 					}
 					rpc.set(namespace, rpcFields);
 				}
-				return { replicant, computed, topic, rpc, declaredRoles };
+				return { replicant, computed, topic, rpc, declaredRoles, frontend };
 			}),
 	},
 ) {
