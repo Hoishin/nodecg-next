@@ -1,17 +1,23 @@
 import { NodeServices } from "@effect/platform-node";
-import { sessionCookieName } from "@nodecg-next/internal";
-import { testLayer } from "@nodecg-next/test-utils";
-import { ConfigProvider, Effect, HashMap, Layer } from "effect";
+import {
+	type Authentication,
+	CreateApiKeyResultSchema,
+	sessionCookieName,
+} from "@nodecg-next/internal";
+import { ConfigProvider, Effect, HashMap, Layer, Option } from "effect";
 import {
 	Etag,
 	FetchHttpClient,
+	HttpBody,
 	HttpClient,
 	HttpClientRequest,
+	HttpClientResponse,
 	HttpEffect,
 	HttpPlatform,
 	HttpRouter,
 } from "effect/unstable/http";
 import { Reactivity } from "effect/unstable/reactivity";
+import { assert } from "vitest";
 
 import {
 	type AuthProvider,
@@ -24,18 +30,19 @@ import { FieldRegistryService } from "../src/field-registry.ts";
 import { routes } from "../src/server/routes.ts";
 import { DrizzleSqliteDatabaseService } from "../src/services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { OperatingSystemService } from "../src/services/operating-system/operating-system.ts";
+import { AccountRepositoryService } from "../src/services/repository/account/account-repository.ts";
 import { DrizzleSqliteAccountRepository } from "../src/services/repository/account/drizzle-sqlite-account-repository.ts";
-import { AuthenticationRepositoryService } from "../src/services/repository/authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../src/services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../src/services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../src/services/repository/replicant/in-memory-replicant-repository.ts";
 import { DrizzleSqliteRoleRepository } from "../src/services/repository/role/drizzle-sqlite-role-repository.ts";
+import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
 import { DrizzleSqliteServiceAccountRepository } from "../src/services/repository/service-account/drizzle-sqlite-service-account-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../src/services/repository/session/drizzle-sqlite-session-repository.ts";
 import { InMemoryTopicBroker } from "../src/services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../src/services/transaction/drizzle-sqlite-transaction.ts";
 
-const services = Layer.mergeAll(
+export const services = Layer.mergeAll(
 	DerivationEngineService.layer.pipe(
 		Layer.provide(InMemoryReplicantRepository),
 	),
@@ -73,8 +80,6 @@ const services = Layer.mergeAll(
 	),
 );
 
-export const test = testLayer(services);
-
 export const buildClient = Effect.gen(function* () {
 	const handler = yield* HttpRouter.toHttpEffect(yield* routes);
 	const context = yield* Effect.context<Layer.Success<typeof services>>();
@@ -89,24 +94,48 @@ export const buildClient = Effect.gen(function* () {
 	);
 });
 
-export const createAccount = Effect.fn(function* (
-	issuer: string,
-	subject: string,
+export const login = Effect.fn(function* (
+	client: HttpClient.HttpClient,
+	authentication: Authentication,
 ) {
-	const authentications = yield* AuthenticationRepositoryService;
-	const { accountId } = yield* authentications.findOrCreateAuthentication(
-		{ issuer, subject },
-		subject,
+	const token = yield* createSession(authentication, authentication.subject);
+	return client.pipe(
+		HttpClient.mapRequest(
+			HttpClientRequest.setHeader("cookie", `${sessionCookieName}=${token}`),
+		),
 	);
-	return accountId;
 });
 
-export const login = (issuer: string, subject: string) =>
-	Effect.fn(function* (client: HttpClient.HttpClient) {
-		const token = yield* createSession({ issuer, subject }, subject);
-		return client.pipe(
-			HttpClient.mapRequest(
-				HttpClientRequest.setHeader("cookie", `${sessionCookieName}=${token}`),
+export const findAccountId = Effect.fn(function* (
+	authentication: Authentication,
+) {
+	const accounts = yield* AccountRepositoryService;
+	const accountId = yield* accounts.resolveByAuthentication(authentication);
+	assert(Option.isSome(accountId));
+	return accountId.value;
+});
+
+export const loginAdmin = Effect.fn(function* (
+	client: HttpClient.HttpClient,
+	authentication: Authentication,
+) {
+	const roles = yield* RoleRepositoryService;
+	const asAdmin = yield* login(client, authentication);
+	yield* roles.grantGlobalRole(yield* findAccountId(authentication), "admin");
+	return asAdmin;
+});
+
+export const createServiceAccount = Effect.fn(function* (
+	client: HttpClient.HttpClient,
+	displayName: string,
+) {
+	return yield* client
+		.post("http://x/api/internal/service-accounts", {
+			body: yield* HttpBody.json({ displayName }),
+		})
+		.pipe(
+			Effect.flatMap(
+				HttpClientResponse.schemaBodyJson(CreateApiKeyResultSchema),
 			),
 		);
-	});
+});

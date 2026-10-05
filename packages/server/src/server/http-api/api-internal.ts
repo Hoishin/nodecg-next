@@ -490,7 +490,7 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 				Effect.gen(function* () {
 					const { declaredRoles } = yield* FieldRegistryService;
 					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
-						return yield* new HttpApiError.Forbidden();
+						return yield* HttpApiError.UnprocessableEntity.make();
 					}
 					const serviceAccounts = yield* ServiceAccountRepositoryService;
 					const found = yield* serviceAccounts.grantRole(id, role);
@@ -519,7 +519,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 			Effect.gen(function* () {
 				const { declaredRoles } = yield* FieldRegistryService;
 				if (!declaredRoles.get(role.namespace)?.has(role.name)) {
-					return yield* new HttpApiError.Forbidden();
+					return yield* HttpApiError.UnprocessableEntity.make();
 				}
 				yield* grantRole(authentication, role);
 			}).pipe(

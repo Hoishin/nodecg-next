@@ -191,14 +191,20 @@ describe("runtime role assignment", () => {
 			await logout();
 		});
 		await expect(
-			grantRole("nobody", { namespace: "e2e", name: "superadmin" }),
-		).rejects.toThrow("Authentication request failed");
+			grantRole("nobody", { namespace: "e2e", name: "producer" }),
+		).rejects.toMatchObject({
+			_tag: "AuthRequestFailed",
+			cause: { _tag: "Forbidden" },
+		});
 	});
 
 	test("an anonymous caller cannot grant", async () => {
 		await logout();
 		await expect(
-			grantRole("nobody", { namespace: "e2e", name: "superadmin" }),
-		).rejects.toThrow("Authentication request failed");
+			grantRole("nobody", { namespace: "e2e", name: "producer" }),
+		).rejects.toMatchObject({
+			_tag: "AuthRequestFailed",
+			cause: { _tag: "Unauthorized" },
+		});
 	});
 });

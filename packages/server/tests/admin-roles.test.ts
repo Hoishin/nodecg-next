@@ -1,11 +1,12 @@
 import {
 	AdminServiceAccountTargetSchema,
 	AdminUserTargetSchema,
-	CreateApiKeyResultSchema,
+	Authentication,
 	ServiceAccountId,
 } from "@nodecg-next/internal";
-import { ConfigProvider, Effect, HashMap, Layer } from "effect";
-import { HttpBody, HttpClientResponse } from "effect/unstable/http";
+import { testLayer } from "@nodecg-next/test-utils";
+import { ConfigProvider, Crypto, Effect, HashMap, Layer } from "effect";
+import { HttpBody } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
 import {
@@ -13,7 +14,15 @@ import {
 	AuthProviderRegistry,
 } from "../src/auth/auth-provider.ts";
 import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
-import { buildClient, createAccount, login, test } from "./setup.ts";
+import {
+	buildClient,
+	createServiceAccount,
+	findAccountId,
+	login,
+	services,
+} from "./setup.ts";
+
+const test = testLayer(services);
 
 const dev: AuthProvider = {
 	name: "dev",
@@ -32,13 +41,14 @@ const rootInConfig = Layer.mergeAll(
 const grantUrl = "http://x/api/internal/admin-roles/grant";
 const revokeUrl = "http://x/api/internal/admin-roles/revoke";
 const serviceAccountsUrl = "http://x/api/internal/service-accounts";
+const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
 
-const operator = AdminUserTargetSchema.make({
-	authentication: { issuer: "dev", subject: "operator" },
-});
-const root = AdminUserTargetSchema.make({
-	authentication: { issuer: "dev", subject: "root" },
-});
+const operator = Authentication.make({ issuer: "dev", subject: "operator" });
+const root = Authentication.make({ issuer: "dev", subject: "root" });
+const admin = Authentication.make({ issuer: "dev", subject: "admin" });
+
+const operatorTarget = AdminUserTargetSchema.make({ authentication: operator });
+const rootTarget = AdminUserTargetSchema.make({ authentication: root });
 
 describe("user", () => {
 	test(
@@ -46,21 +56,24 @@ describe("user", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const roles = yield* RoleRepositoryService;
-			const operatorId = yield* createAccount("dev", "operator");
-			const asRoot = yield* client.pipe(login("dev", "root"));
+			yield* login(client, operator);
+			const operatorId = yield* findAccountId(operator);
+			const asRoot = yield* login(client, root);
 
 			for (const role of ["admin", "superadmin"]) {
-				const grant = yield* asRoot.post(grantUrl, {
-					body: yield* HttpBody.json({ target: operator, role }),
+				const grantRes = yield* asRoot.post(grantUrl, {
+					body: yield* HttpBody.json({ target: operatorTarget, role }),
 				});
-				expect(grant.status).toBe(204);
+				expect(grantRes.status).toBe(204);
+
 				const granted = yield* roles.read(operatorId);
 				expect(granted.globalRoles).toStrictEqual([role]);
 
-				const revoke = yield* asRoot.post(revokeUrl, {
-					body: yield* HttpBody.json({ target: operator, role }),
+				const revokeRes = yield* asRoot.post(revokeUrl, {
+					body: yield* HttpBody.json({ target: operatorTarget, role }),
 				});
-				expect(revoke.status).toBe(204);
+				expect(revokeRes.status).toBe(204);
+
 				const revoked = yield* roles.read(operatorId);
 				expect(revoked.globalRoles).toStrictEqual([]);
 			}
@@ -71,12 +84,12 @@ describe("user", () => {
 		"404 when granting to an authentication without an account",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const asRoot = yield* client.pipe(login("dev", "root"));
+			const asRoot = yield* login(client, root);
 
-			const grant = yield* asRoot.post(grantUrl, {
-				body: yield* HttpBody.json({ target: operator, role: "admin" }),
+			const res = yield* asRoot.post(grantUrl, {
+				body: yield* HttpBody.json({ target: operatorTarget, role: "admin" }),
 			});
-			expect(grant.status).toBe(404);
+			expect(res.status).toBe(404);
 		}).pipe(Effect.provide(rootInConfig)),
 	);
 
@@ -84,14 +97,13 @@ describe("user", () => {
 		"403 when revoking superadmin from a superadmin in config",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const asRoot = yield* client.pipe(login("dev", "root"));
+			const asRoot = yield* login(client, root);
 
 			const res = yield* asRoot.post(revokeUrl, {
-				body: yield* HttpBody.json({ target: root, role: "superadmin" }),
+				body: yield* HttpBody.json({ target: rootTarget, role: "superadmin" }),
 			});
 			expect(res.status).toBe(403);
-			const body = yield* res.json;
-			expect(body).toMatchObject({
+			expect(yield* res.json).toMatchObject({
 				message:
 					"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
 			});
@@ -104,41 +116,31 @@ describe("service account", () => {
 		"superadmin grants and revokes the admin tier",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const asRoot = yield* client.pipe(login("dev", "root"));
-			const { id } = yield* asRoot
-				.post(serviceAccountsUrl, {
-					body: yield* HttpBody.json({ displayName: "bot" }),
-				})
-				.pipe(
-					Effect.flatMap(
-						HttpClientResponse.schemaBodyJson(CreateApiKeyResultSchema),
-					),
-				);
+			const asRoot = yield* login(client, root);
+			const { id } = yield* createServiceAccount(asRoot, "bot");
 			const target = AdminServiceAccountTargetSchema.make({
 				id: ServiceAccountId.make(id),
 			});
 
-			const grant = yield* asRoot.post(grantUrl, {
+			const grantRes = yield* asRoot.post(grantUrl, {
 				body: yield* HttpBody.json({ target, role: "admin" }),
 			});
-			expect(grant.status).toBe(204);
-			const listedAfterGrant = yield* asRoot
-				.get(serviceAccountsUrl)
-				.pipe(Effect.flatMap((res) => res.json));
-			expect(listedAfterGrant).toEqual({
+			expect(grantRes.status).toBe(204);
+
+			const listAfterGrantRes = yield* asRoot.get(serviceAccountsUrl);
+			expect(yield* listAfterGrantRes.json).toEqual({
 				serviceAccounts: [
 					{ id, displayName: "bot", roles: [], globalRoles: ["admin"] },
 				],
 			});
 
-			const revoke = yield* asRoot.post(revokeUrl, {
+			const revokeRes = yield* asRoot.post(revokeUrl, {
 				body: yield* HttpBody.json({ target, role: "admin" }),
 			});
-			expect(revoke.status).toBe(204);
-			const listedAfterRevoke = yield* asRoot
-				.get(serviceAccountsUrl)
-				.pipe(Effect.flatMap((res) => res.json));
-			expect(listedAfterRevoke).toEqual({
+			expect(revokeRes.status).toBe(204);
+
+			const listAfterRevokeRes = yield* asRoot.get(serviceAccountsUrl);
+			expect(yield* listAfterRevokeRes.json).toEqual({
 				serviceAccounts: [
 					{ id, displayName: "bot", roles: [], globalRoles: [] },
 				],
@@ -150,17 +152,16 @@ describe("service account", () => {
 		"404 when granting to an unknown service account",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const asRoot = yield* client.pipe(login("dev", "root"));
-
-			const grant = yield* asRoot.post(grantUrl, {
-				body: yield* HttpBody.json({
-					target: AdminServiceAccountTargetSchema.make({
-						id: ServiceAccountId.make("00000000-0000-4000-8000-0000000000ff"),
-					}),
-					role: "admin",
-				}),
+			const crypto = yield* Crypto.Crypto;
+			const target = AdminServiceAccountTargetSchema.make({
+				id: ServiceAccountId.make(yield* crypto.randomUUIDv7),
 			});
-			expect(grant.status).toBe(404);
+			const asRoot = yield* login(client, root);
+
+			const res = yield* asRoot.post(grantUrl, {
+				body: yield* HttpBody.json({ target, role: "admin" }),
+			});
+			expect(res.status).toBe(404);
 		}).pipe(Effect.provide(rootInConfig)),
 	);
 });
@@ -171,26 +172,23 @@ describe("superadmin claim", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const roles = yield* RoleRepositoryService;
-			yield* roles.grantGlobalRole(
-				yield* createAccount("dev", "root"),
-				"superadmin",
-			);
-			const asRoot = yield* client.pipe(login("dev", "root"));
-			const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
+			const asRoot = yield* login(client, root);
+			yield* roles.grantGlobalRole(yield* findAccountId(root), "superadmin");
 
-			const claimWhileRootHolds = yield* asRoot.post(claimUrl, {
+			const claimWhileHeldRes = yield* asRoot.post(claimUrl, {
 				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
 			});
-			expect(claimWhileRootHolds.status).toBe(403);
+			expect(claimWhileHeldRes.status).toBe(403);
 
-			const revokeOwn = yield* asRoot.post(revokeUrl, {
-				body: yield* HttpBody.json({ target: root, role: "superadmin" }),
+			const revokeRes = yield* asRoot.post(revokeUrl, {
+				body: yield* HttpBody.json({ target: rootTarget, role: "superadmin" }),
 			});
-			expect(revokeOwn.status).toBe(204);
-			const claimAfterLastRevoke = yield* asRoot.post(claimUrl, {
+			expect(revokeRes.status).toBe(204);
+
+			const claimAfterRevokeRes = yield* asRoot.post(claimUrl, {
 				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
 			});
-			expect(claimAfterLastRevoke.status).toBe(204);
+			expect(claimAfterRevokeRes.status).toBe(204);
 		}).pipe(
 			Effect.provide(
 				ConfigProvider.layer(
@@ -209,14 +207,15 @@ describe("permission", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 
-			const grant = yield* client.post(grantUrl, {
-				body: yield* HttpBody.json({ target: operator, role: "admin" }),
+			const grantRes = yield* client.post(grantUrl, {
+				body: yield* HttpBody.json({ target: operatorTarget, role: "admin" }),
 			});
-			expect(grant.status).toBe(401);
-			const revoke = yield* client.post(revokeUrl, {
-				body: yield* HttpBody.json({ target: operator, role: "admin" }),
+			expect(grantRes.status).toBe(401);
+
+			const revokeRes = yield* client.post(revokeUrl, {
+				body: yield* HttpBody.json({ target: operatorTarget, role: "admin" }),
 			});
-			expect(revoke.status).toBe(401);
+			expect(revokeRes.status).toBe(401);
 		}),
 	);
 
@@ -225,16 +224,13 @@ describe("permission", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const roles = yield* RoleRepositoryService;
-			yield* roles.grantGlobalRole(
-				yield* createAccount("dev", "admin"),
-				"admin",
-			);
-			const asAdmin = yield* client.pipe(login("dev", "admin"));
+			const asAdmin = yield* login(client, admin);
+			yield* roles.grantGlobalRole(yield* findAccountId(admin), "admin");
 
-			const grant = yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ target: operator, role: "admin" }),
+			const res = yield* asAdmin.post(grantUrl, {
+				body: yield* HttpBody.json({ target: operatorTarget, role: "admin" }),
 			});
-			expect(grant.status).toBe(403);
+			expect(res.status).toBe(403);
 		}),
 	);
 });
@@ -244,12 +240,15 @@ describe("validation", () => {
 		"400 for a role outside the admin tier",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const asRoot = yield* client.pipe(login("dev", "root"));
+			const asRoot = yield* login(client, root);
 
-			const grant = yield* asRoot.post(grantUrl, {
-				body: yield* HttpBody.json({ target: operator, role: "producer" }),
+			const res = yield* asRoot.post(grantUrl, {
+				body: yield* HttpBody.json({
+					target: operatorTarget,
+					role: "producer",
+				}),
 			});
-			expect(grant.status).toBe(400);
+			expect(res.status).toBe(400);
 		}).pipe(Effect.provide(rootInConfig)),
 	);
 });

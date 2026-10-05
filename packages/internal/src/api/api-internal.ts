@@ -110,21 +110,21 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 		),
 	);
 
-const RoleAssignmentSchema = Schema.Struct({
-	authentication: Authentication,
-	role: Role,
-});
-
-const DeclarableRole = Role.check(
-	Schema.makeFilter(({ name }) =>
-		isUndeclarableRole(name)
-			? {
-					path: ["name"],
-					issue: `role "${name}" cannot be assigned via import`,
-				}
-			: undefined,
+const DeclarableRoleName = RoleNameSchema.check(
+	Schema.makeFilter((name) =>
+		isUndeclarableRole(name) ? `role "${name}" cannot be assigned` : undefined,
 	),
 );
+
+const DeclarableRole = Schema.Struct({
+	namespace: Schema.String,
+	name: DeclarableRoleName,
+});
+
+const RoleAssignmentSchema = Schema.Struct({
+	authentication: Authentication,
+	role: DeclarableRole,
+});
 
 export const UserAssignmentSchema = Schema.TaggedStruct("user", {
 	authentication: Authentication,
@@ -206,9 +206,9 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 	.add(
 		HttpApiEndpoint.post("grantRole", "/service-accounts/:id/roles", {
 			params: { id: ServiceAccountId },
-			payload: Role,
+			payload: DeclarableRole,
 			success: HttpApiSchema.Empty(204),
-			error: HttpApiError.NotFound,
+			error: [HttpApiError.NotFound, HttpApiError.UnprocessableEntity],
 		}),
 	)
 	.add(
@@ -219,7 +219,7 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 				params: {
 					id: ServiceAccountId,
 					namespace: Schema.String,
-					name: RoleNameSchema,
+					name: DeclarableRoleName,
 				},
 				success: HttpApiSchema.Empty(204),
 				error: HttpApiError.NotFound,
@@ -233,7 +233,7 @@ const RolesGroup = HttpApiGroup.make("Roles")
 		HttpApiEndpoint.post("grant", "/roles/grant", {
 			payload: RoleAssignmentSchema,
 			success: HttpApiSchema.Empty(204),
-			error: HttpApiError.NotFound,
+			error: [HttpApiError.NotFound, HttpApiError.UnprocessableEntity],
 		}),
 	)
 	.add(
