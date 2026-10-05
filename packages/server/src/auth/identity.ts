@@ -3,31 +3,44 @@ import {
 	AnonymousIdentitySchema,
 	ServiceAccount,
 } from "@nodecg-next/internal";
-import { Effect, Option } from "effect";
+import { Array, DateTime, Effect, Option } from "effect";
 
+import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
+import { config } from "../server-config.ts";
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
-import { getRoles } from "./roles.ts";
+import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { hashApiKey } from "./service-accounts.ts";
-import { resolveSession } from "./session.ts";
+import { hashSessionToken } from "./session.ts";
 
 export const anonymousIdentity = AnonymousIdentitySchema.make({});
 
 export const resolveSessionIdentity = Effect.fn("resolveSessionIdentity")(
 	function* (token: string) {
-		const resolved = yield* resolveSession(token);
-		if (Option.isNone(resolved)) {
+		const sessions = yield* SessionRepositoryService;
+		const superadmins = yield* ConfiguredSuperadmins;
+		const ttl = yield* config.sessionTtl;
+		const now = yield* DateTime.now;
+
+		const id = yield* hashSessionToken(token);
+		const session = yield* sessions.resolve(id);
+		if (Option.isNone(session)) {
 			return Option.none();
 		}
-		const { userId, authentication, displayName } = resolved.value;
-		const { roles, globalRoles } = yield* getRoles(authentication);
+		yield* sessions.refreshTTL(id, DateTime.addDuration(now, ttl));
+
+		const { authentication, user } = session.value;
 		return Option.some(
 			User.make({
-				id: userId,
+				id: user.id,
 				authentication,
-				displayName,
-				roles,
-				globalRoles,
+				displayName: user.displayName,
+				roles: user.roles,
+				globalRoles: Array.isArrayNonEmpty(
+					Array.intersection(user.authentications, superadmins),
+				)
+					? Array.union(user.globalRoles, ["superadmin"] as const)
+					: user.globalRoles,
 			}),
 		);
 	},

@@ -3,9 +3,8 @@ import type {
 	Authentication,
 	AuthenticationId,
 	UserId,
-	UserSessionId,
 } from "@nodecg-next/internal";
-import { Context, type Effect, type Option } from "effect";
+import { Context, type Effect } from "effect";
 
 import type { BackendError } from "../repository-errors.ts";
 
@@ -25,16 +24,6 @@ export interface AuthenticationRepository {
 	readonly resolveByAccountId: (
 		accountId: AccountId,
 	) => Effect.Effect<ReadonlyArray<Authentication>, BackendError>;
-
-	readonly resolveBySession: (sessionId: UserSessionId) => Effect.Effect<
-		Option.Option<{
-			readonly accountId: AccountId;
-			readonly userId: UserId;
-			readonly authentication: Authentication;
-			readonly displayName: string;
-		}>,
-		BackendError
-	>;
 }
 
 export class AuthenticationRepositoryService extends Context.Service<

@@ -1,6 +1,6 @@
 import type { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
 import { and, eq, gt } from "drizzle-orm";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Option } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { sessions } from "../../database/drizzle-sqlite/tables.ts";
@@ -36,6 +36,63 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 			),
 		);
 
+		const resolve = Effect.fn("SessionRepository.resolve")(
+			function* (id: UserSessionId) {
+				const now = yield* DateTime.now;
+				const session = yield* db.query.sessions
+					.findFirst({
+						columns: { id: true },
+						where: { id, expiresAt: { gt: DateTime.toEpochMillis(now) } },
+						with: {
+							authentication: {
+								columns: { issuer: true, subject: true },
+								with: {
+									user: {
+										columns: { id: true, accountId: true },
+										with: {
+											authentications: {
+												columns: { issuer: true, subject: true },
+											},
+											account: {
+												columns: { displayName: true },
+												with: {
+													roleGrants: {
+														columns: { namespace: true, roleName: true },
+													},
+													globalRoleGrants: { columns: { roleName: true } },
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					})
+					.pipe(Effect.map(Option.fromUndefinedOr));
+				return session.pipe(
+					Option.map(({ authentication: { issuer, subject, user } }) => ({
+						authentication: { issuer, subject },
+						user: {
+							id: user.id,
+							accountId: user.accountId,
+							displayName: user.account.displayName,
+							authentications: user.authentications,
+							roles: user.account.roleGrants.map(({ namespace, roleName }) => ({
+								namespace,
+								name: roleName,
+							})),
+							globalRoles: user.account.globalRoleGrants.map(
+								({ roleName }) => roleName,
+							),
+						},
+					})),
+				);
+			},
+			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
+				BackendError.make({ cause }),
+			),
+		);
+
 		const refreshTTL = Effect.fn("SessionRepository.refreshTTL")(
 			function* (id: UserSessionId, expiresAt: DateTime.DateTime) {
 				const now = yield* DateTime.now;
@@ -63,6 +120,6 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 			),
 		);
 
-		return { create, refreshTTL, revoke };
+		return { create, resolve, refreshTTL, revoke };
 	}),
 );

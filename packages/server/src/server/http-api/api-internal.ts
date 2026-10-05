@@ -439,8 +439,8 @@ const UsersGroupLive = HttpApiBuilder.group(RootApi, "Users", (handlers) =>
 						displayName,
 						authentications,
 						roles,
-						globalRoles: authentications.some((authentication) =>
-							Array.contains(superadmins, authentication),
+						globalRoles: Array.isArrayNonEmpty(
+							Array.intersection(authentications, superadmins),
 						)
 							? Array.union(globalRoles, ["superadmin"] as const)
 							: globalRoles,

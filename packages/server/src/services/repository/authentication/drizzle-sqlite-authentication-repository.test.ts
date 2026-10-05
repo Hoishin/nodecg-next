@@ -1,12 +1,8 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import {
-	AccountId,
-	type Authentication,
-	UserSessionId,
-} from "@nodecg-next/internal";
+import { AccountId, type Authentication } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { eq, sql } from "drizzle-orm";
-import { Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { sql } from "drizzle-orm";
+import { Crypto, Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
 import { afterEach, assert, describe, expect, vi } from "vitest";
@@ -19,7 +15,6 @@ import {
 } from "../../database/drizzle-sqlite/tables.ts";
 import { BackendError } from "../repository-errors.ts";
 import { DrizzleSqliteSessionRepository } from "../session/drizzle-sqlite-session-repository.ts";
-import { SessionRepositoryService } from "../session/session-repository.ts";
 import { AuthenticationRepositoryService } from "./authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "./drizzle-sqlite-authentication-repository.ts";
 
@@ -224,83 +219,6 @@ describe("resolveByAccountId", () => {
 				AccountId.make("missing"),
 			);
 			expect(resolved).toStrictEqual([]);
-		}),
-	);
-});
-
-describe("resolveBySession", () => {
-	const sessionId = UserSessionId.make("session");
-
-	test(
-		"resolves a live session to its account, authentication and the account's name",
-		Effect.gen(function* () {
-			const repository = yield* AuthenticationRepositoryService;
-			const sessionRepository = yield* SessionRepositoryService;
-			const db = yield* DrizzleSqliteDatabaseService;
-			const now = yield* DateTime.now;
-			const { authenticationId } = yield* repository.findOrCreateAuthentication(
-				alice,
-				"Alice",
-			);
-			yield* repository.findOrCreateAuthentication(bob, "Bob");
-			yield* sessionRepository.create(
-				sessionId,
-				authenticationId,
-				DateTime.addDuration(now, 2000),
-			);
-			yield* repository.findOrCreateAuthentication(alice, "Alice Liddell");
-			const account = yield* db
-				.select({ id: accounts.id })
-				.from(accounts)
-				.where(eq(accounts.displayName, "Alice"))
-				.pipe(Effect.head);
-			const user = yield* db
-				.select({ id: users.id })
-				.from(users)
-				.where(eq(users.accountId, account.id))
-				.pipe(Effect.head);
-			yield* TestClock.setTime(1999);
-
-			const resolved = yield* repository.resolveBySession(sessionId);
-			expect(resolved).toStrictEqual(
-				Option.some({
-					accountId: account.id,
-					userId: user.id,
-					authentication: alice,
-					displayName: "Alice",
-				}),
-			);
-		}),
-	);
-
-	test(
-		"treats a session as absent from the moment it expires",
-		Effect.gen(function* () {
-			const repository = yield* AuthenticationRepositoryService;
-			const sessionRepository = yield* SessionRepositoryService;
-			const now = yield* DateTime.now;
-			const { authenticationId } = yield* repository.findOrCreateAuthentication(
-				alice,
-				"Alice",
-			);
-			yield* sessionRepository.create(
-				sessionId,
-				authenticationId,
-				DateTime.addDuration(now, 2000),
-			);
-			yield* TestClock.setTime(2000);
-
-			const resolved = yield* repository.resolveBySession(sessionId);
-			expect(resolved).toStrictEqual(Option.none());
-		}),
-	);
-
-	test(
-		"treats an unknown session as absent",
-		Effect.gen(function* () {
-			const repository = yield* AuthenticationRepositoryService;
-			const resolved = yield* repository.resolveBySession(sessionId);
-			expect(resolved).toStrictEqual(Option.none());
 		}),
 	);
 });

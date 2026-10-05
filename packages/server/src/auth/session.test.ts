@@ -25,7 +25,7 @@ import {
 	SessionRepositoryService,
 } from "../services/repository/session/session-repository.ts";
 import { TransactionService } from "../services/transaction/transaction.ts";
-import { createSession, resolveSession } from "./session.ts";
+import { createSession } from "./session.ts";
 
 const alice: Authentication = { issuer: "dev", subject: "alice" };
 const aliceAuthId = AuthenticationId.make("alice");
@@ -39,21 +39,12 @@ const findOrCreateAuthentication = vi.fn<
 		accountId: AccountId.make("alice-account"),
 	}),
 );
-const resolveBySession = vi.fn<AuthenticationRepository["resolveBySession"]>(
-	() => Effect.succeedNone,
-);
 const create = vi.fn<SessionRepository["create"]>(() => Effect.void);
 const refreshTTL = vi.fn<SessionRepository["refreshTTL"]>(() => Effect.void);
 const revoke = vi.fn<SessionRepository["revoke"]>(() => Effect.void);
 
 afterEach(() => {
-	for (const mock of [
-		findOrCreateAuthentication,
-		resolveBySession,
-		create,
-		refreshTTL,
-		revoke,
-	]) {
+	for (const mock of [findOrCreateAuthentication, create, refreshTTL, revoke]) {
 		mock.mockReset();
 	}
 });
@@ -63,10 +54,10 @@ const test = testLayer(
 		Layer.succeed(AuthenticationRepositoryService, {
 			findOrCreateAuthentication,
 			resolveByAccountId: vi.fn(),
-			resolveBySession,
 		}),
 		Layer.succeed(SessionRepositoryService, {
 			create,
+			resolve: vi.fn(),
 			refreshTTL,
 			revoke,
 		}),
@@ -138,38 +129,6 @@ describe("createSession", () => {
 			);
 			expect(begin).toHaveBeenCalledBefore(findOrCreateAuthentication);
 			expect(create).toHaveBeenCalledOnce();
-		}),
-	);
-});
-
-describe("resolveSession", () => {
-	test(
-		"looks the session up by the token's hash and extends its TTL",
-		Effect.gen(function* () {
-			resolveBySession.mockReturnValueOnce(
-				Effect.succeedSome({
-					accountId: AccountId.make("alice-account"),
-					userId: UserId.make("1"),
-					authentication: alice,
-					displayName: "Alice",
-				}),
-			);
-			yield* TestClock.adjust("1 minute");
-			yield* resolveSession("token");
-			const now = yield* DateTime.now;
-			expect(resolveBySession).toHaveBeenCalledWith(hashSessionToken("token"));
-			expect(refreshTTL).toHaveBeenCalledWith(
-				hashSessionToken("token"),
-				DateTime.addDuration(now, "1 hour"),
-			);
-		}),
-	);
-
-	test(
-		"leaves an unknown or expired session alone",
-		Effect.gen(function* () {
-			yield* resolveSession("token");
-			expect(refreshTTL).not.toHaveBeenCalled();
 		}),
 	);
 });

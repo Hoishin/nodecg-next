@@ -10,7 +10,6 @@ import {
 	type Duration,
 	Effect,
 	Encoding,
-	Option,
 	Schema,
 } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
@@ -24,7 +23,7 @@ import {
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { TransactionService } from "../services/transaction/transaction.ts";
 
-const hashSessionToken = Effect.fnUntraced(function* (token: string) {
+export const hashSessionToken = Effect.fnUntraced(function* (token: string) {
 	const crypto = yield* Crypto.Crypto;
 	const digest = yield* crypto.digest(
 		"SHA-256",
@@ -85,22 +84,6 @@ export const createSession = Effect.fn("createSession")(function* (
 			);
 		}),
 	);
-});
-
-export const resolveSession = Effect.fn("resolveSession")(function* (
-	token: string,
-) {
-	const authentications = yield* AuthenticationRepositoryService;
-	const sessions = yield* SessionRepositoryService;
-	const ttl = yield* config.sessionTtl;
-	const now = yield* DateTime.now;
-
-	const id = yield* hashSessionToken(token);
-	const authentication = yield* authentications.resolveBySession(id);
-	if (Option.isSome(authentication)) {
-		yield* sessions.refreshTTL(id, DateTime.addDuration(now, ttl));
-	}
-	return authentication;
 });
 
 export const revokeSession = Effect.fn("revokeSession")(function* (

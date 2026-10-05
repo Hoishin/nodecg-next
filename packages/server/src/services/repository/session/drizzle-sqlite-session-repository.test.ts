@@ -1,7 +1,13 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
-import { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
+import {
+	Authentication,
+	AuthenticationId,
+	Role,
+	RoleNameSchema,
+	UserSessionId,
+} from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
@@ -11,6 +17,8 @@ import { sessions } from "../../database/drizzle-sqlite/tables.ts";
 import { AuthenticationRepositoryService } from "../authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../authentication/drizzle-sqlite-authentication-repository.ts";
 import { BackendError, KeyTaken } from "../repository-errors.ts";
+import { DrizzleSqliteRoleRepository } from "../role/drizzle-sqlite-role-repository.ts";
+import { RoleRepositoryService } from "../role/role-repository.ts";
 import { DrizzleSqliteSessionRepository } from "./drizzle-sqlite-session-repository.ts";
 import { SessionRepositoryService } from "./session-repository.ts";
 
@@ -18,6 +26,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		DrizzleSqliteSessionRepository,
 		DrizzleSqliteAuthenticationRepository,
+		DrizzleSqliteRoleRepository,
 	).pipe(
 		Layer.provideMerge(
 			Layer.effect(
@@ -104,6 +113,89 @@ describe("create", () => {
 				.pipe(Effect.flip);
 			assert(Schema.is(BackendError)(error));
 			expect(error.message).toContain("FOREIGN KEY");
+		}),
+	);
+});
+
+describe("resolve", () => {
+	const alice = Authentication.make({ issuer: "dev", subject: "alice" });
+	const bob = Authentication.make({ issuer: "dev", subject: "bob" });
+	const viewer = Role.make({
+		namespace: "show",
+		name: RoleNameSchema.make("viewer"),
+	});
+	const producer = Role.make({
+		namespace: "show",
+		name: RoleNameSchema.make("producer"),
+	});
+
+	test(
+		"resolves a live session to its authentication and its user",
+		Effect.gen(function* () {
+			const repository = yield* SessionRepositoryService;
+			const authentications = yield* AuthenticationRepositoryService;
+			const roles = yield* RoleRepositoryService;
+			const start = yield* DateTime.now;
+
+			const aliceIds = yield* authentications.findOrCreateAuthentication(
+				alice,
+				"Alice",
+			);
+			yield* roles.grantRole(aliceIds.accountId, viewer);
+			yield* roles.grantGlobalRole(aliceIds.accountId, "admin");
+
+			const bobIds = yield* authentications.findOrCreateAuthentication(
+				bob,
+				"Bob",
+			);
+			yield* roles.grantRole(bobIds.accountId, producer);
+
+			yield* repository.create(
+				first,
+				aliceIds.authenticationId,
+				DateTime.addDuration(start, 1000),
+			);
+			yield* TestClock.setTime(999);
+
+			expect(yield* repository.resolve(first)).toStrictEqual(
+				Option.some({
+					authentication: alice,
+					user: {
+						id: aliceIds.userId,
+						accountId: aliceIds.accountId,
+						displayName: "Alice",
+						authentications: [alice],
+						roles: [viewer],
+						globalRoles: ["admin"],
+					},
+				}),
+			);
+		}),
+	);
+
+	test(
+		"treats a session as absent from the moment it expires",
+		Effect.gen(function* () {
+			const repository = yield* SessionRepositoryService;
+			const authentication = yield* logIn;
+			const start = yield* DateTime.now;
+			yield* repository.create(
+				first,
+				authentication,
+				DateTime.addDuration(start, 1000),
+			);
+			yield* TestClock.setTime(1000);
+
+			expect(yield* repository.resolve(first)).toStrictEqual(Option.none());
+		}),
+	);
+
+	test(
+		"treats an unknown session as absent",
+		Effect.gen(function* () {
+			const repository = yield* SessionRepositoryService;
+
+			expect(yield* repository.resolve(first)).toStrictEqual(Option.none());
 		}),
 	);
 });

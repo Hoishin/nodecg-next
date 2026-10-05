@@ -1,13 +1,9 @@
-import { AccountId, type Role, RoleName } from "@nodecg-next/internal";
+import { AccountId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
-import {
-	type AccountRepository,
-	AccountRepositoryService,
-} from "../services/repository/account/account-repository.ts";
 import {
 	type AuthenticationRepository,
 	AuthenticationRepositoryService,
@@ -17,7 +13,6 @@ import {
 	RoleRepositoryService,
 } from "../services/repository/role/role-repository.ts";
 import {
-	getRoles,
 	grantGlobalRole,
 	revokeGlobalRole,
 	superadminExists,
@@ -27,17 +22,10 @@ import {
 const alice = { issuer: "dev", subject: "alice" };
 const root = { issuer: "dev", subject: "root" };
 const accountId = AccountId.make("some-account");
-const viewer: Role = { namespace: "show", name: RoleName("viewer") };
 
-const resolveByAuthentication = vi.fn<
-	AccountRepository["resolveByAuthentication"]
->(() => Effect.succeedSome(accountId));
 const resolveByAccountId = vi.fn<
 	AuthenticationRepository["resolveByAccountId"]
 >(() => Effect.succeed([]));
-const read = vi.fn<RoleRepository["read"]>(() =>
-	Effect.succeed({ roles: [viewer], globalRoles: ["admin"] }),
-);
 const globalRoleExists = vi.fn<RoleRepository["globalRoleExists"]>(() =>
 	Effect.succeed(false),
 );
@@ -50,9 +38,7 @@ const deleteGlobalRole = vi.fn<RoleRepository["revokeGlobalRole"]>(
 
 afterEach(() => {
 	for (const mock of [
-		resolveByAuthentication,
 		resolveByAccountId,
-		read,
 		globalRoleExists,
 		insertGlobalRole,
 		deleteGlobalRole,
@@ -63,14 +49,12 @@ afterEach(() => {
 
 const test = testLayer(
 	Layer.mergeAll(
-		Layer.succeed(AccountRepositoryService, { resolveByAuthentication }),
 		Layer.succeed(AuthenticationRepositoryService, {
 			findOrCreateAuthentication: vi.fn(),
 			resolveByAccountId,
-			resolveBySession: vi.fn(),
 		}),
 		Layer.succeed(RoleRepositoryService, {
-			read,
+			read: vi.fn(),
 			listAll: vi.fn(),
 			globalRoleExists,
 			grantRoles: vi.fn(),
@@ -83,41 +67,6 @@ const test = testLayer(
 		Layer.succeed(ConfiguredSuperadmins, [root]),
 	),
 );
-
-describe("getRoles", () => {
-	test(
-		"adds superadmin for a configured superadmin",
-		Effect.gen(function* () {
-			expect(yield* getRoles(root)).toStrictEqual({
-				roles: [viewer],
-				globalRoles: ["admin", "superadmin"],
-			});
-			expect(read).toHaveBeenCalledExactlyOnceWith(accountId);
-		}),
-	);
-
-	test(
-		"adds nothing for an authentication not configured as superadmin",
-		Effect.gen(function* () {
-			expect(yield* getRoles(alice)).toStrictEqual({
-				roles: [viewer],
-				globalRoles: ["admin"],
-			});
-		}),
-	);
-
-	test(
-		"reports only the configured superadmin for an authentication without an account",
-		Effect.gen(function* () {
-			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
-			expect(yield* getRoles(root)).toStrictEqual({
-				roles: [],
-				globalRoles: ["superadmin"],
-			});
-			expect(read).not.toHaveBeenCalled();
-		}),
-	);
-});
 
 describe("superadminExists", () => {
 	test(

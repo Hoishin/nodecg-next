@@ -12,8 +12,6 @@ import { HttpApiError } from "effect/unstable/httpapi";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { config } from "../server-config.ts";
-import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
-import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
@@ -33,12 +31,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 		const baseUrl = yield* config.baseUrl;
 		const sessionTtl = yield* config.sessionTtl;
 		const context = yield* Effect.context<
-			| AuthenticationRepositoryService
-			| SessionRepositoryService
-			| AccountRepositoryService
-			| RoleRepositoryService
-			| ConfiguredSuperadmins
-			| Crypto.Crypto
+			SessionRepositoryService | ConfiguredSuperadmins | Crypto.Crypto
 		>();
 		const resolve = (token: string) =>
 			resolveSessionIdentity(token).pipe(

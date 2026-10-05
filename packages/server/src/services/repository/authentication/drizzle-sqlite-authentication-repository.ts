@@ -4,7 +4,7 @@ import {
 	AuthenticationId,
 	UserId,
 } from "@nodecg-next/internal";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Array, Crypto, DateTime, Effect, Layer, Option } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
@@ -12,7 +12,6 @@ import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-co
 import {
 	accounts,
 	authentications,
-	sessions,
 	users,
 } from "../../database/drizzle-sqlite/tables.ts";
 import { BackendError } from "../repository-errors.ts";
@@ -167,45 +166,6 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 						.from(authentications)
 						.innerJoin(users, eq(authentications.userId, users.id))
 						.where(eq(users.accountId, accountId));
-				},
-				Effect.catchTag("EffectDrizzleQueryError", (cause) =>
-					BackendError.make({ cause }),
-				),
-			),
-			resolveBySession: Effect.fn("AuthenticationRepository.resolveBySession")(
-				function* (sessionId) {
-					const now = yield* DateTime.now;
-					const rows = yield* db
-						.select({
-							accountId: accounts.id,
-							userId: users.id,
-							issuer: authentications.issuer,
-							subject: authentications.subject,
-							displayName: accounts.displayName,
-						})
-						.from(sessions)
-						.innerJoin(
-							authentications,
-							eq(sessions.authenticationId, authentications.id),
-						)
-						.innerJoin(users, eq(authentications.userId, users.id))
-						.innerJoin(accounts, eq(users.accountId, accounts.id))
-						.where(
-							and(
-								eq(sessions.id, sessionId),
-								gt(sessions.expiresAt, DateTime.toEpochMillis(now)),
-							),
-						);
-					return Array.head(rows).pipe(
-						Option.map(
-							({ accountId, userId, issuer, subject, displayName }) => ({
-								accountId,
-								userId,
-								authentication: { issuer, subject },
-								displayName,
-							}),
-						),
-					);
 				},
 				Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 					BackendError.make({ cause }),
