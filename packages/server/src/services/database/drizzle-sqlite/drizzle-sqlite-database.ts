@@ -95,7 +95,7 @@ const decodeMaxVariableNumber = Schema.decodeUnknownEffect(
 	),
 );
 
-export const readMaxVariableNumber = Effect.gen(function* () {
+const readMaxVariableNumber = Effect.gen(function* () {
 	const db = yield* DrizzleSqliteDatabaseService;
 	const rows = yield* db.all(
 		sql`
@@ -106,4 +106,27 @@ export const readMaxVariableNumber = Effect.gen(function* () {
 	);
 	const limits = yield* decodeMaxVariableNumber(rows);
 	return Array.headNonEmpty(limits).value[1];
+});
+
+export const makeQueryInChunks = Effect.gen(function* () {
+	const maxVariableNumber = yield* readMaxVariableNumber;
+	return <Row extends object, A, E, R>(
+		rows: ReadonlyArray<Row>,
+		query: (
+			chunk: Array.NonEmptyArray<Row>,
+		) => Effect.Effect<ReadonlyArray<A>, E, R>,
+	) =>
+		Effect.forEach(
+			Array.match(rows, {
+				onEmpty: () => [],
+				onNonEmpty: (rows) =>
+					Array.chunksOf(
+						rows,
+						Math.floor(
+							maxVariableNumber / Object.keys(Array.headNonEmpty(rows)).length,
+						),
+					),
+			}),
+			query,
+		).pipe(Effect.map(Array.flatten));
 });

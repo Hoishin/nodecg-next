@@ -5,13 +5,29 @@ import {
 	authentications,
 	globalRoleGrants,
 	roleGrants,
+	serviceAccounts,
 	sessions,
 	users,
 } from "./tables.ts";
 
 export const relations = defineRelations(
-	{ accounts, users, authentications, sessions, roleGrants, globalRoleGrants },
+	{
+		accounts,
+		users,
+		authentications,
+		sessions,
+		serviceAccounts,
+		roleGrants,
+		globalRoleGrants,
+	},
 	(r) => ({
+		serviceAccounts: {
+			account: r.one.accounts({
+				from: r.serviceAccounts.accountId,
+				to: r.accounts.id,
+				optional: false,
+			}),
+		},
 		sessions: {
 			authentication: r.one.authentications({
 				from: r.sessions.authenticationId,

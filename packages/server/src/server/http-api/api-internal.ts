@@ -607,11 +607,6 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 							const accountId = yield* Match.value(entry).pipe(
 								Match.tag("user", ({ authentication, displayName }) =>
 									Effect.gen(function* () {
-										const accountId =
-											yield* accounts.resolveByAuthentication(authentication);
-										if (Option.isSome(accountId)) {
-											return accountId.value;
-										}
 										const upsertResult =
 											yield* authentications.findOrCreateAuthentication(
 												authentication,

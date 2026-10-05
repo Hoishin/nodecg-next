@@ -8,6 +8,7 @@ import {
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq } from "drizzle-orm";
 import {
+	Array,
 	ConfigProvider,
 	Effect,
 	FileSystem,
@@ -21,8 +22,8 @@ import { assert, describe, expect } from "vitest";
 
 import {
 	DrizzleSqliteDatabaseService,
+	makeQueryInChunks,
 	MigrationsNotFound,
-	readMaxVariableNumber,
 } from "./drizzle-sqlite-database.ts";
 import {
 	accounts,
@@ -147,17 +148,37 @@ describe("layer", () => {
 	);
 });
 
-describe("readMaxVariableNumber", () => {
+describe("makeQueryInChunks", () => {
 	test(
-		"reads the variable limit SQLite was compiled with",
+		"splits rows by the variable limit SQLite was compiled with",
 		Effect.gen(function* () {
 			const db = yield* DrizzleSqliteDatabaseService.make(":memory:");
+			const queryInChunks = yield* makeQueryInChunks.pipe(
+				Effect.provideService(DrizzleSqliteDatabaseService, db),
+			);
+			const rows = Array.makeBy(16_384, (id) => ({ id, name: "row" }));
 
-			const limit = yield* readMaxVariableNumber.pipe(
+			const chunkSizes = yield* queryInChunks(rows, (chunk) =>
+				Effect.succeed([chunk.length]),
+			);
+
+			expect(chunkSizes).toStrictEqual([16_383, 1]);
+		}),
+	);
+
+	test(
+		"runs no query without rows",
+		Effect.gen(function* () {
+			const db = yield* DrizzleSqliteDatabaseService.make(":memory:");
+			const queryInChunks = yield* makeQueryInChunks.pipe(
 				Effect.provideService(DrizzleSqliteDatabaseService, db),
 			);
 
-			expect(limit).toBe(32_766);
+			const chunkSizes = yield* queryInChunks([], (chunk) =>
+				Effect.succeed([chunk.length]),
+			);
+
+			expect(chunkSizes).toStrictEqual([]);
 		}),
 	);
 });

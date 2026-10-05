@@ -12,7 +12,6 @@ import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-co
 import {
 	accounts,
 	apiKeys,
-	globalRoleGrants,
 	roleGrants,
 	serviceAccounts,
 } from "../../database/drizzle-sqlite/tables.ts";
@@ -171,53 +170,27 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 
 		const listAll = Effect.fn("ServiceAccountRepository.listAll")(
 			function* () {
-				const rows = yield* db
-					.select({
-						id: serviceAccounts.id,
-						accountId: serviceAccounts.accountId,
-						displayName: accounts.displayName,
-					})
-					.from(serviceAccounts)
-					.innerJoin(accounts, eq(accounts.id, serviceAccounts.accountId));
-				const roleRows = yield* db
-					.select({
-						accountId: roleGrants.accountId,
-						namespace: roleGrants.namespace,
-						name: roleGrants.roleName,
-					})
-					.from(roleGrants)
-					.innerJoin(
-						serviceAccounts,
-						eq(serviceAccounts.accountId, roleGrants.accountId),
-					);
-				const globalRoleRows = yield* db
-					.select({
-						accountId: globalRoleGrants.accountId,
-						name: globalRoleGrants.roleName,
-					})
-					.from(globalRoleGrants)
-					.innerJoin(
-						serviceAccounts,
-						eq(serviceAccounts.accountId, globalRoleGrants.accountId),
-					);
-				const rolesByAccount = Array.groupBy(
-					roleRows,
-					({ accountId }) => accountId,
-				);
-				const globalRolesByAccount = Array.groupBy(
-					globalRoleRows,
-					({ accountId }) => accountId,
-				);
-				return rows.map(({ id, accountId, displayName }) => ({
+				const rows = yield* db.query.serviceAccounts.findMany({
+					columns: { id: true, accountId: true },
+					with: {
+						account: {
+							columns: { displayName: true },
+							with: {
+								roleGrants: { columns: { namespace: true, roleName: true } },
+								globalRoleGrants: { columns: { roleName: true } },
+							},
+						},
+					},
+				});
+				return rows.map(({ id, accountId, account }) => ({
 					id,
 					accountId,
-					displayName,
-					roles: (rolesByAccount[accountId] ?? []).map(
-						({ namespace, name }) => ({ namespace, name }),
-					),
-					globalRoles: (globalRolesByAccount[accountId] ?? []).map(
-						({ name }) => name,
-					),
+					displayName: account.displayName,
+					roles: account.roleGrants.map(({ namespace, roleName }) => ({
+						namespace,
+						name: roleName,
+					})),
+					globalRoles: account.globalRoleGrants.map(({ roleName }) => roleName),
 				}));
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>

@@ -4,14 +4,11 @@ import { Array, Effect, HashMap, type HashSet, Layer, Option } from "effect";
 
 import {
 	DrizzleSqliteDatabaseService,
-	readMaxVariableNumber,
+	makeQueryInChunks,
 } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import {
-	accounts,
-	authentications,
 	globalRoleGrants,
 	roleGrants,
-	users,
 } from "../../database/drizzle-sqlite/tables.ts";
 import { BackendError } from "../repository-errors.ts";
 import { RoleRepositoryService, UnknownAccount } from "./role-repository.ts";
@@ -20,7 +17,7 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 	RoleRepositoryService,
 	Effect.gen(function* () {
 		const db = yield* DrizzleSqliteDatabaseService;
-		const maxVariableNumber = yield* readMaxVariableNumber;
+		const queryInChunks = yield* makeQueryInChunks;
 
 		const read = Effect.fn("RoleRepository.read")(
 			function* (accountId: AccountId) {
@@ -47,62 +44,41 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 
 		const listAll = Effect.fn("RoleRepository.listAll")(
 			function* () {
-				const roleRows = yield* db
-					.select({
-						authenticationId: authentications.id,
-						issuer: authentications.issuer,
-						subject: authentications.subject,
-						displayName: accounts.displayName,
-						namespace: roleGrants.namespace,
-						name: roleGrants.roleName,
-					})
-					.from(roleGrants)
-					.innerJoin(accounts, eq(accounts.id, roleGrants.accountId))
-					.innerJoin(users, eq(users.accountId, roleGrants.accountId))
-					.innerJoin(authentications, eq(authentications.userId, users.id));
-				const globalRoleRows = yield* db
-					.select({
-						authenticationId: authentications.id,
-						issuer: authentications.issuer,
-						subject: authentications.subject,
-						displayName: accounts.displayName,
-						name: globalRoleGrants.roleName,
-					})
-					.from(globalRoleGrants)
-					.innerJoin(accounts, eq(accounts.id, globalRoleGrants.accountId))
-					.innerJoin(users, eq(users.accountId, globalRoleGrants.accountId))
-					.innerJoin(authentications, eq(authentications.userId, users.id));
-				const rolesByAuthentication = Array.groupBy(
-					roleRows,
-					({ authenticationId }) => authenticationId,
-				);
-				const globalRolesByAuthentication = Array.groupBy(
-					globalRoleRows,
-					({ authenticationId }) => authenticationId,
-				);
-				const holders = new Map(
-					Array.appendAll(roleRows, globalRoleRows).map(
-						({ authenticationId, issuer, subject, displayName }) => [
-							authenticationId,
-							{ issuer, subject, displayName },
-						],
-					),
-				);
-				return Array.fromIterable(holders).map(
-					([id, { issuer, subject, displayName }]) => ({
-						authentication: { issuer, subject },
-						displayName,
-						roles: (rolesByAuthentication[id] ?? []).map(
-							({ namespace, name }) => ({
-								namespace,
-								name,
-							}),
-						),
-						globalRoles: (globalRolesByAuthentication[id] ?? []).map(
-							({ name }) => name,
-						),
-					}),
-				);
+				const rows = yield* db.query.authentications.findMany({
+					columns: { issuer: true, subject: true },
+					where: {
+						user: {
+							account: {
+								OR: [{ roleGrants: true }, { globalRoleGrants: true }],
+							},
+						},
+					},
+					with: {
+						user: {
+							columns: {},
+							with: {
+								account: {
+									columns: { displayName: true },
+									with: {
+										roleGrants: {
+											columns: { namespace: true, roleName: true },
+										},
+										globalRoleGrants: { columns: { roleName: true } },
+									},
+								},
+							},
+						},
+					},
+				});
+				return rows.map(({ issuer, subject, user: { account } }) => ({
+					authentication: { issuer, subject },
+					displayName: account.displayName,
+					roles: account.roleGrants.map(({ namespace, roleName }) => ({
+						namespace,
+						name: roleName,
+					})),
+					globalRoles: account.globalRoleGrants.map(({ roleName }) => roleName),
+				}));
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
@@ -132,14 +108,12 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 						roleName: name,
 					})),
 				);
-				if (!Array.isArrayNonEmpty(rows)) {
-					return;
-				}
-				const variablesPerRow = Object.keys(Array.headNonEmpty(rows)).length;
-				yield* Effect.forEach(
-					Array.chunksOf(rows, Math.floor(maxVariableNumber / variablesPerRow)),
-					(chunk) => db.insert(roleGrants).values(chunk).onConflictDoNothing(),
-					{ discard: true },
+				yield* queryInChunks(rows, (chunk) =>
+					db
+						.insert(roleGrants)
+						.values(chunk)
+						.onConflictDoNothing()
+						.pipe(Effect.as([])),
 				);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
