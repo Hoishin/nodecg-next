@@ -141,12 +141,9 @@ match.replicant.label.subscribe((label) => {
   ```ts
   console.log(await ns.replicant.counter.get()); // Returns read-only value
 
-  await ns.replicant.counter.set({ count: n, timestamp: Date.now() });
+  await ns.replicant.counter.set(1);
 
-  await ns.replicant.counter.update((value) => ({
-    ...value,
-    timestamp: Date.now(),
-  }));
+  await ns.replicant.counter.update((value) => value + 1);
   ```
 
 - ✅ Replicant is reactive: subscribe to listen to changes
@@ -164,10 +161,7 @@ match.replicant.label.subscribe((label) => {
 
   ```ts
   await ns.transaction(() => {
-    ns.replicant.counter.update((value) => ({
-      ...value,
-      timestamp: Date.now(),
-    }));
+    ns.replicant.counter.update((value) => value + 1);
     ns.replicant.games.update((value) => [...value, "New Game"]);
   });
   ```
@@ -191,7 +185,7 @@ match.replicant.label.subscribe((label) => {
   });
   ```
 
-- 🚧 Replicant supports access control: roles declare default capabilities; per-field `allow`/`deny` refine them
+- ✅ Replicant supports access control: roles declare default capabilities; per-field `allow`/`deny` refine them
 
   ```ts
   const manifest = defineNamespace("match", {
@@ -219,8 +213,8 @@ match.replicant.label.subscribe((label) => {
   const match = implementNamespace(manifest, {
     seedReplicant: { counter: () => 0, games: () => [] },
     implementComputed: {
-      firstGameId: (sources) => sources.games[0]?.id ?? null,
-      summary: (sources, ctx) => `first: ${ctx.computed.firstGameId.get()}`,
+      firstGameId: (ctx) => ctx.replicant.games.get()[0]?.id ?? null,
+      summary: (ctx) => `first: ${ctx.computed.firstGameId.get()}`,
     },
   });
   loadNodeCG({ namespaces: { match } });
@@ -274,10 +268,26 @@ match.replicant.label.subscribe((label) => {
 
   const extended = implementExtendedNamespace(extendedManifest, base, {
     seedReplicant: { round: () => 0 },
-    implementComputed: { total: (sources) => sources.score + sources.round },
+    implementComputed: {
+      total: (ctx) => ctx.replicant.score.get() + ctx.replicant.round.get(),
+    },
   });
 
   loadNodeCG({ namespaces: { extended } });
+  ```
+
+- ✅ A namespace can run server-side logic when it loads, and can read other loaded namespaces inside
+
+  ```ts
+  const overlay = implementNamespace(overlayManifest, {
+    seedReplicant: { status: () => "Live" },
+    onLoad: (ctx) =>
+      ctx.use(commercial).replicant.isRunning.subscribe((isRunning) => {
+        ctx.replicant.status.set(isRunning ? "On break" : "Live");
+      }),
+  });
+
+  loadNodeCG({ namespaces: { overlay, commercial } });
   ```
 
 - 🚧 Admin dashboard (view, clear, export, import, freeze)
@@ -292,7 +302,6 @@ match.replicant.label.subscribe((label) => {
 - 🚧 Built-in stopwatch/timer logic, scheduled updates
 - 🚧 Soft-delete removed replicant definitions
 - 🚧 External webhook registration for replicant updates
-
 - 🚧 Cross instance replicant sharing
 
 #### Replicant Schema
@@ -363,13 +372,14 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 ### Authentication
 
 - ✅ User login via pluggable OAuth/OIDC providers with session cookies
-- ✅ External integrations authenticate with per-client API keys
+- ✅ External integrations authenticate with API keys
 - 🚧 OAuth client-credentials token exchange for integrations
 
 ### Authorization
 
 - ✅ Per-field permission enforcement at every transport from the baked role/principal rules
 - ✅ Role reporting: `me()` returns the caller's held roles per namespace. Per-field access is evaluated client-side from the shared manifest's baked rules
+- ✅ Role assignment: admins grant and revoke roles, and export or import every assignment as one document
 
 ### ✅ Frontend serving
 
@@ -391,7 +401,6 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 - Test: `pnpm vitest`
 - Lint: `pnpm oxlint`
 - Format: `pnpm oxfmt`
-- Start dev server: `pnpm dev`
 
 #### Effect diagnostics in VS Code
 
