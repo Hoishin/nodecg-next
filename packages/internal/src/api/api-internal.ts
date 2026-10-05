@@ -132,26 +132,30 @@ const RoleAssignmentSchema = Schema.Struct({
 	role: DeclarableRole,
 });
 
-export const UserAssignmentSchema = Schema.TaggedStruct("user", {
+export const UserDocumentEntry = Schema.TaggedStruct("user", {
 	authentication: Authentication,
 	displayName: Schema.String,
 	roles: Schema.Array(DeclarableRole),
 	globalRoles: Schema.Tuple([]),
 });
+export type UserDocumentEntry = typeof UserDocumentEntry.Type;
 
-export const ServiceAccountAssignmentSchema = Schema.TaggedStruct(
+export const ServiceAccountDocumentEntry = Schema.TaggedStruct(
 	"serviceAccount",
 	{
 		id: ServiceAccountId,
+		displayName: Schema.String,
 		roles: Schema.Array(DeclarableRole),
 		globalRoles: Schema.Tuple([]),
 	},
 );
+export type ServiceAccountDocumentEntry =
+	typeof ServiceAccountDocumentEntry.Type;
 
 export const RoleAssignmentsDocument = Schema.Struct({
 	version: Schema.Literal(0),
 	assignments: Schema.Array(
-		Schema.Union([UserAssignmentSchema, ServiceAccountAssignmentSchema]),
+		Schema.Union([UserDocumentEntry, ServiceAccountDocumentEntry]),
 	),
 });
 export type RoleAssignmentsDocument = typeof RoleAssignmentsDocument.Type;

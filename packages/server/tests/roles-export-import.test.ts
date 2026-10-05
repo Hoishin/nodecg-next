@@ -3,9 +3,9 @@ import {
 	Role,
 	RoleAssignmentsDocument,
 	RoleNameSchema,
-	ServiceAccountAssignmentSchema,
+	ServiceAccountDocumentEntry,
 	ServiceAccountId,
-	UserAssignmentSchema,
+	UserDocumentEntry,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, HashMap, HashSet, Layer, Crypto } from "effect";
@@ -101,6 +101,7 @@ describe("export", () => {
 					{
 						_tag: "serviceAccount",
 						id: scoreboardId,
+						displayName: "scoreboard",
 						roles: [viewer],
 						globalRoles: [],
 					},
@@ -164,7 +165,7 @@ describe("merge", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							UserAssignmentSchema.make({
+							UserDocumentEntry.make({
 								authentication: operator,
 								displayName: "operator",
 								roles: [viewer],
@@ -205,13 +206,13 @@ describe("merge", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							UserAssignmentSchema.make({
+							UserDocumentEntry.make({
 								authentication: operator,
 								displayName: "operator",
 								roles: [viewer],
 								globalRoles: [],
 							}),
-							UserAssignmentSchema.make({
+							UserDocumentEntry.make({
 								authentication: operator,
 								displayName: "operator",
 								roles: [judge],
@@ -248,8 +249,9 @@ describe("merge", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							ServiceAccountAssignmentSchema.make({
+							ServiceAccountDocumentEntry.make({
 								id: serviceAccountId,
+								displayName: "Scoreboard",
 								roles: [viewer],
 								globalRoles: [],
 							}),
@@ -264,8 +266,9 @@ describe("merge", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							ServiceAccountAssignmentSchema.make({
+							ServiceAccountDocumentEntry.make({
 								id: serviceAccountId,
+								displayName: "Renamed",
 								roles: [judge],
 								globalRoles: [],
 							}),
@@ -280,6 +283,7 @@ describe("merge", () => {
 				serviceAccounts: expect.arrayContaining([
 					expect.objectContaining({
 						id: serviceAccountId,
+						displayName: "Scoreboard",
 						roles: expect.arrayContaining([viewer, judge]),
 					}),
 				]),
@@ -304,7 +308,7 @@ describe("merge", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							UserAssignmentSchema.make({
+							UserDocumentEntry.make({
 								authentication: root,
 								displayName: "root",
 								roles: [viewer],
@@ -352,7 +356,7 @@ describe("replace", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							UserAssignmentSchema.make({
+							UserDocumentEntry.make({
 								authentication: operator,
 								displayName: "operator",
 								roles: [viewer],
@@ -451,7 +455,7 @@ describe("account creation", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							UserAssignmentSchema.make({
+							UserDocumentEntry.make({
 								authentication: newcomer,
 								displayName: "Newcomer",
 								roles: [viewer],
@@ -484,13 +488,15 @@ describe("account creation", () => {
 					document: RoleAssignmentsDocument.make({
 						version: 0,
 						assignments: [
-							ServiceAccountAssignmentSchema.make({
+							ServiceAccountDocumentEntry.make({
 								id: serviceAccountId,
+								displayName: "Scoreboard",
 								roles: [viewer],
 								globalRoles: [],
 							}),
-							ServiceAccountAssignmentSchema.make({
+							ServiceAccountDocumentEntry.make({
 								id: serviceAccountId,
+								displayName: "Scoreboard",
 								roles: [judge],
 								globalRoles: [],
 							}),
@@ -505,6 +511,7 @@ describe("account creation", () => {
 				serviceAccounts: expect.arrayContaining([
 					expect.objectContaining({
 						id: serviceAccountId,
+						displayName: "Scoreboard",
 						roles: expect.arrayContaining([viewer, judge]),
 					}),
 				]),
@@ -632,6 +639,7 @@ describe("validation", () => {
 							{
 								_tag: "serviceAccount",
 								id: "ghost",
+								displayName: "Ghost",
 								roles: [viewer],
 								globalRoles: [],
 							},

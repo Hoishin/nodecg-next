@@ -2,10 +2,10 @@ export { RpcCallError } from "./api/shared.ts";
 export {
 	AdminRoleAssignmentSchema,
 	CreateApiKeyResultSchema,
-	UserAssignmentSchema,
+	UserDocumentEntry,
 	InternalApi,
 	LoginProvider,
-	ServiceAccountAssignmentSchema,
+	ServiceAccountDocumentEntry,
 	MePayload,
 	RoleAssignmentsDocument,
 	SuperadminRevokeRefused,

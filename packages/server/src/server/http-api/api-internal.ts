@@ -2,8 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
 	CurrentIdentity,
-	UserAssignmentSchema,
-	ServiceAccountAssignmentSchema,
+	UserDocumentEntry,
+	ServiceAccountDocumentEntry,
 	RoleAssignmentsDocument,
 	sessionCookieName,
 	SuperadminRevokeRefused,
@@ -566,7 +566,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 					assignments: [
 						...users
 							.map(({ authentication, displayName, roles }) =>
-								UserAssignmentSchema.make({
+								UserDocumentEntry.make({
 									authentication,
 									displayName,
 									roles,
@@ -576,8 +576,9 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 							.filter(({ roles }) => roles.length > 0),
 						...serviceAccountList
 							.map((client) =>
-								ServiceAccountAssignmentSchema.make({
+								ServiceAccountDocumentEntry.make({
 									id: client.id,
+									displayName: client.displayName,
 									roles: client.roles,
 									globalRoles: [],
 								}),
@@ -619,7 +620,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 										return upsertResult.accountId;
 									}),
 								),
-								Match.tag("serviceAccount", ({ id }) =>
+								Match.tag("serviceAccount", ({ id, displayName }) =>
 									Effect.gen(function* () {
 										const account = yield* serviceAccounts.resolveById(id);
 										if (Option.isSome(account)) {
@@ -638,7 +639,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 										}
 										const { accountId } = yield* serviceAccounts.createWithId({
 											id,
-											displayName: "", // TODO: import display name from the document
+											displayName,
 											createdBy: creatorAccountId.value,
 										});
 										return accountId;
