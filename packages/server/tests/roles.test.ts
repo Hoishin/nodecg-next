@@ -9,7 +9,7 @@ import { Crypto, Effect, Layer } from "effect";
 import { HttpBody } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
-import { FieldRegistryService } from "../src/field-registry.ts";
+import { NamespaceRegistryService } from "../src/namespace-registry.ts";
 import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
 import {
 	buildClient,
@@ -27,7 +27,7 @@ const producer = Role.make({
 const test = testLayer(
 	Layer.merge(
 		services,
-		FieldRegistryService.layer([
+		NamespaceRegistryService.layer([
 			{
 				namespace: "show",
 				declaredRoles: new Set([producer.name]),

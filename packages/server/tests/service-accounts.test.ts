@@ -4,7 +4,7 @@ import { Crypto, Effect, Layer } from "effect";
 import { HttpBody } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
-import { FieldRegistryService } from "../src/field-registry.ts";
+import { NamespaceRegistryService } from "../src/namespace-registry.ts";
 import {
 	buildClient,
 	createServiceAccount,
@@ -12,7 +12,7 @@ import {
 	services,
 } from "./setup.ts";
 
-const namespaces = FieldRegistryService.layer([
+const namespaces = NamespaceRegistryService.layer([
 	{
 		namespace: "show",
 		declaredRoles: new Set([

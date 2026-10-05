@@ -37,16 +37,16 @@ import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
 import { DerivationEngineService } from "./derivation-graph.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import {
-	FieldRegistryService,
-	type RegisteredNamespace,
-} from "./field-registry.ts";
-import {
 	type FrontendConfig,
 	type ImplementedNamespace,
 	type LoadedNamespace,
 	type BaseNamespaceShape,
 	type WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
+import {
+	NamespaceRegistryService,
+	type RegisteredNamespace,
+} from "./namespace-registry.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { routes } from "./server/routes.ts";
 import { OperatingSystemService } from "./services/operating-system/operating-system.ts";
@@ -291,7 +291,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 				onReady: options.onReady,
 			});
 			const ServerLive = HttpRouter.serve(routeLayer).pipe(
-				Layer.provide(FieldRegistryService.layer(registered)),
+				Layer.provide(NamespaceRegistryService.layer(registered)),
 				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
 				Layer.provide(
 					Layer.succeed(

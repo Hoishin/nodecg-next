@@ -49,10 +49,10 @@ import {
 import type { FieldPermissionDenied } from "../field-builders/permission.ts";
 import {
 	type ComputedFieldInternal,
-	FieldRegistryService,
+	NamespaceRegistryService,
 	type ReplicantFieldInternal,
 	type TopicFieldInternal,
-} from "../field-registry.ts";
+} from "../namespace-registry.ts";
 import { config } from "../server-config.ts";
 import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
@@ -91,7 +91,7 @@ const ResolvedField = Data.taggedEnum<ResolvedField>();
 
 export const websocketRoute = HttpRouter.use((router) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 
 		const resolveField = (field: FieldIdentifier) =>
 			Match.value(field).pipe(

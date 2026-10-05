@@ -11,11 +11,11 @@ import {
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import {
-	FieldRegistryService,
-	type RegisteredNamespace,
-} from "./field-registry.ts";
 import { listPermissions } from "./list-permissions.ts";
+import {
+	NamespaceRegistryService,
+	type RegisteredNamespace,
+} from "./namespace-registry.ts";
 
 const registered = (
 	namespace: string,
@@ -27,7 +27,7 @@ const registered = (
 });
 
 const provideRegistry = Effect.provide(
-	FieldRegistryService.layer([
+	NamespaceRegistryService.layer([
 		registered("fixture", new Set([RoleName("producer"), RoleName("viewer")])),
 		registered("other", new Set([RoleName("moderator"), RoleName("producer")])),
 	]),

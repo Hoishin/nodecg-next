@@ -2,13 +2,13 @@ import { getRolesForNamespace } from "@nodecg-next/core";
 import type { Identity, MePayload } from "@nodecg-next/internal";
 import { Array, Effect } from "effect";
 
-import { FieldRegistryService } from "./field-registry.ts";
+import { NamespaceRegistryService } from "./namespace-registry.ts";
 
 // TODO: move to local scope of call site
 export const listPermissions = Effect.fn("listPermissions")(function* (
 	identity: Identity,
 ) {
-	const { declaredRoles } = yield* FieldRegistryService;
+	const { declaredRoles } = yield* NamespaceRegistryService;
 	const namespaces: Record<string, MePayload["namespaces"][string]> = {};
 	for (const [namespace, declared] of declaredRoles) {
 		namespaces[namespace] = {

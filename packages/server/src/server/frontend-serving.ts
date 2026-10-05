@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { HttpRouter, HttpStaticServer } from "effect/unstable/http";
 
-import { FieldRegistryService } from "../field-registry.ts";
+import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { config } from "../server-config.ts";
 import { nodeMiddlewareToHttpApp } from "./node-connect-middleware.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
@@ -23,7 +23,7 @@ const coerceToPath = (url: string | URL) => {
 
 export const frontendRoutes = HttpRouter.use((router) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 		const dev = yield* config.dev;
 		for (const [name, frontend] of registry.frontend) {
 			const spa = frontend.spa ?? false;

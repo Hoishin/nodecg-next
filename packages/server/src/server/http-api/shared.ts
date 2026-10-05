@@ -3,11 +3,11 @@ import type { Patch } from "@nodecg-next/internal/occ";
 import { Effect, Match, type Schema } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
-import { FieldRegistryService } from "../../field-registry.ts";
+import { NamespaceRegistryService } from "../../namespace-registry.ts";
 
 export const getReplicant = (namespace: string, name: string) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 		const field = registry.replicant.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -27,7 +27,7 @@ export const updateReplicant = (
 	payload: Patch,
 ) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 		const field = registry.replicant.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -51,7 +51,7 @@ export const updateReplicant = (
 
 export const getComputed = (namespace: string, name: string) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 		const field = registry.computed.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -73,7 +73,7 @@ export const publishTopic = (
 	payload: Schema.Json,
 ) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 		const field = registry.topic.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();
@@ -92,7 +92,7 @@ export const callRpc = (
 	payload: Schema.Json,
 ) =>
 	Effect.gen(function* () {
-		const registry = yield* FieldRegistryService;
+		const registry = yield* NamespaceRegistryService;
 		const field = registry.rpc.get(namespace)?.get(name);
 		if (typeof field === "undefined") {
 			return yield* new HttpApiError.NotFound();

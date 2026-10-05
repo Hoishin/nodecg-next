@@ -20,7 +20,7 @@ export type TopicFieldInternal = Pick<
 >;
 type RpcFieldInternal = BuiltNamespace["rpc"][string][typeof fieldInternal];
 
-export interface FieldRegistry {
+export interface NamespaceRegistry {
 	readonly replicant: ReadonlyMap<
 		string,
 		ReadonlyMap<string, ReplicantFieldInternal>
@@ -59,13 +59,11 @@ export interface RegisteredNamespace {
 	};
 }
 
-// TODO: rename to NamespaceRegistryService
-// transport lookup on single field by name, encoded types only
-export class FieldRegistryService extends Context.Service<FieldRegistryService>()(
-	"FieldRegistry",
+export class NamespaceRegistryService extends Context.Service<NamespaceRegistryService>()(
+	"NamespaceRegistry",
 	{
 		make: (namespaces: ReadonlyArray<RegisteredNamespace>) =>
-			Effect.sync((): FieldRegistry => {
+			Effect.sync((): NamespaceRegistry => {
 				const replicant = new Map<
 					string,
 					Map<string, ReplicantFieldInternal>

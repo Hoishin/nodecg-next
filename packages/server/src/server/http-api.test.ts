@@ -54,9 +54,9 @@ import { RpcHandlerError } from "../field-builders/build-rpc.ts";
 import { fieldInternal } from "../field-builders/field-internal-key.ts";
 import { FieldPermissionDenied } from "../field-builders/permission.ts";
 import {
-	FieldRegistryService,
+	NamespaceRegistryService,
 	type RegisteredNamespace,
-} from "../field-registry.ts";
+} from "../namespace-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { DrizzleSqliteAccountRepository } from "../services/repository/account/drizzle-sqlite-account-repository.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
@@ -218,7 +218,7 @@ const webHandler = Effect.fn(function* (
 		RootApiLive.pipe(
 			HttpRouter.provideRequest(
 				Layer.mergeAll(
-					FieldRegistryService.layer(namespaces),
+					NamespaceRegistryService.layer(namespaces),
 					InMemoryTopicBroker,
 					UrlPath.layer,
 					FetchHttpClient.layer,

@@ -202,7 +202,7 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 		}),
 	)
 	.add(
-		HttpApiEndpoint.delete("revoke", "/service-accounts/:id", {
+		HttpApiEndpoint.delete("delete", "/service-accounts/:id", {
 			params: { id: ServiceAccountId },
 			success: HttpApiSchema.Empty(204),
 			error: HttpApiError.NotFound,

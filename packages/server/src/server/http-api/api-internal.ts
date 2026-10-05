@@ -60,8 +60,8 @@ import {
 	setSessionCookie,
 } from "../../auth/session.ts";
 import { ConfiguredSuperadmins } from "../../configured-superadmins.ts";
-import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
+import { NamespaceRegistryService } from "../../namespace-registry.ts";
 import { config } from "../../server-config.ts";
 import { AccountRepositoryService } from "../../services/repository/account/account-repository.ts";
 import { AuthenticationRepositoryService } from "../../services/repository/authentication/authentication-repository.ts";
@@ -475,7 +475,7 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 					return { serviceAccounts: yield* serviceAccounts.listAll() };
 				}).pipe(reportBackendFailure),
 			)
-			.handle("revoke", ({ params: { id } }) =>
+			.handle("delete", ({ params: { id } }) =>
 				Effect.gen(function* () {
 					const serviceAccounts = yield* ServiceAccountRepositoryService;
 					const found = yield* serviceAccounts.delete(id);
@@ -506,7 +506,7 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 			)
 			.handle("grantRole", ({ params: { id }, payload: role }) =>
 				Effect.gen(function* () {
-					const { declaredRoles } = yield* FieldRegistryService;
+					const { declaredRoles } = yield* NamespaceRegistryService;
 					if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 						return yield* HttpApiError.UnprocessableEntity.make();
 					}
@@ -535,7 +535,7 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	handlers
 		.handle("grant", ({ payload: { accountId, role } }) =>
 			Effect.gen(function* () {
-				const { declaredRoles } = yield* FieldRegistryService;
+				const { declaredRoles } = yield* NamespaceRegistryService;
 				if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 					return yield* HttpApiError.UnprocessableEntity.make();
 				}

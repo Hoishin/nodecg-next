@@ -26,7 +26,7 @@ import {
 import { createSession } from "../src/auth/session.ts";
 import { BuiltNamespaceRegistry } from "../src/build-fields.ts";
 import { DerivationEngineService } from "../src/derivation-graph.ts";
-import { FieldRegistryService } from "../src/field-registry.ts";
+import { NamespaceRegistryService } from "../src/namespace-registry.ts";
 import { routes } from "../src/server/routes.ts";
 import { DrizzleSqliteDatabaseService } from "../src/services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { OperatingSystemService } from "../src/services/operating-system/operating-system.ts";
@@ -68,7 +68,7 @@ export const services = Layer.mergeAll(
 	),
 	BuiltNamespaceRegistry.layer,
 	HttpPlatform.layer.pipe(Layer.provideMerge(Etag.layerWeak)),
-	FieldRegistryService.layer([]),
+	NamespaceRegistryService.layer([]),
 	Layer.succeed(AuthProviderRegistry, HashMap.empty<string, AuthProvider>()),
 	FetchHttpClient.layer,
 ).pipe(

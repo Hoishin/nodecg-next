@@ -4,8 +4,8 @@ import { Effect, FileSystem, Layer, Path } from "effect";
 import { HttpEffect, HttpRouter } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
-import { FieldRegistryService } from "../field-registry.ts";
 import type { FrontendConfig } from "../implement-namespace.ts";
+import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { frontendRoutes } from "./frontend-serving.ts";
 import { UrlPath } from "./url-path.ts";
 
@@ -39,7 +39,7 @@ const fixtures = Effect.gen(function* () {
 const serve = Effect.fn(function* (frontend: FrontendConfig) {
 	const handler = yield* HttpRouter.toHttpEffect(frontendRoutes).pipe(
 		Effect.provide(
-			FieldRegistryService.layer([
+			NamespaceRegistryService.layer([
 				{
 					namespace: "ns",
 					declaredRoles: new Set(),

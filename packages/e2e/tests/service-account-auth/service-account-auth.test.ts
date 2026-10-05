@@ -29,7 +29,7 @@ const provisionServiceAccount = async (displayName: string) => {
 	return serviceAccount;
 };
 
-const revokeServiceAccount = async (id: string) => {
+const deleteServiceAccount = async (id: string) => {
 	await login("root");
 	const response = await fetch(`${base}/api/internal/service-accounts/${id}`, {
 		method: "DELETE",
@@ -103,12 +103,12 @@ describe("public /api/v0 bearer authentication", () => {
 		expect((await readV0("secret", token)).status).toBe(403);
 	});
 
-	test("a revoked key stops authenticating", async () => {
+	test("a deleted service account stops authenticating", async () => {
 		const { serviceAccountId, token } =
 			await provisionServiceAccount("throwaway-bot");
 		expect((await readV0("count", token)).status).toBe(200);
 
-		expect((await revokeServiceAccount(serviceAccountId)).status).toBe(204);
+		expect((await deleteServiceAccount(serviceAccountId)).status).toBe(204);
 
 		expect((await readV0("count", token)).status).toBe(401);
 	});

@@ -16,7 +16,7 @@ import {
 } from "../auth/middleware.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
-import { FieldRegistryService } from "../field-registry.ts";
+import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { DrizzleSqliteAccountRepository } from "../services/repository/account/drizzle-sqlite-account-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
@@ -47,7 +47,7 @@ const handler = () => {
 		Layer.mergeAll(RootApiLive, websocketRoute).pipe(
 			HttpRouter.provideRequest(
 				Layer.mergeAll(
-					FieldRegistryService.layer([]),
+					NamespaceRegistryService.layer([]),
 					InMemoryTopicBroker,
 					UrlPath.layer,
 					FetchHttpClient.layer,
@@ -60,7 +60,7 @@ const handler = () => {
 			Layer.provide(AdminTierMiddlewareLive),
 			Layer.provide(SuperadminMiddlewareLive),
 			Layer.provide(repositories),
-			Layer.provide(FieldRegistryService.layer([])),
+			Layer.provide(NamespaceRegistryService.layer([])),
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(
