@@ -9,6 +9,10 @@ import {
 	AccountRepositoryService,
 } from "../services/repository/account/account-repository.ts";
 import {
+	type AuthenticationRepository,
+	AuthenticationRepositoryService,
+} from "../services/repository/authentication/authentication-repository.ts";
+import {
 	type RoleRepository,
 	RoleRepositoryService,
 } from "../services/repository/role/role-repository.ts";
@@ -31,6 +35,9 @@ const viewer: Role = { namespace: "show", name: RoleName("viewer") };
 const resolveByAuthentication = vi.fn<
 	AccountRepository["resolveByAuthentication"]
 >(() => Effect.succeedSome(accountId));
+const resolveByAccountId = vi.fn<
+	AuthenticationRepository["resolveByAccountId"]
+>(() => Effect.succeed([]));
 const read = vi.fn<RoleRepository["read"]>(() =>
 	Effect.succeed({ roles: [viewer], globalRoles: ["admin"] }),
 );
@@ -49,6 +56,7 @@ const deleteGlobalRole = vi.fn<RoleRepository["revokeGlobalRole"]>(
 afterEach(() => {
 	for (const mock of [
 		resolveByAuthentication,
+		resolveByAccountId,
 		read,
 		globalRoleExists,
 		insertRoles,
@@ -63,6 +71,11 @@ afterEach(() => {
 const test = testLayer(
 	Layer.mergeAll(
 		Layer.succeed(AccountRepositoryService, { resolveByAuthentication }),
+		Layer.succeed(AuthenticationRepositoryService, {
+			findOrCreateAuthentication: vi.fn(),
+			resolveByAccountId,
+			resolveBySession: vi.fn(),
+		}),
 		Layer.succeed(RoleRepositoryService, {
 			read,
 			listAll: vi.fn(),
@@ -211,15 +224,16 @@ describe("grantGlobalRole", () => {
 
 describe("revokeGlobalRole", () => {
 	test(
-		"refuses to revoke superadmin but revokes admin for a superadmin in config",
+		"refuses to revoke a superadmin from config",
 		Effect.gen(function* () {
-			const error = yield* revokeGlobalRole(root, "superadmin").pipe(
+			resolveByAccountId.mockReturnValue(Effect.succeed([root]));
+
+			const error = yield* revokeGlobalRole(accountId, "superadmin").pipe(
 				Effect.flip,
 			);
-			expect(error).toStrictEqual(
-				SuperadminInConfig.make({ issuer: "dev", subject: "root" }),
-			);
-			yield* revokeGlobalRole(root, "admin");
+			expect(error).toStrictEqual(SuperadminInConfig.make({ accountId }));
+
+			yield* revokeGlobalRole(accountId, "admin");
 			expect(deleteGlobalRole).toHaveBeenCalledExactlyOnceWith(
 				accountId,
 				"admin",
@@ -228,25 +242,16 @@ describe("revokeGlobalRole", () => {
 	);
 
 	test(
-		"revokes superadmin from an authentication not in config",
+		"revokes a superadmin not from config",
 		Effect.gen(function* () {
-			yield* revokeGlobalRole(alice, "superadmin");
+			resolveByAccountId.mockReturnValue(Effect.succeed([alice]));
+
+			yield* revokeGlobalRole(accountId, "superadmin");
+			expect(resolveByAccountId).toHaveBeenCalledExactlyOnceWith(accountId);
 			expect(deleteGlobalRole).toHaveBeenCalledExactlyOnceWith(
 				accountId,
 				"superadmin",
 			);
-		}),
-	);
-
-	test(
-		"fails with UnknownAuthentication and revokes nothing without an account",
-		Effect.gen(function* () {
-			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
-			const error = yield* revokeGlobalRole(alice, "admin").pipe(Effect.flip);
-			expect(error).toStrictEqual(
-				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
-			);
-			expect(deleteGlobalRole).not.toHaveBeenCalled();
 		}),
 	);
 });

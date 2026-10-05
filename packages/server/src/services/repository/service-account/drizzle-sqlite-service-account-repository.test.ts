@@ -53,19 +53,12 @@ const createBot = Effect.fn(function* (displayName: string, hash: string) {
 		{ issuer: "dev", subject: "boss" },
 		"Boss",
 	);
-	const { serviceAccountId } = yield* repository.create({
+	const { serviceAccountId, accountId } = yield* repository.create({
 		displayName,
 		createdBy: boss.accountId,
 	});
 	yield* repository.addKey(serviceAccountId, { hash, label: "" });
-	return serviceAccountId;
-});
-
-const findAccountId = Effect.fn(function* (id: ServiceAccountId) {
-	const repository = yield* ServiceAccountRepositoryService;
-	const found = yield* repository.resolveById(id);
-	assert(Option.isSome(found));
-	return found.value.accountId;
+	return { serviceAccountId, accountId };
 });
 
 const createdBy = Effect.fn(function* (id: ServiceAccountId) {
@@ -82,7 +75,7 @@ describe("create", () => {
 		"creates a service account under its own named account",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
+			const { serviceAccountId: id } = yield* createBot("scoreboard", "hash-1");
 
 			const listed = yield* repository.listAll();
 			expect(
@@ -95,8 +88,10 @@ describe("create", () => {
 		"records the creating account",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const provisioner = yield* createBot("provisioner", "hash-1");
-			const provisionerAccount = yield* findAccountId(provisioner);
+			const { accountId: provisionerAccount } = yield* createBot(
+				"provisioner",
+				"hash-1",
+			);
 
 			const created = yield* repository.create({
 				displayName: "scoreboard",
@@ -105,8 +100,9 @@ describe("create", () => {
 
 			const rows = yield* createdBy(created.serviceAccountId);
 			expect(rows).toStrictEqual([{ createdBy: provisionerAccount }]);
-			const accountId = yield* findAccountId(created.serviceAccountId);
-			expect(created.accountId).toBe(accountId);
+			const resolved = yield* repository.resolveById(created.serviceAccountId);
+			assert(Option.isSome(resolved));
+			expect(created.accountId).toBe(resolved.value.accountId);
 		}),
 	);
 });
@@ -189,8 +185,10 @@ describe("resolveById", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			yield* createBot("timer", "hash-1");
-			const scoreboard = yield* createBot("scoreboard", "hash-2");
-			const accountId = yield* findAccountId(scoreboard);
+			const { serviceAccountId: scoreboard, accountId } = yield* createBot(
+				"scoreboard",
+				"hash-2",
+			);
 
 			const resolved = yield* repository.resolveById(scoreboard);
 			expect(resolved).toStrictEqual(
@@ -216,8 +214,10 @@ describe("resolveByKeyHash", () => {
 		"resolves a key to its service account",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
-			const accountId = yield* findAccountId(id);
+			const { serviceAccountId: id, accountId } = yield* createBot(
+				"scoreboard",
+				"hash-1",
+			);
 
 			const byKey = yield* repository.resolveByKeyHash("hash-1");
 
@@ -244,7 +244,7 @@ describe("resolveByKeyHash", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
-			const id = yield* createBot("scoreboard", "hash-1");
+			const { serviceAccountId: id } = yield* createBot("scoreboard", "hash-1");
 			yield* db
 				.update(apiKeys)
 				.set({ expiresAt: 100 })
@@ -265,12 +265,13 @@ describe("listAll", () => {
 		"lists every service account with its own roles and global roles",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const scoreboard = yield* createBot("scoreboard", "hash-1");
-			const scoreboardAccountId = yield* findAccountId(scoreboard);
-			const timer = yield* createBot("timer", "hash-2");
-			const timerAccountId = yield* findAccountId(timer);
+			const roleRepository = yield* RoleRepositoryService;
+			const { serviceAccountId: scoreboard, accountId: scoreboardAccountId } =
+				yield* createBot("scoreboard", "hash-1");
+			const { serviceAccountId: timer, accountId: timerAccountId } =
+				yield* createBot("timer", "hash-2");
 			yield* repository.grantRole(scoreboard, viewer);
-			yield* repository.grantGlobalRole(scoreboard, "admin");
+			yield* roleRepository.grantGlobalRole(scoreboardAccountId, "admin");
 
 			const listed = yield* repository.listAll();
 
@@ -302,7 +303,10 @@ describe("replaceKey", () => {
 		"replaces the old key with the new one and reports the name",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
+			const { serviceAccountId: id, accountId } = yield* createBot(
+				"scoreboard",
+				"hash-1",
+			);
 
 			const replaced = yield* repository.replaceKey(id, {
 				hash: "hash-2",
@@ -310,7 +314,7 @@ describe("replaceKey", () => {
 			});
 
 			expect(replaced).toStrictEqual(
-				Option.some({ displayName: "scoreboard" }),
+				Option.some({ accountId, displayName: "scoreboard" }),
 			);
 			const old = yield* repository.resolveByKeyHash("hash-1");
 			expect(old).toStrictEqual(Option.none());
@@ -343,8 +347,10 @@ describe("delete", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const roleRepository = yield* RoleRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
-			const accountId = yield* findAccountId(id);
+			const { serviceAccountId: id, accountId } = yield* createBot(
+				"scoreboard",
+				"hash-1",
+			);
 			yield* repository.grantRole(id, viewer);
 
 			const found = yield* repository.delete(id);
@@ -377,10 +383,11 @@ describe("delete", () => {
 		"keeps a service account whose creator is deleted",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const provisioner = yield* createBot("provisioner", "hash-1");
+			const { serviceAccountId: provisioner, accountId: provisionerAccount } =
+				yield* createBot("provisioner", "hash-1");
 			const { serviceAccountId } = yield* repository.create({
 				displayName: "scoreboard",
-				createdBy: yield* findAccountId(provisioner),
+				createdBy: provisionerAccount,
 			});
 
 			yield* repository.delete(provisioner);
@@ -397,8 +404,10 @@ describe("grantRole", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const roleRepository = yield* RoleRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
-			const accountId = yield* findAccountId(id);
+			const { serviceAccountId: id, accountId } = yield* createBot(
+				"scoreboard",
+				"hash-1",
+			);
 
 			const first = yield* repository.grantRole(id, viewer);
 			const again = yield* repository.grantRole(id, viewer);
@@ -427,8 +436,10 @@ describe("revokeRole", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const roleRepository = yield* RoleRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
-			const accountId = yield* findAccountId(id);
+			const { serviceAccountId: id, accountId } = yield* createBot(
+				"scoreboard",
+				"hash-1",
+			);
 			yield* repository.grantRole(id, viewer);
 
 			const first = yield* repository.revokeRole(id, viewer);
@@ -446,67 +457,6 @@ describe("revokeRole", () => {
 			const repository = yield* ServiceAccountRepositoryService;
 
 			const found = yield* repository.revokeRole(ghost, viewer);
-
-			expect(found).toBe(false);
-		}),
-	);
-});
-
-describe("grantGlobalRole", () => {
-	test(
-		"grants the global role to the service account's account, also when already held",
-		Effect.gen(function* () {
-			const repository = yield* ServiceAccountRepositoryService;
-			const roleRepository = yield* RoleRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
-			const accountId = yield* findAccountId(id);
-
-			const first = yield* repository.grantGlobalRole(id, "admin");
-			const again = yield* repository.grantGlobalRole(id, "admin");
-
-			expect([first, again]).toStrictEqual([true, true]);
-			const grants = yield* roleRepository.read(accountId);
-			expect(grants.globalRoles).toStrictEqual(["admin"]);
-		}),
-	);
-
-	test(
-		"reports an unknown id",
-		Effect.gen(function* () {
-			const repository = yield* ServiceAccountRepositoryService;
-
-			const found = yield* repository.grantGlobalRole(ghost, "admin");
-
-			expect(found).toBe(false);
-		}),
-	);
-});
-
-describe("revokeGlobalRole", () => {
-	test(
-		"revokes the global role, also when not held",
-		Effect.gen(function* () {
-			const repository = yield* ServiceAccountRepositoryService;
-			const roleRepository = yield* RoleRepositoryService;
-			const id = yield* createBot("scoreboard", "hash-1");
-			const accountId = yield* findAccountId(id);
-			yield* repository.grantGlobalRole(id, "admin");
-
-			const first = yield* repository.revokeGlobalRole(id, "admin");
-			const again = yield* repository.revokeGlobalRole(id, "admin");
-
-			expect([first, again]).toStrictEqual([true, true]);
-			const grants = yield* roleRepository.read(accountId);
-			expect(grants.globalRoles).toStrictEqual([]);
-		}),
-	);
-
-	test(
-		"reports an unknown id",
-		Effect.gen(function* () {
-			const repository = yield* ServiceAccountRepositoryService;
-
-			const found = yield* repository.revokeGlobalRole(ghost, "admin");
 
 			expect(found).toBe(false);
 		}),

@@ -155,6 +155,23 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 					(cause) => BackendError.make({ cause }),
 				),
 			),
+			resolveByAccountId: Effect.fn(
+				"AuthenticationRepository.resolveByAccountId",
+			)(
+				function* (accountId) {
+					return yield* db
+						.select({
+							issuer: authentications.issuer,
+							subject: authentications.subject,
+						})
+						.from(authentications)
+						.innerJoin(users, eq(authentications.userId, users.id))
+						.where(eq(users.accountId, accountId));
+				},
+				Effect.catchTag("EffectDrizzleQueryError", (cause) =>
+					BackendError.make({ cause }),
+				),
+			),
 			resolveBySession: Effect.fn("AuthenticationRepository.resolveBySession")(
 				function* (sessionId) {
 					const now = yield* DateTime.now;

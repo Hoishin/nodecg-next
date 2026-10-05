@@ -1,12 +1,14 @@
-import type {
-	Authentication,
-	GlobalRoleName,
-	Role,
+import {
+	AccountId,
+	type Authentication,
+	type GlobalRoleName,
+	type Role,
 } from "@nodecg-next/internal";
 import { Array, Effect, HashMap, HashSet, Match, Option, Schema } from "effect";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
+import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 export class UnknownAuthentication extends Schema.TaggedError<UnknownAuthentication>()(
 	"UnknownAuthentication",
@@ -31,15 +33,26 @@ const resolveAccountId = Effect.fnUntraced(function* (
 
 export class SuperadminInConfig extends Schema.TaggedError<SuperadminInConfig>()(
 	"SuperadminInConfig",
-	{ issuer: Schema.String, subject: Schema.String },
+	{ accountId: AccountId },
 ) {
-	override readonly message = `Superadmin "${this.subject}" of "${this.issuer}" comes from NODECG_SUPERADMINS and can only be revoked there`;
+	override readonly message = `The superadmin of account "${this.accountId}" comes from NODECG_SUPERADMINS and can only be revoked there`;
 }
 
-const isConfiguredSuperadmin = Effect.fnUntraced(function* (
+const isConfiguredSuperadminAuthentication = Effect.fnUntraced(function* (
 	authentication: Authentication,
 ) {
 	return Array.contains(yield* ConfiguredSuperadmins, authentication);
+});
+
+const isConfiguredSuperadminAccount = Effect.fnUntraced(function* (
+	accountId: AccountId,
+) {
+	const authentications = yield* AuthenticationRepositoryService;
+	const superadmins = yield* ConfiguredSuperadmins;
+	const held = yield* authentications.resolveByAccountId(accountId);
+	return held.some((authentication) =>
+		Array.contains(superadmins, authentication),
+	);
 });
 
 export const getRoles = Effect.fn("getRoles")(function* (
@@ -53,7 +66,7 @@ export const getRoles = Effect.fn("getRoles")(function* (
 		: yield* roleRepository.read(accountId.value);
 	return {
 		roles,
-		globalRoles: (yield* isConfiguredSuperadmin(authentication))
+		globalRoles: (yield* isConfiguredSuperadminAuthentication(authentication))
 			? Array.union(globalRoles, ["superadmin"] as const)
 			: globalRoles,
 	};
@@ -98,21 +111,17 @@ export const grantGlobalRole = Effect.fn("grantGlobalRole")(function* (
 });
 
 export const revokeGlobalRole = Effect.fn("revokeGlobalRole")(function* (
-	authentication: Authentication,
+	accountId: AccountId,
 	role: GlobalRoleName,
 ) {
 	const roleRepository = yield* RoleRepositoryService;
 	const refused = yield* Match.value(role).pipe(
-		Match.when("superadmin", () => isConfiguredSuperadmin(authentication)),
+		Match.when("superadmin", () => isConfiguredSuperadminAccount(accountId)),
 		Match.when("admin", () => Effect.succeed(false)),
 		Match.exhaustive,
 	);
 	if (refused) {
-		return yield* SuperadminInConfig.make({
-			issuer: authentication.issuer,
-			subject: authentication.subject,
-		});
+		return yield* SuperadminInConfig.make({ accountId });
 	}
-	const accountId = yield* resolveAccountId(authentication);
 	yield* roleRepository.revokeGlobalRole(accountId, role);
 });

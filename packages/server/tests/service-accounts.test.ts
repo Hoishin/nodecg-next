@@ -1,11 +1,10 @@
 import { Authentication, RoleNameSchema } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Crypto, Effect, Layer, Option } from "effect";
+import { Crypto, Effect, Layer } from "effect";
 import { HttpBody } from "effect/unstable/http";
-import { assert, describe, expect } from "vitest";
+import { describe, expect } from "vitest";
 
 import { FieldRegistryService } from "../src/field-registry.ts";
-import { ServiceAccountRepositoryService } from "../src/services/repository/service-account/service-account-repository.ts";
 import {
 	buildClient,
 	createServiceAccount,
@@ -43,6 +42,7 @@ describe("create", () => {
 			expect(res.status).toBe(200);
 			expect(yield* res.json).toEqual({
 				serviceAccountId: expect.any(String),
+				accountId: expect.any(String),
 				displayName: "scoreboard",
 				token: expect.any(String),
 			});
@@ -55,37 +55,27 @@ describe("list", () => {
 		"lists service accounts without their tokens",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const serviceAccounts = yield* ServiceAccountRepositoryService;
 
 			const asAdmin = yield* loginAdmin(client, admin);
-			const { serviceAccountId: scoreboardId } = yield* createServiceAccount(
-				asAdmin,
-				"scoreboard",
-			);
-			const scoreboard = yield* serviceAccounts.resolveById(scoreboardId);
-			assert(Option.isSome(scoreboard));
 
-			const { serviceAccountId: timerId } = yield* createServiceAccount(
-				asAdmin,
-				"timer",
-			);
-			const timer = yield* serviceAccounts.resolveById(timerId);
-			assert(Option.isSome(timer));
+			const scoreboard = yield* createServiceAccount(asAdmin, "scoreboard");
+
+			const timer = yield* createServiceAccount(asAdmin, "timer");
 
 			const res = yield* asAdmin.get(serviceAccountsUrl);
 			expect(res.status).toBe(200);
 			expect(yield* res.json).toEqual({
 				serviceAccounts: expect.arrayContaining([
 					{
-						id: scoreboardId,
-						accountId: scoreboard.value.accountId,
+						id: scoreboard.serviceAccountId,
+						accountId: scoreboard.accountId,
 						displayName: "scoreboard",
 						roles: [],
 						globalRoles: [],
 					},
 					{
-						id: timerId,
-						accountId: timer.value.accountId,
+						id: timer.serviceAccountId,
+						accountId: timer.accountId,
 						displayName: "timer",
 						roles: [],
 						globalRoles: [],
@@ -138,7 +128,7 @@ describe("refresh", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const asAdmin = yield* loginAdmin(client, admin);
-			const { serviceAccountId } = yield* createServiceAccount(
+			const { serviceAccountId, accountId } = yield* createServiceAccount(
 				asAdmin,
 				"scoreboard",
 			);
@@ -149,6 +139,7 @@ describe("refresh", () => {
 			expect(res.status).toBe(200);
 			expect(yield* res.json).toEqual({
 				serviceAccountId,
+				accountId,
 				displayName: "scoreboard",
 				token: expect.any(String),
 			});

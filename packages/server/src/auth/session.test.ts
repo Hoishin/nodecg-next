@@ -62,6 +62,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		Layer.succeed(AuthenticationRepositoryService, {
 			findOrCreateAuthentication,
+			resolveByAccountId: vi.fn(),
 			resolveBySession,
 		}),
 		Layer.succeed(SessionRepositoryService, {

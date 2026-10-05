@@ -374,7 +374,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						}
 						yield* grantGlobalRole(authentication, "superadmin");
 					}).pipe(
-						Effect.catchTag("UnknownAuthentication", () =>
+						Effect.catchTag(["UnknownAuthentication", "UnknownAccount"], () =>
 							HttpApiError.Forbidden.make(),
 						),
 						reportBackendFailure,
@@ -389,44 +389,19 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 	"AdminRoles",
 	(handlers) =>
 		handlers
-			.handle("grantAdmin", ({ payload: { target, role } }) =>
-				Match.value(target).pipe(
-					Match.tag("user", ({ authentication }) =>
-						grantGlobalRole(authentication, role),
-					),
-					Match.tag("serviceAccount", ({ id }) =>
-						Effect.gen(function* () {
-							const serviceAccounts = yield* ServiceAccountRepositoryService;
-							const found = yield* serviceAccounts.grantGlobalRole(id, role);
-							if (!found) {
-								return yield* HttpApiError.NotFound.make();
-							}
-						}),
-					),
-					Match.exhaustive,
-					Effect.catchTag("UnknownAuthentication", () =>
-						HttpApiError.NotFound.make(),
-					),
+			.handle("grantAdmin", ({ payload: { accountId, role } }) =>
+				Effect.gen(function* () {
+					const roleRepository = yield* RoleRepositoryService;
+					yield* roleRepository.grantGlobalRole(accountId, role);
+				}).pipe(
+					Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
 					reportBackendFailure,
 				),
 			)
-			.handle("revokeAdmin", ({ payload: { target, role } }) =>
-				Match.value(target).pipe(
-					Match.tag("user", ({ authentication }) =>
-						revokeGlobalRole(authentication, role),
-					),
-					Match.tag("serviceAccount", ({ id }) =>
-						Effect.gen(function* () {
-							const serviceAccounts = yield* ServiceAccountRepositoryService;
-							const found = yield* serviceAccounts.revokeGlobalRole(id, role);
-							if (!found) {
-								return yield* HttpApiError.NotFound.make();
-							}
-						}),
-					),
-					Match.exhaustive,
+			.handle("revokeAdmin", ({ payload: { accountId, role } }) =>
+				revokeGlobalRole(accountId, role).pipe(
 					Effect.catchTags({
-						UnknownAuthentication: () => HttpApiError.NotFound.make(),
+						UnknownAccount: () => HttpApiError.NotFound.make(),
 						SuperadminInConfig: () =>
 							PermissionDenied.make({
 								message:
@@ -485,6 +460,7 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 					}
 					return {
 						serviceAccountId: id,
+						accountId: replaced.value.accountId,
 						displayName: replaced.value.displayName,
 						token,
 					};

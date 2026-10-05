@@ -1,12 +1,19 @@
-import type {
+import {
 	AccountId,
-	Authentication,
-	GlobalRoleName,
-	Role,
+	type Authentication,
+	type GlobalRoleName,
+	type Role,
 } from "@nodecg-next/internal";
-import { Context, HashMap, HashSet, type Effect } from "effect";
+import { Context, HashMap, HashSet, type Effect, Schema } from "effect";
 
 import type { BackendError } from "../repository-errors.ts";
+
+export class UnknownAccount extends Schema.TaggedError<UnknownAccount>()(
+	"UnknownAccount",
+	{ accountId: AccountId },
+) {
+	override readonly message = `No account has the id "${this.accountId}"`;
+}
 
 export interface RoleGrants {
 	readonly roles: ReadonlyArray<Role>;
@@ -46,12 +53,12 @@ export interface RoleRepository {
 	readonly grantGlobalRole: (
 		accountId: AccountId,
 		role: GlobalRoleName,
-	) => Effect.Effect<void, BackendError>;
+	) => Effect.Effect<void, BackendError | UnknownAccount>;
 
 	readonly revokeGlobalRole: (
 		accountId: AccountId,
 		role: GlobalRoleName,
-	) => Effect.Effect<void, BackendError>;
+	) => Effect.Effect<void, BackendError | UnknownAccount>;
 
 	readonly revokeAllRoles: () => Effect.Effect<void, BackendError>;
 }

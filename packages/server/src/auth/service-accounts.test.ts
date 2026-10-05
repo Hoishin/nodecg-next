@@ -62,8 +62,6 @@ const test = testLayer(
 			delete: vi.fn(),
 			grantRole: vi.fn(),
 			revokeRole: vi.fn(),
-			grantGlobalRole: vi.fn(),
-			revokeGlobalRole: vi.fn(),
 		}),
 		Layer.succeed(AccountRepositoryService, { resolveByAuthentication }),
 		Layer.succeed(TransactionService, { wrap: (effect) => effect }),

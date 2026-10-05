@@ -162,6 +162,7 @@ const CreateApiKeyRequestSchema = Schema.Struct({
 
 export const CreateApiKeyResultSchema = Schema.Struct({
 	serviceAccountId: ServiceAccountId,
+	accountId: AccountId,
 	displayName: Schema.String,
 	token: Schema.Redacted(Schema.String),
 });
@@ -258,21 +259,8 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	)
 	.middleware(AdminTierMiddleware);
 
-export const AdminUserTargetSchema = Schema.TaggedStruct("user", {
-	authentication: Authentication,
-});
-export const AdminServiceAccountTargetSchema = Schema.TaggedStruct(
-	"serviceAccount",
-	{ id: ServiceAccountId },
-);
-export const AdminTargetSchema = Schema.Union([
-	AdminUserTargetSchema,
-	AdminServiceAccountTargetSchema,
-]);
-export type AdminTarget = typeof AdminTargetSchema.Type;
-
 export const AdminRoleAssignmentSchema = Schema.Struct({
-	target: AdminTargetSchema,
+	accountId: AccountId,
 	role: AdminRoleName,
 });
 

@@ -12,7 +12,7 @@ import { AuthenticationRepositoryService } from "../authentication/authenticatio
 import { DrizzleSqliteAuthenticationRepository } from "../authentication/drizzle-sqlite-authentication-repository.ts";
 import { BackendError } from "../repository-errors.ts";
 import { DrizzleSqliteRoleRepository } from "./drizzle-sqlite-role-repository.ts";
-import { RoleRepositoryService } from "./role-repository.ts";
+import { RoleRepositoryService, UnknownAccount } from "./role-repository.ts";
 
 const test = testLayer(
 	Layer.mergeAll(
@@ -204,6 +204,20 @@ describe("grantGlobalRole", () => {
 			]);
 		}),
 	);
+
+	test(
+		"fails with UnknownAccount when the account does not exist",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const missing = AccountId.make("missing");
+
+			const error = yield* repository
+				.grantGlobalRole(missing, "admin")
+				.pipe(Effect.flip);
+
+			expect(error).toStrictEqual(UnknownAccount.make({ accountId: missing }));
+		}),
+	);
 });
 
 describe("revokeGlobalRole", () => {
@@ -220,6 +234,20 @@ describe("revokeGlobalRole", () => {
 			expect((yield* repository.read(alice)).globalRoles).toStrictEqual([
 				"admin",
 			]);
+		}),
+	);
+
+	test(
+		"fails with UnknownAccount when the account does not exist",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const missing = AccountId.make("missing");
+
+			const error = yield* repository
+				.revokeGlobalRole(missing, "admin")
+				.pipe(Effect.flip);
+
+			expect(error).toStrictEqual(UnknownAccount.make({ accountId: missing }));
 		}),
 	);
 });

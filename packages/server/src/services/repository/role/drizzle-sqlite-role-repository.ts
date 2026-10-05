@@ -14,7 +14,7 @@ import {
 	users,
 } from "../../database/drizzle-sqlite/tables.ts";
 import { BackendError } from "../repository-errors.ts";
-import { RoleRepositoryService } from "./role-repository.ts";
+import { RoleRepositoryService, UnknownAccount } from "./role-repository.ts";
 
 export const DrizzleSqliteRoleRepository = Layer.effect(
 	RoleRepositoryService,
@@ -164,30 +164,50 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 			),
 		);
 
+		const requireAccount = Effect.fnUntraced(function* (accountId: AccountId) {
+			const rows = yield* db
+				.select({ id: accounts.id })
+				.from(accounts)
+				.where(eq(accounts.id, accountId));
+			if (Array.isArrayEmpty(rows)) {
+				return yield* UnknownAccount.make({ accountId });
+			}
+		});
+
 		const grantGlobalRole = Effect.fn("RoleRepository.grantGlobalRole")(
 			function* (accountId: AccountId, role: GlobalRoleName) {
-				yield* db
-					.insert(globalRoleGrants)
-					.values({ accountId, roleName: role })
-					.onConflictDoNothing();
+				yield* db.transaction(() =>
+					Effect.gen(function* () {
+						yield* requireAccount(accountId);
+						yield* db
+							.insert(globalRoleGrants)
+							.values({ accountId, roleName: role })
+							.onConflictDoNothing();
+					}),
+				);
 			},
-			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
 				BackendError.make({ cause }),
 			),
 		);
 
 		const revokeGlobalRole = Effect.fn("RoleRepository.revokeGlobalRole")(
 			function* (accountId: AccountId, role: GlobalRoleName) {
-				yield* db
-					.delete(globalRoleGrants)
-					.where(
-						and(
-							eq(globalRoleGrants.accountId, accountId),
-							eq(globalRoleGrants.roleName, role),
-						),
-					);
+				yield* db.transaction(() =>
+					Effect.gen(function* () {
+						yield* requireAccount(accountId);
+						yield* db
+							.delete(globalRoleGrants)
+							.where(
+								and(
+									eq(globalRoleGrants.accountId, accountId),
+									eq(globalRoleGrants.roleName, role),
+								),
+							);
+					}),
+				);
 			},
-			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
 				BackendError.make({ cause }),
 			),
 		);

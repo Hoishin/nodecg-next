@@ -22,6 +22,10 @@ export interface AuthenticationRepository {
 		BackendError
 	>;
 
+	readonly resolveByAccountId: (
+		accountId: AccountId,
+	) => Effect.Effect<ReadonlyArray<Authentication>, BackendError>;
+
 	readonly resolveBySession: (sessionId: UserSessionId) => Effect.Effect<
 		Option.Option<{
 			readonly accountId: AccountId;

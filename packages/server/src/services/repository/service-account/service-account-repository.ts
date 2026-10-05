@@ -75,7 +75,10 @@ export interface ServiceAccountRepository {
 		id: ServiceAccountId,
 		key: NewApiKey,
 	) => Effect.Effect<
-		Option.Option<{ readonly displayName: string }>,
+		Option.Option<{
+			readonly accountId: AccountId;
+			readonly displayName: string;
+		}>,
 		BackendError
 	>;
 
@@ -91,16 +94,6 @@ export interface ServiceAccountRepository {
 	readonly revokeRole: (
 		id: ServiceAccountId,
 		role: Role,
-	) => Effect.Effect<boolean, BackendError>;
-
-	readonly grantGlobalRole: (
-		id: ServiceAccountId,
-		role: GlobalRoleName,
-	) => Effect.Effect<boolean, BackendError>;
-
-	readonly revokeGlobalRole: (
-		id: ServiceAccountId,
-		role: GlobalRoleName,
 	) => Effect.Effect<boolean, BackendError>;
 }
 

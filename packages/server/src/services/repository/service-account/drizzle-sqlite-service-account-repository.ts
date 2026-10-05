@@ -1,7 +1,6 @@
 import {
 	AccountId,
 	ApiKeyId,
-	type GlobalRoleName,
 	type Role,
 	ServiceAccountId,
 } from "@nodecg-next/internal";
@@ -241,7 +240,10 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					Effect.gen(function* () {
 						const found = Array.head(
 							yield* db
-								.select({ displayName: accounts.displayName })
+								.select({
+									accountId: accounts.id,
+									displayName: accounts.displayName,
+								})
 								.from(serviceAccounts)
 								.innerJoin(accounts, eq(accounts.id, serviceAccounts.accountId))
 								.where(eq(serviceAccounts.id, id)),
@@ -307,29 +309,6 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			),
 		);
 
-		const grantGlobalRole = Effect.fn(
-			"ServiceAccountRepository.grantGlobalRole",
-		)(
-			function* (id: ServiceAccountId, role: GlobalRoleName) {
-				return yield* db.transaction(() =>
-					Effect.gen(function* () {
-						const account = yield* selectAccount(id);
-						if (Option.isNone(account)) {
-							return false;
-						}
-						yield* db
-							.insert(globalRoleGrants)
-							.values({ accountId: account.value.accountId, roleName: role })
-							.onConflictDoNothing();
-						return true;
-					}),
-				);
-			},
-			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
-				BackendError.make({ cause }),
-			),
-		);
-
 		const revokeRole = Effect.fn("ServiceAccountRepository.revokeRole")(
 			function* (id: ServiceAccountId, role: Role) {
 				return yield* db.transaction(() =>
@@ -356,33 +335,6 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			),
 		);
 
-		const revokeGlobalRole = Effect.fn(
-			"ServiceAccountRepository.revokeGlobalRole",
-		)(
-			function* (id: ServiceAccountId, role: GlobalRoleName) {
-				return yield* db.transaction(() =>
-					Effect.gen(function* () {
-						const account = yield* selectAccount(id);
-						if (Option.isNone(account)) {
-							return false;
-						}
-						yield* db
-							.delete(globalRoleGrants)
-							.where(
-								and(
-									eq(globalRoleGrants.accountId, account.value.accountId),
-									eq(globalRoleGrants.roleName, role),
-								),
-							);
-						return true;
-					}),
-				);
-			},
-			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
-				BackendError.make({ cause }),
-			),
-		);
-
 		return {
 			create,
 			createWithId,
@@ -394,8 +346,6 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			delete: deleteOne,
 			grantRole,
 			revokeRole,
-			grantGlobalRole,
-			revokeGlobalRole,
 		};
 	}),
 );

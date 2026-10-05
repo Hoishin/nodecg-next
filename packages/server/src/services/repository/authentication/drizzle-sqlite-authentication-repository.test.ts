@@ -1,5 +1,9 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { type Authentication, UserSessionId } from "@nodecg-next/internal";
+import {
+	AccountId,
+	type Authentication,
+	UserSessionId,
+} from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq, sql } from "drizzle-orm";
 import { Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
@@ -191,6 +195,35 @@ describe("findOrCreateAuthentication", () => {
 
 			assert(Schema.is(BackendError)(error));
 			expect(error.message).toContain("authentications");
+		}),
+	);
+});
+
+describe("resolveByAccountId", () => {
+	test(
+		"resolves the authentications of the account only",
+		Effect.gen(function* () {
+			const repository = yield* AuthenticationRepositoryService;
+			const { accountId } = yield* repository.findOrCreateAuthentication(
+				alice,
+				"Alice",
+			);
+			yield* repository.findOrCreateAuthentication(bob, "Bob");
+
+			const resolved = yield* repository.resolveByAccountId(accountId);
+			expect(resolved).toStrictEqual([alice]);
+		}),
+	);
+
+	test(
+		"resolves nothing for an unknown account",
+		Effect.gen(function* () {
+			const repository = yield* AuthenticationRepositoryService;
+
+			const resolved = yield* repository.resolveByAccountId(
+				AccountId.make("missing"),
+			);
+			expect(resolved).toStrictEqual([]);
 		}),
 	);
 });
