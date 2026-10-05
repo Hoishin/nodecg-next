@@ -372,9 +372,16 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 						) {
 							return yield* new HttpApiError.Forbidden();
 						}
-						yield* grantGlobalRole(authentication, "superadmin");
+
+						const accounts = yield* AccountRepositoryService;
+						const accountId =
+							yield* accounts.resolveByAuthentication(authentication);
+						if (Option.isNone(accountId)) {
+							return yield* HttpApiError.Forbidden.make();
+						}
+						yield* grantGlobalRole(accountId.value, "superadmin");
 					}).pipe(
-						Effect.catchTag(["UnknownAuthentication", "UnknownAccount"], () =>
+						Effect.catchTag("UnknownAccount", () =>
 							HttpApiError.Forbidden.make(),
 						),
 						reportBackendFailure,
@@ -390,10 +397,7 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 	(handlers) =>
 		handlers
 			.handle("grantAdmin", ({ payload: { accountId, role } }) =>
-				Effect.gen(function* () {
-					const roleRepository = yield* RoleRepositoryService;
-					yield* roleRepository.grantGlobalRole(accountId, role);
-				}).pipe(
+				grantGlobalRole(accountId, role).pipe(
 					Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
 					reportBackendFailure,
 				),

@@ -9,27 +9,6 @@ import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
-export class UnknownAuthentication extends Schema.TaggedError<UnknownAuthentication>()(
-	"UnknownAuthentication",
-	{ issuer: Schema.String, subject: Schema.String },
-) {
-	override readonly message = `No account has "${this.subject}" of "${this.issuer}"`;
-}
-
-const resolveAccountId = Effect.fnUntraced(function* (
-	authentication: Authentication,
-) {
-	const accounts = yield* AccountRepositoryService;
-	const accountId = yield* accounts.resolveByAuthentication(authentication);
-	if (Option.isNone(accountId)) {
-		return yield* UnknownAuthentication.make({
-			issuer: authentication.issuer,
-			subject: authentication.subject,
-		});
-	}
-	return accountId.value;
-});
-
 export class SuperadminInConfig extends Schema.TaggedError<SuperadminInConfig>()(
 	"SuperadminInConfig",
 	{ accountId: AccountId },
@@ -81,11 +60,10 @@ export const superadminExists = Effect.fn("superadminExists")(function* () {
 });
 
 export const grantGlobalRole = Effect.fn("grantGlobalRole")(function* (
-	authentication: Authentication,
+	accountId: AccountId,
 	role: GlobalRoleName,
 ) {
 	const roleRepository = yield* RoleRepositoryService;
-	const accountId = yield* resolveAccountId(authentication);
 	yield* roleRepository.grantGlobalRole(accountId, role);
 });
 

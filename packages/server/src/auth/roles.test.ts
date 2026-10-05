@@ -22,7 +22,6 @@ import {
 	revokeGlobalRole,
 	superadminExists,
 	SuperadminInConfig,
-	UnknownAuthentication,
 } from "./roles.ts";
 
 const alice = { issuer: "dev", subject: "alice" };
@@ -145,26 +144,13 @@ describe("superadminExists", () => {
 
 describe("grantGlobalRole", () => {
 	test(
-		"grants the global role to the authentication's account",
+		"grants the global role to the account",
 		Effect.gen(function* () {
-			yield* grantGlobalRole(alice, "admin");
-			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
+			yield* grantGlobalRole(accountId, "admin");
 			expect(insertGlobalRole).toHaveBeenCalledExactlyOnceWith(
 				accountId,
 				"admin",
 			);
-		}),
-	);
-
-	test(
-		"fails with UnknownAuthentication and grants nothing without an account",
-		Effect.gen(function* () {
-			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
-			const error = yield* grantGlobalRole(alice, "admin").pipe(Effect.flip);
-			expect(error).toStrictEqual(
-				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
-			);
-			expect(insertGlobalRole).not.toHaveBeenCalled();
 		}),
 	);
 });
