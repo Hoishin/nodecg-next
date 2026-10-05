@@ -75,7 +75,7 @@ describe("user", () => {
 	);
 
 	test(
-		"403 when revoking superadmin from a superadmin in config",
+		"422 when revoking superadmin from a superadmin in config",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 
@@ -85,10 +85,12 @@ describe("user", () => {
 			const res = yield* asRoot.post(revokeUrl, {
 				body: yield* HttpBody.json({ accountId: rootId, role: "superadmin" }),
 			});
-			expect(res.status).toBe(403);
+			expect(res.status).toBe(422);
 			expect(yield* res.json).toMatchObject({
+				accountId: rootId,
+				authentication: root,
 				message:
-					"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
+					'Superadmin "dev:root" comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there',
 			});
 		}).pipe(Effect.provide(rootInConfig)),
 	);

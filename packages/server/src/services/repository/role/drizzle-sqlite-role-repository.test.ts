@@ -173,6 +173,22 @@ describe("grantRoles", () => {
 
 describe("grantRole", () => {
 	test(
+		"inserts the role for the account only",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const alice = yield* createAccount("alice");
+			const bob = yield* createAccount("bob");
+
+			yield* repository.grantRole(alice, viewer);
+
+			const aliceGrants = yield* repository.read(alice);
+			expect(aliceGrants.roles).toStrictEqual([viewer]);
+			const bobGrants = yield* repository.read(bob);
+			expect(bobGrants.roles).toStrictEqual([]);
+		}),
+	);
+
+	test(
 		"keeps one grant when the same role is inserted twice",
 		Effect.gen(function* () {
 			const repository = yield* RoleRepositoryService;

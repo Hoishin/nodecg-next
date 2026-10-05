@@ -32,9 +32,13 @@ export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
 	{},
 ) {}
 
-export class PermissionDenied extends Schema.TaggedError<PermissionDenied>()(
-	"PermissionDenied",
-	{ message: Schema.String },
+export class SuperadminRevokeRefused extends Schema.TaggedError<SuperadminRevokeRefused>()(
+	"SuperadminRevokeRefused",
+	{
+		accountId: AccountId,
+		authentication: Authentication,
+		message: Schema.String,
+	},
 ) {}
 
 const NamespacePermissionsSchema = Schema.Struct({
@@ -292,10 +296,7 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
 			payload: AdminRoleAssignmentSchema,
 			success: HttpApiSchema.Empty(204),
-			error: [
-				HttpApiError.NotFound,
-				PermissionDenied.pipe(HttpApiSchema.status(403)),
-			],
+			error: HttpApiError.NotFound,
 		}),
 	)
 	.add(
@@ -304,7 +305,7 @@ const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
 			success: HttpApiSchema.Empty(204),
 			error: [
 				HttpApiError.NotFound,
-				PermissionDenied.pipe(HttpApiSchema.status(403)),
+				SuperadminRevokeRefused.pipe(HttpApiSchema.status(422)),
 			],
 		}),
 	)

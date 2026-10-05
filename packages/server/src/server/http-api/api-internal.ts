@@ -3,10 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 import {
 	CurrentIdentity,
 	UserAssignmentSchema,
-	PermissionDenied,
 	ServiceAccountAssignmentSchema,
 	RoleAssignmentsDocument,
 	sessionCookieName,
+	SuperadminRevokeRefused,
 	TooManyRequests,
 	AccountId,
 	Role,
@@ -406,10 +406,11 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 				revokeGlobalRole(accountId, role).pipe(
 					Effect.catchTags({
 						UnknownAccount: () => HttpApiError.NotFound.make(),
-						SuperadminInConfig: () =>
-							PermissionDenied.make({
-								message:
-									"This superadmin comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there",
+						SuperadminInConfig: ({ accountId, authentication }) =>
+							SuperadminRevokeRefused.make({
+								accountId,
+								authentication,
+								message: `Superadmin "${authentication.issuer}:${authentication.subject}" comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there`,
 							}),
 					}),
 					reportBackendFailure,

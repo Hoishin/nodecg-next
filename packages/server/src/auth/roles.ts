@@ -1,6 +1,6 @@
 import {
 	AccountId,
-	type Authentication,
+	Authentication,
 	type GlobalRoleName,
 } from "@nodecg-next/internal";
 import { Array, Effect, Match, Option, Schema } from "effect";
@@ -9,11 +9,12 @@ import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { AccountRepositoryService } from "../services/repository/account/account-repository.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
+
 export class SuperadminInConfig extends Schema.TaggedError<SuperadminInConfig>()(
 	"SuperadminInConfig",
-	{ accountId: AccountId },
+	{ accountId: AccountId, authentication: Authentication },
 ) {
-	override readonly message = `The superadmin of account "${this.accountId}" comes from NODECG_SUPERADMINS and can only be revoked there`;
+	override readonly message = `Superadmin "${this.authentication.issuer}:${this.authentication.subject}" comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there`;
 }
 
 const isConfiguredSuperadminAuthentication = Effect.fnUntraced(function* (
@@ -22,13 +23,13 @@ const isConfiguredSuperadminAuthentication = Effect.fnUntraced(function* (
 	return Array.contains(yield* ConfiguredSuperadmins, authentication);
 });
 
-const isConfiguredSuperadminAccount = Effect.fnUntraced(function* (
+const findConfiguredSuperadmin = Effect.fnUntraced(function* (
 	accountId: AccountId,
 ) {
 	const authentications = yield* AuthenticationRepositoryService;
 	const superadmins = yield* ConfiguredSuperadmins;
 	const held = yield* authentications.resolveByAccountId(accountId);
-	return held.some((authentication) =>
+	return Array.findFirst(held, (authentication) =>
 		Array.contains(superadmins, authentication),
 	);
 });
@@ -72,13 +73,16 @@ export const revokeGlobalRole = Effect.fn("revokeGlobalRole")(function* (
 	role: GlobalRoleName,
 ) {
 	const roleRepository = yield* RoleRepositoryService;
-	const refused = yield* Match.value(role).pipe(
-		Match.when("superadmin", () => isConfiguredSuperadminAccount(accountId)),
-		Match.when("admin", () => Effect.succeed(false)),
+	const configured = yield* Match.value(role).pipe(
+		Match.when("superadmin", () => findConfiguredSuperadmin(accountId)),
+		Match.when("admin", () => Effect.succeedNone),
 		Match.exhaustive,
 	);
-	if (refused) {
-		return yield* SuperadminInConfig.make({ accountId });
+	if (Option.isSome(configured)) {
+		return yield* SuperadminInConfig.make({
+			accountId,
+			authentication: configured.value,
+		});
 	}
 	yield* roleRepository.revokeGlobalRole(accountId, role);
 });

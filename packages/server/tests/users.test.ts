@@ -10,6 +10,7 @@ import {
 import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
 import {
 	buildClient,
+	createServiceAccount,
 	findAccountId,
 	login,
 	loginAdmin,
@@ -101,6 +102,24 @@ describe("list", () => {
 				]),
 			});
 		}).pipe(Effect.provide(rootInConfig)),
+	);
+
+	test(
+		"leaves out service accounts",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+
+			const asAdmin = yield* loginAdmin(client, admin);
+			const adminId = yield* findAccountId(admin);
+
+			yield* createServiceAccount(asAdmin, "bot");
+
+			const res = yield* asAdmin.get(usersUrl);
+			expect(res.status).toBe(200);
+			expect(yield* res.json).toEqual({
+				users: [expect.objectContaining({ accountId: adminId })],
+			});
+		}),
 	);
 });
 

@@ -164,7 +164,9 @@ describe("revokeGlobalRole", () => {
 			const error = yield* revokeGlobalRole(accountId, "superadmin").pipe(
 				Effect.flip,
 			);
-			expect(error).toStrictEqual(SuperadminInConfig.make({ accountId }));
+			expect(error).toStrictEqual(
+				SuperadminInConfig.make({ accountId, authentication: root }),
+			);
 
 			yield* revokeGlobalRole(accountId, "admin");
 			expect(deleteGlobalRole).toHaveBeenCalledExactlyOnceWith(
