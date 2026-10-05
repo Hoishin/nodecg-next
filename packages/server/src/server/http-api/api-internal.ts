@@ -162,9 +162,8 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							maxAge,
 						}),
 						// TODO: is this a correct silencing?
-						Effect.catchTag(
-							"CookiesError",
-							() => new HttpApiError.InternalServerError(),
+						Effect.catchTag("CookiesError", () =>
+							HttpApiError.InternalServerError.make(),
 						),
 					);
 			const clearLoginAttemptCookie = setLoginAttemptCookie("", 0);
@@ -359,18 +358,20 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							(at) => now - at < CLAIM_ATTEMPT_WINDOW_MILLIS,
 						);
 						if (recent.length >= CLAIM_ATTEMPT_LIMIT) {
-							return yield* new TooManyRequests();
+							return yield* TooManyRequests.make({
+								message: "Too many superadmin claim attempts, try again later",
+							});
 						}
 						yield* Ref.set(claimAttempts, [...recent, now]);
 
 						if (Option.isNone(claimToken)) {
-							return yield* new HttpApiError.Forbidden();
+							return yield* HttpApiError.Forbidden.make();
 						}
 						if (
 							(yield* superadminExists()) ||
 							!(yield* tokenEquals(claimToken.value, token))
 						) {
-							return yield* new HttpApiError.Forbidden();
+							return yield* HttpApiError.Forbidden.make();
 						}
 
 						const accounts = yield* AccountRepositoryService;

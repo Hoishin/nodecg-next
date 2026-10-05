@@ -29,7 +29,7 @@ import { fieldGroup } from "./shared.ts";
 
 export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
 	"TooManyRequests",
-	{},
+	{ message: Schema.String },
 ) {}
 
 export class SuperadminRevokeRefused extends Schema.TaggedError<SuperadminRevokeRefused>()(

@@ -197,6 +197,38 @@ describe("superadmin claim", () => {
 			),
 		),
 	);
+
+	test(
+		"429 after too many attempts",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+			const asOperator = yield* login(client, operator);
+
+			for (let attempt = 0; attempt < 5; attempt++) {
+				const wrongTokenRes = yield* asOperator.post(claimUrl, {
+					body: yield* HttpBody.json({ token: "wrong-token-of-real-length" }),
+				});
+				expect(wrongTokenRes.status).toBe(403);
+			}
+
+			const claimRes = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+			});
+			expect(claimRes.status).toBe(429);
+			expect(yield* claimRes.json).toStrictEqual({
+				_tag: "TooManyRequests",
+				message: "Too many superadmin claim attempts, try again later",
+			});
+		}).pipe(
+			Effect.provide(
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({
+						SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+					}),
+				),
+			),
+		),
+	);
 });
 
 describe("permission", () => {

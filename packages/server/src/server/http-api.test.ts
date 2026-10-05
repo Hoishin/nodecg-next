@@ -730,20 +730,6 @@ describe("claim superadmin", () => {
 		}),
 	);
 
-	it.effect("429 after too many attempts in the window", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], user, withClaimToken);
-			for (let attempt = 0; attempt < 5; attempt++) {
-				expect(
-					(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
-				).toBe(403);
-			}
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(429);
-		}),
-	);
-
 	it.effect("an anonymous flood does not consume the claim budget", () =>
 		Effect.gen(function* () {
 			const bySid = Layer.succeed(UserAuthenticationMiddleware, {

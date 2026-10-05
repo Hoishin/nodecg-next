@@ -2,6 +2,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import {
 	AccountId,
 	AuthenticationId,
+	RoleName,
 	UserId,
 	UserSessionId,
 } from "@nodecg-next/internal";
@@ -28,7 +29,9 @@ import {
 import {
 	accounts,
 	authentications,
+	globalRoleGrants,
 	loginAttempts,
+	roleGrants,
 	sessions,
 	users,
 } from "./tables.ts";
@@ -97,6 +100,39 @@ describe("make", () => {
 			expect(yield* db.select().from(users)).toStrictEqual([]);
 			expect(yield* db.select().from(authentications)).toStrictEqual([]);
 			expect(yield* db.select().from(sessions)).toStrictEqual([]);
+		}),
+	);
+
+	test(
+		"deletes an account's role grants along with the account",
+		Effect.gen(function* () {
+			const db = yield* DrizzleSqliteDatabaseService.make(":memory:");
+			const alice = AccountId.make("1");
+			const bob = AccountId.make("2");
+			const viewer = RoleName("viewer");
+			yield* db.insert(accounts).values([
+				{ id: alice, displayName: "Alice", createdAt: 0 },
+				{ id: bob, displayName: "Bob", createdAt: 0 },
+			]);
+			yield* db.insert(roleGrants).values([
+				{ accountId: alice, namespace: "show", roleName: viewer },
+				{ accountId: bob, namespace: "show", roleName: viewer },
+			]);
+			yield* db.insert(globalRoleGrants).values([
+				{ accountId: alice, roleName: "admin" },
+				{ accountId: bob, roleName: "admin" },
+			]);
+
+			yield* db.delete(accounts).where(eq(accounts.id, alice));
+
+			const roleRows = yield* db.select().from(roleGrants);
+			expect(roleRows).toStrictEqual([
+				{ accountId: bob, namespace: "show", roleName: viewer },
+			]);
+			const globalRoleRows = yield* db.select().from(globalRoleGrants);
+			expect(globalRoleRows).toStrictEqual([
+				{ accountId: bob, roleName: "admin" },
+			]);
 		}),
 	);
 
