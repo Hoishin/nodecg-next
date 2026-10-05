@@ -171,6 +171,34 @@ describe("grantRoles", () => {
 	);
 });
 
+describe("grantRole", () => {
+	test(
+		"keeps one grant when the same role is inserted twice",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const alice = yield* createAccount("alice");
+			yield* repository.grantRole(alice, viewer);
+			yield* repository.grantRole(alice, viewer);
+
+			expect((yield* repository.read(alice)).roles).toStrictEqual([viewer]);
+		}),
+	);
+
+	test(
+		"fails with UnknownAccount when the account does not exist",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const missing = AccountId.make("missing");
+
+			const error = yield* repository
+				.grantRole(missing, viewer)
+				.pipe(Effect.flip);
+
+			expect(error).toStrictEqual(UnknownAccount.make({ accountId: missing }));
+		}),
+	);
+});
+
 describe("revokeRole", () => {
 	test(
 		"deletes the role in its namespace only",
@@ -186,6 +214,20 @@ describe("revokeRole", () => {
 			expect((yield* repository.read(alice)).roles).toStrictEqual([
 				otherViewer,
 			]);
+		}),
+	);
+
+	test(
+		"fails with UnknownAccount when the account does not exist",
+		Effect.gen(function* () {
+			const repository = yield* RoleRepositoryService;
+			const missing = AccountId.make("missing");
+
+			const error = yield* repository
+				.revokeRole(missing, viewer)
+				.pipe(Effect.flip);
+
+			expect(error).toStrictEqual(UnknownAccount.make({ accountId: missing }));
 		}),
 	);
 });

@@ -1,6 +1,6 @@
 import { AccountId, type Role, RoleName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, HashMap, HashSet, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -19,9 +19,7 @@ import {
 import {
 	getRoles,
 	grantGlobalRole,
-	grantRole,
 	revokeGlobalRole,
-	revokeRole,
 	superadminExists,
 	SuperadminInConfig,
 	UnknownAuthentication,
@@ -44,8 +42,6 @@ const read = vi.fn<RoleRepository["read"]>(() =>
 const globalRoleExists = vi.fn<RoleRepository["globalRoleExists"]>(() =>
 	Effect.succeed(false),
 );
-const insertRoles = vi.fn<RoleRepository["grantRoles"]>(() => Effect.void);
-const deleteRole = vi.fn<RoleRepository["revokeRole"]>(() => Effect.void);
 const insertGlobalRole = vi.fn<RoleRepository["grantGlobalRole"]>(
 	() => Effect.void,
 );
@@ -59,8 +55,6 @@ afterEach(() => {
 		resolveByAccountId,
 		read,
 		globalRoleExists,
-		insertRoles,
-		deleteRole,
 		insertGlobalRole,
 		deleteGlobalRole,
 	]) {
@@ -80,8 +74,9 @@ const test = testLayer(
 			read,
 			listAll: vi.fn(),
 			globalRoleExists,
-			grantRoles: insertRoles,
-			revokeRole: deleteRole,
+			grantRoles: vi.fn(),
+			grantRole: vi.fn(),
+			revokeRole: vi.fn(),
 			grantGlobalRole: insertGlobalRole,
 			revokeGlobalRole: deleteGlobalRole,
 			revokeAllRoles: vi.fn(),
@@ -144,54 +139,6 @@ describe("superadminExists", () => {
 				),
 			).toBe(true);
 			expect(globalRoleExists).toHaveBeenCalledExactlyOnceWith("superadmin");
-		}),
-	);
-});
-
-describe("grantRole", () => {
-	test(
-		"grants the role to the authentication's account",
-		Effect.gen(function* () {
-			yield* grantRole(alice, viewer);
-			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
-			expect(insertRoles).toHaveBeenCalledExactlyOnceWith(
-				HashMap.make([accountId, HashSet.make(viewer)]),
-			);
-		}),
-	);
-
-	test(
-		"fails with UnknownAuthentication and grants nothing without an account",
-		Effect.gen(function* () {
-			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
-			const error = yield* grantRole(alice, viewer).pipe(Effect.flip);
-			expect(error).toStrictEqual(
-				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
-			);
-			expect(insertRoles).not.toHaveBeenCalled();
-		}),
-	);
-});
-
-describe("revokeRole", () => {
-	test(
-		"revokes the role from the authentication's account",
-		Effect.gen(function* () {
-			yield* revokeRole(alice, viewer);
-			expect(resolveByAuthentication).toHaveBeenCalledExactlyOnceWith(alice);
-			expect(deleteRole).toHaveBeenCalledExactlyOnceWith(accountId, viewer);
-		}),
-	);
-
-	test(
-		"fails with UnknownAuthentication and revokes nothing without an account",
-		Effect.gen(function* () {
-			resolveByAuthentication.mockReturnValueOnce(Effect.succeedNone);
-			const error = yield* revokeRole(alice, viewer).pipe(Effect.flip);
-			expect(error).toStrictEqual(
-				UnknownAuthentication.make({ issuer: "dev", subject: "alice" }),
-			);
-			expect(deleteRole).not.toHaveBeenCalled();
 		}),
 	);
 });

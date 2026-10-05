@@ -1,10 +1,9 @@
 import {
+	AccountId,
 	InternalApi,
-	type Authentication,
 	type Role,
 	RoleName,
 	type LoginProvider,
-	type MePayload,
 } from "@nodecg-next/internal";
 import { buildRelativeUrl } from "@nodecg-next/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
@@ -19,18 +18,8 @@ export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 }
 
 export interface RoleAssignment {
-	readonly authentication: Authentication;
+	readonly accountId: string;
 	readonly role: typeof Role.Encoded;
-}
-
-export interface AuthClient {
-	readonly providers: () => Promise<ReadonlyArray<LoginProvider>>;
-	readonly me: () => Promise<MePayload>;
-	readonly logout: () => Promise<void>;
-	readonly grantRole: (assignment: RoleAssignment) => Promise<void>;
-	readonly revokeRole: (assignment: RoleAssignment) => Promise<void>;
-	readonly dispose: () => void;
-	readonly [Symbol.dispose]: () => void;
 }
 
 export const loginUrl = (provider: LoginProvider, returnTo?: string) =>
@@ -60,12 +49,16 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 		yield* api.Authentication.logout().pipe(Effect.mapError(requestFailed));
 	});
 
+	const listUsers = Effect.fn("listUsers")(function* () {
+		return yield* api.Users.list().pipe(Effect.mapError(requestFailed));
+	});
+
 	const grantRole = Effect.fn("grantRole")(function* (
 		assignment: RoleAssignment,
 	) {
 		yield* api.Roles.grant({
 			payload: {
-				authentication: assignment.authentication,
+				accountId: AccountId.make(assignment.accountId),
 				role: {
 					namespace: assignment.role.namespace,
 					name: RoleName(assignment.role.name),
@@ -79,7 +72,7 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	) {
 		yield* api.Roles.revoke({
 			payload: {
-				authentication: assignment.authentication,
+				accountId: AccountId.make(assignment.accountId),
 				role: {
 					namespace: assignment.role.namespace,
 					name: RoleName(assignment.role.name),
@@ -88,10 +81,10 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 		}).pipe(Effect.mapError(requestFailed));
 	});
 
-	return { providers, me, logout, grantRole, revokeRole };
+	return { providers, me, logout, listUsers, grantRole, revokeRole };
 });
 
-export function loadAuthClient(baseUrl?: string): AuthClient {
+export function loadAuthClient(baseUrl?: string) {
 	const runtime = ManagedRuntime.make(FetchHttpClient.layer);
 	const client = runtime.runSync(makeAuthClient(baseUrl));
 
@@ -99,10 +92,14 @@ export function loadAuthClient(baseUrl?: string): AuthClient {
 		providers: () => runtime.runPromise(client.providers()),
 		me: () => runtime.runPromise(client.me()),
 		logout: () => runtime.runPromise(client.logout()),
-		grantRole: (assignment) => runtime.runPromise(client.grantRole(assignment)),
-		revokeRole: (assignment) =>
+		listUsers: () => runtime.runPromise(client.listUsers()),
+		grantRole: (assignment: RoleAssignment) =>
+			runtime.runPromise(client.grantRole(assignment)),
+		revokeRole: (assignment: RoleAssignment) =>
 			runtime.runPromise(client.revokeRole(assignment)),
 		dispose: () => void runtime.dispose(),
 		[Symbol.dispose]: () => void runtime.dispose(),
 	};
 }
+
+export type AuthClient = ReturnType<typeof loadAuthClient>;

@@ -71,7 +71,7 @@ describe("export", () => {
 			yield* login(client, operator);
 			yield* asAdmin.post(grantUrl, {
 				body: yield* HttpBody.json({
-					authentication: operator,
+					accountId: yield* findAccountId(operator),
 					role: producer,
 				}),
 			});
@@ -145,14 +145,17 @@ describe("merge", () => {
 			yield* login(client, operator);
 			yield* asAdmin.post(grantUrl, {
 				body: yield* HttpBody.json({
-					authentication: operator,
+					accountId: yield* findAccountId(operator),
 					role: producer,
 				}),
 			});
 
 			yield* login(client, other);
 			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ authentication: other, role: judge }),
+				body: yield* HttpBody.json({
+					accountId: yield* findAccountId(other),
+					role: judge,
+				}),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {
@@ -191,7 +194,7 @@ describe("merge", () => {
 			yield* login(client, operator);
 			yield* asAdmin.post(grantUrl, {
 				body: yield* HttpBody.json({
-					authentication: operator,
+					accountId: yield* findAccountId(operator),
 					role: producer,
 				}),
 			});
@@ -330,14 +333,17 @@ describe("replace", () => {
 			yield* login(client, operator);
 			yield* asAdmin.post(grantUrl, {
 				body: yield* HttpBody.json({
-					authentication: operator,
+					accountId: yield* findAccountId(operator),
 					role: producer,
 				}),
 			});
 
 			yield* login(client, other);
 			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ authentication: other, role: judge }),
+				body: yield* HttpBody.json({
+					accountId: yield* findAccountId(other),
+					role: judge,
+				}),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {
@@ -411,7 +417,7 @@ describe("replace", () => {
 
 			const asAdmin = yield* loginAdmin(client, admin);
 			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ authentication: root, role: producer }),
+				body: yield* HttpBody.json({ accountId: rootId, role: producer }),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {

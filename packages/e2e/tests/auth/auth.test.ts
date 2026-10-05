@@ -49,11 +49,17 @@ describe("role reporting", () => {
 	});
 
 	test("a held declared role reports for its namespace, capabilities or not", async () => {
-		await createAccount("permsviewer");
-		await grantAsAdmin("permsviewer", { namespace: "e2e", name: "viewer" });
+		const permsviewerAccountId = await createAccount("permsviewer");
+		await grantAsAdmin(permsviewerAccountId, {
+			namespace: "e2e",
+			name: "viewer",
+		});
 		await login("permsviewer");
 		onTestFinished(async () => {
-			await revokeAsAdmin("permsviewer", { namespace: "e2e", name: "viewer" });
+			await revokeAsAdmin(permsviewerAccountId, {
+				namespace: "e2e",
+				name: "viewer",
+			});
 			await logout();
 		});
 
@@ -139,18 +145,25 @@ describe("authSession", () => {
 
 describe("runtime role assignment", () => {
 	test("a granted role rides on the resolved identity live, and revoke removes it", async () => {
+		const operatorAccountId = await createAccount("operator");
 		await login("operator");
 		const before = (await me()).identity;
 		assert(before._tag === "user");
 		expect(before.roles).toEqual([]);
 
-		await grantAsAdmin("operator", { namespace: "e2e", name: "producer" });
+		await grantAsAdmin(operatorAccountId, {
+			namespace: "e2e",
+			name: "producer",
+		});
 		await login("operator");
 		const granted = (await me()).identity;
 		assert(granted._tag === "user");
 		expect(granted.roles).toEqual([{ namespace: "e2e", name: "producer" }]);
 
-		await revokeAsAdmin("operator", { namespace: "e2e", name: "producer" });
+		await revokeAsAdmin(operatorAccountId, {
+			namespace: "e2e",
+			name: "producer",
+		});
 		await login("operator");
 		const revoked = (await me()).identity;
 		assert(revoked._tag === "user");
@@ -160,25 +173,29 @@ describe("runtime role assignment", () => {
 	});
 
 	test("even an admin cannot grant an undeclarable role", async () => {
+		const operatorAccountId = await createAccount("operator");
 		await login("root");
 		onTestFinished(async () => {
 			await logout();
 		});
 		await expect(
-			grantRole("operator", { namespace: "e2e", name: "server" }),
+			grantRole(operatorAccountId, { namespace: "e2e", name: "server" }),
 		).rejects.toThrow("Authentication request failed");
 		await expect(
-			grantRole("operator", { namespace: "e2e", name: "superadmin" }),
+			grantRole(operatorAccountId, { namespace: "e2e", name: "superadmin" }),
 		).rejects.toThrow("Authentication request failed");
 	});
 
-	test("an admin cannot grant a role to someone who never logged in", async () => {
+	test("an admin cannot grant a role to an unknown account", async () => {
 		await login("root");
 		onTestFinished(async () => {
 			await logout();
 		});
 		await expect(
-			grantRole("stranger", { namespace: "e2e", name: "viewer" }),
+			grantRole("unknown-account", {
+				namespace: "e2e",
+				name: "viewer",
+			}),
 		).rejects.toMatchObject({
 			_tag: "AuthRequestFailed",
 			cause: { _tag: "NotFound" },
@@ -191,7 +208,10 @@ describe("runtime role assignment", () => {
 			await logout();
 		});
 		await expect(
-			grantRole("nobody", { namespace: "e2e", name: "producer" }),
+			grantRole("unknown-account", {
+				namespace: "e2e",
+				name: "producer",
+			}),
 		).rejects.toMatchObject({
 			_tag: "AuthRequestFailed",
 			cause: { _tag: "Forbidden" },
@@ -201,7 +221,10 @@ describe("runtime role assignment", () => {
 	test("an anonymous caller cannot grant", async () => {
 		await logout();
 		await expect(
-			grantRole("nobody", { namespace: "e2e", name: "producer" }),
+			grantRole("unknown-account", {
+				namespace: "e2e",
+				name: "producer",
+			}),
 		).rejects.toMatchObject({
 			_tag: "AuthRequestFailed",
 			cause: { _tag: "Unauthorized" },

@@ -45,10 +45,15 @@ export interface RoleRepository {
 		grants: HashMap.HashMap<AccountId, HashSet.HashSet<Role>>,
 	) => Effect.Effect<void, BackendError>;
 
+	readonly grantRole: (
+		accountId: AccountId,
+		role: Role,
+	) => Effect.Effect<void, BackendError | UnknownAccount>;
+
 	readonly revokeRole: (
 		accountId: AccountId,
 		role: Role,
-	) => Effect.Effect<void, BackendError>;
+	) => Effect.Effect<void, BackendError | UnknownAccount>;
 
 	readonly grantGlobalRole: (
 		accountId: AccountId,

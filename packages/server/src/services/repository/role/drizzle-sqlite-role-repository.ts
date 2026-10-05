@@ -1,6 +1,6 @@
 import type { AccountId, GlobalRoleName, Role } from "@nodecg-next/internal";
 import { and, eq } from "drizzle-orm";
-import { Array, Effect, HashMap, type HashSet, Layer } from "effect";
+import { Array, Effect, HashMap, type HashSet, Layer, Option } from "effect";
 
 import {
 	DrizzleSqliteDatabaseService,
@@ -147,32 +147,60 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 			),
 		);
 
-		const revokeRole = Effect.fn("RoleRepository.revokeRole")(
+		const requireAccount = Effect.fnUntraced(function* (accountId: AccountId) {
+			const account = yield* db.query.accounts
+				.findFirst({
+					columns: { id: true },
+					where: { id: accountId },
+				})
+				.pipe(Effect.map(Option.fromUndefinedOr));
+			if (Option.isNone(account)) {
+				return yield* UnknownAccount.make({ accountId });
+			}
+		});
+
+		const grantRole = Effect.fn("RoleRepository.grantRole")(
 			function* (accountId: AccountId, role: Role) {
-				yield* db
-					.delete(roleGrants)
-					.where(
-						and(
-							eq(roleGrants.accountId, accountId),
-							eq(roleGrants.namespace, role.namespace),
-							eq(roleGrants.roleName, role.name),
-						),
-					);
+				yield* db.transaction(() =>
+					Effect.gen(function* () {
+						yield* requireAccount(accountId);
+						yield* db
+							.insert(roleGrants)
+							.values({
+								accountId,
+								namespace: role.namespace,
+								roleName: role.name,
+							})
+							.onConflictDoNothing();
+					}),
+				);
 			},
-			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
 				BackendError.make({ cause }),
 			),
 		);
 
-		const requireAccount = Effect.fnUntraced(function* (accountId: AccountId) {
-			const rows = yield* db
-				.select({ id: accounts.id })
-				.from(accounts)
-				.where(eq(accounts.id, accountId));
-			if (Array.isArrayEmpty(rows)) {
-				return yield* UnknownAccount.make({ accountId });
-			}
-		});
+		const revokeRole = Effect.fn("RoleRepository.revokeRole")(
+			function* (accountId: AccountId, role: Role) {
+				yield* db.transaction(() =>
+					Effect.gen(function* () {
+						yield* requireAccount(accountId);
+						yield* db
+							.delete(roleGrants)
+							.where(
+								and(
+									eq(roleGrants.accountId, accountId),
+									eq(roleGrants.namespace, role.namespace),
+									eq(roleGrants.roleName, role.name),
+								),
+							);
+					}),
+				);
+			},
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
+				BackendError.make({ cause }),
+			),
+		);
 
 		const grantGlobalRole = Effect.fn("RoleRepository.grantGlobalRole")(
 			function* (accountId: AccountId, role: GlobalRoleName) {
@@ -226,6 +254,7 @@ export const DrizzleSqliteRoleRepository = Layer.effect(
 			listAll,
 			globalRoleExists,
 			grantRoles,
+			grantRole,
 			revokeRole,
 			grantGlobalRole,
 			revokeGlobalRole,

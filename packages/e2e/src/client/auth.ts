@@ -18,31 +18,48 @@ export const makeAuthHelpers = (baseUrl: string) => {
 	const logout = () => client.logout();
 	const me = () => client.me();
 
-	const createAccount = async (subject: string) => {
-		await login(subject);
-		await logout();
+	const findAccountId = async (subject: string) => {
+		const { users } = await client.listUsers();
+		const user = users.find(({ authentications }) =>
+			authentications.some(
+				(authentication) =>
+					authentication.issuer === "dev" && authentication.subject === subject,
+			),
+		);
+		if (typeof user === "undefined") {
+			throw new Error(`"${subject}" has no account`);
+		}
+		return user.accountId;
 	};
 
-	const grantRole = (subject: string, role: RoleAssignment["role"]) =>
-		client.grantRole({ authentication: { issuer: "dev", subject }, role });
+	const createAccount = async (subject: string) => {
+		await login(subject);
+		await login("root");
+		const accountId = await findAccountId(subject);
+		await logout();
+		return accountId;
+	};
 
-	const revokeRole = (subject: string, role: RoleAssignment["role"]) =>
-		client.revokeRole({ authentication: { issuer: "dev", subject }, role });
+	const grantRole = (accountId: string, role: RoleAssignment["role"]) =>
+		client.grantRole({ accountId, role });
+
+	const revokeRole = (accountId: string, role: RoleAssignment["role"]) =>
+		client.revokeRole({ accountId, role });
 
 	const grantAsAdmin = async (
-		subject: string,
+		accountId: string,
 		role: RoleAssignment["role"],
 	) => {
 		await login("root");
-		await grantRole(subject, role);
+		await grantRole(accountId, role);
 	};
 
 	const revokeAsAdmin = async (
-		subject: string,
+		accountId: string,
 		role: RoleAssignment["role"],
 	) => {
 		await login("root");
-		await revokeRole(subject, role);
+		await revokeRole(accountId, role);
 	};
 
 	return {

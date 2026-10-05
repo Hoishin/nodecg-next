@@ -1,13 +1,5 @@
 import { loadNamespace } from "@nodecg-next/client";
-import {
-	afterAll,
-	beforeAll,
-	describe,
-	expect,
-	onTestFinished,
-	test,
-	vi,
-} from "vitest";
+import { beforeAll, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { makeAuthHelpers } from "../../src/client/auth.ts";
 import { suiteBase } from "../../src/client/suite-base.ts";
@@ -23,17 +15,23 @@ const { createAccount, grantAsAdmin, login, logout, revokeAsAdmin } =
 // Assign the roles the field-access tests rely on once, so those tests just log
 // in as the subject. Grant/revoke behavior itself is covered in auth.test.ts.
 beforeAll(async () => {
-	await createAccount("prod");
-	await createAccount("view");
-	await grantAsAdmin("prod", { namespace: "e2e", name: "producer" });
-	await grantAsAdmin("prod", { namespace: "e2e-extend", name: "producer" });
-	await grantAsAdmin("view", { namespace: "e2e", name: "viewer" });
-});
-afterAll(async () => {
-	await revokeAsAdmin("prod", { namespace: "e2e", name: "producer" });
-	await revokeAsAdmin("prod", { namespace: "e2e-extend", name: "producer" });
-	await revokeAsAdmin("view", { namespace: "e2e", name: "viewer" });
-	await logout();
+	const prodAccountId = await createAccount("prod");
+	const viewAccountId = await createAccount("view");
+	await grantAsAdmin(prodAccountId, { namespace: "e2e", name: "producer" });
+	await grantAsAdmin(prodAccountId, {
+		namespace: "e2e-extend",
+		name: "producer",
+	});
+	await grantAsAdmin(viewAccountId, { namespace: "e2e", name: "viewer" });
+	return async () => {
+		await revokeAsAdmin(prodAccountId, { namespace: "e2e", name: "producer" });
+		await revokeAsAdmin(prodAccountId, {
+			namespace: "e2e-extend",
+			name: "producer",
+		});
+		await revokeAsAdmin(viewAccountId, { namespace: "e2e", name: "viewer" });
+		await logout();
+	};
 });
 
 describe("anonymous access", () => {
@@ -410,10 +408,13 @@ describe("role-gated field access (HTTP)", () => {
 	});
 
 	test("a role granted in one namespace does not reach another declaring the same role", async () => {
-		await createAccount("single");
-		await grantAsAdmin("single", { namespace: "e2e", name: "producer" });
+		const singleAccountId = await createAccount("single");
+		await grantAsAdmin(singleAccountId, { namespace: "e2e", name: "producer" });
 		onTestFinished(async () => {
-			await revokeAsAdmin("single", { namespace: "e2e", name: "producer" });
+			await revokeAsAdmin(singleAccountId, {
+				namespace: "e2e",
+				name: "producer",
+			});
 		});
 		await login("single");
 		const own = await loadNamespace(fixtureManifest, { baseUrl: base });

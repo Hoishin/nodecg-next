@@ -124,7 +124,7 @@ const DeclarableRole = Schema.Struct({
 });
 
 const RoleAssignmentSchema = Schema.Struct({
-	authentication: Authentication,
+	accountId: AccountId,
 	role: DeclarableRole,
 });
 
@@ -241,14 +241,15 @@ const UserSchema = Schema.Struct({
 	globalRoles: Schema.Array(GlobalRoleName),
 });
 
-const ListUsersResultSchema = Schema.Struct({
+const ListUsersResult = Schema.Struct({
 	users: Schema.Array(UserSchema),
 });
+type ListUsersResult = typeof ListUsersResult.Type;
 
 const UsersGroup = HttpApiGroup.make("Users")
 	.add(
 		HttpApiEndpoint.get("list", "/users", {
-			success: ListUsersResultSchema,
+			success: ListUsersResult,
 		}),
 	)
 	.middleware(AdminTierMiddleware);

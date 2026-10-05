@@ -18,6 +18,7 @@ const stubClient = () => {
 	const providers = vi.fn<AuthClient["providers"]>(async () => []);
 	const me = vi.fn<AuthClient["me"]>(async () => userPayload);
 	const logout = vi.fn<AuthClient["logout"]>(async () => undefined);
+	const listUsers = vi.fn<AuthClient["listUsers"]>(async () => ({ users: [] }));
 	const grantRole = vi.fn<AuthClient["grantRole"]>(async () => {});
 	const revokeRole = vi.fn<AuthClient["revokeRole"]>(async () => {});
 	const dispose = vi.fn();
@@ -25,6 +26,7 @@ const stubClient = () => {
 		providers,
 		me,
 		logout,
+		listUsers,
 		grantRole,
 		revokeRole,
 		dispose,

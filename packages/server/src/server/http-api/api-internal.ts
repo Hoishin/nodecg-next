@@ -45,10 +45,8 @@ import {
 } from "../../auth/login-attempt.ts";
 import {
 	grantGlobalRole,
-	grantRole,
 	superadminExists,
 	revokeGlobalRole,
-	revokeRole,
 } from "../../auth/roles.ts";
 import {
 	createServiceAccount,
@@ -530,25 +528,25 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 
 const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	handlers
-		.handle("grant", ({ payload: { authentication, role } }) =>
+		.handle("grant", ({ payload: { accountId, role } }) =>
 			Effect.gen(function* () {
 				const { declaredRoles } = yield* FieldRegistryService;
 				if (!declaredRoles.get(role.namespace)?.has(role.name)) {
 					return yield* HttpApiError.UnprocessableEntity.make();
 				}
-				yield* grantRole(authentication, role);
+				const roleRepository = yield* RoleRepositoryService;
+				yield* roleRepository.grantRole(accountId, role);
 			}).pipe(
-				Effect.catchTag("UnknownAuthentication", () =>
-					HttpApiError.NotFound.make(),
-				),
+				Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
 				reportBackendFailure,
 			),
 		)
-		.handle("revoke", ({ payload: { authentication, role } }) =>
-			revokeRole(authentication, role).pipe(
-				Effect.catchTag("UnknownAuthentication", () =>
-					HttpApiError.NotFound.make(),
-				),
+		.handle("revoke", ({ payload: { accountId, role } }) =>
+			Effect.gen(function* () {
+				const roleRepository = yield* RoleRepositoryService;
+				yield* roleRepository.revokeRole(accountId, role);
+			}).pipe(
+				Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
 				reportBackendFailure,
 			),
 		)
