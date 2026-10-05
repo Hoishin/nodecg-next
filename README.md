@@ -358,7 +358,7 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 ### Data Persistence
 
 - ✅ Data persistence is abstracted and can be implemented for any storage backend
-- 🚧 Default data persistence is SQLite for system data, and JSON files for Replicant
+- ✅ Default data persistence is SQLite for system data, and JSON files for Replicant
 
 ### Authentication
 
