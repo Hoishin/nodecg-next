@@ -16,6 +16,7 @@ import {
 import { resolveDataDir } from "../../../data-dir.ts";
 import { findPackageRoot } from "../../../package-root.ts";
 import { BackendError } from "../../repository/repository-errors.ts";
+import { relations } from "./relations.ts";
 
 export class MigrationsNotFound extends Schema.TaggedError<MigrationsNotFound>()(
 	"MigrationsNotFound",
@@ -45,9 +46,9 @@ export class DrizzleSqliteDatabaseService extends Context.Service<DrizzleSqliteD
 			function* (filename: string) {
 				const path = yield* Path.Path;
 				const client = yield* SqliteClient.make({ filename });
-				const db = yield* SQLiteNodeDrizzle.makeWithDefaults().pipe(
-					Effect.provideService(SqliteClient.SqliteClient, client),
-				);
+				const db = yield* SQLiteNodeDrizzle.makeWithDefaults({
+					relations,
+				}).pipe(Effect.provideService(SqliteClient.SqliteClient, client));
 				const moduleDirectory = yield* path.fromFileUrl(
 					new URL(".", import.meta.url),
 				);

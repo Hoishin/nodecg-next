@@ -39,6 +39,7 @@ import { DrizzleSqliteRoleRepository } from "../src/services/repository/role/dri
 import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
 import { DrizzleSqliteServiceAccountRepository } from "../src/services/repository/service-account/drizzle-sqlite-service-account-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../src/services/repository/session/drizzle-sqlite-session-repository.ts";
+import { DrizzleSqliteUserRepository } from "../src/services/repository/user/drizzle-sqlite-user-repository.ts";
 import { InMemoryTopicBroker } from "../src/services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../src/services/transaction/drizzle-sqlite-transaction.ts";
 
@@ -55,6 +56,7 @@ export const services = Layer.mergeAll(
 		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
 		DrizzleSqliteServiceAccountRepository,
+		DrizzleSqliteUserRepository,
 		DrizzleSqliteTransaction,
 	).pipe(
 		Layer.provide(

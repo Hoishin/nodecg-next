@@ -66,6 +66,7 @@ import { InMemoryReplicantRepository } from "../services/repository/replicant/in
 import { DrizzleSqliteRoleRepository } from "../services/repository/role/drizzle-sqlite-role-repository.ts";
 import { DrizzleSqliteServiceAccountRepository } from "../services/repository/service-account/drizzle-sqlite-service-account-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../services/repository/session/drizzle-sqlite-session-repository.ts";
+import { DrizzleSqliteUserRepository } from "../services/repository/user/drizzle-sqlite-user-repository.ts";
 import { InMemoryTopicBroker } from "../services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../services/transaction/drizzle-sqlite-transaction.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
@@ -208,6 +209,7 @@ const webHandler = Effect.fn(function* (
 		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
 		DrizzleSqliteServiceAccountRepository,
+		DrizzleSqliteUserRepository,
 		DrizzleSqliteTransaction,
 	);
 	const loggedIn = Layer.effectDiscard(

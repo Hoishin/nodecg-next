@@ -61,6 +61,7 @@ import {
 	revokeSession,
 	setSessionCookie,
 } from "../../auth/session.ts";
+import { ConfiguredSuperadmins } from "../../configured-superadmins.ts";
 import { FieldRegistryService } from "../../field-registry.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { config } from "../../server-config.ts";
@@ -69,6 +70,7 @@ import { AuthenticationRepositoryService } from "../../services/repository/authe
 import type { BackendError } from "../../services/repository/repository-errors.ts";
 import { RoleRepositoryService } from "../../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../../services/repository/service-account/service-account-repository.ts";
+import { UserRepositoryService } from "../../services/repository/user/user-repository.ts";
 import { TransactionService } from "../../services/transaction/transaction.ts";
 import { RootApi } from "../root-api.ts";
 import { UrlPath } from "../url-path.ts";
@@ -413,6 +415,39 @@ const AdminRolesGroupLive = HttpApiBuilder.group(
 			),
 );
 
+const UsersGroupLive = HttpApiBuilder.group(RootApi, "Users", (handlers) =>
+	handlers.handle("list", () =>
+		Effect.gen(function* () {
+			const userRepository = yield* UserRepositoryService;
+			const superadmins = yield* ConfiguredSuperadmins;
+			const users = yield* userRepository.listAll();
+			return {
+				users: users.map(
+					({
+						id,
+						accountId,
+						displayName,
+						authentications,
+						roles,
+						globalRoles,
+					}) => ({
+						id,
+						accountId,
+						displayName,
+						authentications,
+						roles,
+						globalRoles: authentications.some((authentication) =>
+							Array.contains(superadmins, authentication),
+						)
+							? Array.union(globalRoles, ["superadmin"] as const)
+							: globalRoles,
+					}),
+				),
+			};
+		}).pipe(reportBackendFailure),
+	),
+);
+
 const ServiceAccountsGroupLive = HttpApiBuilder.group(
 	RootApi,
 	"ServiceAccounts",
@@ -652,6 +687,7 @@ export const InternalGroupsLive = Layer.mergeAll(
 	),
 	AuthenticationGroupLive,
 	ServiceAccountsGroupLive,
+	UsersGroupLive,
 	RolesGroupLive,
 	AdminRolesGroupLive,
 );

@@ -23,6 +23,7 @@ import {
 	RoleNameSchema,
 } from "../models/role.ts";
 import { ServiceAccountId } from "../models/service-account.ts";
+import { UserId } from "../models/user.ts";
 import { MalformedUrl } from "../utils/relative-url.ts";
 import { fieldGroup } from "./shared.ts";
 
@@ -231,6 +232,27 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 	)
 	.middleware(AdminTierMiddleware);
 
+const UserSchema = Schema.Struct({
+	id: UserId,
+	accountId: AccountId,
+	displayName: Schema.String,
+	authentications: Schema.Array(Authentication),
+	roles: Schema.Array(Role),
+	globalRoles: Schema.Array(GlobalRoleName),
+});
+
+const ListUsersResultSchema = Schema.Struct({
+	users: Schema.Array(UserSchema),
+});
+
+const UsersGroup = HttpApiGroup.make("Users")
+	.add(
+		HttpApiEndpoint.get("list", "/users", {
+			success: ListUsersResultSchema,
+		}),
+	)
+	.middleware(AdminTierMiddleware);
+
 const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
 		HttpApiEndpoint.post("grant", "/roles/grant", {
@@ -291,6 +313,7 @@ export const InternalApi = HttpApi.make("InternalApi")
 	.add(fieldGroup("Field"))
 	.add(AuthenticationGroup)
 	.add(ServiceAccountsGroup)
+	.add(UsersGroup)
 	.add(RolesGroup)
 	.add(AdminRolesGroup)
 	.middleware(UserAuthenticationMiddleware)
