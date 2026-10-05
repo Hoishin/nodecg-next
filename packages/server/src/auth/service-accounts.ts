@@ -46,7 +46,7 @@ export const createServiceAccount = Effect.fn("createServiceAccount")(
 		const accounts = yield* AccountRepositoryService;
 		const token = yield* newApiKey();
 		const hash = yield* hashApiKey(Redacted.value(token));
-		const id = yield* TransactionService.wrap(
+		const serviceAccountId = yield* TransactionService.wrap(
 			Effect.gen(function* () {
 				const createdBy = yield* Match.value(creator).pipe(
 					Match.tag("user", ({ authentication }) =>
@@ -67,6 +67,6 @@ export const createServiceAccount = Effect.fn("createServiceAccount")(
 				return serviceAccountId;
 			}),
 		);
-		return { id, displayName, token };
+		return { serviceAccountId, displayName, token };
 	},
 );

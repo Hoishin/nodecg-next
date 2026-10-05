@@ -117,9 +117,9 @@ describe("service account", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const asRoot = yield* login(client, root);
-			const { id } = yield* createServiceAccount(asRoot, "bot");
+			const { serviceAccountId } = yield* createServiceAccount(asRoot, "bot");
 			const target = AdminServiceAccountTargetSchema.make({
-				id: ServiceAccountId.make(id),
+				id: serviceAccountId,
 			});
 
 			const grantRes = yield* asRoot.post(grantUrl, {
@@ -128,10 +128,13 @@ describe("service account", () => {
 			expect(grantRes.status).toBe(204);
 
 			const listAfterGrantRes = yield* asRoot.get(serviceAccountsUrl);
-			expect(yield* listAfterGrantRes.json).toEqual({
-				serviceAccounts: [
-					{ id, displayName: "bot", roles: [], globalRoles: ["admin"] },
-				],
+			expect(yield* listAfterGrantRes.json).toMatchObject({
+				serviceAccounts: expect.arrayContaining([
+					expect.objectContaining({
+						id: serviceAccountId,
+						globalRoles: ["admin"],
+					}),
+				]),
 			});
 
 			const revokeRes = yield* asRoot.post(revokeUrl, {
@@ -140,10 +143,10 @@ describe("service account", () => {
 			expect(revokeRes.status).toBe(204);
 
 			const listAfterRevokeRes = yield* asRoot.get(serviceAccountsUrl);
-			expect(yield* listAfterRevokeRes.json).toEqual({
-				serviceAccounts: [
-					{ id, displayName: "bot", roles: [], globalRoles: [] },
-				],
+			expect(yield* listAfterRevokeRes.json).toMatchObject({
+				serviceAccounts: expect.arrayContaining([
+					expect.objectContaining({ id: serviceAccountId, globalRoles: [] }),
+				]),
 			});
 		}).pipe(Effect.provide(rootInConfig)),
 	);

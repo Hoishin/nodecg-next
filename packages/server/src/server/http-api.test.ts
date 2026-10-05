@@ -1348,7 +1348,7 @@ describe("public surface (v0) with bearer token", () => {
 	);
 
 	const decodeKey = Schema.decodeUnknownSync(
-		Schema.Struct({ id: Schema.String, token: Schema.String }),
+		Schema.Struct({ serviceAccountId: Schema.String, token: Schema.String }),
 	);
 
 	const mintKey = Effect.fn(function* (
@@ -1409,7 +1409,7 @@ describe("public surface (v0) with bearer token", () => {
 				yield* json(
 					yield* handler(
 						new Request(
-							`http://x/api/internal/service-accounts/${created.id}/refresh`,
+							`http://x/api/internal/service-accounts/${created.serviceAccountId}/refresh`,
 							{ method: "POST" },
 						),
 					),

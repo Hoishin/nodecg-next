@@ -77,7 +77,7 @@ describe("export", () => {
 			});
 
 			// Setup service accounts
-			const { id: scoreboardId } = yield* createServiceAccount(
+			const { serviceAccountId: scoreboardId } = yield* createServiceAccount(
 				asAdmin,
 				"scoreboard",
 			);
@@ -371,7 +371,7 @@ describe("replace", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const asAdmin = yield* loginAdmin(client, admin);
-			const { id: scoreboardId } = yield* createServiceAccount(
+			const { serviceAccountId: scoreboardId } = yield* createServiceAccount(
 				asAdmin,
 				"scoreboard",
 			);

@@ -483,7 +483,11 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 					if (Option.isNone(replaced)) {
 						return yield* HttpApiError.NotFound.make();
 					}
-					return { id, displayName: replaced.value.displayName, token };
+					return {
+						serviceAccountId: id,
+						displayName: replaced.value.displayName,
+						token,
+					};
 				}).pipe(reportBackendFailure),
 			)
 			.handle("grantRole", ({ params: { id }, payload: role }) =>

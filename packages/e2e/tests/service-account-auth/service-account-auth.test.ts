@@ -9,7 +9,7 @@ const base = suiteBase("service-account-auth");
 const { login, logout } = makeAuthHelpers(base);
 
 const CreatedServiceAccountSchema = Schema.Struct({
-	id: Schema.String,
+	serviceAccountId: Schema.String,
 	displayName: Schema.String,
 	token: Schema.String,
 });
@@ -89,10 +89,11 @@ describe("public /api/v0 bearer authentication", () => {
 	});
 
 	test("a granted role opens the fields it gates, and only those", async () => {
-		const { id, token } = await provisionServiceAccount("promoted-bot");
+		const { serviceAccountId, token } =
+			await provisionServiceAccount("promoted-bot");
 		expect((await readV0("producerOnly", token)).status).toBe(403);
 
-		const grant = await grantServiceAccountRole(id, "producer");
+		const grant = await grantServiceAccountRole(serviceAccountId, "producer");
 		expect(grant.status).toBe(204);
 
 		const read = await readV0("producerOnly", token);
@@ -103,10 +104,11 @@ describe("public /api/v0 bearer authentication", () => {
 	});
 
 	test("a revoked key stops authenticating", async () => {
-		const { id, token } = await provisionServiceAccount("throwaway-bot");
+		const { serviceAccountId, token } =
+			await provisionServiceAccount("throwaway-bot");
 		expect((await readV0("count", token)).status).toBe(200);
 
-		expect((await revokeServiceAccount(id)).status).toBe(204);
+		expect((await revokeServiceAccount(serviceAccountId)).status).toBe(204);
 
 		expect((await readV0("count", token)).status).toBe(401);
 	});

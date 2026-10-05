@@ -12,6 +12,7 @@ import {
 	UserAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "../auth.ts";
+import { AccountId } from "../models/account.ts";
 import { Authentication } from "../models/authentication.ts";
 import { Identity } from "../models/identity.ts";
 import {
@@ -44,11 +45,11 @@ export const MePayload = Schema.Struct({
 });
 export type MePayload = typeof MePayload.Type;
 
-export const LoginProviderSchema = Schema.Struct({
+export const LoginProvider = Schema.Struct({
 	name: Schema.String,
 	url: Schema.String,
 });
-export type LoginProvider = typeof LoginProviderSchema.Type;
+export type LoginProvider = typeof LoginProvider.Type;
 
 const ClaimSuperadminRequestSchema = Schema.Struct({
 	token: Schema.Redacted(Schema.String),
@@ -64,7 +65,7 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 	.add(HttpApiEndpoint.get("me", "/me", { success: MePayload }))
 	.add(
 		HttpApiEndpoint.get("providers", "/authentication/providers", {
-			success: Schema.Array(LoginProviderSchema),
+			success: Schema.Array(LoginProvider),
 		}),
 	)
 	.add(
@@ -160,13 +161,14 @@ const CreateApiKeyRequestSchema = Schema.Struct({
 });
 
 export const CreateApiKeyResultSchema = Schema.Struct({
-	id: Schema.String,
+	serviceAccountId: ServiceAccountId,
 	displayName: Schema.String,
 	token: Schema.Redacted(Schema.String),
 });
 
 const ServiceAccountSchema = Schema.Struct({
 	id: Schema.String,
+	accountId: AccountId,
 	displayName: Schema.String,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),

@@ -58,6 +58,7 @@ export interface ServiceAccountRepository {
 	readonly listAll: () => Effect.Effect<
 		ReadonlyArray<{
 			readonly id: ServiceAccountId;
+			readonly accountId: AccountId;
 			readonly displayName: string;
 			readonly roles: ReadonlyArray<Role>;
 			readonly globalRoles: ReadonlyArray<GlobalRoleName>;

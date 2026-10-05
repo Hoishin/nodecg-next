@@ -151,7 +151,7 @@ describe("createWithId", () => {
 				{ issuer: "dev", subject: "boss" },
 				"Boss",
 			);
-			yield* repository.createWithId({
+			const created = yield* repository.createWithId({
 				id: ghost,
 				displayName: "scoreboard",
 				createdBy: boss.accountId,
@@ -171,7 +171,13 @@ describe("createWithId", () => {
 			);
 			const listed = yield* repository.listAll();
 			expect(listed).toStrictEqual([
-				{ id: ghost, displayName: "scoreboard", roles: [], globalRoles: [] },
+				{
+					id: ghost,
+					accountId: created.accountId,
+					displayName: "scoreboard",
+					roles: [],
+					globalRoles: [],
+				},
 			]);
 		}),
 	);
@@ -260,7 +266,9 @@ describe("listAll", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const scoreboard = yield* createBot("scoreboard", "hash-1");
+			const scoreboardAccountId = yield* findAccountId(scoreboard);
 			const timer = yield* createBot("timer", "hash-2");
+			const timerAccountId = yield* findAccountId(timer);
 			yield* repository.grantRole(scoreboard, viewer);
 			yield* repository.grantGlobalRole(scoreboard, "admin");
 
@@ -270,11 +278,18 @@ describe("listAll", () => {
 				expect.arrayContaining([
 					{
 						id: scoreboard,
+						accountId: scoreboardAccountId,
 						displayName: "scoreboard",
 						roles: [viewer],
 						globalRoles: ["admin"],
 					},
-					{ id: timer, displayName: "timer", roles: [], globalRoles: [] },
+					{
+						id: timer,
+						accountId: timerAccountId,
+						displayName: "timer",
+						roles: [],
+						globalRoles: [],
+					},
 				]),
 			);
 			expect(listed).toHaveLength(2);

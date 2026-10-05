@@ -211,6 +211,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 				);
 				return rows.map(({ id, accountId, displayName }) => ({
 					id,
+					accountId,
 					displayName,
 					roles: (rolesByAccount[accountId] ?? []).map(
 						({ namespace, name }) => ({ namespace, name }),
