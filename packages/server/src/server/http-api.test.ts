@@ -491,17 +491,6 @@ describe("login and callback", () => {
 			}),
 	);
 
-	it.effect("a request with a live session renews its cookie", () =>
-		Effect.gen(function* () {
-			const handler = yield* loginHandler();
-			const sid = yield* logIn(handler);
-			const me = yield* handler(meRequest(sid));
-			expect(me.headers.get("set-cookie")).toBe(
-				`nodecg.sid=${sid}; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax`,
-			);
-		}),
-	);
-
 	it.effect("a request with an unknown session sets no cookie", () =>
 		Effect.gen(function* () {
 			const handler = yield* loginHandler();

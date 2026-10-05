@@ -37,7 +37,8 @@ export interface SessionRepository {
 	readonly refreshTTL: (
 		id: UserSessionId,
 		expiresAt: DateTime.DateTime,
-	) => Effect.Effect<void, BackendError>;
+		ifExpiresBefore: DateTime.DateTime,
+	) => Effect.Effect<boolean, BackendError>;
 
 	readonly revoke: (id: UserSessionId) => Effect.Effect<void, BackendError>;
 }

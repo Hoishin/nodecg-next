@@ -202,7 +202,7 @@ describe("resolve", () => {
 
 describe("refreshTTL", () => {
 	test(
-		"moves the expiry of a live session",
+		"moves the expiry of a session that expires before the given time",
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentication = yield* logIn;
@@ -213,9 +213,42 @@ describe("refreshTTL", () => {
 				DateTime.addDuration(start, 1000),
 			);
 			yield* TestClock.setTime(999);
-			yield* repository.refreshTTL(first, DateTime.addDuration(start, 5000));
+
+			const isRenewed = yield* repository.refreshTTL(
+				first,
+				DateTime.addDuration(start, 5000),
+				DateTime.addDuration(start, 2000),
+			);
+
+			expect(isRenewed).toBe(true);
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: first, authenticationId: authentication, expiresAt: 5000 },
+			]);
+		}),
+	);
+
+	test(
+		"leaves a session that does not expire before the given time",
+		Effect.gen(function* () {
+			const repository = yield* SessionRepositoryService;
+			const authentication = yield* logIn;
+			const start = yield* DateTime.now;
+			yield* repository.create(
+				first,
+				authentication,
+				DateTime.addDuration(start, 1000),
+			);
+			yield* TestClock.setTime(999);
+
+			const isRenewed = yield* repository.refreshTTL(
+				first,
+				DateTime.addDuration(start, 5000),
+				DateTime.addDuration(start, 500),
+			);
+
+			expect(isRenewed).toBe(false);
+			expect(yield* storedSessions).toStrictEqual([
+				{ id: first, authenticationId: authentication, expiresAt: 1000 },
 			]);
 		}),
 	);
@@ -232,7 +265,14 @@ describe("refreshTTL", () => {
 				DateTime.addDuration(start, 1000),
 			);
 			yield* TestClock.setTime(1000);
-			yield* repository.refreshTTL(first, DateTime.addDuration(start, 5000));
+
+			const isRenewed = yield* repository.refreshTTL(
+				first,
+				DateTime.addDuration(start, 5000),
+				DateTime.addDuration(start, 6000),
+			);
+
+			expect(isRenewed).toBe(false);
 			expect(yield* storedSessions).toStrictEqual([
 				{ id: first, authenticationId: authentication, expiresAt: 1000 },
 			]);

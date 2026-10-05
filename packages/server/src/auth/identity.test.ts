@@ -8,8 +8,7 @@ import {
 	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { ConfigProvider, DateTime, Effect, Layer, Option } from "effect";
-import { TestClock } from "effect/testing";
+import { Effect, Layer, Option } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -41,12 +40,9 @@ const aliceUser = {
 };
 
 const resolve = vi.fn<SessionRepository["resolve"]>(() => Effect.succeedNone);
-const refreshTTL = vi.fn<SessionRepository["refreshTTL"]>(() => Effect.void);
 
 afterEach(() => {
-	for (const mock of [resolve, refreshTTL]) {
-		mock.mockReset();
-	}
+	resolve.mockReset();
 });
 
 const test = testLayer(
@@ -54,14 +50,11 @@ const test = testLayer(
 		Layer.succeed(SessionRepositoryService, {
 			create: vi.fn(),
 			resolve,
-			refreshTTL,
+			refreshTTL: vi.fn(),
 			revoke: vi.fn(),
 		}),
 		Layer.succeed(ConfiguredSuperadmins, [root, aliceSecondAuthentication]),
 		NodeCrypto.layer,
-		ConfigProvider.layer(
-			ConfigProvider.fromEnvRecord({ SESSION_TTL: "1 hour" }),
-		),
 	),
 );
 
@@ -119,22 +112,12 @@ describe("resolveSessionIdentity", () => {
 	);
 
 	test(
-		"looks the session up by the token's hash and extends its TTL",
+		"looks the session up by the token's hash",
 		Effect.gen(function* () {
-			resolve.mockReturnValueOnce(
-				Effect.succeedSome({ authentication: alice, user: aliceUser }),
-			);
-			yield* TestClock.adjust("1 minute");
-
 			yield* resolveSessionIdentity("token");
 
 			const id = yield* hashSessionToken("token");
-			const now = yield* DateTime.now;
 			expect(resolve).toHaveBeenCalledExactlyOnceWith(id);
-			expect(refreshTTL).toHaveBeenCalledExactlyOnceWith(
-				id,
-				DateTime.addDuration(now, "1 hour"),
-			);
 		}),
 	);
 
@@ -144,7 +127,6 @@ describe("resolveSessionIdentity", () => {
 			const identity = yield* resolveSessionIdentity("token");
 
 			expect(identity).toStrictEqual(Option.none());
-			expect(refreshTTL).not.toHaveBeenCalled();
 		}),
 	);
 });

@@ -40,11 +40,10 @@ const findOrCreateAuthentication = vi.fn<
 	}),
 );
 const create = vi.fn<SessionRepository["create"]>(() => Effect.void);
-const refreshTTL = vi.fn<SessionRepository["refreshTTL"]>(() => Effect.void);
 const revoke = vi.fn<SessionRepository["revoke"]>(() => Effect.void);
 
 afterEach(() => {
-	for (const mock of [findOrCreateAuthentication, create, refreshTTL, revoke]) {
+	for (const mock of [findOrCreateAuthentication, create, revoke]) {
 		mock.mockReset();
 	}
 });
@@ -58,7 +57,7 @@ const test = testLayer(
 		Layer.succeed(SessionRepositoryService, {
 			create,
 			resolve: vi.fn(),
-			refreshTTL,
+			refreshTTL: vi.fn(),
 			revoke,
 		}),
 		Layer.succeed(TransactionService, { wrap: (effect) => effect }),

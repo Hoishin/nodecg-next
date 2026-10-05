@@ -20,7 +20,7 @@ import {
 	resolveServiceAccountIdentity,
 	resolveSessionIdentity,
 } from "./identity.ts";
-import { setSessionCookie } from "./session.ts";
+import { renewSession, setSessionCookie } from "./session.ts";
 
 const isAnonymous = Schema.is(AnonymousIdentitySchema);
 
@@ -39,6 +39,16 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 				Effect.tapCause((cause) =>
 					Effect.logError("Session lookup failed", cause),
 				),
+				Effect.catchTag(["BackendError", "PlatformError"], () =>
+					HttpApiError.InternalServerError.make(),
+				),
+			);
+		const renew = (token: string) =>
+			renewSession(token).pipe(
+				Effect.provide(context),
+				Effect.tapCause((cause) =>
+					Effect.logError("Session renewal failed", cause),
+				),
 				Effect.catchTag(["BackendError", "ConfigError", "PlatformError"], () =>
 					HttpApiError.InternalServerError.make(),
 				),
@@ -48,21 +58,24 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 			cookie: (httpEffect, { credential }) =>
 				Effect.gen(function* () {
 					const value = Redacted.value(credential);
-					const resolved =
+					const identity =
 						value.length > 0 ? yield* resolve(value) : Option.none();
-					if (Option.isNone(resolved) && requireAuth) {
-						return yield* new HttpApiError.Unauthorized();
+					if (Option.isNone(identity) && requireAuth) {
+						return yield* HttpApiError.Unauthorized.make();
 					}
-					if (Option.isSome(resolved)) {
-						yield* setSessionCookie(value, {
-							path: baseUrl.pathname,
-							maxAge: sessionTtl,
-						});
+					if (Option.isSome(identity)) {
+						const isRenewed = yield* renew(value);
+						if (isRenewed) {
+							yield* setSessionCookie(value, {
+								path: baseUrl.pathname,
+								maxAge: sessionTtl,
+							});
+						}
 					}
 					return yield* Effect.provideService(
 						httpEffect,
 						CurrentIdentity,
-						Option.getOrElse(resolved, () => anonymousIdentity),
+						Option.getOrElse(identity, () => anonymousIdentity),
 					);
 				}),
 		};

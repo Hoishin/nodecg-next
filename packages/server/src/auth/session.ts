@@ -86,6 +86,23 @@ export const createSession = Effect.fn("createSession")(function* (
 	);
 });
 
+export const renewSession = Effect.fn("renewSession")(function* (
+	token: string,
+) {
+	const sessions = yield* SessionRepositoryService;
+	const ttl = yield* config.sessionTtl;
+	const interval = yield* config.sessionRenewInterval;
+	const now = yield* DateTime.now;
+
+	const id = yield* hashSessionToken(token);
+	const expiresAt = DateTime.addDuration(now, ttl);
+	return yield* sessions.refreshTTL(
+		id,
+		expiresAt,
+		DateTime.subtractDuration(expiresAt, interval), // expiry < (now + ttl - interval) means it was renewed over one interval ago
+	);
+});
+
 export const revokeSession = Effect.fn("revokeSession")(function* (
 	token: string,
 ) {

@@ -78,6 +78,9 @@ export const config = {
 		Config.withDefault(Duration.minutes(10)),
 	),
 	requireAuth: Config.Boolean("REQUIRE_AUTH").pipe(Config.withDefault(false)),
+	sessionRenewInterval: Config.Duration("SESSION_RENEW_INTERVAL").pipe(
+		Config.withDefault(Duration.days(1)),
+	),
 	sessionTtl: Config.Duration("SESSION_TTL").pipe(
 		Config.withDefault(Duration.days(7)),
 	),

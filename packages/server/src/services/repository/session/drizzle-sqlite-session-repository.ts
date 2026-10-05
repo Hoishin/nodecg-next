@@ -1,5 +1,5 @@
 import type { AuthenticationId, UserSessionId } from "@nodecg-next/internal";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { DateTime, Effect, Layer, Option } from "effect";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
@@ -94,17 +94,24 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 		);
 
 		const refreshTTL = Effect.fn("SessionRepository.refreshTTL")(
-			function* (id: UserSessionId, expiresAt: DateTime.DateTime) {
+			function* (
+				id: UserSessionId,
+				expiresAt: DateTime.DateTime,
+				ifExpiresBefore: DateTime.DateTime,
+			) {
 				const now = yield* DateTime.now;
-				yield* db
+				const rows = yield* db
 					.update(sessions)
 					.set({ expiresAt: DateTime.toEpochMillis(expiresAt) })
 					.where(
 						and(
 							eq(sessions.id, id),
 							gt(sessions.expiresAt, DateTime.toEpochMillis(now)),
+							lt(sessions.expiresAt, DateTime.toEpochMillis(ifExpiresBefore)),
 						),
-					);
+					)
+					.returning({ id: sessions.id });
+				return rows.length > 0;
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
