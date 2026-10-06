@@ -1,8 +1,13 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
-import { type Role, RoleName, ServiceAccountId } from "@nodecg-next/internal";
+import {
+	Role,
+	RoleNameSchema,
+	ServiceAccountId,
+	UserId,
+} from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq } from "drizzle-orm";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Array, Effect, HashSet, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
@@ -10,20 +15,23 @@ import { assert, describe, expect } from "vitest";
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import {
 	apiKeys,
+	globalRoleGrants,
+	roleGrants,
 	serviceAccounts,
+	users,
 } from "../../database/drizzle-sqlite/tables.ts";
 import { AuthenticationRepositoryService } from "../authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../authentication/drizzle-sqlite-authentication-repository.ts";
 import { BackendError } from "../repository-errors.ts";
-import { DrizzleSqliteRoleRepository } from "../role/drizzle-sqlite-role-repository.ts";
-import { RoleRepositoryService } from "../role/role-repository.ts";
 import { DrizzleSqliteServiceAccountRepository } from "./drizzle-sqlite-service-account-repository.ts";
-import { ServiceAccountRepositoryService } from "./service-account-repository.ts";
+import {
+	ServiceAccountRepositoryService,
+	UnknownServiceAccount,
+} from "./service-account-repository.ts";
 
 const test = testLayer(
 	Layer.mergeAll(
 		DrizzleSqliteServiceAccountRepository,
-		DrizzleSqliteRoleRepository,
 		DrizzleSqliteAuthenticationRepository,
 	).pipe(
 		Layer.provideMerge(
@@ -43,22 +51,47 @@ const test = testLayer(
 	),
 );
 
-const viewer: Role = { namespace: "show", name: RoleName("viewer") };
+const viewer = Role.make({
+	namespace: "show",
+	name: RoleNameSchema.make("viewer"),
+});
+const judge = Role.make({
+	namespace: "show",
+	name: RoleNameSchema.make("judge"),
+});
+const producer = Role.make({
+	namespace: "show",
+	name: RoleNameSchema.make("producer"),
+});
 const ghost = ServiceAccountId.make("00000000-0000-4000-8000-0000000000ff");
+
+const createAlice = Effect.gen(function* () {
+	const authentications = yield* AuthenticationRepositoryService;
+	const { userId } = yield* authentications.findOrCreateAuthentication(
+		{ issuer: "dev", subject: "alice" },
+		"Alice",
+	);
+	return userId;
+});
 
 const createBot = Effect.fn(function* (displayName: string, hash: string) {
 	const repository = yield* ServiceAccountRepositoryService;
-	const authentications = yield* AuthenticationRepositoryService;
-	const boss = yield* authentications.findOrCreateAuthentication(
-		{ issuer: "dev", subject: "boss" },
-		"Boss",
-	);
-	const { serviceAccountId, accountId } = yield* repository.create({
+	const id = yield* repository.create({
 		displayName,
-		createdBy: boss.accountId,
+		createdBy: yield* createAlice,
 	});
-	yield* repository.addKey(serviceAccountId, { hash, label: "" });
-	return { serviceAccountId, accountId };
+	yield* repository.addKey(id, { hash, label: "" });
+	return id;
+});
+
+const findAccountId = Effect.fn(function* (id: ServiceAccountId) {
+	const db = yield* DrizzleSqliteDatabaseService;
+	const { accountId } = yield* db
+		.select({ accountId: serviceAccounts.accountId })
+		.from(serviceAccounts)
+		.where(eq(serviceAccounts.id, id))
+		.pipe(Effect.head);
+	return accountId;
 });
 
 const createdBy = Effect.fn(function* (id: ServiceAccountId) {
@@ -75,34 +108,46 @@ describe("create", () => {
 		"creates a service account under its own named account",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const { serviceAccountId: id } = yield* createBot("scoreboard", "hash-1");
+			const id = yield* createBot("scoreboard", "hash-1");
 
-			const listed = yield* repository.listAll();
+			const serviceAccounts = yield* repository.listAll();
 			expect(
-				listed.map(({ id, displayName }) => ({ id, displayName })),
+				serviceAccounts.map(({ id, displayName }) => ({ id, displayName })),
 			).toStrictEqual([{ id, displayName: "scoreboard" }]);
 		}),
 	);
 
 	test(
-		"records the creating account",
+		"records the creating user",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const { accountId: provisionerAccount } = yield* createBot(
-				"provisioner",
-				"hash-1",
-			);
+			const alice = yield* createAlice;
 
-			const created = yield* repository.create({
+			const id = yield* repository.create({
 				displayName: "scoreboard",
-				createdBy: provisionerAccount,
+				createdBy: alice,
 			});
 
-			const rows = yield* createdBy(created.serviceAccountId);
-			expect(rows).toStrictEqual([{ createdBy: provisionerAccount }]);
-			const resolved = yield* repository.resolveById(created.serviceAccountId);
-			assert(Option.isSome(resolved));
-			expect(created.accountId).toBe(resolved.value.accountId);
+			const rows = yield* createdBy(id);
+			expect(rows).toStrictEqual([{ createdBy: alice }]);
+		}),
+	);
+
+	test(
+		"fails with BackendError when the user does not exist",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+
+			const error = yield* repository
+				.create({
+					displayName: "scoreboard",
+					createdBy: UserId.make("missing"),
+				})
+				.pipe(Effect.flip);
+
+			assert(Schema.is(BackendError)(error));
+			expect(error.message).toContain("FOREIGN KEY constraint failed");
+			expect(yield* repository.listAll()).toStrictEqual([]);
 		}),
 	);
 });
@@ -112,29 +157,20 @@ describe("createWithId", () => {
 		"creates a service account under the given id",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const authentications = yield* AuthenticationRepositoryService;
-			const boss = yield* authentications.findOrCreateAuthentication(
-				{ issuer: "dev", subject: "boss" },
-				"Boss",
-			);
+			const alice = yield* createAlice;
 
-			const created = yield* repository.createWithId({
+			yield* repository.createWithId({
 				id: ghost,
 				displayName: "scoreboard",
-				createdBy: boss.accountId,
+				createdBy: alice,
 			});
 
-			expect(created.serviceAccountId).toBe(ghost);
-			const resolved = yield* repository.resolveById(ghost);
-			expect(resolved).toStrictEqual(
-				Option.some({
-					id: ghost,
-					accountId: created.accountId,
-					displayName: "scoreboard",
-				}),
+			const serviceAccount = yield* repository.resolveById(ghost);
+			expect(serviceAccount).toStrictEqual(
+				Option.some({ id: ghost, displayName: "scoreboard" }),
 			);
 			const rows = yield* createdBy(ghost);
-			expect(rows).toStrictEqual([{ createdBy: boss.accountId }]);
+			expect(rows).toStrictEqual([{ createdBy: alice }]);
 		}),
 	);
 
@@ -142,22 +178,18 @@ describe("createWithId", () => {
 		"fails with BackendError when the id is taken",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const authentications = yield* AuthenticationRepositoryService;
-			const boss = yield* authentications.findOrCreateAuthentication(
-				{ issuer: "dev", subject: "boss" },
-				"Boss",
-			);
-			const created = yield* repository.createWithId({
+			const alice = yield* createAlice;
+			yield* repository.createWithId({
 				id: ghost,
 				displayName: "scoreboard",
-				createdBy: boss.accountId,
+				createdBy: alice,
 			});
 
 			const error = yield* repository
 				.createWithId({
 					id: ghost,
 					displayName: "timer",
-					createdBy: boss.accountId,
+					createdBy: alice,
 				})
 				.pipe(Effect.flip);
 
@@ -165,16 +197,34 @@ describe("createWithId", () => {
 			expect(error.message).toContain(
 				"UNIQUE constraint failed: service_accounts.id",
 			);
-			const listed = yield* repository.listAll();
-			expect(listed).toStrictEqual([
+			const serviceAccounts = yield* repository.listAll();
+			expect(serviceAccounts).toStrictEqual([
 				{
 					id: ghost,
-					accountId: created.accountId,
 					displayName: "scoreboard",
 					roles: [],
 					globalRoles: [],
 				},
 			]);
+		}),
+	);
+
+	test(
+		"fails with BackendError when the user does not exist",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+
+			const error = yield* repository
+				.createWithId({
+					id: ghost,
+					displayName: "scoreboard",
+					createdBy: UserId.make("missing"),
+				})
+				.pipe(Effect.flip);
+
+			assert(Schema.is(BackendError)(error));
+			expect(error.message).toContain("FOREIGN KEY constraint failed");
+			expect(yield* repository.listAll()).toStrictEqual([]);
 		}),
 	);
 });
@@ -185,14 +235,11 @@ describe("resolveById", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			yield* createBot("timer", "hash-1");
-			const { serviceAccountId: scoreboard, accountId } = yield* createBot(
-				"scoreboard",
-				"hash-2",
-			);
+			const scoreboard = yield* createBot("scoreboard", "hash-2");
 
-			const resolved = yield* repository.resolveById(scoreboard);
-			expect(resolved).toStrictEqual(
-				Option.some({ id: scoreboard, accountId, displayName: "scoreboard" }),
+			const serviceAccount = yield* repository.resolveById(scoreboard);
+			expect(serviceAccount).toStrictEqual(
+				Option.some({ id: scoreboard, displayName: "scoreboard" }),
 			);
 		}),
 	);
@@ -214,15 +261,22 @@ describe("resolveByKeyHash", () => {
 		"resolves a key to its service account",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const { serviceAccountId: id, accountId } = yield* createBot(
-				"scoreboard",
-				"hash-1",
-			);
+			const db = yield* DrizzleSqliteDatabaseService;
+			const id = yield* createBot("scoreboard", "hash-1");
+			yield* repository.grantRoles(id, HashSet.make(viewer));
+			yield* db
+				.insert(globalRoleGrants)
+				.values({ accountId: yield* findAccountId(id), roleName: "admin" });
 
 			const byKey = yield* repository.resolveByKeyHash("hash-1");
 
 			expect(byKey).toStrictEqual(
-				Option.some({ id, accountId, displayName: "scoreboard" }),
+				Option.some({
+					id,
+					displayName: "scoreboard",
+					roles: [viewer],
+					globalRoles: ["admin"],
+				}),
 			);
 		}),
 	);
@@ -244,7 +298,7 @@ describe("resolveByKeyHash", () => {
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
-			const { serviceAccountId: id } = yield* createBot("scoreboard", "hash-1");
+			const id = yield* createBot("scoreboard", "hash-1");
 			yield* db
 				.update(apiKeys)
 				.set({ expiresAt: 100 })
@@ -265,35 +319,34 @@ describe("listAll", () => {
 		"lists every service account with its own roles and global roles",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const roleRepository = yield* RoleRepositoryService;
-			const { serviceAccountId: scoreboard, accountId: scoreboardAccountId } =
-				yield* createBot("scoreboard", "hash-1");
-			const { serviceAccountId: timer, accountId: timerAccountId } =
-				yield* createBot("timer", "hash-2");
-			yield* repository.grantRole(scoreboard, viewer);
-			yield* roleRepository.grantGlobalRole(scoreboardAccountId, "admin");
+			const db = yield* DrizzleSqliteDatabaseService;
+			const scoreboard = yield* createBot("scoreboard", "hash-1");
+			const timer = yield* createBot("timer", "hash-2");
+			yield* repository.grantRoles(scoreboard, HashSet.make(viewer));
+			yield* db.insert(globalRoleGrants).values({
+				accountId: yield* findAccountId(scoreboard),
+				roleName: "admin",
+			});
 
-			const listed = yield* repository.listAll();
+			const serviceAccounts = yield* repository.listAll();
 
-			expect(listed).toEqual(
+			expect(serviceAccounts).toEqual(
 				expect.arrayContaining([
 					{
 						id: scoreboard,
-						accountId: scoreboardAccountId,
 						displayName: "scoreboard",
 						roles: [viewer],
 						globalRoles: ["admin"],
 					},
 					{
 						id: timer,
-						accountId: timerAccountId,
 						displayName: "timer",
 						roles: [],
 						globalRoles: [],
 					},
 				]),
 			);
-			expect(listed).toHaveLength(2);
+			expect(serviceAccounts).toHaveLength(2);
 		}),
 	);
 });
@@ -303,18 +356,15 @@ describe("replaceKey", () => {
 		"replaces the old key with the new one and reports the name",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const { serviceAccountId: id, accountId } = yield* createBot(
-				"scoreboard",
-				"hash-1",
-			);
+			const id = yield* createBot("scoreboard", "hash-1");
 
-			const replaced = yield* repository.replaceKey(id, {
+			const serviceAccount = yield* repository.replaceKey(id, {
 				hash: "hash-2",
 				label: "",
 			});
 
-			expect(replaced).toStrictEqual(
-				Option.some({ accountId, displayName: "scoreboard" }),
+			expect(serviceAccount).toStrictEqual(
+				Option.some({ displayName: "scoreboard" }),
 			);
 			const old = yield* repository.resolveByKeyHash("hash-1");
 			expect(old).toStrictEqual(Option.none());
@@ -346,12 +396,9 @@ describe("delete", () => {
 		"removes the service account with its key and role grants",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const roleRepository = yield* RoleRepositoryService;
-			const { serviceAccountId: id, accountId } = yield* createBot(
-				"scoreboard",
-				"hash-1",
-			);
-			yield* repository.grantRole(id, viewer);
+			const db = yield* DrizzleSqliteDatabaseService;
+			const id = yield* createBot("scoreboard", "hash-1");
+			yield* repository.grantRoles(id, HashSet.make(viewer));
 
 			const found = yield* repository.delete(id);
 
@@ -360,8 +407,7 @@ describe("delete", () => {
 			expect(listed).toStrictEqual([]);
 			const byKey = yield* repository.resolveByKeyHash("hash-1");
 			expect(byKey).toStrictEqual(Option.none());
-			const grants = yield* roleRepository.read(accountId);
-			expect(grants).toStrictEqual({ roles: [], globalRoles: [] });
+			expect(yield* db.select().from(roleGrants)).toStrictEqual([]);
 		}),
 	);
 
@@ -380,85 +426,123 @@ describe("delete", () => {
 	);
 
 	test(
-		"keeps a service account whose creator is deleted",
+		"keeps a service account after its creating user is deleted",
 		Effect.gen(function* () {
-			const repository = yield* ServiceAccountRepositoryService;
-			const { serviceAccountId: provisioner, accountId: provisionerAccount } =
-				yield* createBot("provisioner", "hash-1");
-			const { serviceAccountId } = yield* repository.create({
-				displayName: "scoreboard",
-				createdBy: provisionerAccount,
-			});
+			const db = yield* DrizzleSqliteDatabaseService;
+			const alice = yield* createAlice;
+			const id = yield* createBot("scoreboard", "hash-1");
 
-			yield* repository.delete(provisioner);
+			yield* db.delete(users).where(eq(users.id, alice));
 
-			const rows = yield* createdBy(serviceAccountId);
+			const rows = yield* createdBy(id);
 			expect(rows).toStrictEqual([{ createdBy: null }]);
 		}),
 	);
 });
 
-describe("grantRole", () => {
+describe("grantRoles", () => {
 	test(
-		"grants the role to the service account's account, also when already held",
+		"grants the roles to the service account, also when already held",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const roleRepository = yield* RoleRepositoryService;
-			const { serviceAccountId: id, accountId } = yield* createBot(
-				"scoreboard",
-				"hash-1",
-			);
+			const id = yield* createBot("scoreboard", "hash-1");
 
-			const first = yield* repository.grantRole(id, viewer);
-			const again = yield* repository.grantRole(id, viewer);
+			yield* repository.grantRoles(id, HashSet.make(viewer));
+			yield* repository.grantRoles(id, HashSet.make(viewer, judge));
 
-			expect([first, again]).toStrictEqual([true, true]);
-			const grants = yield* roleRepository.read(accountId);
-			expect(grants.roles).toStrictEqual([viewer]);
+			const serviceAccounts = yield* repository.listAll();
+			expect(serviceAccounts).toEqual([
+				expect.objectContaining({
+					roles: expect.arrayContaining([viewer, judge]),
+				}),
+			]);
+			expect(serviceAccounts.flatMap(({ roles }) => roles)).toHaveLength(2);
 		}),
 	);
 
 	test(
-		"reports an unknown id",
+		"grants and revokes nothing for an empty set",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+			const id = yield* createBot("scoreboard", "hash-1");
+			yield* repository.grantRoles(id, HashSet.make(viewer));
+
+			yield* repository.grantRoles(id, HashSet.empty());
+			yield* repository.revokeRoles(id, HashSet.empty());
+
+			expect(yield* repository.listAll()).toMatchObject([{ roles: [viewer] }]);
+		}),
+	);
+
+	test(
+		"grants and revokes more roles than fit in one statement",
+		Effect.gen(function* () {
+			const repository = yield* ServiceAccountRepositoryService;
+			const id = yield* createBot("scoreboard", "hash-1");
+			const roles = HashSet.fromIterable(
+				Array.makeBy(10_923, (index) =>
+					Role.make({
+						namespace: "show",
+						name: RoleNameSchema.make(`role-${index}`),
+					}),
+				),
+			);
+
+			yield* repository.grantRoles(id, roles);
+			expect(yield* repository.listAll()).toMatchObject([
+				{ roles: { length: 10_923 } },
+			]);
+
+			yield* repository.revokeRoles(id, roles);
+			expect(yield* repository.listAll()).toMatchObject([{ roles: [] }]);
+		}),
+	);
+
+	test(
+		"fails with UnknownServiceAccount when the service account does not exist",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 
-			const found = yield* repository.grantRole(ghost, viewer);
+			const error = yield* repository
+				.grantRoles(ghost, HashSet.make(viewer))
+				.pipe(Effect.flip);
 
-			expect(found).toBe(false);
+			expect(error).toStrictEqual(
+				UnknownServiceAccount.make({ serviceAccountId: ghost }),
+			);
 		}),
 	);
 });
 
-describe("revokeRole", () => {
+describe("revokeRoles", () => {
 	test(
-		"revokes the role, also when not held",
+		"revokes the roles, also when not held",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
-			const roleRepository = yield* RoleRepositoryService;
-			const { serviceAccountId: id, accountId } = yield* createBot(
-				"scoreboard",
-				"hash-1",
-			);
-			yield* repository.grantRole(id, viewer);
+			const id = yield* createBot("scoreboard", "hash-1");
+			yield* repository.grantRoles(id, HashSet.make(viewer, judge, producer));
 
-			const first = yield* repository.revokeRole(id, viewer);
-			const again = yield* repository.revokeRole(id, viewer);
+			yield* repository.revokeRoles(id, HashSet.make(viewer, judge));
+			yield* repository.revokeRoles(id, HashSet.make(viewer, judge));
 
-			expect([first, again]).toStrictEqual([true, true]);
-			const grants = yield* roleRepository.read(accountId);
-			expect(grants.roles).toStrictEqual([]);
+			expect(yield* repository.listAll()).toMatchObject([
+				{ roles: [producer] },
+			]);
 		}),
 	);
 
 	test(
-		"reports an unknown id",
+		"fails with UnknownServiceAccount when the service account does not exist",
 		Effect.gen(function* () {
 			const repository = yield* ServiceAccountRepositoryService;
 
-			const found = yield* repository.revokeRole(ghost, viewer);
+			const error = yield* repository
+				.revokeRoles(ghost, HashSet.make(viewer))
+				.pipe(Effect.flip);
 
-			expect(found).toBe(false);
+			expect(error).toStrictEqual(
+				UnknownServiceAccount.make({ serviceAccountId: ghost }),
+			);
 		}),
 	);
 });

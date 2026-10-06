@@ -1,6 +1,5 @@
 export { RpcCallError } from "./api/shared.ts";
 export {
-	AdminRoleAssignmentSchema,
 	CreateApiKeyResultSchema,
 	UserDocumentEntry,
 	InternalApi,
@@ -19,7 +18,7 @@ export {
 	SuperadminMiddleware,
 	CurrentIdentity,
 	CurrentServiceAccount,
-	CurrentSessionCaller,
+	CurrentSessionUser,
 	CurrentUser,
 	sessionCookieName,
 	sessionCookieSecurity,
@@ -42,8 +41,7 @@ export {
 	type ReplicantFieldIdentifier,
 	type TopicFieldIdentifier,
 } from "./messages.ts";
-export { Account, AccountId } from "./models/account.ts";
-export { ApiKey, ApiKeyId } from "./models/api-key.ts";
+export { ApiKeyId } from "./models/api-key.ts";
 export { Authentication, AuthenticationId } from "./models/authentication.ts";
 export {
 	AnonymousIdentitySchema,
@@ -70,7 +68,6 @@ export {
 	RoleNameSchema,
 	type UndeclarableRoleName,
 } from "./models/role.ts";
-export { GlobalRoleGrant, RoleGrant } from "./models/role-grant.ts";
 export { ServiceAccount, ServiceAccountId } from "./models/service-account.ts";
 export { User, UserId } from "./models/user.ts";
 export { UserSession, UserSessionId } from "./models/user-session.ts";

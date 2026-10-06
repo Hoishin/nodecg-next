@@ -1,12 +1,25 @@
-import type {
-	AccountId,
-	GlobalRoleName,
-	Role,
+import {
+	type GlobalRoleName,
+	type Role,
 	ServiceAccountId,
+	type UserId,
 } from "@nodecg-next/internal";
-import { Context, type Effect, type Option } from "effect";
+import {
+	Context,
+	type Effect,
+	type HashSet,
+	type Option,
+	Schema,
+} from "effect";
 
 import type { BackendError } from "../repository-errors.ts";
+
+export class UnknownServiceAccount extends Schema.TaggedError<UnknownServiceAccount>()(
+	"UnknownServiceAccount",
+	{ serviceAccountId: ServiceAccountId },
+) {
+	override readonly message = `No service account has the id "${this.serviceAccountId}"`;
+}
 
 export interface NewApiKey {
 	readonly hash: string;
@@ -16,31 +29,18 @@ export interface NewApiKey {
 export interface ServiceAccountRepository {
 	readonly create: (input: {
 		readonly displayName: string;
-		readonly createdBy: AccountId;
-	}) => Effect.Effect<
-		{
-			serviceAccountId: ServiceAccountId;
-			accountId: AccountId;
-		},
-		BackendError
-	>;
+		readonly createdBy: UserId;
+	}) => Effect.Effect<ServiceAccountId, BackendError>;
 
 	readonly createWithId: (input: {
 		readonly id: ServiceAccountId;
 		readonly displayName: string;
-		readonly createdBy: AccountId;
-	}) => Effect.Effect<
-		{
-			serviceAccountId: ServiceAccountId;
-			accountId: AccountId;
-		},
-		BackendError
-	>;
+		readonly createdBy: UserId;
+	}) => Effect.Effect<void, BackendError>;
 
 	readonly resolveById: (id: ServiceAccountId) => Effect.Effect<
 		Option.Option<{
 			readonly id: ServiceAccountId;
-			readonly accountId: AccountId;
 			readonly displayName: string;
 		}>,
 		BackendError
@@ -49,8 +49,9 @@ export interface ServiceAccountRepository {
 	readonly resolveByKeyHash: (hash: string) => Effect.Effect<
 		Option.Option<{
 			readonly id: ServiceAccountId;
-			readonly accountId: AccountId;
 			readonly displayName: string;
+			readonly roles: ReadonlyArray<Role>;
+			readonly globalRoles: ReadonlyArray<GlobalRoleName>;
 		}>,
 		BackendError
 	>;
@@ -58,7 +59,6 @@ export interface ServiceAccountRepository {
 	readonly listAll: () => Effect.Effect<
 		ReadonlyArray<{
 			readonly id: ServiceAccountId;
-			readonly accountId: AccountId;
 			readonly displayName: string;
 			readonly roles: ReadonlyArray<Role>;
 			readonly globalRoles: ReadonlyArray<GlobalRoleName>;
@@ -76,7 +76,6 @@ export interface ServiceAccountRepository {
 		key: NewApiKey,
 	) => Effect.Effect<
 		Option.Option<{
-			readonly accountId: AccountId;
 			readonly displayName: string;
 		}>,
 		BackendError
@@ -86,15 +85,15 @@ export interface ServiceAccountRepository {
 		id: ServiceAccountId,
 	) => Effect.Effect<boolean, BackendError>;
 
-	readonly grantRole: (
+	readonly grantRoles: (
 		id: ServiceAccountId,
-		role: Role,
-	) => Effect.Effect<boolean, BackendError>;
+		roles: HashSet.HashSet<Role>,
+	) => Effect.Effect<void, BackendError | UnknownServiceAccount>;
 
-	readonly revokeRole: (
+	readonly revokeRoles: (
 		id: ServiceAccountId,
-		role: Role,
-	) => Effect.Effect<boolean, BackendError>;
+		roles: HashSet.HashSet<Role>,
+	) => Effect.Effect<void, BackendError | UnknownServiceAccount>;
 }
 
 export class ServiceAccountRepositoryService extends Context.Service<

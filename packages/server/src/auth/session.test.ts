@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import { NodeCrypto } from "@effect/platform-node";
 import {
-	AccountId,
 	type Authentication,
 	AuthenticationId,
 	UserId,
@@ -36,7 +35,6 @@ const findOrCreateAuthentication = vi.fn<
 	Effect.succeed({
 		authenticationId: aliceAuthId,
 		userId: UserId.make("alice-user"),
-		accountId: AccountId.make("alice-account"),
 	}),
 );
 const create = vi.fn<SessionRepository["create"]>(() => Effect.void);
@@ -52,7 +50,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		Layer.succeed(AuthenticationRepositoryService, {
 			findOrCreateAuthentication,
-			resolveByAccountId: vi.fn(),
+			resolveByUserId: vi.fn(),
 		}),
 		Layer.succeed(SessionRepositoryService, {
 			create,

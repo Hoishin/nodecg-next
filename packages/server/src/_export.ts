@@ -13,7 +13,6 @@ export {
 	ProviderStateMismatch,
 } from "./auth/auth-provider.ts";
 export {
-	AccountId,
 	Authentication,
 	AuthenticationId,
 	GlobalRoleName,
@@ -50,21 +49,21 @@ export {
 } from "./services/repository/replicant/replicant-repository.ts";
 export {
 	type RoleAssignment,
-	type RoleGrants,
 	type RoleRepository,
 	RoleRepositoryService,
-	UnknownAccount,
 } from "./services/repository/role/role-repository.ts";
 export {
 	type NewApiKey,
 	type ServiceAccountRepository,
 	ServiceAccountRepositoryService,
+	UnknownServiceAccount,
 } from "./services/repository/service-account/service-account-repository.ts";
 export {
 	type SessionRepository,
 	SessionRepositoryService,
 } from "./services/repository/session/session-repository.ts";
 export {
+	UnknownUser,
 	type UserRepository,
 	UserRepositoryService,
 } from "./services/repository/user/user-repository.ts";

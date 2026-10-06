@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { NodeCrypto } from "@effect/platform-node";
-import { AccountId, ServiceAccountId } from "@nodecg-next/internal";
+import { ServiceAccountId, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Redacted } from "effect";
 import { afterEach, describe, expect, vi } from "vitest";
@@ -14,13 +14,10 @@ import { TransactionService } from "../services/transaction/transaction.ts";
 import { createServiceAccount } from "./service-accounts.ts";
 
 const id = ServiceAccountId.make("00000000-0000-4000-8000-000000000001");
-const adminAccountId = AccountId.make("admin-account");
+const adminId = UserId.make("admin-user");
 
 const create = vi.fn<ServiceAccountRepository["create"]>(() =>
-	Effect.succeed({
-		serviceAccountId: id,
-		accountId: AccountId.make("scoreboard-account"),
-	}),
+	Effect.succeed(id),
 );
 const addKey = vi.fn<ServiceAccountRepository["addKey"]>(() => Effect.void);
 
@@ -42,8 +39,8 @@ const test = testLayer(
 			addKey,
 			replaceKey: vi.fn(),
 			delete: vi.fn(),
-			grantRole: vi.fn(),
-			revokeRole: vi.fn(),
+			grantRoles: vi.fn(),
+			revokeRoles: vi.fn(),
 		}),
 		Layer.succeed(TransactionService, { wrap: (effect) => effect }),
 	),
@@ -53,17 +50,14 @@ describe("createServiceAccount", () => {
 	test(
 		"creates the service account and stores its key's hash",
 		Effect.gen(function* () {
-			const { token } = yield* createServiceAccount(
-				"scoreboard",
-				adminAccountId,
-			);
+			const { token } = yield* createServiceAccount("scoreboard", adminId);
 			const hash = createHash("sha256")
 				.update(Redacted.value(token))
 				.digest("base64url");
 
 			expect(create).toHaveBeenCalledExactlyOnceWith({
 				displayName: "scoreboard",
-				createdBy: adminAccountId,
+				createdBy: adminId,
 			});
 			expect(addKey).toHaveBeenCalledExactlyOnceWith(id, { hash, label: "" });
 		}),
@@ -74,7 +68,7 @@ describe("createServiceAccount", () => {
 		Effect.gen(function* () {
 			const begin = vi.fn();
 			const commit = vi.fn();
-			yield* createServiceAccount("scoreboard", adminAccountId).pipe(
+			yield* createServiceAccount("scoreboard", adminId).pipe(
 				Effect.provideService(TransactionService, {
 					wrap: (effect) => {
 						begin();

@@ -1,6 +1,5 @@
 import { NodeCrypto } from "@effect/platform-node";
 import {
-	AccountId,
 	Authentication,
 	Role,
 	RoleNameSchema,
@@ -32,7 +31,6 @@ const viewer = Role.make({
 
 const aliceUser = {
 	id: UserId.make("alice-user"),
-	accountId: AccountId.make("alice-account"),
 	displayName: "Alice",
 	authentications: [alice],
 	roles: [viewer],
@@ -69,16 +67,15 @@ describe("resolveSessionCaller", () => {
 			const caller = yield* resolveSessionCaller("token");
 
 			expect(caller).toStrictEqual(
-				Option.some({
-					user: User.make({
+				Option.some(
+					User.make({
 						id: UserId.make("alice-user"),
 						authentication: alice,
 						displayName: "Alice",
 						roles: [viewer],
 						globalRoles: ["admin"],
 					}),
-					accountId: AccountId.make("alice-account"),
-				}),
+				),
 			);
 		}),
 	);
@@ -99,16 +96,15 @@ describe("resolveSessionCaller", () => {
 			const caller = yield* resolveSessionCaller("token");
 
 			expect(caller).toStrictEqual(
-				Option.some({
-					user: User.make({
+				Option.some(
+					User.make({
 						id: UserId.make("alice-user"),
 						authentication: alice,
 						displayName: "Alice",
 						roles: [viewer],
 						globalRoles: ["admin", "superadmin"],
 					}),
-					accountId: AccountId.make("alice-account"),
-				}),
+				),
 			);
 		}),
 	);

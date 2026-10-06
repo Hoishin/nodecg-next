@@ -1,5 +1,4 @@
 import type {
-	AccountId,
 	ApiKeyId,
 	AuthenticationId,
 	GlobalRoleName,
@@ -15,6 +14,10 @@ import {
 	text,
 	unique,
 } from "drizzle-orm/sqlite-core";
+import { Schema } from "effect";
+
+export const AccountId = Schema.String.pipe(Schema.brand("AccountId"));
+export type AccountId = typeof AccountId.Type;
 
 export const loginAttempts = sqliteTable("login_attempts", {
 	key: text("key").primaryKey(),
@@ -72,8 +75,8 @@ export const serviceAccounts = sqliteTable("service_accounts", {
 		.unique()
 		.references(() => accounts.id, { onDelete: "cascade" }),
 	createdBy: text("created_by")
-		.$type<AccountId>()
-		.references(() => accounts.id, { onDelete: "set null" }),
+		.$type<UserId>()
+		.references(() => users.id, { onDelete: "set null" }),
 });
 
 export const apiKeys = sqliteTable("api_keys", {

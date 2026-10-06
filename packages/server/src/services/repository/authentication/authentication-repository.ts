@@ -1,5 +1,4 @@
 import type {
-	AccountId,
 	Authentication,
 	AuthenticationId,
 	UserId,
@@ -16,13 +15,12 @@ export interface AuthenticationRepository {
 		{
 			readonly authenticationId: AuthenticationId;
 			readonly userId: UserId;
-			readonly accountId: AccountId;
 		},
 		BackendError
 	>;
 
-	readonly resolveByAccountId: (
-		accountId: AccountId,
+	readonly resolveByUserId: (
+		userId: UserId,
 	) => Effect.Effect<ReadonlyArray<Authentication>, BackendError>;
 }
 

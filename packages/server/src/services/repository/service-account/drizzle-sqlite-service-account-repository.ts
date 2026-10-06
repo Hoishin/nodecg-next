@@ -1,15 +1,27 @@
 import {
-	AccountId,
 	ApiKeyId,
 	type Role,
 	ServiceAccountId,
+	type UserId,
 } from "@nodecg-next/internal";
-import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
-import { Array, Crypto, DateTime, Effect, Layer, Option } from "effect";
+import { and, eq, inArray } from "drizzle-orm";
+import {
+	Array,
+	Crypto,
+	DateTime,
+	Effect,
+	type HashSet,
+	Layer,
+	Option,
+} from "effect";
 
-import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
+import {
+	DrizzleSqliteDatabaseService,
+	makeQueryInChunks,
+} from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-collision.ts";
 import {
+	AccountId,
 	accounts,
 	apiKeys,
 	roleGrants,
@@ -19,6 +31,7 @@ import { BackendError } from "../repository-errors.ts";
 import {
 	type NewApiKey,
 	ServiceAccountRepositoryService,
+	UnknownServiceAccount,
 } from "./service-account-repository.ts";
 
 export const DrizzleSqliteServiceAccountRepository = Layer.effect(
@@ -26,13 +39,18 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 	Effect.gen(function* () {
 		const crypto = yield* Crypto.Crypto;
 		const db = yield* DrizzleSqliteDatabaseService;
+		const queryInChunks = yield* makeQueryInChunks;
 
-		const selectAccount = Effect.fnUntraced(function* (id: ServiceAccountId) {
-			const rows = yield* db
-				.select({ accountId: serviceAccounts.accountId })
-				.from(serviceAccounts)
-				.where(eq(serviceAccounts.id, id));
-			return Array.head(rows);
+		const requireAccountId = Effect.fnUntraced(function* (
+			id: ServiceAccountId,
+		) {
+			const serviceAccount = yield* db.query.serviceAccounts
+				.findFirst({ columns: { accountId: true }, where: { id } })
+				.pipe(Effect.map(Option.fromUndefinedOr));
+			if (Option.isNone(serviceAccount)) {
+				return yield* UnknownServiceAccount.make({ serviceAccountId: id });
+			}
+			return serviceAccount.value.accountId;
 		});
 
 		const insertKey = Effect.fn(function* (
@@ -63,7 +81,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 
 		const insertServiceAccount = Effect.fn(function* (
 			accountId: AccountId,
-			createdBy: AccountId,
+			createdBy: UserId,
 		) {
 			const uuid = yield* crypto.randomUUIDv7;
 			const id = ServiceAccountId.make(uuid);
@@ -74,16 +92,12 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		const create = Effect.fn("ServiceAccountRepository.create")(
 			function* (input: {
 				readonly displayName: string;
-				readonly createdBy: AccountId;
+				readonly createdBy: UserId;
 			}) {
 				return yield* db.transaction(() =>
 					Effect.gen(function* () {
 						const accountId = yield* insertAccount(input.displayName);
-						const serviceAccountId = yield* insertServiceAccount(
-							accountId,
-							input.createdBy,
-						);
-						return { serviceAccountId, accountId };
+						return yield* insertServiceAccount(accountId, input.createdBy);
 					}),
 				);
 			},
@@ -97,9 +111,9 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			function* (input: {
 				readonly id: ServiceAccountId;
 				readonly displayName: string;
-				readonly createdBy: AccountId;
+				readonly createdBy: UserId;
 			}) {
-				return yield* db.transaction(() =>
+				yield* db.transaction(() =>
 					Effect.gen(function* () {
 						const accountId = yield* insertAccount(input.displayName);
 						yield* db.insert(serviceAccounts).values({
@@ -107,7 +121,6 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 							accountId,
 							createdBy: input.createdBy,
 						});
-						return { serviceAccountId: input.id, accountId };
 					}),
 				);
 			},
@@ -122,7 +135,6 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 				const rows = yield* db
 					.select({
 						id: serviceAccounts.id,
-						accountId: serviceAccounts.accountId,
 						displayName: accounts.displayName,
 					})
 					.from(serviceAccounts)
@@ -140,28 +152,46 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		)(
 			function* (hash: string) {
 				const now = yield* DateTime.now;
-				const rows = yield* db
-					.select({
-						id: serviceAccounts.id,
-						accountId: serviceAccounts.accountId,
-						displayName: accounts.displayName,
+				const key = yield* db.query.apiKeys
+					.findFirst({
+						columns: {},
+						where: {
+							keyHash: hash,
+							expiresAt: {
+								OR: [{ isNull: true }, { gt: DateTime.toEpochMillis(now) }],
+							},
+						},
+						with: {
+							serviceAccount: {
+								columns: { id: true },
+								with: {
+									account: {
+										columns: { displayName: true },
+										with: {
+											roleGrants: {
+												columns: { namespace: true, roleName: true },
+											},
+											globalRoleGrants: { columns: { roleName: true } },
+										},
+									},
+								},
+							},
+						},
 					})
-					.from(apiKeys)
-					.innerJoin(
-						serviceAccounts,
-						eq(serviceAccounts.id, apiKeys.serviceAccountId),
-					)
-					.innerJoin(accounts, eq(accounts.id, serviceAccounts.accountId))
-					.where(
-						and(
-							eq(apiKeys.keyHash, hash),
-							or(
-								isNull(apiKeys.expiresAt),
-								gt(apiKeys.expiresAt, DateTime.toEpochMillis(now)),
-							),
+					.pipe(Effect.map(Option.fromUndefinedOr));
+				return key.pipe(
+					Option.map(({ serviceAccount: { id, account } }) => ({
+						id,
+						displayName: account.displayName,
+						roles: account.roleGrants.map(({ namespace, roleName }) => ({
+							namespace,
+							name: roleName,
+						})),
+						globalRoles: account.globalRoleGrants.map(
+							({ roleName }) => roleName,
 						),
-					);
-				return Array.head(rows);
+					})),
+				);
 			},
 			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
@@ -171,7 +201,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		const listAll = Effect.fn("ServiceAccountRepository.listAll")(
 			function* () {
 				const rows = yield* db.query.serviceAccounts.findMany({
-					columns: { id: true, accountId: true },
+					columns: { id: true },
 					with: {
 						account: {
 							columns: { displayName: true },
@@ -182,9 +212,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 						},
 					},
 				});
-				return rows.map(({ id, accountId, account }) => ({
+				return rows.map(({ id, account }) => ({
 					id,
-					accountId,
 					displayName: account.displayName,
 					roles: account.roleGrants.map(({ namespace, roleName }) => ({
 						namespace,
@@ -213,10 +242,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					Effect.gen(function* () {
 						const found = Array.head(
 							yield* db
-								.select({
-									accountId: accounts.id,
-									displayName: accounts.displayName,
-								})
+								.select({ displayName: accounts.displayName })
 								.from(serviceAccounts)
 								.innerJoin(accounts, eq(accounts.id, serviceAccounts.accountId))
 								.where(eq(serviceAccounts.id, id)),
@@ -257,23 +283,25 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			),
 		);
 
-		const grantRole = Effect.fn("ServiceAccountRepository.grantRole")(
-			function* (id: ServiceAccountId, role: Role) {
-				return yield* db.transaction(() =>
+		const grantRoles = Effect.fn("ServiceAccountRepository.grantRoles")(
+			function* (id: ServiceAccountId, roles: HashSet.HashSet<Role>) {
+				yield* db.transaction(() =>
 					Effect.gen(function* () {
-						const account = yield* selectAccount(id);
-						if (Option.isNone(account)) {
-							return false;
-						}
-						yield* db
-							.insert(roleGrants)
-							.values({
-								accountId: account.value.accountId,
-								namespace: role.namespace,
-								roleName: role.name,
-							})
-							.onConflictDoNothing();
-						return true;
+						const accountId = yield* requireAccountId(id);
+						const rows = Array.fromIterable(roles).map(
+							({ namespace, name }) => ({
+								accountId,
+								namespace,
+								roleName: name,
+							}),
+						);
+						yield* queryInChunks(rows, (chunk) =>
+							db
+								.insert(roleGrants)
+								.values(chunk)
+								.onConflictDoNothing()
+								.pipe(Effect.as([])),
+						);
 					}),
 				);
 			},
@@ -282,24 +310,37 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			),
 		);
 
-		const revokeRole = Effect.fn("ServiceAccountRepository.revokeRole")(
-			function* (id: ServiceAccountId, role: Role) {
-				return yield* db.transaction(() =>
+		const revokeRoles = Effect.fn("ServiceAccountRepository.revokeRoles")(
+			function* (id: ServiceAccountId, roles: HashSet.HashSet<Role>) {
+				yield* db.transaction(() =>
 					Effect.gen(function* () {
-						const account = yield* selectAccount(id);
-						if (Option.isNone(account)) {
-							return false;
-						}
-						yield* db
-							.delete(roleGrants)
-							.where(
-								and(
-									eq(roleGrants.accountId, account.value.accountId),
-									eq(roleGrants.namespace, role.namespace),
-									eq(roleGrants.roleName, role.name),
-								),
+						const accountId = yield* requireAccountId(id);
+						const rolesByNamespace = Map.groupBy(
+							roles,
+							({ namespace }) => namespace,
+						);
+						for (const [namespace, namespaceRoles] of rolesByNamespace) {
+							const rows = namespaceRoles.map(({ name }) => ({
+								accountId,
+								namespace,
+								roleName: name,
+							}));
+							yield* queryInChunks(rows, (chunk) =>
+								db
+									.delete(roleGrants)
+									.where(
+										and(
+											eq(roleGrants.accountId, accountId),
+											eq(roleGrants.namespace, namespace),
+											inArray(
+												roleGrants.roleName,
+												chunk.map(({ roleName }) => roleName),
+											),
+										),
+									)
+									.pipe(Effect.as([])),
 							);
-						return true;
+						}
 					}),
 				);
 			},
@@ -317,8 +358,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			addKey,
 			replaceKey,
 			delete: deleteOne,
-			grantRole,
-			revokeRole,
+			grantRoles,
+			revokeRoles,
 		};
 	}),
 );

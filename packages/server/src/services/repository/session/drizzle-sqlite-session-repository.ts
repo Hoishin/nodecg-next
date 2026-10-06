@@ -48,7 +48,7 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 								columns: { issuer: true, subject: true },
 								with: {
 									user: {
-										columns: { id: true, accountId: true },
+										columns: { id: true },
 										with: {
 											authentications: {
 												columns: { issuer: true, subject: true },
@@ -74,7 +74,6 @@ export const DrizzleSqliteSessionRepository = Layer.effect(
 						authentication: { issuer, subject },
 						user: {
 							id: user.id,
-							accountId: user.accountId,
 							displayName: user.account.displayName,
 							authentications: user.authentications,
 							roles: user.account.roleGrants.map(({ namespace, roleName }) => ({

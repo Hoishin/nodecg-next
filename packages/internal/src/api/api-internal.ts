@@ -12,7 +12,6 @@ import {
 	UserAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "../auth.ts";
-import { AccountId } from "../models/account.ts";
 import { Authentication } from "../models/authentication.ts";
 import { Identity } from "../models/identity.ts";
 import {
@@ -35,7 +34,7 @@ export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
 export class SuperadminRevokeRefused extends Schema.TaggedError<SuperadminRevokeRefused>()(
 	"SuperadminRevokeRefused",
 	{
-		accountId: AccountId,
+		userId: UserId,
 		authentication: Authentication,
 		message: Schema.String,
 	},
@@ -127,11 +126,6 @@ const DeclarableRole = Schema.Struct({
 	name: DeclarableRoleName,
 });
 
-const RoleAssignmentSchema = Schema.Struct({
-	accountId: AccountId,
-	role: DeclarableRole,
-});
-
 export const UserDocumentEntry = Schema.TaggedStruct("user", {
 	authentication: Authentication,
 	displayName: Schema.String,
@@ -171,14 +165,12 @@ const CreateApiKeyRequestSchema = Schema.Struct({
 
 export const CreateApiKeyResultSchema = Schema.Struct({
 	serviceAccountId: ServiceAccountId,
-	accountId: AccountId,
 	displayName: Schema.String,
 	token: Schema.Redacted(Schema.String),
 });
 
 const ServiceAccountSchema = Schema.Struct({
 	id: Schema.String,
-	accountId: AccountId,
 	displayName: Schema.String,
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
@@ -215,7 +207,7 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 		}),
 	)
 	.add(
-		HttpApiEndpoint.post("grantRole", "/service-accounts/:id/roles", {
+		HttpApiEndpoint.post("grantRole", "/service-accounts/:id/roles/grant", {
 			params: { id: ServiceAccountId },
 			payload: DeclarableRole,
 			success: HttpApiSchema.Empty(204),
@@ -223,30 +215,24 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 		}),
 	)
 	.add(
-		HttpApiEndpoint.delete(
-			"revokeRole",
-			"/service-accounts/:id/namespaces/:namespace/roles/:name",
-			{
-				params: {
-					id: ServiceAccountId,
-					namespace: Schema.String,
-					name: DeclarableRoleName,
-				},
-				success: HttpApiSchema.Empty(204),
-				error: HttpApiError.NotFound,
-			},
-		),
+		HttpApiEndpoint.post("revokeRole", "/service-accounts/:id/roles/revoke", {
+			params: { id: ServiceAccountId },
+			payload: DeclarableRole,
+			success: HttpApiSchema.Empty(204),
+			error: HttpApiError.NotFound,
+		}),
 	)
 	.middleware(AdminTierMiddleware);
 
 const UserSchema = Schema.Struct({
 	id: UserId,
-	accountId: AccountId,
 	displayName: Schema.String,
 	authentications: Schema.Array(Authentication),
 	roles: Schema.Array(Role),
 	globalRoles: Schema.Array(GlobalRoleName),
 });
+
+const AdminRole = Schema.Struct({ name: AdminRoleName });
 
 const ListUsersResult = Schema.Struct({
 	users: Schema.Array(UserSchema),
@@ -259,23 +245,44 @@ const UsersGroup = HttpApiGroup.make("Users")
 			success: ListUsersResult,
 		}),
 	)
-	.middleware(AdminTierMiddleware);
-
-const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
-		HttpApiEndpoint.post("grant", "/roles/grant", {
-			payload: RoleAssignmentSchema,
+		HttpApiEndpoint.post("grantRole", "/users/:id/roles/grant", {
+			params: { id: UserId },
+			payload: DeclarableRole,
 			success: HttpApiSchema.Empty(204),
 			error: [HttpApiError.NotFound, HttpApiError.UnprocessableEntity],
 		}),
 	)
 	.add(
-		HttpApiEndpoint.post("revoke", "/roles/revoke", {
-			payload: RoleAssignmentSchema,
+		HttpApiEndpoint.post("revokeRole", "/users/:id/roles/revoke", {
+			params: { id: UserId },
+			payload: DeclarableRole,
 			success: HttpApiSchema.Empty(204),
 			error: HttpApiError.NotFound,
 		}),
 	)
+	.middleware(AdminTierMiddleware)
+	.add(
+		HttpApiEndpoint.post("grantAdminRole", "/users/:id/admin-roles/grant", {
+			params: { id: UserId },
+			payload: AdminRole,
+			success: HttpApiSchema.Empty(204),
+			error: HttpApiError.NotFound,
+		}).middleware(SuperadminMiddleware),
+	)
+	.add(
+		HttpApiEndpoint.post("revokeAdminRole", "/users/:id/admin-roles/revoke", {
+			params: { id: UserId },
+			payload: AdminRole,
+			success: HttpApiSchema.Empty(204),
+			error: [
+				HttpApiError.NotFound,
+				SuperadminRevokeRefused.pipe(HttpApiSchema.status(422)),
+			],
+		}).middleware(SuperadminMiddleware),
+	);
+
+const RolesGroup = HttpApiGroup.make("Roles")
 	.add(
 		HttpApiEndpoint.get("export", "/roles/export", {
 			success: RoleAssignmentsDocument,
@@ -289,37 +296,11 @@ const RolesGroup = HttpApiGroup.make("Roles")
 	)
 	.middleware(AdminTierMiddleware);
 
-export const AdminRoleAssignmentSchema = Schema.Struct({
-	accountId: AccountId,
-	role: AdminRoleName,
-});
-
-const AdminRolesGroup = HttpApiGroup.make("AdminRoles")
-	.add(
-		HttpApiEndpoint.post("grantAdmin", "/admin-roles/grant", {
-			payload: AdminRoleAssignmentSchema,
-			success: HttpApiSchema.Empty(204),
-			error: HttpApiError.NotFound,
-		}),
-	)
-	.add(
-		HttpApiEndpoint.post("revokeAdmin", "/admin-roles/revoke", {
-			payload: AdminRoleAssignmentSchema,
-			success: HttpApiSchema.Empty(204),
-			error: [
-				HttpApiError.NotFound,
-				SuperadminRevokeRefused.pipe(HttpApiSchema.status(422)),
-			],
-		}),
-	)
-	.middleware(SuperadminMiddleware);
-
 export const InternalApi = HttpApi.make("InternalApi")
 	.add(fieldGroup("Field"))
 	.add(AuthenticationGroup)
 	.add(ServiceAccountsGroup)
 	.add(UsersGroup)
 	.add(RolesGroup)
-	.add(AdminRolesGroup)
 	.middleware(UserAuthenticationMiddleware)
 	.prefix("/api/internal");

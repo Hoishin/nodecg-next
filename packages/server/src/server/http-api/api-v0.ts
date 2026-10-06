@@ -14,7 +14,7 @@ import {
 const provideIdentity = Effect.provideServiceEffect(
 	CurrentIdentity,
 	Effect.gen(function* () {
-		const { serviceAccount } = yield* CurrentServiceAccount;
+		const serviceAccount = yield* CurrentServiceAccount;
 		return serviceAccount;
 	}),
 );

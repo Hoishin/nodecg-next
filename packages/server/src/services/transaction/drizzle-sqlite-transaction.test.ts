@@ -1,12 +1,11 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { AccountId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { Reactivity } from "effect/unstable/reactivity";
 import { describe, expect } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../database/drizzle-sqlite/drizzle-sqlite-database.ts";
-import { accounts } from "../database/drizzle-sqlite/tables.ts";
+import { AccountId, accounts } from "../database/drizzle-sqlite/tables.ts";
 import { DrizzleSqliteTransaction } from "./drizzle-sqlite-transaction.ts";
 import { TransactionService } from "./transaction.ts";
 

@@ -41,7 +41,7 @@ const deleteServiceAccount = async (id: string) => {
 const grantServiceAccountRole = async (id: string, role: string) => {
 	await login("root");
 	const response = await fetch(
-		`${base}/api/internal/service-accounts/${id}/roles`,
+		`${base}/api/internal/service-accounts/${id}/roles/grant`,
 		{
 			method: "POST",
 			headers: { "content-type": "application/json" },

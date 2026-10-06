@@ -407,6 +407,7 @@ The server reads its settings from environment variables.
 | `NODECG_DEV` | `false` | development mode |
 | `NODECG_REQUIRE_AUTH` | `false` | refuse anonymous requests |
 | `NODECG_SESSION_TTL` | `7 days` | how long a login session lasts |
+| `NODECG_SESSION_RENEW_INTERVAL` | `1 day` | how often a session in use is renewed |
 | `NODECG_LOGIN_ATTEMPT_TTL` | `10 minutes` | how long a started login stays valid |
 | `NODECG_SUPERADMINS` | none | superadmins, as comma-separated `provider:subject` pairs |
 | `NODECG_SUPERADMIN_CLAIM_TOKEN` | none | a secret of 16 characters or more that lets a logged-in user claim superadmin |

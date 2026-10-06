@@ -1,13 +1,12 @@
 import {
 	User,
 	AnonymousIdentitySchema,
-	type CurrentSessionCaller,
+	type CurrentSessionUser,
 	ServiceAccount,
 } from "@nodecg-next/internal";
 import { Array, Effect, Option } from "effect";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
-import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import { hashApiKey } from "./service-accounts.ts";
@@ -27,8 +26,8 @@ export const resolveSessionCaller = Effect.fn("resolveSessionCaller")(
 		}
 
 		const { authentication, user } = session.value;
-		return Option.some({
-			user: User.make({
+		return Option.some(
+			User.make({
 				id: user.id,
 				authentication,
 				displayName: user.displayName,
@@ -39,8 +38,7 @@ export const resolveSessionCaller = Effect.fn("resolveSessionCaller")(
 					? Array.union(user.globalRoles, ["superadmin"] as const)
 					: user.globalRoles,
 			}),
-			accountId: user.accountId,
-		});
+		);
 	},
 );
 
@@ -48,29 +46,16 @@ export const resolveServiceAccountCaller = Effect.fn(
 	"resolveServiceAccountCaller",
 )(function* (token: string) {
 	const serviceAccounts = yield* ServiceAccountRepositoryService;
-	const roleRepository = yield* RoleRepositoryService;
 	const hash = yield* hashApiKey(token);
 	const serviceAccount = yield* serviceAccounts.resolveByKeyHash(hash);
 	if (Option.isNone(serviceAccount)) {
 		return Option.none();
 	}
-	const { id, accountId, displayName } = serviceAccount.value;
-	const { roles, globalRoles } = yield* roleRepository.read(accountId);
-	return Option.some({
-		serviceAccount: ServiceAccount.make({
-			id,
-			displayName,
-			roles,
-			globalRoles,
-		}),
-		accountId,
-	});
+	const { id, displayName, roles, globalRoles } = serviceAccount.value;
+	return Option.some(
+		ServiceAccount.make({ id, displayName, roles, globalRoles }),
+	);
 });
 
-export const getSessionIdentity = (caller: CurrentSessionCaller["Service"]) =>
-	caller.pipe(
-		Option.match({
-			onNone: () => anonymousIdentity,
-			onSome: ({ user }) => user,
-		}),
-	);
+export const getSessionIdentity = (caller: CurrentSessionUser["Service"]) =>
+	caller.pipe(Option.getOrElse(() => anonymousIdentity));

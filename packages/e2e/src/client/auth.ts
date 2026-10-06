@@ -18,7 +18,7 @@ export const makeAuthHelpers = (baseUrl: string) => {
 	const logout = () => client.logout();
 	const me = () => client.me();
 
-	const findAccountId = async (subject: string) => {
+	const findUserId = async (subject: string) => {
 		const { users } = await client.listUsers();
 		const user = users.find(({ authentications }) =>
 			authentications.some(
@@ -27,39 +27,36 @@ export const makeAuthHelpers = (baseUrl: string) => {
 			),
 		);
 		if (typeof user === "undefined") {
-			throw new Error(`"${subject}" has no account`);
+			throw new Error(`"${subject}" is not a user`);
 		}
-		return user.accountId;
+		return user.id;
 	};
 
-	const createAccount = async (subject: string) => {
+	const createUser = async (subject: string) => {
 		await login(subject);
 		await login("root");
-		const accountId = await findAccountId(subject);
+		const userId = await findUserId(subject);
 		await logout();
-		return accountId;
+		return userId;
 	};
 
-	const grantRole = (accountId: string, role: RoleAssignment["role"]) =>
-		client.grantRole({ accountId, role });
+	const grantRole = (userId: string, role: RoleAssignment["role"]) =>
+		client.grantRole({ userId, role });
 
-	const revokeRole = (accountId: string, role: RoleAssignment["role"]) =>
-		client.revokeRole({ accountId, role });
+	const revokeRole = (userId: string, role: RoleAssignment["role"]) =>
+		client.revokeRole({ userId, role });
 
-	const grantAsAdmin = async (
-		accountId: string,
-		role: RoleAssignment["role"],
-	) => {
+	const grantAsAdmin = async (userId: string, role: RoleAssignment["role"]) => {
 		await login("root");
-		await grantRole(accountId, role);
+		await grantRole(userId, role);
 	};
 
 	const revokeAsAdmin = async (
-		accountId: string,
+		userId: string,
 		role: RoleAssignment["role"],
 	) => {
 		await login("root");
-		await revokeRole(accountId, role);
+		await revokeRole(userId, role);
 	};
 
 	return {
@@ -68,7 +65,7 @@ export const makeAuthHelpers = (baseUrl: string) => {
 		login,
 		logout,
 		me,
-		createAccount,
+		createUser,
 		grantRole,
 		revokeRole,
 		grantAsAdmin,

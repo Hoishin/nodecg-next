@@ -41,7 +41,6 @@ import {
 	type RegisteredNamespace,
 } from "../namespace-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
-import { DrizzleSqliteAccountRepository } from "../services/repository/account/drizzle-sqlite-account-repository.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
@@ -174,7 +173,6 @@ const webHandler = Effect.fn(function* (
 		DrizzleSqliteLoginAttemptRepository,
 		DrizzleSqliteAuthenticationRepository,
 		DrizzleSqliteSessionRepository,
-		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
 		DrizzleSqliteServiceAccountRepository,
 		DrizzleSqliteUserRepository,

@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
 	CurrentIdentity,
-	CurrentSessionCaller,
+	CurrentSessionUser,
 	CurrentUser,
 	UserDocumentEntry,
 	ServiceAccountDocumentEntry,
@@ -10,8 +10,6 @@ import {
 	sessionCookieName,
 	SuperadminRevokeRefused,
 	TooManyRequests,
-	AccountId,
-	Role,
 } from "@nodecg-next/internal";
 import { MalformedUrl, parseRelativeUrl } from "@nodecg-next/internal/utils";
 import {
@@ -25,7 +23,6 @@ import {
 	HashSet,
 	Layer,
 	Match,
-	MutableHashMap,
 	Option,
 	type PlatformError,
 	Redacted,
@@ -46,11 +43,7 @@ import {
 	consumeLoginAttempt,
 	createLoginAttempt,
 } from "../../auth/login-attempt.ts";
-import {
-	grantGlobalRole,
-	superadminExists,
-	revokeGlobalRole,
-} from "../../auth/roles.ts";
+import { superadminExists } from "../../auth/roles.ts";
 import {
 	createServiceAccount,
 	hashApiKey,
@@ -62,6 +55,7 @@ import {
 	revokeSession,
 	setSessionCookie,
 } from "../../auth/session.ts";
+import { grantGlobalRole, revokeGlobalRole } from "../../auth/users.ts";
 import { ConfiguredSuperadmins } from "../../configured-superadmins.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { NamespaceRegistryService } from "../../namespace-registry.ts";
@@ -87,7 +81,7 @@ const loginAttemptCookieName = "nodecg.login_attempt";
 const provideIdentity = Effect.provideServiceEffect(
 	CurrentIdentity,
 	Effect.gen(function* () {
-		const caller = yield* CurrentSessionCaller;
+		const caller = yield* CurrentSessionUser;
 		return getSessionIdentity(caller);
 	}),
 );
@@ -352,7 +346,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 				)
 				.handle("claimSuperadmin", ({ payload: { token } }) =>
 					Effect.gen(function* () {
-						const caller = yield* CurrentSessionCaller;
+						const caller = yield* CurrentSessionUser;
 						// Gate unauthenticated users to consume rate limit
 						if (Option.isNone(caller)) {
 							return yield* HttpApiError.Unauthorized.make();
@@ -379,11 +373,9 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							return yield* HttpApiError.Forbidden.make();
 						}
 
-						yield* grantGlobalRole(caller.value.accountId, "superadmin");
+						yield* grantGlobalRole(caller.value.id, "superadmin");
 					}).pipe(
-						Effect.catchTag("UnknownAccount", () =>
-							HttpApiError.Forbidden.make(),
-						),
+						Effect.catchTag("UnknownUser", () => HttpApiError.Forbidden.make()),
 						reportBackendFailure,
 						claimLock.withPermits(1),
 					),
@@ -391,64 +383,72 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 		}),
 );
 
-const AdminRolesGroupLive = HttpApiBuilder.group(
-	RootApi,
-	"AdminRoles",
-	(handlers) =>
-		handlers
-			.handle("grantAdmin", ({ payload: { accountId, role } }) =>
-				grantGlobalRole(accountId, role).pipe(
-					Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
-					reportBackendFailure,
-				),
-			)
-			.handle("revokeAdmin", ({ payload: { accountId, role } }) =>
-				revokeGlobalRole(accountId, role).pipe(
-					Effect.catchTags({
-						UnknownAccount: () => HttpApiError.NotFound.make(),
-						SuperadminInConfig: ({ accountId, authentication }) =>
-							SuperadminRevokeRefused.make({
-								accountId,
-								authentication,
-								message: `Superadmin "${authentication.issuer}:${authentication.subject}" comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there`,
-							}),
-					}),
-					reportBackendFailure,
-				),
-			),
-);
-
 const UsersGroupLive = HttpApiBuilder.group(RootApi, "Users", (handlers) =>
-	handlers.handle("list", () =>
-		Effect.gen(function* () {
-			const userRepository = yield* UserRepositoryService;
-			const superadmins = yield* ConfiguredSuperadmins;
-			const users = yield* userRepository.listAll();
-			return {
-				users: users.map(
-					({
-						id,
-						accountId,
-						displayName,
-						authentications,
-						roles,
-						globalRoles,
-					}) => ({
-						id,
-						accountId,
-						displayName,
-						authentications,
-						roles,
-						globalRoles: Array.isArrayNonEmpty(
-							Array.intersection(authentications, superadmins),
-						)
-							? Array.union(globalRoles, ["superadmin"] as const)
-							: globalRoles,
-					}),
-				),
-			};
-		}).pipe(reportBackendFailure),
-	),
+	handlers
+		.handle("list", () =>
+			Effect.gen(function* () {
+				const userRepository = yield* UserRepositoryService;
+				const superadmins = yield* ConfiguredSuperadmins;
+				const users = yield* userRepository.listAll();
+				return {
+					users: users.map(
+						({ id, displayName, authentications, roles, globalRoles }) => ({
+							id,
+							displayName,
+							authentications,
+							roles,
+							globalRoles: Array.isArrayNonEmpty(
+								Array.intersection(authentications, superadmins),
+							)
+								? Array.union(globalRoles, ["superadmin"] as const)
+								: globalRoles,
+						}),
+					),
+				};
+			}).pipe(reportBackendFailure),
+		)
+		.handle("grantRole", ({ params: { id }, payload: role }) =>
+			Effect.gen(function* () {
+				const { declaredRoles } = yield* NamespaceRegistryService;
+				if (!declaredRoles.get(role.namespace)?.has(role.name)) {
+					return yield* HttpApiError.UnprocessableEntity.make();
+				}
+				const users = yield* UserRepositoryService;
+				yield* users.grantRoles(id, HashSet.make(role));
+			}).pipe(
+				Effect.catchTag("UnknownUser", () => HttpApiError.NotFound.make()),
+				reportBackendFailure,
+			),
+		)
+		.handle("revokeRole", ({ params: { id }, payload: role }) =>
+			Effect.gen(function* () {
+				const users = yield* UserRepositoryService;
+				yield* users.revokeRoles(id, HashSet.make(role));
+			}).pipe(
+				Effect.catchTag("UnknownUser", () => HttpApiError.NotFound.make()),
+				reportBackendFailure,
+			),
+		)
+		.handle("grantAdminRole", ({ params: { id }, payload: { name } }) =>
+			grantGlobalRole(id, name).pipe(
+				Effect.catchTag("UnknownUser", () => HttpApiError.NotFound.make()),
+				reportBackendFailure,
+			),
+		)
+		.handle("revokeAdminRole", ({ params: { id }, payload: { name } }) =>
+			revokeGlobalRole(id, name).pipe(
+				Effect.catchTags({
+					UnknownUser: () => HttpApiError.NotFound.make(),
+					SuperadminInConfig: ({ userId, authentication }) =>
+						SuperadminRevokeRefused.make({
+							userId,
+							authentication,
+							message: `Superadmin "${authentication.issuer}:${authentication.subject}" comes from NODECG_SUPERADMINS and can only be revoked by removing the entry there`,
+						}),
+				}),
+				reportBackendFailure,
+			),
+		),
 );
 
 const ServiceAccountsGroupLive = HttpApiBuilder.group(
@@ -458,8 +458,8 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 		handlers
 			.handle("createApiKey", ({ payload: { displayName } }) =>
 				Effect.gen(function* () {
-					const creator = yield* CurrentUser;
-					return yield* createServiceAccount(displayName, creator.accountId);
+					const currentUser = yield* CurrentUser;
+					return yield* createServiceAccount(displayName, currentUser.id);
 				}).pipe(reportBackendFailure),
 			)
 			.handle("list", () =>
@@ -491,7 +491,6 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 					}
 					return {
 						serviceAccountId: id,
-						accountId: replaced.value.accountId,
 						displayName: replaced.value.displayName,
 						token,
 					};
@@ -504,50 +503,29 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 						return yield* HttpApiError.UnprocessableEntity.make();
 					}
 					const serviceAccounts = yield* ServiceAccountRepositoryService;
-					const found = yield* serviceAccounts.grantRole(id, role);
-					if (!found) {
-						return yield* HttpApiError.NotFound.make();
-					}
-				}).pipe(reportBackendFailure),
+					yield* serviceAccounts.grantRoles(id, HashSet.make(role));
+				}).pipe(
+					Effect.catchTag("UnknownServiceAccount", () =>
+						HttpApiError.NotFound.make(),
+					),
+					reportBackendFailure,
+				),
 			)
-			.handle("revokeRole", ({ params: { id, namespace, name } }) =>
+			.handle("revokeRole", ({ params: { id }, payload: role }) =>
 				Effect.gen(function* () {
 					const serviceAccounts = yield* ServiceAccountRepositoryService;
-					const found = yield* serviceAccounts.revokeRole(id, {
-						namespace,
-						name,
-					});
-					if (!found) {
-						return yield* HttpApiError.NotFound.make();
-					}
-				}).pipe(reportBackendFailure),
+					yield* serviceAccounts.revokeRoles(id, HashSet.make(role));
+				}).pipe(
+					Effect.catchTag("UnknownServiceAccount", () =>
+						HttpApiError.NotFound.make(),
+					),
+					reportBackendFailure,
+				),
 			),
 );
 
 const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 	handlers
-		.handle("grant", ({ payload: { accountId, role } }) =>
-			Effect.gen(function* () {
-				const { declaredRoles } = yield* NamespaceRegistryService;
-				if (!declaredRoles.get(role.namespace)?.has(role.name)) {
-					return yield* HttpApiError.UnprocessableEntity.make();
-				}
-				const roleRepository = yield* RoleRepositoryService;
-				yield* roleRepository.grantRole(accountId, role);
-			}).pipe(
-				Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
-				reportBackendFailure,
-			),
-		)
-		.handle("revoke", ({ payload: { accountId, role } }) =>
-			Effect.gen(function* () {
-				const roleRepository = yield* RoleRepositoryService;
-				yield* roleRepository.revokeRole(accountId, role);
-			}).pipe(
-				Effect.catchTag("UnknownAccount", () => HttpApiError.NotFound.make()),
-				reportBackendFailure,
-			),
-		)
 		.handle("export", () =>
 			Effect.gen(function* () {
 				const roleRepository = yield* RoleRepositoryService;
@@ -586,62 +564,62 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 				const authentications = yield* AuthenticationRepositoryService;
 				const serviceAccounts = yield* ServiceAccountRepositoryService;
 
-				const accountRoleMap = MutableHashMap.empty<
-					AccountId,
-					HashSet.HashSet<Role>
-				>();
+				const users = yield* UserRepositoryService;
 
 				// Admin roles are outside of import and export
 				const roleRepository = yield* RoleRepositoryService;
 				yield* TransactionService.wrap(
 					Effect.gen(function* () {
+						if (mode === "replace") {
+							yield* roleRepository.revokeAllRoles();
+						}
+
 						for (const entry of document.assignments) {
-							const accountId = yield* Match.value(entry).pipe(
-								Match.tag("user", ({ authentication, displayName }) =>
+							yield* Match.value(entry).pipe(
+								Match.tag("user", ({ authentication, displayName, roles }) =>
 									Effect.gen(function* () {
-										const upsertResult =
+										const { userId } =
 											yield* authentications.findOrCreateAuthentication(
 												authentication,
 												displayName,
 											);
-										return upsertResult.accountId;
+										yield* users.grantRoles(
+											userId,
+											HashSet.fromIterable(roles),
+										);
 									}),
 								),
-								Match.tag("serviceAccount", ({ id, displayName }) =>
+								Match.tag("serviceAccount", ({ id, displayName, roles }) =>
 									Effect.gen(function* () {
-										const account = yield* serviceAccounts.resolveById(id);
-										if (Option.isSome(account)) {
-											return account.value.accountId;
+										const serviceAccount =
+											yield* serviceAccounts.resolveById(id);
+										if (Option.isNone(serviceAccount)) {
+											const currentUser = yield* CurrentUser;
+											yield* serviceAccounts.createWithId({
+												id,
+												displayName,
+												createdBy: currentUser.id,
+											});
 										}
-										const creator = yield* CurrentUser;
-										const { accountId } = yield* serviceAccounts.createWithId({
+										yield* serviceAccounts.grantRoles(
 											id,
-											displayName,
-											createdBy: creator.accountId,
-										});
-										return accountId;
+											HashSet.fromIterable(roles),
+										);
 									}),
 								),
 								Match.exhaustive,
 							);
-							MutableHashMap.modifyAt(accountRoleMap, accountId, (existing) =>
-								existing.pipe(
-									Option.getOrElse(() => HashSet.empty<Role>()),
-									HashSet.union(HashSet.fromIterable(entry.roles)),
-									Option.some,
-								),
-							);
 						}
-
-						if (mode === "replace") {
-							yield* roleRepository.revokeAllRoles();
-						}
-						yield* roleRepository.grantRoles(
-							HashMap.fromIterable(accountRoleMap),
-						);
 					}),
 				);
-			}).pipe(reportBackendFailure),
+			}).pipe(
+				Effect.catchTag(["UnknownUser", "UnknownServiceAccount"], (error) =>
+					Effect.logError("Backend failed", error).pipe(
+						Effect.andThen(HttpApiError.InternalServerError.make()),
+					),
+				),
+				reportBackendFailure,
+			),
 		),
 );
 
@@ -670,5 +648,4 @@ export const InternalGroupsLive = Layer.mergeAll(
 	ServiceAccountsGroupLive,
 	UsersGroupLive,
 	RolesGroupLive,
-	AdminRolesGroupLive,
 );

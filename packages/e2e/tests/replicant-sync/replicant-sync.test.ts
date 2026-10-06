@@ -9,27 +9,27 @@ import {
 } from "../../src/shared/manifests.ts";
 
 const base = suiteBase("replicant-sync");
-const { createAccount, grantAsAdmin, login, logout, revokeAsAdmin } =
+const { createUser, grantAsAdmin, login, logout, revokeAsAdmin } =
 	makeAuthHelpers(base);
 
 // Assign the roles the field-access tests rely on once, so those tests just log
 // in as the subject. Grant/revoke behavior itself is covered in auth.test.ts.
 beforeAll(async () => {
-	const prodAccountId = await createAccount("prod");
-	const viewAccountId = await createAccount("view");
-	await grantAsAdmin(prodAccountId, { namespace: "e2e", name: "producer" });
-	await grantAsAdmin(prodAccountId, {
+	const prodUserId = await createUser("prod");
+	const viewUserId = await createUser("view");
+	await grantAsAdmin(prodUserId, { namespace: "e2e", name: "producer" });
+	await grantAsAdmin(prodUserId, {
 		namespace: "e2e-extend",
 		name: "producer",
 	});
-	await grantAsAdmin(viewAccountId, { namespace: "e2e", name: "viewer" });
+	await grantAsAdmin(viewUserId, { namespace: "e2e", name: "viewer" });
 	return async () => {
-		await revokeAsAdmin(prodAccountId, { namespace: "e2e", name: "producer" });
-		await revokeAsAdmin(prodAccountId, {
+		await revokeAsAdmin(prodUserId, { namespace: "e2e", name: "producer" });
+		await revokeAsAdmin(prodUserId, {
 			namespace: "e2e-extend",
 			name: "producer",
 		});
-		await revokeAsAdmin(viewAccountId, { namespace: "e2e", name: "viewer" });
+		await revokeAsAdmin(viewUserId, { namespace: "e2e", name: "viewer" });
 		await logout();
 	};
 });
@@ -408,10 +408,10 @@ describe("role-gated field access (HTTP)", () => {
 	});
 
 	test("a role granted in one namespace does not reach another declaring the same role", async () => {
-		const singleAccountId = await createAccount("single");
-		await grantAsAdmin(singleAccountId, { namespace: "e2e", name: "producer" });
+		const singleUserId = await createUser("single");
+		await grantAsAdmin(singleUserId, { namespace: "e2e", name: "producer" });
 		onTestFinished(async () => {
-			await revokeAsAdmin(singleAccountId, {
+			await revokeAsAdmin(singleUserId, {
 				namespace: "e2e",
 				name: "producer",
 			});

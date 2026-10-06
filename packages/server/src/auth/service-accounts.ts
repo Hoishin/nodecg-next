@@ -1,4 +1,4 @@
-import type { AccountId } from "@nodecg-next/internal";
+import type { UserId } from "@nodecg-next/internal";
 import { Crypto, Effect, Encoding, Redacted } from "effect";
 
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
@@ -20,20 +20,20 @@ export const newApiKey = Effect.fnUntraced(function* () {
 });
 
 export const createServiceAccount = Effect.fn("createServiceAccount")(
-	function* (displayName: string, createdBy: AccountId) {
+	function* (displayName: string, createdBy: UserId) {
 		const repository = yield* ServiceAccountRepositoryService;
 		const token = yield* newApiKey();
 		const hash = yield* hashApiKey(Redacted.value(token));
-		const { serviceAccountId, accountId } = yield* TransactionService.wrap(
+		const serviceAccountId = yield* TransactionService.wrap(
 			Effect.gen(function* () {
-				const { serviceAccountId, accountId } = yield* repository.create({
+				const serviceAccountId = yield* repository.create({
 					displayName,
 					createdBy,
 				});
 				yield* repository.addKey(serviceAccountId, { hash, label: "" });
-				return { serviceAccountId, accountId };
+				return serviceAccountId;
 			}),
 		);
-		return { serviceAccountId, accountId, displayName, token };
+		return { serviceAccountId, displayName, token };
 	},
 );

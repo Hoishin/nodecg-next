@@ -1,7 +1,7 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { AccountId, type Authentication } from "@nodecg-next/internal";
+import { type Authentication, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Crypto, Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
@@ -77,7 +77,6 @@ describe("findOrCreateAuthentication", () => {
 			expect(created).toStrictEqual({
 				authenticationId: authentication.id,
 				userId: user.id,
-				accountId: account.id,
 			});
 			expect(account).toStrictEqual({
 				id: account.id,
@@ -135,7 +134,7 @@ describe("findOrCreateAuthentication", () => {
 			);
 			const other = yield* repository.findOrCreateAuthentication(bob, "Bob");
 
-			expect(other.accountId).not.toBe(created.accountId);
+			expect(other.userId).not.toBe(created.userId);
 			expect(
 				(yield* db.select({ displayName: accounts.displayName }).from(accounts))
 					.map(({ displayName }) => displayName)
@@ -166,13 +165,18 @@ describe("findOrCreateAuthentication", () => {
 
 			// 3 ids times 3 attempts
 			expect(randomBytes).toHaveBeenCalledTimes(9);
-			const accountRows = yield* db
-				.select()
-				.from(accounts)
+			const userRows = yield* db
+				.select({
+					userId: users.id,
+					displayName: accounts.displayName,
+					createdAt: accounts.createdAt,
+				})
+				.from(users)
+				.innerJoin(accounts, eq(accounts.id, users.accountId))
 				.orderBy(accounts.displayName);
-			expect(accountRows).toStrictEqual([
-				{ id: aliceIds.accountId, displayName: "Alice", createdAt: 0 },
-				{ id: bobIds.accountId, displayName: "Bob", createdAt: 0 },
+			expect(userRows).toStrictEqual([
+				{ userId: aliceIds.userId, displayName: "Alice", createdAt: 0 },
+				{ userId: bobIds.userId, displayName: "Bob", createdAt: 0 },
 			]);
 		}),
 	);
@@ -194,31 +198,31 @@ describe("findOrCreateAuthentication", () => {
 	);
 });
 
-describe("resolveByAccountId", () => {
+describe("resolveByUserId", () => {
 	test(
-		"resolves the authentications of the account only",
+		"resolves the authentications of the user only",
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
-			const { accountId } = yield* repository.findOrCreateAuthentication(
+			const { userId } = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
 			);
 			yield* repository.findOrCreateAuthentication(bob, "Bob");
 
-			const resolved = yield* repository.resolveByAccountId(accountId);
-			expect(resolved).toStrictEqual([alice]);
+			const authentications = yield* repository.resolveByUserId(userId);
+			expect(authentications).toStrictEqual([alice]);
 		}),
 	);
 
 	test(
-		"resolves nothing for an unknown account",
+		"resolves nothing for an unknown user",
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 
-			const resolved = yield* repository.resolveByAccountId(
-				AccountId.make("missing"),
+			const authentications = yield* repository.resolveByUserId(
+				UserId.make("missing"),
 			);
-			expect(resolved).toStrictEqual([]);
+			expect(authentications).toStrictEqual([]);
 		}),
 	);
 });

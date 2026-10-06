@@ -1,5 +1,4 @@
 import type {
-	AccountId,
 	Authentication,
 	AuthenticationId,
 	GlobalRoleName,
@@ -24,7 +23,6 @@ export interface SessionRepository {
 			readonly authentication: Authentication;
 			readonly user: {
 				readonly id: UserId;
-				readonly accountId: AccountId;
 				readonly displayName: string;
 				readonly authentications: ReadonlyArray<Authentication>;
 				readonly roles: ReadonlyArray<Role>;

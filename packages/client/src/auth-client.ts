@@ -1,9 +1,9 @@
 import {
-	AccountId,
 	InternalApi,
 	type Role,
 	RoleName,
 	type LoginProvider,
+	UserId,
 } from "@nodecg-next/internal";
 import { buildRelativeUrl } from "@nodecg-next/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
@@ -18,7 +18,7 @@ export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 }
 
 export interface RoleAssignment {
-	readonly accountId: string;
+	readonly userId: string;
 	readonly role: typeof Role.Encoded;
 }
 
@@ -56,13 +56,11 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	const grantRole = Effect.fn("grantRole")(function* (
 		assignment: RoleAssignment,
 	) {
-		yield* api.Roles.grant({
+		yield* api.Users.grantRole({
+			params: { id: UserId.make(assignment.userId) },
 			payload: {
-				accountId: AccountId.make(assignment.accountId),
-				role: {
-					namespace: assignment.role.namespace,
-					name: RoleName(assignment.role.name),
-				},
+				namespace: assignment.role.namespace,
+				name: RoleName(assignment.role.name),
 			},
 		}).pipe(Effect.mapError(requestFailed));
 	});
@@ -70,13 +68,11 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	const revokeRole = Effect.fn("revokeRole")(function* (
 		assignment: RoleAssignment,
 	) {
-		yield* api.Roles.revoke({
+		yield* api.Users.revokeRole({
+			params: { id: UserId.make(assignment.userId) },
 			payload: {
-				accountId: AccountId.make(assignment.accountId),
-				role: {
-					namespace: assignment.role.namespace,
-					name: RoleName(assignment.role.name),
-				},
+				namespace: assignment.role.namespace,
+				name: RoleName(assignment.role.name),
 			},
 		}).pipe(Effect.mapError(requestFailed));
 	});

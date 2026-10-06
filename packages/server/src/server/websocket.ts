@@ -15,6 +15,7 @@ import {
 	type TopicFieldIdentifier,
 } from "@nodecg-next/internal";
 import {
+	Context,
 	Data,
 	Effect,
 	Fiber,
@@ -314,7 +315,9 @@ export const websocketRoute = HttpRouter.use((router) =>
 		const requireAuth = yield* config.requireAuth;
 		const context = yield* Effect.context<
 			TopicBrokerService | DerivationEngineService
-		>();
+		>().pipe(
+			Effect.map(Context.pick(TopicBrokerService, DerivationEngineService)),
+		);
 
 		yield* router.add(
 			"GET",
@@ -350,9 +353,7 @@ export const websocketRoute = HttpRouter.use((router) =>
 				if (Option.isNone(caller)) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
-				return yield* wsHandler(caller.value.serviceAccount).pipe(
-					Effect.provide(context),
-				);
+				return yield* wsHandler(caller.value).pipe(Effect.provide(context));
 			}),
 		);
 	}),

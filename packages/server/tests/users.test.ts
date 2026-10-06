@@ -7,11 +7,11 @@ import {
 	type AuthProvider,
 	AuthProviderRegistry,
 } from "../src/auth/auth-provider.ts";
-import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
+import { UserRepositoryService } from "../src/services/repository/user/user-repository.ts";
 import {
 	buildClient,
 	createServiceAccount,
-	findAccountId,
+	findUser,
 	login,
 	loginAdmin,
 	services,
@@ -49,30 +49,28 @@ describe("list", () => {
 		"lists each user with its account, authentications and roles",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 
 			yield* login(client, operator);
-			const operatorId = yield* findAccountId(operator);
-			yield* roles.grantRoles(HashMap.make([operatorId, HashSet.make(viewer)]));
+			const { id: operatorId } = yield* findUser(operator);
+			yield* users.grantRoles(operatorId, HashSet.make(viewer));
 
 			const asAdmin = yield* loginAdmin(client, admin);
-			const adminId = yield* findAccountId(admin);
+			const { id: adminId } = yield* findUser(admin);
 
 			const res = yield* asAdmin.get(usersUrl);
 			expect(res.status).toBe(200);
 			expect(yield* res.json).toEqual({
 				users: expect.arrayContaining([
 					{
-						id: expect.any(String),
-						accountId: operatorId,
+						id: operatorId,
 						displayName: "operator",
 						authentications: [operator],
 						roles: [viewer],
 						globalRoles: [],
 					},
 					{
-						id: expect.any(String),
-						accountId: adminId,
+						id: adminId,
 						displayName: "admin",
 						authentications: [admin],
 						roles: [],
@@ -89,14 +87,14 @@ describe("list", () => {
 			const client = yield* buildClient;
 
 			const asRoot = yield* login(client, root);
-			const rootId = yield* findAccountId(root);
+			const { id: rootId } = yield* findUser(root);
 
 			const res = yield* asRoot.get(usersUrl);
 			expect(res.status).toBe(200);
 			expect(yield* res.json).toMatchObject({
 				users: expect.arrayContaining([
 					expect.objectContaining({
-						accountId: rootId,
+						id: rootId,
 						globalRoles: ["superadmin"],
 					}),
 				]),
@@ -110,14 +108,14 @@ describe("list", () => {
 			const client = yield* buildClient;
 
 			const asAdmin = yield* loginAdmin(client, admin);
-			const adminId = yield* findAccountId(admin);
+			const { id: adminId } = yield* findUser(admin);
 
 			yield* createServiceAccount(asAdmin, "bot");
 
 			const res = yield* asAdmin.get(usersUrl);
 			expect(res.status).toBe(200);
 			expect(yield* res.json).toEqual({
-				users: [expect.objectContaining({ accountId: adminId })],
+				users: [expect.objectContaining({ id: adminId })],
 			});
 		}),
 	);

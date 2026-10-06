@@ -7,7 +7,7 @@ import {
 	UserSessionId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { DateTime, Effect, Layer, Option, Schema } from "effect";
+import { DateTime, Effect, HashSet, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
@@ -17,8 +17,8 @@ import { sessions } from "../../database/drizzle-sqlite/tables.ts";
 import { AuthenticationRepositoryService } from "../authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../authentication/drizzle-sqlite-authentication-repository.ts";
 import { BackendError, KeyTaken } from "../repository-errors.ts";
-import { DrizzleSqliteRoleRepository } from "../role/drizzle-sqlite-role-repository.ts";
-import { RoleRepositoryService } from "../role/role-repository.ts";
+import { DrizzleSqliteUserRepository } from "../user/drizzle-sqlite-user-repository.ts";
+import { UserRepositoryService } from "../user/user-repository.ts";
 import { DrizzleSqliteSessionRepository } from "./drizzle-sqlite-session-repository.ts";
 import { SessionRepositoryService } from "./session-repository.ts";
 
@@ -26,7 +26,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		DrizzleSqliteSessionRepository,
 		DrizzleSqliteAuthenticationRepository,
-		DrizzleSqliteRoleRepository,
+		DrizzleSqliteUserRepository,
 	).pipe(
 		Layer.provideMerge(
 			Layer.effect(
@@ -134,21 +134,21 @@ describe("resolve", () => {
 		Effect.gen(function* () {
 			const repository = yield* SessionRepositoryService;
 			const authentications = yield* AuthenticationRepositoryService;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 			const start = yield* DateTime.now;
 
 			const aliceIds = yield* authentications.findOrCreateAuthentication(
 				alice,
 				"Alice",
 			);
-			yield* roles.grantRole(aliceIds.accountId, viewer);
-			yield* roles.grantGlobalRole(aliceIds.accountId, "admin");
+			yield* users.grantRoles(aliceIds.userId, HashSet.make(viewer));
+			yield* users.grantGlobalRole(aliceIds.userId, "admin");
 
 			const bobIds = yield* authentications.findOrCreateAuthentication(
 				bob,
 				"Bob",
 			);
-			yield* roles.grantRole(bobIds.accountId, producer);
+			yield* users.grantRoles(bobIds.userId, HashSet.make(producer));
 
 			yield* repository.create(
 				first,
@@ -162,7 +162,6 @@ describe("resolve", () => {
 					authentication: alice,
 					user: {
 						id: aliceIds.userId,
-						accountId: aliceIds.accountId,
 						displayName: "Alice",
 						authentications: [alice],
 						roles: [viewer],

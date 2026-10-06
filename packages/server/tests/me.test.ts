@@ -1,11 +1,11 @@
 import { Authentication, Role, RoleNameSchema } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer } from "effect";
+import { Effect, HashSet, Layer } from "effect";
 import { describe, expect } from "vitest";
 
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
-import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
-import { buildClient, findAccountId, login, services } from "./setup.ts";
+import { UserRepositoryService } from "../src/services/repository/user/user-repository.ts";
+import { buildClient, findUser, login, services } from "./setup.ts";
 
 const producer = Role.make({
 	namespace: "show",
@@ -45,9 +45,10 @@ describe("me", () => {
 		"reports a user with the declared roles they hold",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 			const asOperator = yield* login(client, operator);
-			yield* roles.grantRole(yield* findAccountId(operator), producer);
+			const { id: operatorId } = yield* findUser(operator);
+			yield* users.grantRoles(operatorId, HashSet.make(producer));
 
 			const res = yield* asOperator.get(meUrl);
 			expect(res.status).toBe(200);

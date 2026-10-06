@@ -18,7 +18,6 @@ import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { DerivationEngineService } from "../derivation-graph.ts";
 import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
-import { DrizzleSqliteAccountRepository } from "../services/repository/account/drizzle-sqlite-account-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
@@ -37,7 +36,6 @@ const handler = () => {
 		DrizzleSqliteLoginAttemptRepository,
 		DrizzleSqliteAuthenticationRepository,
 		DrizzleSqliteSessionRepository,
-		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
 		DrizzleSqliteServiceAccountRepository,
 		DrizzleSqliteUserRepository,

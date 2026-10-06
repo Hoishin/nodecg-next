@@ -4,7 +4,7 @@ import {
 	CreateApiKeyResultSchema,
 	sessionCookieName,
 } from "@nodecg-next/internal";
-import { ConfigProvider, Effect, HashMap, Layer, Option } from "effect";
+import { Array, ConfigProvider, Effect, HashMap, Layer, Option } from "effect";
 import {
 	Etag,
 	FetchHttpClient,
@@ -30,16 +30,14 @@ import { NamespaceRegistryService } from "../src/namespace-registry.ts";
 import { routes } from "../src/server/routes.ts";
 import { DrizzleSqliteDatabaseService } from "../src/services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { OperatingSystemService } from "../src/services/operating-system/operating-system.ts";
-import { AccountRepositoryService } from "../src/services/repository/account/account-repository.ts";
-import { DrizzleSqliteAccountRepository } from "../src/services/repository/account/drizzle-sqlite-account-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../src/services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../src/services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "../src/services/repository/replicant/in-memory-replicant-repository.ts";
 import { DrizzleSqliteRoleRepository } from "../src/services/repository/role/drizzle-sqlite-role-repository.ts";
-import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
 import { DrizzleSqliteServiceAccountRepository } from "../src/services/repository/service-account/drizzle-sqlite-service-account-repository.ts";
 import { DrizzleSqliteSessionRepository } from "../src/services/repository/session/drizzle-sqlite-session-repository.ts";
 import { DrizzleSqliteUserRepository } from "../src/services/repository/user/drizzle-sqlite-user-repository.ts";
+import { UserRepositoryService } from "../src/services/repository/user/user-repository.ts";
 import { InMemoryTopicBroker } from "../src/services/topic-broker/in-memory-topic-broker.ts";
 import { DrizzleSqliteTransaction } from "../src/services/transaction/drizzle-sqlite-transaction.ts";
 
@@ -53,7 +51,6 @@ export const services = Layer.mergeAll(
 		DrizzleSqliteLoginAttemptRepository,
 		DrizzleSqliteAuthenticationRepository,
 		DrizzleSqliteSessionRepository,
-		DrizzleSqliteAccountRepository,
 		DrizzleSqliteRoleRepository,
 		DrizzleSqliteServiceAccountRepository,
 		DrizzleSqliteUserRepository,
@@ -108,22 +105,23 @@ export const login = Effect.fn(function* (
 	);
 });
 
-export const findAccountId = Effect.fn(function* (
-	authentication: Authentication,
-) {
-	const accounts = yield* AccountRepositoryService;
-	const accountId = yield* accounts.resolveByAuthentication(authentication);
-	assert(Option.isSome(accountId));
-	return accountId.value;
+export const findUser = Effect.fn(function* (authentication: Authentication) {
+	const users = yield* UserRepositoryService;
+	const user = Array.findFirst(yield* users.listAll(), ({ authentications }) =>
+		Array.contains(authentications, authentication),
+	);
+	assert(Option.isSome(user));
+	return user.value;
 });
 
 export const loginAdmin = Effect.fn(function* (
 	client: HttpClient.HttpClient,
 	authentication: Authentication,
 ) {
-	const roles = yield* RoleRepositoryService;
+	const users = yield* UserRepositoryService;
 	const asAdmin = yield* login(client, authentication);
-	yield* roles.grantGlobalRole(yield* findAccountId(authentication), "admin");
+	const { id } = yield* findUser(authentication);
+	yield* users.grantGlobalRole(id, "admin");
 	return asAdmin;
 });
 

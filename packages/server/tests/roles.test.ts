@@ -1,23 +1,17 @@
 import {
-	AccountId,
 	Authentication,
 	Role,
 	RoleNameSchema,
+	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Crypto, Effect, Layer } from "effect";
+import { Crypto, Effect, HashSet, Layer } from "effect";
 import { HttpBody } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
-import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
-import {
-	buildClient,
-	findAccountId,
-	login,
-	loginAdmin,
-	services,
-} from "./setup.ts";
+import { UserRepositoryService } from "../src/services/repository/user/user-repository.ts";
+import { buildClient, findUser, login, loginAdmin, services } from "./setup.ts";
 
 const producer = Role.make({
 	namespace: "show",
@@ -37,8 +31,7 @@ const test = testLayer(
 	),
 );
 
-const grantUrl = "http://x/api/internal/roles/grant";
-const revokeUrl = "http://x/api/internal/roles/revoke";
+const usersUrl = "http://x/api/internal/users";
 
 const operator = Authentication.make({ issuer: "dev", subject: "operator" });
 const admin = Authentication.make({ issuer: "dev", subject: "admin" });
@@ -48,51 +41,56 @@ describe("user", () => {
 		"admin grants and revokes a role",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			yield* login(client, operator);
-			const operatorId = yield* findAccountId(operator);
+			const { id: operatorId } = yield* findUser(operator);
 
-			const grantRes = yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ accountId: operatorId, role: producer }),
-			});
+			const grantRes = yield* asAdmin.post(
+				`${usersUrl}/${operatorId}/roles/grant`,
+				{ body: yield* HttpBody.json(producer) },
+			);
 			expect(grantRes.status).toBe(204);
 
-			const granted = yield* roles.read(operatorId);
-			expect(granted.roles).toStrictEqual([producer]);
-
-			const revokeRes = yield* asAdmin.post(revokeUrl, {
-				body: yield* HttpBody.json({ accountId: operatorId, role: producer }),
+			expect(yield* findUser(operator)).toMatchObject({
+				roles: [producer],
 			});
+
+			const revokeRes = yield* asAdmin.post(
+				`${usersUrl}/${operatorId}/roles/revoke`,
+				{ body: yield* HttpBody.json(producer) },
+			);
 			expect(revokeRes.status).toBe(204);
 
-			const revoked = yield* roles.read(operatorId);
-			expect(revoked.roles).toStrictEqual([]);
+			expect(yield* findUser(operator)).toMatchObject({
+				roles: [],
+			});
 		}),
 	);
 });
 
-describe("unknown account", () => {
+describe("unknown user", () => {
 	test(
-		"404 for an unknown account",
+		"404 for an unknown user",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
-			const accountId = AccountId.make(yield* crypto.randomUUIDv7);
+			const userId = UserId.make(yield* crypto.randomUUIDv7);
 
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			yield* login(client, operator);
 
-			const grantRes = yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ accountId, role: producer }),
-			});
+			const grantRes = yield* asAdmin.post(
+				`${usersUrl}/${userId}/roles/grant`,
+				{ body: yield* HttpBody.json(producer) },
+			);
 			expect(grantRes.status).toBe(404);
 
-			const revokeRes = yield* asAdmin.post(revokeUrl, {
-				body: yield* HttpBody.json({ accountId, role: producer }),
-			});
+			const revokeRes = yield* asAdmin.post(
+				`${usersUrl}/${userId}/roles/revoke`,
+				{ body: yield* HttpBody.json(producer) },
+			);
 			expect(revokeRes.status).toBe(404);
 		}),
 	);
@@ -105,16 +103,18 @@ describe("permission", () => {
 			const client = yield* buildClient;
 
 			yield* login(client, operator);
-			const operatorId = yield* findAccountId(operator);
+			const { id: operatorId } = yield* findUser(operator);
 
-			const grantRes = yield* client.post(grantUrl, {
-				body: yield* HttpBody.json({ accountId: operatorId, role: producer }),
-			});
+			const grantRes = yield* client.post(
+				`${usersUrl}/${operatorId}/roles/grant`,
+				{ body: yield* HttpBody.json(producer) },
+			);
 			expect(grantRes.status).toBe(401);
 
-			const revokeRes = yield* client.post(revokeUrl, {
-				body: yield* HttpBody.json({ accountId: operatorId, role: producer }),
-			});
+			const revokeRes = yield* client.post(
+				`${usersUrl}/${operatorId}/roles/revoke`,
+				{ body: yield* HttpBody.json(producer) },
+			);
 			expect(revokeRes.status).toBe(401);
 		}),
 	);
@@ -123,16 +123,23 @@ describe("permission", () => {
 		"403 for a caller below the admin tier",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 
 			const asOperator = yield* login(client, operator);
-			const operatorId = yield* findAccountId(operator);
-			yield* roles.grantRole(operatorId, producer);
+			const { id: operatorId } = yield* findUser(operator);
+			yield* users.grantRoles(operatorId, HashSet.make(producer));
 
-			const res = yield* asOperator.post(grantUrl, {
-				body: yield* HttpBody.json({ accountId: operatorId, role: producer }),
-			});
-			expect(res.status).toBe(403);
+			const grantRes = yield* asOperator.post(
+				`${usersUrl}/${operatorId}/roles/grant`,
+				{ body: yield* HttpBody.json(producer) },
+			);
+			expect(grantRes.status).toBe(403);
+
+			const revokeRes = yield* asOperator.post(
+				`${usersUrl}/${operatorId}/roles/revoke`,
+				{ body: yield* HttpBody.json(producer) },
+			);
+			expect(revokeRes.status).toBe(403);
 		}),
 	);
 });
@@ -144,25 +151,21 @@ describe("validation", () => {
 			const client = yield* buildClient;
 
 			yield* login(client, operator);
-			const operatorId = yield* findAccountId(operator);
+			const { id: operatorId } = yield* findUser(operator);
 
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			for (const name of ["superadmin", "admin", "server"]) {
-				const grantRes = yield* asAdmin.post(grantUrl, {
-					body: yield* HttpBody.json({
-						accountId: operatorId,
-						role: { namespace: "show", name },
-					}),
-				});
+				const grantRes = yield* asAdmin.post(
+					`${usersUrl}/${operatorId}/roles/grant`,
+					{ body: yield* HttpBody.json({ namespace: "show", name }) },
+				);
 				expect(grantRes.status).toBe(400);
 
-				const revokeRes = yield* asAdmin.post(revokeUrl, {
-					body: yield* HttpBody.json({
-						accountId: operatorId,
-						role: { namespace: "show", name },
-					}),
-				});
+				const revokeRes = yield* asAdmin.post(
+					`${usersUrl}/${operatorId}/roles/revoke`,
+					{ body: yield* HttpBody.json({ namespace: "show", name }) },
+				);
 				expect(revokeRes.status).toBe(400);
 			}
 		}),
@@ -174,24 +177,22 @@ describe("validation", () => {
 			const client = yield* buildClient;
 
 			yield* login(client, operator);
-			const operatorId = yield* findAccountId(operator);
+			const { id: operatorId } = yield* findUser(operator);
 
 			const asAdmin = yield* loginAdmin(client, admin);
 
-			const undeclaredRoleRes = yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: operatorId,
-					role: { namespace: "show", name: "ghost" },
-				}),
-			});
+			const undeclaredRoleRes = yield* asAdmin.post(
+				`${usersUrl}/${operatorId}/roles/grant`,
+				{ body: yield* HttpBody.json({ namespace: "show", name: "ghost" }) },
+			);
 			expect(undeclaredRoleRes.status).toBe(422);
 
-			const unknownNamespaceRes = yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: operatorId,
-					role: { namespace: "stage", name: "producer" },
-				}),
-			});
+			const unknownNamespaceRes = yield* asAdmin.post(
+				`${usersUrl}/${operatorId}/roles/grant`,
+				{
+					body: yield* HttpBody.json({ namespace: "stage", name: "producer" }),
+				},
+			);
 			expect(unknownNamespaceRes.status).toBe(422);
 		}),
 	);

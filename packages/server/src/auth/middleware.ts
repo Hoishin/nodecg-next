@@ -2,7 +2,7 @@ import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	AdminTierMiddleware,
 	CurrentServiceAccount,
-	CurrentSessionCaller,
+	CurrentSessionUser,
 	CurrentUser,
 	UserAuthenticationMiddleware,
 	ServiceAccountAuthenticationMiddleware,
@@ -13,7 +13,6 @@ import { HttpApiError } from "effect/unstable/httpapi";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { config } from "../server-config.ts";
-import { RoleRepositoryService } from "../services/repository/role/role-repository.ts";
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import {
@@ -70,7 +69,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 						}
 					}
 					return yield* httpEffect.pipe(
-						Effect.provideService(CurrentSessionCaller, caller),
+						Effect.provideService(CurrentSessionUser, caller),
 					);
 				}),
 		};
@@ -81,11 +80,11 @@ export const AdminTierMiddlewareLive = Layer.succeed(
 	AdminTierMiddleware,
 	(httpEffect) =>
 		Effect.gen(function* () {
-			const caller = yield* CurrentSessionCaller;
+			const caller = yield* CurrentSessionUser;
 			if (Option.isNone(caller)) {
 				return yield* HttpApiError.Unauthorized.make();
 			}
-			if (!isAdminTier(caller.value.user)) {
+			if (!isAdminTier(caller.value)) {
 				return yield* HttpApiError.Forbidden.make();
 			}
 			return yield* httpEffect.pipe(
@@ -98,11 +97,11 @@ export const SuperadminMiddlewareLive = Layer.succeed(
 	SuperadminMiddleware,
 	(httpEffect) =>
 		Effect.gen(function* () {
-			const caller = yield* CurrentSessionCaller;
+			const caller = yield* CurrentSessionUser;
 			if (Option.isNone(caller)) {
 				return yield* HttpApiError.Unauthorized.make();
 			}
-			if (!isSuperadmin(caller.value.user)) {
+			if (!isSuperadmin(caller.value)) {
 				return yield* HttpApiError.Forbidden.make();
 			}
 			return yield* httpEffect.pipe(
@@ -115,7 +114,7 @@ export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 	ServiceAccountAuthenticationMiddleware,
 	Effect.gen(function* () {
 		const context = yield* Effect.context<
-			ServiceAccountRepositoryService | RoleRepositoryService | Crypto.Crypto
+			ServiceAccountRepositoryService | Crypto.Crypto
 		>();
 
 		return {

@@ -8,16 +8,16 @@ import {
 	UserDocumentEntry,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, HashMap, HashSet, Layer, Crypto } from "effect";
+import { Effect, HashSet, Layer, Crypto } from "effect";
 import { HttpBody } from "effect/unstable/http";
 import { describe, expect } from "vitest";
 
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
-import { RoleRepositoryService } from "../src/services/repository/role/role-repository.ts";
+import { UserRepositoryService } from "../src/services/repository/user/user-repository.ts";
 import {
 	buildClient,
 	createServiceAccount,
-	findAccountId,
+	findUser,
 	login,
 	loginAdmin,
 	services,
@@ -51,7 +51,7 @@ const test = testLayer(
 
 const exportUrl = "http://x/api/internal/roles/export";
 const importUrl = "http://x/api/internal/roles/import";
-const grantUrl = "http://x/api/internal/roles/grant";
+const usersUrl = "http://x/api/internal/users";
 const serviceAccountsUrl = "http://x/api/internal/service-accounts";
 
 const operator = Authentication.make({ issuer: "dev", subject: "operator" });
@@ -69,11 +69,9 @@ describe("export", () => {
 
 			// Setup users
 			yield* login(client, operator);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: yield* findAccountId(operator),
-					role: producer,
-				}),
+			const { id: operatorId } = yield* findUser(operator);
+			yield* asAdmin.post(`${usersUrl}/${operatorId}/roles/grant`, {
+				body: yield* HttpBody.json(producer),
 			});
 
 			// Setup service accounts
@@ -81,7 +79,7 @@ describe("export", () => {
 				asAdmin,
 				"scoreboard",
 			);
-			yield* asAdmin.post(`${serviceAccountsUrl}/${scoreboardId}/roles`, {
+			yield* asAdmin.post(`${serviceAccountsUrl}/${scoreboardId}/roles/grant`, {
 				body: yield* HttpBody.json(viewer),
 			});
 			yield* createServiceAccount(asAdmin, "idle");
@@ -114,11 +112,11 @@ describe("export", () => {
 		"excludes the admin tier from the export",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 			const asAdmin = yield* loginAdmin(client, admin);
 
-			const adminId = yield* findAccountId(admin);
-			yield* roles.grantRoles(HashMap.make([adminId, HashSet.make(producer)]));
+			const { id: adminId } = yield* findUser(admin);
+			yield* users.grantRoles(adminId, HashSet.make(producer));
 
 			const res = yield* asAdmin.get(exportUrl);
 			expect(yield* res.json).toMatchObject({
@@ -140,23 +138,18 @@ describe("merge", () => {
 		"merge adds roles to the named users and leaves others alone",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			yield* login(client, operator);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: yield* findAccountId(operator),
-					role: producer,
-				}),
+			const { id: operatorId } = yield* findUser(operator);
+			yield* asAdmin.post(`${usersUrl}/${operatorId}/roles/grant`, {
+				body: yield* HttpBody.json(producer),
 			});
 
 			yield* login(client, other);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: yield* findAccountId(other),
-					role: judge,
-				}),
+			const { id: otherId } = yield* findUser(other);
+			yield* asAdmin.post(`${usersUrl}/${otherId}/roles/grant`, {
+				body: yield* HttpBody.json(judge),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {
@@ -177,10 +170,10 @@ describe("merge", () => {
 			});
 			expect(res.status).toBe(204);
 
-			const operatorGrants = yield* roles.read(yield* findAccountId(operator));
+			const operatorGrants = yield* findUser(operator);
 			expect(operatorGrants.roles).to.have.deep.members([producer, viewer]);
 
-			const otherGrants = yield* roles.read(yield* findAccountId(other));
+			const otherGrants = yield* findUser(other);
 			expect(otherGrants.roles).toStrictEqual([judge]);
 		}),
 	);
@@ -189,15 +182,12 @@ describe("merge", () => {
 		"merges repeated items for one user",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			yield* login(client, operator);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: yield* findAccountId(operator),
-					role: producer,
-				}),
+			const { id: operatorId } = yield* findUser(operator);
+			yield* asAdmin.post(`${usersUrl}/${operatorId}/roles/grant`, {
+				body: yield* HttpBody.json(producer),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {
@@ -224,7 +214,7 @@ describe("merge", () => {
 			});
 			expect(res.status).toBe(204);
 
-			const operatorGrants = yield* roles.read(yield* findAccountId(operator));
+			const operatorGrants = yield* findUser(operator);
 			expect(operatorGrants.roles).to.have.deep.members([
 				producer,
 				viewer,
@@ -295,11 +285,11 @@ describe("merge", () => {
 		"merge keeps an admin tier the document does not mention",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 
 			yield* login(client, root);
-			const rootId = yield* findAccountId(root);
-			yield* roles.grantGlobalRole(rootId, "superadmin");
+			const { id: rootId } = yield* findUser(root);
+			yield* users.grantGlobalRole(rootId, "superadmin");
 
 			const asAdmin = yield* loginAdmin(client, admin);
 			const res = yield* asAdmin.post(importUrl, {
@@ -320,7 +310,7 @@ describe("merge", () => {
 			});
 			expect(res.status).toBe(204);
 
-			const rootGrants = yield* roles.read(rootId);
+			const rootGrants = yield* findUser(root);
 			expect(rootGrants.globalRoles).toStrictEqual(["superadmin"]);
 		}),
 	);
@@ -331,23 +321,18 @@ describe("replace", () => {
 		"replace overwrites the whole store",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			yield* login(client, operator);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: yield* findAccountId(operator),
-					role: producer,
-				}),
+			const { id: operatorId } = yield* findUser(operator);
+			yield* asAdmin.post(`${usersUrl}/${operatorId}/roles/grant`, {
+				body: yield* HttpBody.json(producer),
 			});
 
 			yield* login(client, other);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({
-					accountId: yield* findAccountId(other),
-					role: judge,
-				}),
+			const { id: otherId } = yield* findUser(other);
+			yield* asAdmin.post(`${usersUrl}/${otherId}/roles/grant`, {
+				body: yield* HttpBody.json(judge),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {
@@ -368,10 +353,10 @@ describe("replace", () => {
 			});
 			expect(res.status).toBe(204);
 
-			const operatorGrants = yield* roles.read(yield* findAccountId(operator));
+			const operatorGrants = yield* findUser(operator);
 			expect(operatorGrants.roles).toStrictEqual([viewer]);
 
-			const otherGrants = yield* roles.read(yield* findAccountId(other));
+			const otherGrants = yield* findUser(other);
 			expect(otherGrants.roles).toStrictEqual([]);
 		}),
 	);
@@ -385,7 +370,7 @@ describe("replace", () => {
 				asAdmin,
 				"scoreboard",
 			);
-			yield* asAdmin.post(`${serviceAccountsUrl}/${scoreboardId}/roles`, {
+			yield* asAdmin.post(`${serviceAccountsUrl}/${scoreboardId}/roles/grant`, {
 				body: yield* HttpBody.json(viewer),
 			});
 
@@ -413,15 +398,15 @@ describe("replace", () => {
 		"replace keeps the admin tier of a user absent from the document",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 
 			yield* login(client, root);
-			const rootId = yield* findAccountId(root);
-			yield* roles.grantGlobalRole(rootId, "superadmin");
+			const { id: rootId } = yield* findUser(root);
+			yield* users.grantGlobalRole(rootId, "superadmin");
 
 			const asAdmin = yield* loginAdmin(client, admin);
-			yield* asAdmin.post(grantUrl, {
-				body: yield* HttpBody.json({ accountId: rootId, role: producer }),
+			yield* asAdmin.post(`${usersUrl}/${rootId}/roles/grant`, {
+				body: yield* HttpBody.json(producer),
 			});
 
 			const res = yield* asAdmin.post(importUrl, {
@@ -435,7 +420,7 @@ describe("replace", () => {
 			});
 			expect(res.status).toBe(204);
 
-			const rootGrants = yield* roles.read(rootId);
+			const rootGrants = yield* findUser(root);
 			expect(rootGrants.globalRoles).toStrictEqual(["superadmin"]);
 		}),
 	);
@@ -446,7 +431,6 @@ describe("account creation", () => {
 		"creates an account for someone who never logged in",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const importRes = yield* asAdmin.post(importUrl, {
@@ -467,7 +451,7 @@ describe("account creation", () => {
 			});
 			expect(importRes.status).toBe(204);
 
-			const newcomerGrants = yield* roles.read(yield* findAccountId(newcomer));
+			const newcomerGrants = yield* findUser(newcomer);
 			expect(newcomerGrants.roles).toStrictEqual([viewer]);
 		}),
 	);
@@ -546,11 +530,10 @@ describe("permission", () => {
 		"403 for a named-role caller without the admin tier",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const roles = yield* RoleRepositoryService;
+			const users = yield* UserRepositoryService;
 			const asOperator = yield* login(client, operator);
-			yield* roles.grantRoles(
-				HashMap.make([yield* findAccountId(operator), HashSet.make(producer)]),
-			);
+			const { id: operatorId } = yield* findUser(operator);
+			yield* users.grantRoles(operatorId, HashSet.make(producer));
 
 			const importRes = yield* asOperator.post(importUrl, {
 				body: yield* HttpBody.json({

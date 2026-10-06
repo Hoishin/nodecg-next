@@ -2,6 +2,7 @@ import { defineRelations } from "drizzle-orm";
 
 import {
 	accounts,
+	apiKeys,
 	authentications,
 	globalRoleGrants,
 	roleGrants,
@@ -17,10 +18,18 @@ export const relations = defineRelations(
 		authentications,
 		sessions,
 		serviceAccounts,
+		apiKeys,
 		roleGrants,
 		globalRoleGrants,
 	},
 	(r) => ({
+		apiKeys: {
+			serviceAccount: r.one.serviceAccounts({
+				from: r.apiKeys.serviceAccountId,
+				to: r.serviceAccounts.id,
+				optional: false,
+			}),
+		},
 		serviceAccounts: {
 			account: r.one.accounts({
 				from: r.serviceAccounts.accountId,

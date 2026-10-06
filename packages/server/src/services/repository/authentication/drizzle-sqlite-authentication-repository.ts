@@ -1,5 +1,4 @@
 import {
-	AccountId,
 	type Authentication,
 	AuthenticationId,
 	UserId,
@@ -10,6 +9,7 @@ import { Array, Crypto, DateTime, Effect, Layer, Option } from "effect";
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-collision.ts";
 import {
+	AccountId,
 	accounts,
 	authentications,
 	users,
@@ -105,13 +105,10 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 								accountId,
 							})),
 						);
-						return accountRows.map(
-							({ authenticationId, userId, accountId }) => ({
-								authenticationId,
-								userId,
-								accountId,
-							}),
-						);
+						return accountRows.map(({ authenticationId, userId }) => ({
+							authenticationId,
+							userId,
+						}));
 					}),
 				)
 				.pipe(retryOnIdCollision);
@@ -132,7 +129,6 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 						.select({
 							authenticationId: authentications.id,
 							userId: users.id,
-							accountId: users.accountId,
 						})
 						.from(authentications)
 						.innerJoin(users, eq(authentications.userId, users.id))
@@ -154,18 +150,15 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 					(cause) => BackendError.make({ cause }),
 				),
 			),
-			resolveByAccountId: Effect.fn(
-				"AuthenticationRepository.resolveByAccountId",
-			)(
-				function* (accountId) {
+			resolveByUserId: Effect.fn("AuthenticationRepository.resolveByUserId")(
+				function* (userId) {
 					return yield* db
 						.select({
 							issuer: authentications.issuer,
 							subject: authentications.subject,
 						})
 						.from(authentications)
-						.innerJoin(users, eq(authentications.userId, users.id))
-						.where(eq(users.accountId, accountId));
+						.where(eq(authentications.userId, userId));
 				},
 				Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 					BackendError.make({ cause }),

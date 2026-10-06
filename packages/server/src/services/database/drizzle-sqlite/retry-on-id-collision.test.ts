@@ -1,5 +1,4 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { AccountId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { sql } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -9,7 +8,7 @@ import { afterEach, describe, expect, vi } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "./drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "./retry-on-id-collision.ts";
-import { accounts } from "./tables.ts";
+import { AccountId, accounts } from "./tables.ts";
 
 const randomBytes = vi.fn((size: number) =>
 	crypto.getRandomValues(new Uint8Array(size)),
