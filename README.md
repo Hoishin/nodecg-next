@@ -399,18 +399,18 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 
 The server reads its settings from environment variables.
 
-| Variable | Default | Sets |
-| --- | --- | --- |
-| `NODECG_PORT` | `3000` | the port to listen on |
-| `NODECG_BASE_URL` | `http://localhost:{port}` | the public URL of the server |
-| `NODECG_DATA_DIR` | `data` | the folder persisted data is written to |
-| `NODECG_DEV` | `false` | development mode |
-| `NODECG_REQUIRE_AUTH` | `false` | refuse anonymous requests |
-| `NODECG_SESSION_TTL` | `7 days` | how long a login session lasts |
-| `NODECG_SESSION_RENEW_INTERVAL` | `1 day` | how often a session in use is renewed |
-| `NODECG_LOGIN_ATTEMPT_TTL` | `10 minutes` | how long a started login stays valid |
-| `NODECG_SUPERADMINS` | none | superadmins, as comma-separated `provider:subject` pairs |
-| `NODECG_SUPERADMIN_CLAIM_TOKEN` | none | a secret of 16 characters or more that lets a logged-in user claim superadmin |
+| Variable                        | Default                   | Sets                                                                          |
+| ------------------------------- | ------------------------- | ----------------------------------------------------------------------------- |
+| `NODECG_PORT`                   | `3000`                    | the port to listen on                                                         |
+| `NODECG_BASE_URL`               | `http://localhost:{port}` | the public URL of the server                                                  |
+| `NODECG_DATA_DIR`               | `data`                    | the folder persisted data is written to                                       |
+| `NODECG_DEV`                    | `false`                   | development mode                                                              |
+| `NODECG_REQUIRE_AUTH`           | `false`                   | refuse anonymous requests                                                     |
+| `NODECG_SESSION_TTL`            | `7 days`                  | how long a login session lasts                                                |
+| `NODECG_SESSION_RENEW_INTERVAL` | `1 day`                   | how often a session in use is renewed                                         |
+| `NODECG_LOGIN_ATTEMPT_TTL`      | `10 minutes`              | how long a started login stays valid                                          |
+| `NODECG_SUPERADMINS`            | none                      | superadmins, as comma-separated `provider:subject` pairs                      |
+| `NODECG_SUPERADMIN_CLAIM_TOKEN` | none                      | a secret of 16 characters or more that lets a logged-in user claim superadmin |
 
 ### 🚧 Asset storage
 
