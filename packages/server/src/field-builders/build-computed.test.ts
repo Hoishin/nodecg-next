@@ -10,8 +10,8 @@ import { describe, expect, vi } from "vitest";
 
 import {
 	ComputedComputeError,
-	DerivationEngineService,
-} from "../derivation-graph.ts";
+	ReplicantStoreService,
+} from "../replicant-store.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { buildComputed } from "./build-computed.ts";
@@ -25,7 +25,7 @@ const anonymousIdentity = Layer.succeed(
 
 const test = testLayer(
 	Layer.merge(
-		DerivationEngineService.layer.pipe(
+		ReplicantStoreService.layer.pipe(
 			Layer.provide(InMemoryReplicantRepository),
 		),
 		serverIdentity,
@@ -49,8 +49,8 @@ const manifest = defineNamespace("ns", {
 });
 
 const doubledCount = Effect.gen(function* () {
-	const engine = yield* DerivationEngineService;
-	const encoded = yield* engine.readReplicant("ns", "count").pipe(
+	const store = yield* ReplicantStoreService;
+	const encoded = yield* store.readReplicant("ns", "count").pipe(
 		Effect.map((r) => r.value),
 		Effect.catchTag(
 			"UnknownReplicant",
@@ -69,13 +69,13 @@ const doubledCount = Effect.gen(function* () {
 });
 
 const initCount = (value: string) =>
-	Effect.flatMap(DerivationEngineService, (engine) =>
-		engine.initializeReplicant("ns", "count", value),
+	Effect.flatMap(ReplicantStoreService, (store) =>
+		store.initializeReplicant("ns", "count", Effect.succeed, value),
 	);
 
 const setCount = (value: string) =>
-	Effect.flatMap(DerivationEngineService, (engine) =>
-		engine.commit("ns", "count", () => Effect.succeed(value)),
+	Effect.flatMap(ReplicantStoreService, (store) =>
+		store.commit("ns", "count", () => Effect.succeed(value)),
 	);
 
 const build = buildComputed(

@@ -13,7 +13,7 @@ import { testLayer } from "@nodecg-next/test-utils";
 import { Cause, Effect, Layer, Option, Result, Schema, Stream } from "effect";
 import { afterEach, assert, describe, expect } from "vitest";
 
-import { DerivationEngineService } from "../derivation-graph.ts";
+import { ReplicantStoreService } from "../replicant-store.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
 import { createReplicantRepositoryStub } from "../services/repository/replicant/replicant-repository.stub.ts";
 import { ReplicantRepositoryService } from "../services/repository/replicant/replicant-repository.ts";
@@ -34,7 +34,7 @@ const stubbedRepository = Layer.succeed(ReplicantRepositoryService, repository);
 const testStubbed = testLayer(
 	Layer.mergeAll(
 		stubbedRepository,
-		DerivationEngineService.layer.pipe(Layer.provide(stubbedRepository)),
+		ReplicantStoreService.layer.pipe(Layer.provide(stubbedRepository)),
 		identity,
 	),
 );
@@ -42,7 +42,7 @@ const testStubbed = testLayer(
 const testInMemory = testLayer(
 	Layer.mergeAll(
 		InMemoryReplicantRepository,
-		DerivationEngineService.layer.pipe(
+		ReplicantStoreService.layer.pipe(
 			Layer.provide(InMemoryReplicantRepository),
 		),
 		identity,
@@ -73,9 +73,35 @@ const scorer = Layer.succeed(
 	}),
 );
 
+describe("buildReplicant", () => {
+	testStubbed(
+		"fails when the stored value does not match the schema",
+		Effect.gen(function* () {
+			repository.read.mockReturnValue(Effect.succeed("not a number"));
+			const error = yield* buildReplicant(
+				"ns",
+				"count",
+				manifest.replicant.count,
+				0,
+			).pipe(Effect.flip);
+
+			expect(error).toMatchObject({
+				_tag: "ReplicantLoadError",
+				namespace: "ns",
+				name: "count",
+				cause: {
+					_tag: "FieldDecodeError",
+					fieldName: "count",
+					value: "not a number",
+				},
+			});
+		}),
+	);
+});
+
 describe("get", () => {
 	testStubbed(
-		"decodes the value held by the engine",
+		"decodes the value held by the store",
 		Effect.gen(function* () {
 			const field = yield* buildReplicant(
 				"ns",
@@ -90,14 +116,14 @@ describe("get", () => {
 	testStubbed(
 		"dies when the stored value does not match the schema",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
 				manifest.replicant.count,
 				0,
 			);
-			yield* engine.commit("ns", "count", () => Effect.succeed("not a number"));
+			yield* store.commit("ns", "count", () => Effect.succeed("not a number"));
 			const cause = yield* field.get().pipe(Effect.sandbox, Effect.flip);
 			const defect = Cause.findDefect(cause);
 			assert(Result.isSuccess(defect));
@@ -109,9 +135,9 @@ describe("get", () => {
 
 describe("set", () => {
 	testStubbed(
-		"encodes the value and writes it to the engine",
+		"encodes the value and writes it to the store",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
@@ -119,14 +145,14 @@ describe("set", () => {
 				0,
 			);
 			yield* field.set(7);
-			expect((yield* engine.readReplicant("ns", "count")).value).toBe("7");
+			expect((yield* store.readReplicant("ns", "count")).value).toBe("7");
 		}),
 	);
 
 	testStubbed(
 		"fails when the value fails schema validation",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
@@ -137,14 +163,14 @@ describe("set", () => {
 				.set("not a number" as unknown as number)
 				.pipe(Effect.flip);
 			expect(error._tag).toBe("FieldEncodeError");
-			expect((yield* engine.readReplicant("ns", "count")).value).toBe("0");
+			expect((yield* store.readReplicant("ns", "count")).value).toBe("0");
 		}),
 	);
 
 	testStubbed(
 		"fails FieldPermissionDenied for a caller whose role the write denies",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"locked",
@@ -155,7 +181,7 @@ describe("set", () => {
 				.set(1)
 				.pipe(Effect.provide(scorer), Effect.flip);
 			expect(error._tag).toBe("FieldPermissionDenied");
-			expect((yield* engine.readReplicant("ns", "locked")).value).toBe("0");
+			expect((yield* store.readReplicant("ns", "locked")).value).toBe("0");
 		}),
 	);
 });
@@ -170,16 +196,16 @@ describe("update", () => {
 				manifest.replicant.count,
 				10,
 			);
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			yield* field.update((v) => v + 3);
-			expect((yield* engine.readReplicant("ns", "count")).value).toBe("13");
+			expect((yield* store.readReplicant("ns", "count")).value).toBe("13");
 		}),
 	);
 
 	testStubbed(
 		"surfaces a throwing update fn as ReplicantUpdateFnError without writing",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
@@ -193,7 +219,7 @@ describe("update", () => {
 				.pipe(Effect.flip);
 			expect(error._tag).toBe("ReplicantUpdateFnError");
 			expect(error.message).toContain("boom");
-			expect((yield* engine.readReplicant("ns", "count")).value).toBe("10");
+			expect((yield* store.readReplicant("ns", "count")).value).toBe("10");
 		}),
 	);
 
@@ -205,14 +231,14 @@ describe("update", () => {
 					box: { schema: Schema.Struct({ n: Schema.FiniteFromString }) },
 				},
 			});
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant("ns", "box", box.replicant.box, {
 				n: 1,
 			});
 			yield* field.update((draft) => {
 				draft.n = 5;
 			});
-			expect((yield* engine.readReplicant("ns", "box")).value).toEqual({
+			expect((yield* store.readReplicant("ns", "box")).value).toEqual({
 				n: "5",
 			});
 		}),
@@ -221,7 +247,7 @@ describe("update", () => {
 	testStubbed(
 		"retries against the fresh value when a concurrent commit lands mid-produce",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const context = yield* Effect.context<never>();
 			const field = yield* buildReplicant(
 				"ns",
@@ -234,13 +260,13 @@ describe("update", () => {
 				if (!raced) {
 					raced = true;
 					Effect.runSyncWith(context)(
-						engine.commit("ns", "count", () => Effect.succeed("100")),
+						store.commit("ns", "count", () => Effect.succeed("100")),
 					);
 				}
 				return v + 3;
 			});
 
-			expect((yield* engine.readReplicant("ns", "count")).value).toBe("103");
+			expect((yield* store.readReplicant("ns", "count")).value).toBe("103");
 		}),
 	);
 });
@@ -337,11 +363,11 @@ describe("subscribe", () => {
 	);
 });
 
-describe("derivation engine write-through", () => {
+describe("store write-through", () => {
 	testStubbed(
-		"set, commitPatch, and update feed the engine replicant",
+		"set, commitPatch, and update feed the store replicant",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"count",
@@ -350,22 +376,22 @@ describe("derivation engine write-through", () => {
 			);
 
 			yield* field.set(7);
-			expect((yield* engine.readReplicant("ns", "count")).value).toEqual("7");
+			expect((yield* store.readReplicant("ns", "count")).value).toEqual("7");
 
 			yield* field[fieldInternal].commitPatch([
 				{ op: "replace", path: "", value: "8" },
 			]);
-			expect((yield* engine.readReplicant("ns", "count")).value).toEqual("8");
+			expect((yield* store.readReplicant("ns", "count")).value).toEqual("8");
 
 			yield* field.update((v) => v + 3);
-			expect((yield* engine.readReplicant("ns", "count")).value).toEqual("11");
+			expect((yield* store.readReplicant("ns", "count")).value).toEqual("11");
 		}),
 	);
 
 	testStubbed(
 		"a failed write leaves the replicant untouched",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"locked",
@@ -373,7 +399,7 @@ describe("derivation engine write-through", () => {
 				0,
 			);
 			yield* field.set(1).pipe(Effect.provide(scorer), Effect.flip);
-			expect((yield* engine.readReplicant("ns", "locked")).value).toEqual("0");
+			expect((yield* store.readReplicant("ns", "locked")).value).toEqual("0");
 		}),
 	);
 });
@@ -434,19 +460,19 @@ describe("encoded read/write enforce permission", () => {
 				permissioned.replicant.open,
 				0,
 			);
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const committed = yield* field[fieldInternal]
 				.commitPatch([{ op: "replace", path: "", value: 7 }])
 				.pipe(Effect.provide(anonymous));
 			expect(committed).toEqual({ value: 7, revision: 1 });
-			expect((yield* engine.readReplicant("ns", "open")).value).toBe(7);
+			expect((yield* store.readReplicant("ns", "open")).value).toBe(7);
 		}),
 	);
 
 	testStubbed(
 		"commitPatch fails FieldDecodeError and does not write for an invalid applied document",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"open",
@@ -457,14 +483,14 @@ describe("encoded read/write enforce permission", () => {
 				.commitPatch([{ op: "replace", path: "", value: "not a number" }])
 				.pipe(Effect.provide(anonymous), Effect.flip);
 			expect(error._tag).toBe("FieldDecodeError");
-			expect((yield* engine.readReplicant("ns", "open")).value).toBe(0);
+			expect((yield* store.readReplicant("ns", "open")).value).toBe(0);
 		}),
 	);
 
 	testStubbed(
 		"commitPatch fails FieldPermissionDenied and does not write for a denied caller",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant(
 				"ns",
 				"locked",
@@ -475,7 +501,7 @@ describe("encoded read/write enforce permission", () => {
 				.commitPatch([{ op: "replace", path: "", value: 7 }])
 				.pipe(Effect.provide(anonymous), Effect.flip);
 			expect(error._tag).toBe("FieldPermissionDenied");
-			expect((yield* engine.readReplicant("ns", "locked")).value).toBe(0);
+			expect((yield* store.readReplicant("ns", "locked")).value).toBe(0);
 		}),
 	);
 });
@@ -495,7 +521,7 @@ describe("commitPatch", () => {
 	testStubbed(
 		"applies a field-level replace and validates the applied document",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant("ns", "doc", nested.replicant.doc, {
 				a: 1,
 				b: 2,
@@ -504,7 +530,7 @@ describe("commitPatch", () => {
 				{ op: "replace", path: "/a", value: "5" },
 			]);
 			expect(committed).toEqual({ value: { a: "5", b: "2" }, revision: 1 });
-			expect((yield* engine.readReplicant("ns", "doc")).value).toEqual({
+			expect((yield* store.readReplicant("ns", "doc")).value).toEqual({
 				a: "5",
 				b: "2",
 			});
@@ -514,7 +540,7 @@ describe("commitPatch", () => {
 	testStubbed(
 		"fails PatchNotApplicable when the patch fits no document",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			const field = yield* buildReplicant("ns", "doc", nested.replicant.doc, {
 				a: 1,
 				b: 2,
@@ -525,7 +551,7 @@ describe("commitPatch", () => {
 			assert(error._tag === "PatchNotApplicable");
 			expect(error.path).toBe("");
 			expect(error.reason).toBe("ImmovableRoot");
-			expect((yield* engine.readReplicant("ns", "doc")).value).toEqual({
+			expect((yield* store.readReplicant("ns", "doc")).value).toEqual({
 				a: "1",
 				b: "2",
 			});

@@ -6,8 +6,8 @@ import { describe, expect, onTestFinished, vi } from "vitest";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
-import { DerivationEngineService } from "./derivation-graph.ts";
 import { implementNamespace } from "./implement-namespace.ts";
+import { ReplicantStoreService } from "./replicant-store.ts";
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
@@ -19,7 +19,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(
+		ReplicantStoreService.layer.pipe(
 			Layer.provide(InMemoryReplicantRepository),
 		),
 		BuiltNamespaceRegistry.layer,
@@ -34,15 +34,15 @@ const countManifest = defineNamespace("ns", {
 
 describe("seeding", () => {
 	test(
-		"encodes the seed and seeds the engine",
+		"encodes the seed and seeds the store",
 		Effect.gen(function* () {
-			const engine = yield* DerivationEngineService;
+			const store = yield* ReplicantStoreService;
 			yield* buildNamespace(
 				implementNamespace(countManifest, {
 					seedReplicant: { count: () => 42 },
 				}),
 			);
-			expect((yield* engine.readReplicant("ns", "count")).value).toEqual("42");
+			expect((yield* store.readReplicant("ns", "count")).value).toEqual("42");
 		}),
 	);
 

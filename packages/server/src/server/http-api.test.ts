@@ -29,10 +29,6 @@ import {
 } from "../auth/middleware.ts";
 import { type BuiltNamespace } from "../build-fields.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
-import {
-	DerivationEngineService,
-	UnknownReplicant,
-} from "../derivation-graph.ts";
 import { RpcHandlerError } from "../field-builders/build-rpc.ts";
 import { fieldInternal } from "../field-builders/field-internal-key.ts";
 import { FieldPermissionDenied } from "../field-builders/permission.ts";
@@ -40,6 +36,7 @@ import {
 	NamespaceRegistryService,
 	type RegisteredNamespace,
 } from "../namespace-registry.ts";
+import { ReplicantStoreService, UnknownReplicant } from "../replicant-store.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
@@ -210,7 +207,7 @@ const webHandler = Effect.fn(function* (
 			Layer.provide(ConfiguredSuperadmins.layer),
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(
-				DerivationEngineService.layer.pipe(
+				ReplicantStoreService.layer.pipe(
 					Layer.provide(InMemoryReplicantRepository),
 				),
 			),

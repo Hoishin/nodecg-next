@@ -3,8 +3,8 @@ import { Effect, Stream } from "effect";
 
 import {
 	ComputedComputeError,
-	DerivationEngineService,
-} from "../derivation-graph.ts";
+	ReplicantStoreService,
+} from "../replicant-store.ts";
 import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
@@ -17,7 +17,7 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 	computeValue: Effect.Effect<
 		Decoded,
 		ComputedComputeError | ReplicantNotFound,
-		DerivationEngineService
+		ReplicantStoreService
 	>,
 ) {
 	const computeEncoded = Effect.fn("computeEncoded")(function* () {
@@ -25,32 +25,32 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 		return yield* manifest.encode(value);
 	});
 
-	const engine = yield* DerivationEngineService;
-	yield* engine.initializeComputed(namespace, name, () =>
+	const store = yield* ReplicantStoreService;
+	yield* store.initializeComputed(namespace, name, () =>
 		Effect.runSyncExit(
 			computeEncoded().pipe(
-				Effect.provideService(DerivationEngineService, engine),
+				Effect.provideService(ReplicantStoreService, store),
 			),
 		),
 	);
 
 	const get = Effect.fn("get")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		const encoded = yield* engine.readComputed(namespace, name);
+		const encoded = yield* store.readComputed(namespace, name);
 		return yield* manifest.decode(encoded);
 	});
 
 	const getEncodedNoAuth = Effect.fn("getEncodedNoAuth")(function* () {
-		return yield* engine.readComputed(namespace, name);
+		return yield* store.readComputed(namespace, name);
 	});
 
 	const getEncoded = Effect.fn("getEncoded")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* engine.readComputed(namespace, name);
+		return yield* store.readComputed(namespace, name);
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
-		return yield* engine.subscribeComputed(namespace, name);
+		return yield* store.subscribeComputed(namespace, name);
 	});
 
 	const subscribe = Effect.fn("subscribe")(function* () {

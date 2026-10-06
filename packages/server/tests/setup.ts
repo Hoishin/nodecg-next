@@ -25,8 +25,8 @@ import {
 } from "../src/auth/auth-provider.ts";
 import { createSession } from "../src/auth/session.ts";
 import { BuiltNamespaceRegistry } from "../src/build-fields.ts";
-import { DerivationEngineService } from "../src/derivation-graph.ts";
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
+import { ReplicantStoreService } from "../src/replicant-store.ts";
 import { routes } from "../src/server/routes.ts";
 import { DrizzleSqliteDatabaseService } from "../src/services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { OperatingSystemService } from "../src/services/operating-system/operating-system.ts";
@@ -42,9 +42,7 @@ import { InMemoryTopicBroker } from "../src/services/topic-broker/in-memory-topi
 import { DrizzleSqliteTransaction } from "../src/services/transaction/drizzle-sqlite-transaction.ts";
 
 export const services = Layer.mergeAll(
-	DerivationEngineService.layer.pipe(
-		Layer.provide(InMemoryReplicantRepository),
-	),
+	ReplicantStoreService.layer.pipe(Layer.provide(InMemoryReplicantRepository)),
 	InMemoryTopicBroker,
 	// TODO: re-use the production layer bundle by separating DatabaseService
 	Layer.mergeAll(

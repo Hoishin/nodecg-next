@@ -40,13 +40,6 @@ import {
 	resolveServiceAccountCaller,
 	resolveSessionCaller,
 } from "../auth/identity.ts";
-import {
-	type ComputedComputeError,
-	type ComputedNotFound,
-	DerivationEngineService,
-	type ReplicantFrame,
-	type UnknownReplicant,
-} from "../derivation-graph.ts";
 import type { FieldPermissionDenied } from "../field-builders/permission.ts";
 import {
 	type ComputedFieldInternal,
@@ -54,6 +47,13 @@ import {
 	type ReplicantFieldInternal,
 	type TopicFieldInternal,
 } from "../namespace-registry.ts";
+import {
+	type ComputedComputeError,
+	type ComputedNotFound,
+	ReplicantStoreService,
+	type ReplicantFrame,
+	type UnknownReplicant,
+} from "../replicant-store.ts";
 import { config } from "../server-config.ts";
 import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { TopicBrokerService } from "../services/topic-broker/topic-broker.ts";
@@ -314,9 +314,9 @@ export const websocketRoute = HttpRouter.use((router) =>
 
 		const requireAuth = yield* config.requireAuth;
 		const context = yield* Effect.context<
-			TopicBrokerService | DerivationEngineService
+			TopicBrokerService | ReplicantStoreService
 		>().pipe(
-			Effect.map(Context.pick(TopicBrokerService, DerivationEngineService)),
+			Effect.map(Context.pick(TopicBrokerService, ReplicantStoreService)),
 		);
 
 		yield* router.add(

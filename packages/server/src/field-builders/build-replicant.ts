@@ -6,9 +6,9 @@ import { Effect, Schema, Stream } from "effect";
 
 import {
 	CommitContended,
-	DerivationEngineService,
+	ReplicantStoreService,
 	type RevisionedValue,
-} from "../derivation-graph.ts";
+} from "../replicant-store.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
 import { requirePermission } from "./permission.ts";
@@ -30,11 +30,12 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	manifest: FieldManifest<Decoded>,
 	initialValue: Decoded,
 ) {
-	const engine = yield* DerivationEngineService;
+	const store = yield* ReplicantStoreService;
 
-	yield* engine.initializeReplicant(
+	yield* store.initializeReplicant(
 		namespace,
 		name,
+		manifest.decode,
 		yield* manifest.encode(initialValue),
 	);
 
@@ -57,18 +58,18 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 
 	const commit = <E>(
 		produce: (current: RevisionedValue) => Effect.Effect<Schema.Json, E>,
-	) => retryContention(engine.commit(namespace, name, produce));
+	) => retryContention(store.commit(namespace, name, produce));
 
 	const get = Effect.fn("get")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		const engine = yield* DerivationEngineService;
-		const { value } = yield* engine.readReplicant(namespace, name);
+		const store = yield* ReplicantStoreService;
+		const { value } = yield* store.readReplicant(namespace, name);
 		return yield* manifest.decode(value).pipe(migrationDie);
 	});
 
 	const getRevisioned = Effect.fn("getRevisioned")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* engine.readReplicant(namespace, name);
+		return yield* store.readReplicant(namespace, name);
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
@@ -81,7 +82,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	const commitPatch = Effect.fn("commitPatch")(function* (patch: Patch) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		return yield* retryContention(
-			engine.commitPatch(namespace, name, patch, manifest.decode),
+			store.commitPatch(namespace, name, patch, manifest.decode),
 		);
 	});
 
@@ -113,11 +114,11 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	});
 
 	const subscribeRevisioned = Effect.fn("subscribeRevisioned")(function* () {
-		return yield* engine.subscribeReplicant(namespace, name);
+		return yield* store.subscribeReplicant(namespace, name);
 	});
 
 	const subscribe = Effect.fn("subscribe")(function* () {
-		const stream = yield* engine.subscribeReplicant(namespace, name);
+		const stream = yield* store.subscribeReplicant(namespace, name);
 		return stream.pipe(
 			Stream.mapEffect((frame) =>
 				manifest.decode(frame.value).pipe(migrationDie),

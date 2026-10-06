@@ -34,7 +34,6 @@ import {
 	makeUseCross,
 } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
-import { DerivationEngineService } from "./derivation-graph.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import {
 	type FrontendConfig,
@@ -47,6 +46,7 @@ import {
 	NamespaceRegistryService,
 	type RegisteredNamespace,
 } from "./namespace-registry.ts";
+import { ReplicantStoreService } from "./replicant-store.ts";
 import { makeNodeHttpServer } from "./server/node-http-server.ts";
 import { routes } from "./server/routes.ts";
 import { OperatingSystemService } from "./services/operating-system/operating-system.ts";
@@ -184,14 +184,14 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 	}
 
 	const internalServices = yield* Layer.build(
-		Layer.merge(DerivationEngineService.layer, BuiltNamespaceRegistry.layer),
+		Layer.merge(ReplicantStoreService.layer, BuiltNamespaceRegistry.layer),
 	);
 
 	return yield* Effect.gen(function* () {
 		const context = yield* Effect.context<
-			TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
+			TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
 		>();
-		const engine = yield* DerivationEngineService;
+		const store = yield* ReplicantStoreService;
 		const useCross = <S extends BaseNamespaceShape>(
 			implemented: ImplementedNamespace<S>,
 		) => Effect.runSyncWith(context)(makeUseCross(implemented));
@@ -295,7 +295,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		});
 		const ServerLive = HttpRouter.serve(routeLayer).pipe(
 			Layer.provide(NamespaceRegistryService.layer(registered)),
-			Layer.provide(Layer.succeed(DerivationEngineService, engine)),
+			Layer.provide(Layer.succeed(ReplicantStoreService, store)),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,

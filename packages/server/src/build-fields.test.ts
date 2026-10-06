@@ -16,12 +16,12 @@ import {
 	LoadedNamespacesService,
 } from "./build-fields.ts";
 import { buildNamespace } from "./build-namespace.ts";
-import { DerivationEngineService } from "./derivation-graph.ts";
 import {
 	type ComputeContext,
 	implementNamespace,
 	type RpcContext,
 } from "./implement-namespace.ts";
+import { ReplicantStoreService } from "./replicant-store.ts";
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
@@ -33,7 +33,7 @@ const test = testLayer(
 	Layer.mergeAll(
 		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(
+		ReplicantStoreService.layer.pipe(
 			Layer.provide(InMemoryReplicantRepository),
 		),
 		BuiltNamespaceRegistry.layer,

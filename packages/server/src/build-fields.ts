@@ -9,10 +9,6 @@ import {
 import { Context, Effect, Layer, Option, Schema } from "effect";
 
 import {
-	ComputedComputeError,
-	DerivationEngineService,
-} from "./derivation-graph.ts";
-import {
 	buildComputed,
 	type ComputedFieldEffect,
 } from "./field-builders/build-computed.ts";
@@ -51,6 +47,10 @@ import type {
 	RpcShape,
 	WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
+import {
+	ComputedComputeError,
+	ReplicantStoreService,
+} from "./replicant-store.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 export const asServer = Effect.provideService(
@@ -123,7 +123,7 @@ export const requireLoaded = (namespace: string) =>
 
 type FieldOps =
 	| TopicBrokerService
-	| DerivationEngineService
+	| ReplicantStoreService
 	| BuiltNamespaceRegistry;
 
 type FieldOpsContext = Context.Context<FieldOps>;
@@ -232,7 +232,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const rpcHandlers = options?.implementRpc;
 
 	const context = yield* Effect.context<
-		TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
+		TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
 	>();
 	const runSync = Effect.runSyncWith(context);
 

@@ -15,8 +15,8 @@ import {
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
-import { DerivationEngineService } from "../derivation-graph.ts";
 import { NamespaceRegistryService } from "../namespace-registry.ts";
+import { ReplicantStoreService } from "../replicant-store.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
 import { DrizzleSqliteLoginAttemptRepository } from "../services/repository/login-attempt/drizzle-sqlite-login-attempt-repository.ts";
@@ -62,7 +62,7 @@ const handler = () => {
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(InMemoryTopicBroker),
 			Layer.provide(
-				DerivationEngineService.layer.pipe(
+				ReplicantStoreService.layer.pipe(
 					Layer.provide(InMemoryReplicantRepository),
 				),
 			),

@@ -6,11 +6,11 @@ import { describe, expect, test } from "vitest";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { buildNamespace } from "./build-namespace.ts";
-import { DerivationEngineService } from "./derivation-graph.ts";
 import {
 	implementExtendedNamespace,
 	implementNamespace,
 } from "./implement-namespace.ts";
+import { ReplicantStoreService } from "./replicant-store.ts";
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 
@@ -19,7 +19,7 @@ const testInMemory = testLayer(
 		Layer.succeed(CurrentIdentity, ServerIdentity.make({})),
 		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(
+		ReplicantStoreService.layer.pipe(
 			Layer.provide(InMemoryReplicantRepository),
 		),
 		BuiltNamespaceRegistry.layer,

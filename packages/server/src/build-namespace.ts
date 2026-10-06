@@ -8,7 +8,6 @@ import {
 	buildFields,
 	BuiltNamespaceRegistry,
 } from "./build-fields.ts";
-import { DerivationEngineService } from "./derivation-graph.ts";
 import type {
 	ComputedFieldEffectLambda,
 	ComputedFieldLambda,
@@ -25,6 +24,7 @@ import type {
 	LoadedNamespace,
 	RpcShape,
 } from "./implement-namespace.ts";
+import { ReplicantStoreService } from "./replicant-store.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 export class MissingReplicantSeed extends Schema.TaggedError<MissingReplicantSeed>()(
@@ -63,7 +63,7 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	Rpc extends RpcShape,
 >(built: BuiltNamespace<Replicant, Computed, Topic, Rpc>) {
 	const context = yield* Effect.context<
-		TopicBrokerService | DerivationEngineService
+		TopicBrokerService | ReplicantStoreService
 	>();
 	const runSync = Effect.runSyncWith(context);
 	const runPromise = Effect.runPromiseWith(context);
@@ -74,10 +74,10 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 				Stream.Stream<
 					Decoded,
 					never,
-					TopicBrokerService | DerivationEngineService
+					TopicBrokerService | ReplicantStoreService
 				>,
 				E,
-				TopicBrokerService | DerivationEngineService | Scope.Scope
+				TopicBrokerService | ReplicantStoreService | Scope.Scope
 			>,
 			name: string,
 		) =>

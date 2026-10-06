@@ -1,4 +1,4 @@
-import type { FieldEncodeError } from "@nodecg-next/core";
+import { FieldDecodeError, type FieldEncodeError } from "@nodecg-next/core";
 import {
 	applyPatch,
 	ChangeOp,
@@ -49,7 +49,7 @@ export class ReplicantLoadError extends Schema.TaggedError<ReplicantLoadError>()
 	{
 		namespace: Schema.String,
 		name: Schema.String,
-		cause: Schema.Union([DecodeError, BackendError]),
+		cause: Schema.Union([DecodeError, BackendError, FieldDecodeError]),
 	},
 ) {
 	override readonly message = `Loading replicant "${this.name}" in "${this.namespace}" failed: ${this.cause.message}`;
@@ -89,8 +89,8 @@ export class ComputedAlreadyRegistered extends Schema.TaggedError<ComputedAlread
 const fieldKey = (namespace: string, name: string) => ({ namespace, name });
 type FieldKey = ReturnType<typeof fieldKey>;
 
-export class DerivationReadValueError extends Schema.TaggedError<DerivationReadValueError>()(
-	"DerivationReadValueError",
+export class ReplicantStoreReadError extends Schema.TaggedError<ReplicantStoreReadError>()(
+	"ReplicantStoreReadError",
 	{
 		namespace: Schema.String,
 		name: Schema.String,
@@ -177,10 +177,10 @@ export type ComputedResult = Exit.Exit<
 >;
 
 /**
- * Implements `computed` reactivity with signals
+ * Container of replicant side effect logic
  */
-export class DerivationEngineService extends Context.Service<DerivationEngineService>()(
-	"DerivationEngine",
+export class ReplicantStoreService extends Context.Service<ReplicantStoreService>()(
+	"ReplicantStore",
 	{
 		make: Effect.gen(function* () {
 			const context = yield* Effect.context<never>();
@@ -208,9 +208,16 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 			}>();
 
 			const initializeReplicant = Effect.fn(
-				"DerivationEngine.initializeReplicant",
-			)(function* (namespace: string, name: string, seed: Schema.Json) {
-				const persisted = yield* repository.read(namespace, name).pipe(
+				"ReplicantStore.initializeReplicant",
+			)(function* (
+				namespace: string,
+				name: string,
+				validate: (
+					value: Schema.Json,
+				) => Effect.Effect<unknown, FieldDecodeError>,
+				defaultValue: Schema.Json,
+			) {
+				const persistedValue = yield* repository.read(namespace, name).pipe(
 					Effect.asSome,
 					Effect.catchTags({
 						ReplicantNotFound: () => Effect.succeedNone,
@@ -220,12 +227,24 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 							ReplicantLoadError.make({ namespace, name, cause }),
 					}),
 				);
-				const initial = Option.getOrElse(persisted, () => seed);
+				const initial = yield* Option.match(persistedValue, {
+					onNone: () => Effect.succeed(defaultValue),
+					onSome: (value) =>
+						validate(value).pipe(
+							Effect.as(value),
+							Effect.mapError((cause) =>
+								ReplicantLoadError.make({ namespace, name, cause }),
+							),
+						),
+				});
 				yield* SynchronizedRef.updateEffect(replicants, (map) =>
 					Effect.gen(function* () {
 						const key = fieldKey(namespace, name);
 						if (HashMap.has(map, key)) {
-							return yield* new ReplicantAlreadyRegistered({ namespace, name });
+							return yield* ReplicantAlreadyRegistered.make({
+								namespace,
+								name,
+							});
 						}
 						const stored = makeLeafValue(initial, 0);
 						const replicant = signal(stored);
@@ -236,9 +255,9 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 						return HashMap.set(map, key, replicant);
 					}),
 				);
-				if (Option.isNone(persisted)) {
+				if (Option.isNone(persistedValue)) {
 					yield* repository
-						.write(namespace, name, seed)
+						.write(namespace, name, defaultValue)
 						.pipe(
 							Effect.catchTag("BackendError", (cause) =>
 								ReplicantLoadError.make({ namespace, name, cause }),
@@ -251,20 +270,19 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				const map = yield* SynchronizedRef.get(replicants);
 				const existing = HashMap.get(map, fieldKey(namespace, name));
 				if (Option.isNone(existing)) {
-					return yield* new UnknownReplicant({ namespace, name });
+					return yield* UnknownReplicant.make({ namespace, name });
 				}
 				return existing.value;
 			});
 
 			const readLeaf = (node: ReplicantNode, namespace: string, name: string) =>
 				readSignal(node).pipe(
-					Effect.mapError(
-						(error) =>
-							new DerivationReadValueError({
-								namespace,
-								name,
-								cause: toError(error.cause),
-							}),
+					Effect.mapError((error) =>
+						ReplicantStoreReadError.make({
+							namespace,
+							name,
+							cause: toError(error.cause),
+						}),
 					),
 					Effect.orDie,
 				);
@@ -291,7 +309,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				Queue.end(pendingWrites).pipe(Effect.andThen(Fiber.join(consumer))),
 			);
 
-			const readReplicant = Effect.fn("DerivationEngine.readReplicant")(
+			const readReplicant = Effect.fn("ReplicantStore.readReplicant")(
 				function* (namespace: string, name: string) {
 					const node = yield* lookupNode(namespace, name);
 					const stored = yield* readLeaf(node, namespace, name);
@@ -309,7 +327,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				SynchronizedRef.modifyEffect(replicants, (map) =>
 					Effect.gen(function* () {
 						if (node.peek().revision !== stored.revision) {
-							return yield* new CommitContended({ namespace, name });
+							return yield* CommitContended.make({ namespace, name });
 						}
 						yield* setSignal(
 							node,
@@ -331,7 +349,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 					}),
 				);
 
-			const commit = Effect.fn("DerivationEngine.commit")(function* <E>(
+			const commit = Effect.fn("ReplicantStore.commit")(function* <E>(
 				namespace: string,
 				name: string,
 				produce: (current: RevisionedValue) => Effect.Effect<Schema.Json, E>,
@@ -354,9 +372,7 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 
 			const isChangeOp = Schema.is(ChangeOp);
 
-			const commitPatch = Effect.fn("DerivationEngine.commitPatch")(function* <
-				E,
-			>(
+			const commitPatch = Effect.fn("ReplicantStore.commitPatch")(function* <E>(
 				namespace: string,
 				name: string,
 				patch: Patch,
@@ -368,13 +384,13 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				if (Result.isFailure(applied)) {
 					const { op, cause } = applied.failure;
 					if (isDrift(cause)) {
-						return yield* new RevisionConflict({
+						return yield* RevisionConflict.make({
 							value: stored.value,
 							revision: stored.revision,
 							reason: cause._tag,
 						});
 					}
-					return yield* new PatchNotApplicable({
+					return yield* PatchNotApplicable.make({
 						path: op.path,
 						reason: cause._tag,
 					});
@@ -398,97 +414,99 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 				});
 			});
 
-			const subscribeReplicant = Effect.fn(
-				"DerivationEngine.subscribeReplicant",
-			)(function* (namespace: string, name: string) {
-				const dequeue = yield* PubSub.subscribe(changes);
-				const node = yield* lookupNode(namespace, name);
-				const stored = yield* readLeaf(node, namespace, name);
-				const seed: ReplicantFrame = {
-					value: stored.value,
-					revision: stored.revision,
-					delta: Option.none(),
-				};
-				const updates = Stream.fromSubscription(dequeue).pipe(
-					Stream.filter(
-						(event) =>
-							event.namespace === namespace &&
-							event.name === name &&
-							event.frame.revision > stored.revision,
-					),
-					Stream.map((event) => event.frame),
-				);
-				return Stream.concat(Stream.succeed(seed), updates);
-			});
-
-			const initializeComputed = Effect.fn(
-				"DerivationEngine.initializeComputed",
-			)((namespace: string, name: string, evaluate: () => ComputedResult) =>
-				SynchronizedRef.updateEffect(computedResults, (map) =>
-					Effect.gen(function* () {
-						const key = fieldKey(namespace, name);
-						if (HashMap.has(map, key)) {
-							return yield* new ComputedAlreadyRegistered({ namespace, name });
-						}
-
-						let last: ComputedResult | undefined;
-						let lastHash: number | undefined;
-						const result = computed(() =>
-							Exit.match(evaluate(), {
-								onSuccess: (value) => {
-									const hash = Hash.string(JSON.stringify(value));
-									if (
-										typeof last === "undefined" ||
-										!Exit.isSuccess(last) ||
-										lastHash !== hash ||
-										JSON.stringify(value) !== JSON.stringify(last.value)
-									) {
-										last = Exit.succeed(value);
-										lastHash = hash;
-									}
-									return last;
-								},
-								onFailure: (cause) => {
-									if (
-										typeof last === "undefined" ||
-										!Exit.isFailure(last) ||
-										!Equal.equals(cause, last.cause)
-									) {
-										last = Exit.failCause(cause);
-										lastHash = undefined;
-									}
-									return last;
-								},
-							}),
-						);
-						return HashMap.set(map, key, result);
-					}),
-				),
-			);
-
-			const readComputed = Effect.fn("DerivationEngine.readComputed")(
+			const subscribeReplicant = Effect.fn("ReplicantStore.subscribeReplicant")(
 				function* (namespace: string, name: string) {
-					const map = yield* SynchronizedRef.get(computedResults);
-					const existing = HashMap.get(map, fieldKey(namespace, name));
-					if (Option.isNone(existing)) {
-						return yield* new ComputedNotFound({ namespace, name });
-					}
-					const stored = yield* readSignal(existing.value).pipe(
-						Effect.mapError(
-							(error) =>
-								new DerivationReadValueError({
-									namespace,
-									name,
-									cause: toError(error.cause),
-								}),
+					const dequeue = yield* PubSub.subscribe(changes);
+					const node = yield* lookupNode(namespace, name);
+					const stored = yield* readLeaf(node, namespace, name);
+					const seed: ReplicantFrame = {
+						value: stored.value,
+						revision: stored.revision,
+						delta: Option.none(),
+					};
+					const updates = Stream.fromSubscription(dequeue).pipe(
+						Stream.filter(
+							(event) =>
+								event.namespace === namespace &&
+								event.name === name &&
+								event.frame.revision > stored.revision,
 						),
-						Effect.orDie,
+						Stream.map((event) => event.frame),
 					);
-					return yield* stored; // Unwrap the Exit
+					return Stream.concat(Stream.succeed(seed), updates);
 				},
 			);
 
-			const subscribeComputed = Effect.fn("DerivationEngine.subscribeComputed")(
+			const initializeComputed = Effect.fn("ReplicantStore.initializeComputed")(
+				(namespace: string, name: string, evaluate: () => ComputedResult) =>
+					SynchronizedRef.updateEffect(computedResults, (map) =>
+						Effect.gen(function* () {
+							const key = fieldKey(namespace, name);
+							if (HashMap.has(map, key)) {
+								return yield* ComputedAlreadyRegistered.make({
+									namespace,
+									name,
+								});
+							}
+
+							let last: ComputedResult | undefined;
+							let lastHash: number | undefined;
+							const result = computed(() =>
+								Exit.match(evaluate(), {
+									onSuccess: (value) => {
+										const hash = Hash.string(JSON.stringify(value));
+										if (
+											typeof last === "undefined" ||
+											!Exit.isSuccess(last) ||
+											lastHash !== hash ||
+											JSON.stringify(value) !== JSON.stringify(last.value)
+										) {
+											last = Exit.succeed(value);
+											lastHash = hash;
+										}
+										return last;
+									},
+									onFailure: (cause) => {
+										if (
+											typeof last === "undefined" ||
+											!Exit.isFailure(last) ||
+											!Equal.equals(cause, last.cause)
+										) {
+											last = Exit.failCause(cause);
+											lastHash = undefined;
+										}
+										return last;
+									},
+								}),
+							);
+							return HashMap.set(map, key, result);
+						}),
+					),
+			);
+
+			const readComputed = Effect.fn("ReplicantStore.readComputed")(function* (
+				namespace: string,
+				name: string,
+			) {
+				const map = yield* SynchronizedRef.get(computedResults);
+				const existing = HashMap.get(map, fieldKey(namespace, name));
+				if (Option.isNone(existing)) {
+					return yield* ComputedNotFound.make({ namespace, name });
+				}
+				const stored = yield* readSignal(existing.value).pipe(
+					Effect.mapError((error) =>
+						ReplicantStoreReadError.make({
+							namespace,
+							name,
+							cause: toError(error.cause),
+						}),
+					),
+					Effect.orDie,
+				);
+				return yield* stored; // Unwrap the Exit
+			});
+
+			const subscribeComputed = Effect.fn("ReplicantStore.subscribeComputed")(
 				function* (namespace: string, name: string) {
 					const result = Option.getOrUndefined(
 						HashMap.get(
@@ -497,18 +515,17 @@ export class DerivationEngineService extends Context.Service<DerivationEngineSer
 						),
 					);
 					if (typeof result === "undefined") {
-						return yield* new ComputedNotFound({ namespace, name });
+						return yield* ComputedNotFound.make({ namespace, name });
 					}
 					const updates = yield* Queue.make<Schema.Json>();
 					const readNode = Effect.gen(function* () {
 						const evaluation = yield* readSignal(result).pipe(
-							Effect.mapError(
-								(error) =>
-									new ComputedComputeError({
-										namespace,
-										name,
-										cause: toError(error.cause),
-									}),
+							Effect.mapError((error) =>
+								ComputedComputeError.make({
+									namespace,
+									name,
+									cause: toError(error.cause),
+								}),
 							),
 						);
 						return yield* evaluation;
