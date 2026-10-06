@@ -112,9 +112,7 @@ export const makeQueryInChunks = Effect.gen(function* () {
 	const maxVariableNumber = yield* readMaxVariableNumber;
 	return <Row extends object, A, E, R>(
 		rows: ReadonlyArray<Row>,
-		query: (
-			chunk: Array.NonEmptyArray<Row>,
-		) => Effect.Effect<ReadonlyArray<A>, E, R>,
+		query: (chunk: Array.NonEmptyArray<Row>) => Effect.Effect<A, E, R>,
 	) =>
 		Effect.forEach(
 			Array.match(rows, {
@@ -128,5 +126,6 @@ export const makeQueryInChunks = Effect.gen(function* () {
 					),
 			}),
 			query,
-		).pipe(Effect.map(Array.flatten));
+			{ discard: true },
+		);
 });

@@ -18,7 +18,7 @@ import {
 } from "effect";
 import { TestConsole } from "effect/testing";
 import { Reactivity } from "effect/unstable/reactivity";
-import { assert, describe, expect } from "vitest";
+import { assert, describe, expect, vi } from "vitest";
 
 import {
 	DrizzleSqliteDatabaseService,
@@ -193,12 +193,17 @@ describe("makeQueryInChunks", () => {
 				Effect.provideService(DrizzleSqliteDatabaseService, db),
 			);
 			const rows = Array.makeBy(16_384, (id) => ({ id, name: "row" }));
+			const query = vi.fn<
+				(
+					chunk: ReadonlyArray<{ id: number; name: string }>,
+				) => Effect.Effect<void>
+			>(() => Effect.void);
 
-			const chunkSizes = yield* queryInChunks(rows, (chunk) =>
-				Effect.succeed([chunk.length]),
-			);
+			yield* queryInChunks(rows, query);
 
-			expect(chunkSizes).toStrictEqual([16_383, 1]);
+			expect(query.mock.calls.map(([chunk]) => chunk.length)).toStrictEqual([
+				16_383, 1,
+			]);
 		}),
 	);
 
@@ -210,11 +215,11 @@ describe("makeQueryInChunks", () => {
 				Effect.provideService(DrizzleSqliteDatabaseService, db),
 			);
 
-			const chunkSizes = yield* queryInChunks([], (chunk) =>
-				Effect.succeed([chunk.length]),
-			);
+			const query = vi.fn(() => Effect.void);
 
-			expect(chunkSizes).toStrictEqual([]);
+			yield* queryInChunks([], query);
+
+			expect(query).not.toHaveBeenCalled();
 		}),
 	);
 });

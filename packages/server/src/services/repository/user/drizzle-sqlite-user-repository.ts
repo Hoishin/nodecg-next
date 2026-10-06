@@ -73,11 +73,7 @@ export const DrizzleSqliteUserRepository = Layer.effect(
 							}),
 						);
 						yield* queryInChunks(rows, (chunk) =>
-							db
-								.insert(roleGrants)
-								.values(chunk)
-								.onConflictDoNothing()
-								.pipe(Effect.as([])),
+							db.insert(roleGrants).values(chunk).onConflictDoNothing(),
 						);
 					}),
 				);
@@ -103,19 +99,16 @@ export const DrizzleSqliteUserRepository = Layer.effect(
 								roleName: name,
 							}));
 							yield* queryInChunks(rows, (chunk) =>
-								db
-									.delete(roleGrants)
-									.where(
-										and(
-											eq(roleGrants.accountId, accountId),
-											eq(roleGrants.namespace, namespace),
-											inArray(
-												roleGrants.roleName,
-												chunk.map(({ roleName }) => roleName),
-											),
+								db.delete(roleGrants).where(
+									and(
+										eq(roleGrants.accountId, accountId),
+										eq(roleGrants.namespace, namespace),
+										inArray(
+											roleGrants.roleName,
+											chunk.map(({ roleName }) => roleName),
 										),
-									)
-									.pipe(Effect.as([])),
+									),
+								),
 							);
 						}
 					}),
