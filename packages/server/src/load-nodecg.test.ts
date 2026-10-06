@@ -7,28 +7,36 @@ import { testLayer } from "@nodecg-next/test-utils";
 import { Cause, ConfigProvider, Effect, Layer, Result, Schema } from "effect";
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { BuiltNamespaceRegistry } from "./build-fields.ts";
-import { DerivationEngineService } from "./derivation-graph.ts";
 import {
 	implementExtendedNamespace,
 	implementNamespace,
 } from "./implement-namespace.ts";
 import { loadNodeCG, loadNodeCGEffect } from "./load-nodecg.ts";
+import { AuthenticationRepositoryService } from "./services/repository/authentication/authentication-repository.ts";
+import { LoginAttemptRepositoryService } from "./services/repository/login-attempt/login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import {
 	type ReplicantRepository,
 	ReplicantNotFound,
 } from "./services/repository/replicant/replicant-repository.ts";
+import { RoleRepositoryService } from "./services/repository/role/role-repository.ts";
+import { ServiceAccountRepositoryService } from "./services/repository/service-account/service-account-repository.ts";
+import { SessionRepositoryService } from "./services/repository/session/session-repository.ts";
+import { UserRepositoryService } from "./services/repository/user/user-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
+import { TransactionService } from "./services/transaction/transaction.ts";
 
 const testInMemory = testLayer(
 	Layer.mergeAll(
 		InMemoryReplicantRepository,
 		InMemoryTopicBroker,
-		DerivationEngineService.layer.pipe(
-			Layer.provide(InMemoryReplicantRepository),
-		),
-		BuiltNamespaceRegistry.layer,
+		Layer.mock(AuthenticationRepositoryService)({}),
+		Layer.mock(LoginAttemptRepositoryService)({}),
+		Layer.mock(RoleRepositoryService)({}),
+		Layer.mock(ServiceAccountRepositoryService)({}),
+		Layer.mock(SessionRepositoryService)({}),
+		Layer.mock(UserRepositoryService)({}),
+		Layer.mock(TransactionService)({}),
 		ConfigProvider.layer(ConfigProvider.fromEnvRecord({})),
 	),
 );

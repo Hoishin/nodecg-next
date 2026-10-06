@@ -12,7 +12,72 @@ export {
 	type AuthProvider,
 	ProviderStateMismatch,
 } from "./auth/auth-provider.ts";
-export { type LoginAttempt, Authentication } from "@nodecg-next/internal";
+export {
+	AccountId,
+	Authentication,
+	AuthenticationId,
+	GlobalRoleName,
+	type LoginAttempt,
+	Role,
+	ServiceAccountId,
+	UserId,
+	UserSessionId,
+} from "@nodecg-next/internal";
+export {
+	BackendError,
+	KeyTaken,
+} from "./services/repository/repository-errors.ts";
+export {
+	OperatingSystemService,
+	UnsupportedOperatingSystem,
+} from "./services/operating-system/operating-system.ts";
+export { DrizzleSqliteRepositories } from "./services/repository/drizzle-sqlite-repositories.ts";
+export {
+	type AuthenticationRepository,
+	AuthenticationRepositoryService,
+} from "./services/repository/authentication/authentication-repository.ts";
+export {
+	type LoginAttemptRepository,
+	LoginAttemptRepositoryService,
+} from "./services/repository/login-attempt/login-attempt-repository.ts";
+export { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
+export { JsonFileReplicantRepository } from "./services/repository/replicant/json-file-replicant-repository.ts";
+export {
+	DecodeError,
+	ReplicantNotFound,
+	type ReplicantRepository,
+	ReplicantRepositoryService,
+} from "./services/repository/replicant/replicant-repository.ts";
+export {
+	type RoleAssignment,
+	type RoleGrants,
+	type RoleRepository,
+	RoleRepositoryService,
+	UnknownAccount,
+} from "./services/repository/role/role-repository.ts";
+export {
+	type NewApiKey,
+	type ServiceAccountRepository,
+	ServiceAccountRepositoryService,
+} from "./services/repository/service-account/service-account-repository.ts";
+export {
+	type SessionRepository,
+	SessionRepositoryService,
+} from "./services/repository/session/session-repository.ts";
+export {
+	type UserRepository,
+	UserRepositoryService,
+} from "./services/repository/user/user-repository.ts";
+export { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
+export {
+	type TopicBroker,
+	TopicBrokerService,
+	type TopicMessage,
+} from "./services/topic-broker/topic-broker.ts";
+export {
+	type Transaction,
+	TransactionService,
+} from "./services/transaction/transaction.ts";
 export {
 	makeOidcProvider,
 	type OidcProviderConfig,

@@ -339,6 +339,7 @@ match.replicant.label.subscribe((label) => {
 
   ```ts
   const manifest = defineNamespace("dice", {
+    replicant: { lastRoll: { schema: Schema.Number } },
     rpc: {
       roll: {
         schema: { request: Schema.Number, response: Schema.Number },
@@ -347,9 +348,16 @@ match.replicant.label.subscribe((label) => {
     },
   });
 
-  // Server: provide the handler
+  // Server: provide the handler. `ctx` reads and writes replicants and publishes topics
   const dice = implementNamespace(manifest, {
-    implementRpc: { roll: (max) => 1 + Math.floor(Math.random() * max) },
+    seedReplicant: { lastRoll: () => 0 },
+    implementRpc: {
+      roll: (max, ctx) => {
+        const rolled = 1 + Math.floor(Math.random() * max);
+        ctx.replicant.lastRoll.set(rolled);
+        return rolled;
+      },
+    },
   });
   loadNodeCG({ namespaces: { dice } });
 
@@ -386,6 +394,22 @@ For datasets too large to keep in memory. Unlike Replicant, which is mirrored in
 - Each namespace serves its own frontend files from the same origin under `/frontend/namespaces/{ns}/`
   - built static directory in production
   - optionally Vite dev server (HMR) for development
+
+### ✅ Server configuration
+
+The server reads its settings from environment variables.
+
+| Variable | Default | Sets |
+| --- | --- | --- |
+| `NODECG_PORT` | `3000` | the port to listen on |
+| `NODECG_BASE_URL` | `http://localhost:{port}` | the public URL of the server |
+| `NODECG_DATA_DIR` | `data` | the folder persisted data is written to |
+| `NODECG_DEV` | `false` | development mode |
+| `NODECG_REQUIRE_AUTH` | `false` | refuse anonymous requests |
+| `NODECG_SESSION_TTL` | `7 days` | how long a login session lasts |
+| `NODECG_LOGIN_ATTEMPT_TTL` | `10 minutes` | how long a started login stays valid |
+| `NODECG_SUPERADMINS` | none | superadmins, as comma-separated `provider:subject` pairs |
+| `NODECG_SUPERADMIN_CLAIM_TOKEN` | none | a secret of 16 characters or more that lets a logged-in user claim superadmin |
 
 ### 🚧 Asset storage
 

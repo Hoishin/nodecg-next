@@ -183,6 +183,10 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		);
 	}
 
+	const internalServices = yield* Layer.build(
+		Layer.merge(DerivationEngineService.layer, BuiltNamespaceRegistry.layer),
+	);
+
 	return yield* Effect.gen(function* () {
 		const context = yield* Effect.context<
 			TopicBrokerService | DerivationEngineService | BuiltNamespaceRegistry
@@ -286,32 +290,38 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 
 		const routeLayer = yield* routes;
 
-		const start = Effect.gen(function* () {
-			const httpServer = yield* makeNodeHttpServer({
-				onReady: options.onReady,
-			});
-			const ServerLive = HttpRouter.serve(routeLayer).pipe(
-				Layer.provide(NamespaceRegistryService.layer(registered)),
-				Layer.provide(Layer.succeed(DerivationEngineService, engine)),
-				Layer.provide(
-					Layer.succeed(
-						AuthProviderRegistry,
-						// TODO: check duplicate names
-						HashMap.fromIterable(
-							(options.authProviders ?? []).map((provider) => [
-								provider.name,
-								provider,
-							]),
-						),
+		const httpServer = yield* makeNodeHttpServer({
+			onReady: options.onReady,
+		});
+		const ServerLive = HttpRouter.serve(routeLayer).pipe(
+			Layer.provide(NamespaceRegistryService.layer(registered)),
+			Layer.provide(Layer.succeed(DerivationEngineService, engine)),
+			Layer.provide(
+				Layer.succeed(
+					AuthProviderRegistry,
+					// TODO: check duplicate names
+					HashMap.fromIterable(
+						(options.authProviders ?? []).map((provider) => [
+							provider.name,
+							provider,
+						]),
 					),
 				),
-				Layer.provide(httpServer),
-			);
-			return yield* Layer.launch(ServerLive);
-		});
+			),
+			Layer.provide(httpServer),
+		);
+		const serverRequirement =
+			yield* Effect.context<Layer.Services<typeof ServerLive>>();
+		const start = Layer.launch(ServerLive).pipe(
+			Effect.provide(serverRequirement),
+			Effect.satisfiesServicesType<never>(),
+		);
 
 		return { namespaces, start };
-	}).pipe(Effect.provideService(LoadedNamespacesService, loaded));
+	}).pipe(
+		Effect.provideService(LoadedNamespacesService, loaded),
+		Effect.provide(internalServices),
+	);
 });
 
 export interface LoadedNodeCG<
@@ -326,12 +336,9 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 ): Promise<LoadedNodeCG<Shapes>> => {
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
-			DerivationEngineService.layer.pipe(
-				Layer.provide(replicantRepository(options.storage)),
-			),
+			replicantRepository(options.storage),
 			InMemoryTopicBroker,
 			DrizzleSqliteRepositories,
-			BuiltNamespaceRegistry.layer,
 			Layer.effect(Scope.Scope, Effect.scope),
 			Logger.layer([Logger.consolePretty()]),
 		).pipe(
@@ -354,20 +361,15 @@ export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
 		.then(({ namespaces, start }) => ({
 			namespaces,
 			start: () =>
-				NodeRuntime.runMain(
-					Effect.flatMap(runtime.contextEffect, (context) =>
-						Effect.provide(start, context),
-					),
-					{
-						teardown: (exit, onExit) =>
-							void runtime
-								.dispose()
-								.finally(() =>
-									onExit(
-										Exit.isFailure(exit) && !Exit.hasInterrupts(exit) ? 1 : 0,
-									),
+				NodeRuntime.runMain(start, {
+					teardown: (exit, onExit) =>
+						void runtime
+							.dispose()
+							.finally(() =>
+								onExit(
+									Exit.isFailure(exit) && !Exit.hasInterrupts(exit) ? 1 : 0,
 								),
-					},
-				),
+							),
+				}),
 		}));
 };
