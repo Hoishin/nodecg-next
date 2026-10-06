@@ -1,6 +1,7 @@
 import {
 	User,
 	AnonymousIdentitySchema,
+	type CurrentSessionCaller,
 	ServiceAccount,
 } from "@nodecg-next/internal";
 import { Array, Effect, Option } from "effect";
@@ -43,19 +44,33 @@ export const resolveSessionCaller = Effect.fn("resolveSessionCaller")(
 	},
 );
 
-export const resolveServiceAccountIdentity = Effect.fn(
-	"resolveServiceAccountIdentity",
+export const resolveServiceAccountCaller = Effect.fn(
+	"resolveServiceAccountCaller",
 )(function* (token: string) {
 	const serviceAccounts = yield* ServiceAccountRepositoryService;
 	const roleRepository = yield* RoleRepositoryService;
 	const hash = yield* hashApiKey(token);
-	const resolved = yield* serviceAccounts.resolveByKeyHash(hash);
-	if (Option.isNone(resolved)) {
+	const serviceAccount = yield* serviceAccounts.resolveByKeyHash(hash);
+	if (Option.isNone(serviceAccount)) {
 		return Option.none();
 	}
-	const { id, accountId, displayName } = resolved.value;
+	const { id, accountId, displayName } = serviceAccount.value;
 	const { roles, globalRoles } = yield* roleRepository.read(accountId);
-	return Option.some(
-		ServiceAccount.make({ id, displayName, roles, globalRoles }),
-	);
+	return Option.some({
+		serviceAccount: ServiceAccount.make({
+			id,
+			displayName,
+			roles,
+			globalRoles,
+		}),
+		accountId,
+	});
 });
+
+export const getSessionIdentity = (caller: CurrentSessionCaller["Service"]) =>
+	caller.pipe(
+		Option.match({
+			onNone: () => anonymousIdentity,
+			onSome: ({ user }) => user,
+		}),
+	);

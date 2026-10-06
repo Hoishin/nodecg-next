@@ -164,6 +164,75 @@ describe("unknown account", () => {
 
 describe("superadmin claim", () => {
 	test(
+		"a wrong token leaves the claim open and the first claim closes it",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+			const asOperator = yield* login(client, operator);
+
+			const wrongTokenRes = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "wrong-token-of-real-length" }),
+			});
+			expect(wrongTokenRes.status).toBe(403);
+
+			const claimRes = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+			});
+			expect(claimRes.status).toBe(204);
+
+			const secondClaimRes = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+			});
+			expect(secondClaimRes.status).toBe(403);
+		}).pipe(
+			Effect.provide(
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({
+						SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+					}),
+				),
+			),
+		),
+	);
+
+	test(
+		"403 while a superadmin is in config",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+			const asOperator = yield* login(client, operator);
+
+			const res = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+			});
+			expect(res.status).toBe(403);
+		}).pipe(
+			Effect.provide(
+				Layer.mergeAll(
+					Layer.succeed(AuthProviderRegistry, HashMap.make(["dev", dev])),
+					ConfigProvider.layer(
+						ConfigProvider.fromEnvRecord({
+							SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+							SUPERADMINS: "dev:root",
+						}),
+					),
+				),
+			),
+		),
+	);
+
+	test(
+		"403 when no claim token is configured",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+			const asOperator = yield* login(client, operator);
+
+			const res = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+			});
+			expect(res.status).toBe(403);
+		}),
+	);
+
+	test(
 		"revoking the last superadmin reopens the claim",
 		Effect.gen(function* () {
 			const client = yield* buildClient;

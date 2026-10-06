@@ -35,8 +35,8 @@ import { HttpApiBuilder, HttpApiSecurity } from "effect/unstable/httpapi";
 import type { Socket } from "effect/unstable/socket";
 
 import {
-	anonymousIdentity,
-	resolveServiceAccountIdentity,
+	getSessionIdentity,
+	resolveServiceAccountCaller,
 	resolveSessionCaller,
 } from "../auth/identity.ts";
 import {
@@ -312,14 +312,9 @@ export const websocketRoute = HttpRouter.use((router) =>
 		});
 
 		const requireAuth = yield* config.requireAuth;
-		const broker = yield* TopicBrokerService;
-		const engine = yield* DerivationEngineService;
-
-		const serveWebsocket = (identity: Identity) =>
-			wsHandler(identity).pipe(
-				Effect.provideService(TopicBrokerService, broker),
-				Effect.provideService(DerivationEngineService, engine),
-			);
+		const context = yield* Effect.context<
+			TopicBrokerService | DerivationEngineService
+		>();
 
 		yield* router.add(
 			"GET",
@@ -334,13 +329,9 @@ export const websocketRoute = HttpRouter.use((router) =>
 				if (Option.isNone(caller) && requireAuth) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
-				const identity = caller.pipe(
-					Option.match({
-						onNone: () => anonymousIdentity,
-						onSome: ({ user }) => user,
-					}),
+				return yield* wsHandler(getSessionIdentity(caller)).pipe(
+					Effect.provide(context),
 				);
-				return yield* serveWebsocket(identity);
 			}),
 		);
 
@@ -352,14 +343,16 @@ export const websocketRoute = HttpRouter.use((router) =>
 					HttpApiSecurity.bearer,
 				);
 				const value = Redacted.value(credential);
-				const resolved =
+				const caller =
 					value.length > 0
-						? yield* resolveServiceAccountIdentity(value)
+						? yield* resolveServiceAccountCaller(value)
 						: Option.none();
-				if (Option.isNone(resolved)) {
+				if (Option.isNone(caller)) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
-				return yield* serveWebsocket(resolved.value);
+				return yield* wsHandler(caller.value.serviceAccount).pipe(
+					Effect.provide(context),
+				);
 			}),
 		);
 	}),

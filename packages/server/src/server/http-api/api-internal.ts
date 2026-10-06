@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
 	CurrentIdentity,
+	CurrentSessionCaller,
 	CurrentUser,
 	UserDocumentEntry,
 	ServiceAccountDocumentEntry,
@@ -40,6 +41,7 @@ import {
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
+import { getSessionIdentity } from "../../auth/identity.ts";
 import {
 	consumeLoginAttempt,
 	createLoginAttempt,
@@ -64,7 +66,6 @@ import { ConfiguredSuperadmins } from "../../configured-superadmins.ts";
 import { listPermissions } from "../../list-permissions.ts";
 import { NamespaceRegistryService } from "../../namespace-registry.ts";
 import { config } from "../../server-config.ts";
-import { AccountRepositoryService } from "../../services/repository/account/account-repository.ts";
 import { AuthenticationRepositoryService } from "../../services/repository/authentication/authentication-repository.ts";
 import type { BackendError } from "../../services/repository/repository-errors.ts";
 import { RoleRepositoryService } from "../../services/repository/role/role-repository.ts";
@@ -82,6 +83,14 @@ import {
 } from "./shared.ts";
 
 const loginAttemptCookieName = "nodecg.login_attempt";
+
+const provideIdentity = Effect.provideServiceEffect(
+	CurrentIdentity,
+	Effect.gen(function* () {
+		const caller = yield* CurrentSessionCaller;
+		return getSessionIdentity(caller);
+	}),
+);
 
 // TODO: get this path from Effect HttpApi
 const callbackUrl = Effect.fn("callbackUrl")(function* (
@@ -182,7 +191,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 					Effect.gen(function* () {
 						const identity = yield* CurrentIdentity;
 						return { identity, namespaces: yield* listPermissions(identity) };
-					}),
+					}).pipe(provideIdentity),
 				)
 				.handle("providers", () =>
 					Effect.forEach(
@@ -343,16 +352,11 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 				)
 				.handle("claimSuperadmin", ({ payload: { token } }) =>
 					Effect.gen(function* () {
-						const identity = yield* CurrentIdentity;
+						const caller = yield* CurrentSessionCaller;
 						// Gate unauthenticated users to consume rate limit
-						const authentication = yield* Match.value(identity).pipe(
-							Match.tag("user", (user) => Effect.succeed(user.authentication)),
-							Match.tag("serviceAccount", "server", () =>
-								HttpApiError.Forbidden.make(),
-							),
-							Match.tag("anonymous", () => HttpApiError.Unauthorized.make()),
-							Match.exhaustive,
-						);
+						if (Option.isNone(caller)) {
+							return yield* HttpApiError.Unauthorized.make();
+						}
 
 						const now = yield* Clock.currentTimeMillis;
 						const recent = (yield* Ref.get(claimAttempts)).filter(
@@ -375,13 +379,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							return yield* HttpApiError.Forbidden.make();
 						}
 
-						const accounts = yield* AccountRepositoryService;
-						const accountId =
-							yield* accounts.resolveByAuthentication(authentication);
-						if (Option.isNone(accountId)) {
-							return yield* HttpApiError.Forbidden.make();
-						}
-						yield* grantGlobalRole(accountId.value, "superadmin");
+						yield* grantGlobalRole(caller.value.accountId, "superadmin");
 					}).pipe(
 						Effect.catchTag("UnknownAccount", () =>
 							HttpApiError.Forbidden.make(),
@@ -651,21 +649,21 @@ export const InternalGroupsLive = Layer.mergeAll(
 	HttpApiBuilder.group(RootApi, "Field", (handlers) =>
 		handlers
 			.handle("replicantGet", ({ params: { namespace, fieldName } }) =>
-				getReplicant(namespace, fieldName),
+				getReplicant(namespace, fieldName).pipe(provideIdentity),
 			)
 			.handle(
 				"replicantUpdate",
 				({ params: { namespace, fieldName }, payload }) =>
-					updateReplicant(namespace, fieldName, payload),
+					updateReplicant(namespace, fieldName, payload).pipe(provideIdentity),
 			)
 			.handle("computedGet", ({ params: { namespace, fieldName } }) =>
-				getComputed(namespace, fieldName),
+				getComputed(namespace, fieldName).pipe(provideIdentity),
 			)
 			.handle("topicPublish", ({ params: { namespace, fieldName }, payload }) =>
-				publishTopic(namespace, fieldName, payload),
+				publishTopic(namespace, fieldName, payload).pipe(provideIdentity),
 			)
 			.handle("rpcCall", ({ params: { namespace, fieldName }, payload }) =>
-				callRpc(namespace, fieldName, payload),
+				callRpc(namespace, fieldName, payload).pipe(provideIdentity),
 			),
 	),
 	AuthenticationGroupLive,

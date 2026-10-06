@@ -18,6 +18,7 @@ export {
 	AdminTierMiddleware,
 	SuperadminMiddleware,
 	CurrentIdentity,
+	CurrentServiceAccount,
 	CurrentSessionCaller,
 	CurrentUser,
 	sessionCookieName,

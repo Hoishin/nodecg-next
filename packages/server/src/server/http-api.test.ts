@@ -1,29 +1,13 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
-import {
-	UserAuthenticationMiddleware,
-	CurrentIdentity,
-	CurrentSessionCaller,
-	User,
-	UserId,
-	type Identity,
-	RoleName,
-} from "@nodecg-next/internal";
+import { CurrentIdentity, RoleName } from "@nodecg-next/internal";
 import {
 	computeTestHash,
 	PatchNotApplicable,
 	RevisionConflict,
 } from "@nodecg-next/internal/occ";
-import {
-	Config,
-	ConfigProvider,
-	Effect,
-	HashMap,
-	Layer,
-	Option,
-	Stream,
-} from "effect";
+import { Config, ConfigProvider, Effect, HashMap, Layer, Stream } from "effect";
 import {
 	FetchHttpClient,
 	HttpEffect,
@@ -175,15 +159,6 @@ function registeredNamespace(
 	};
 }
 
-const asIdentity = (identity: Identity) =>
-	Layer.succeed(UserAuthenticationMiddleware, {
-		cookie: (httpEffect) =>
-			httpEffect.pipe(
-				Effect.provideService(CurrentIdentity, identity),
-				Effect.provideService(CurrentSessionCaller, Option.none()),
-			),
-	});
-
 const webHandler = Effect.fn(function* (
 	namespaces: ReadonlyArray<RegisteredNamespace>,
 	middleware: typeof UserAuthenticationMiddlewareLive = UserAuthenticationMiddlewareLive,
@@ -291,61 +266,6 @@ const postRequest = (url: string, value: unknown) =>
 		body: JSON.stringify(value),
 		headers: { "content-type": "application/json" },
 	});
-
-describe("me", () => {
-	it.effect("resolves an anonymous request to the anonymous identity", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			const res = yield* handler(new Request("http://x/api/internal/me"));
-			expect(res.status).toBe(200);
-			expect(yield* json(res)).toEqual({
-				identity: { _tag: "anonymous" },
-				namespaces: {},
-			});
-		}),
-	);
-
-	it.effect("reports the held declared roles per namespace", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler(
-				[
-					registeredNamespace(
-						"perms",
-						{},
-						{},
-						{},
-						{},
-						new Set([RoleName("producer"), RoleName("viewer")]),
-					),
-				],
-				asIdentity(
-					User.make({
-						id: UserId.make("op"),
-						authentication: { issuer: "dev", subject: "op" },
-						displayName: "Op",
-						roles: [{ namespace: "perms", name: RoleName("producer") }],
-						globalRoles: [],
-					}),
-				),
-			);
-			const res = yield* handler(new Request("http://x/api/internal/me"));
-			expect(res.status).toBe(200);
-			expect(yield* json(res)).toEqual({
-				identity: {
-					_tag: "user",
-					id: "op",
-					authentication: { issuer: "dev", subject: "op" },
-					displayName: "Op",
-					roles: [{ namespace: "perms", name: "producer" }],
-					globalRoles: [],
-				},
-				namespaces: {
-					perms: { roles: ["producer"] },
-				},
-			});
-		}),
-	);
-});
 
 describe("login and callback", () => {
 	const devProvider: AuthProvider = {
@@ -646,89 +566,6 @@ describe("login and callback", () => {
 			expect(captured).toBe(
 				"http://x/s/nodecg/api/internal/authentication/callback/dev",
 			);
-		}),
-	);
-});
-
-describe("claim superadmin", () => {
-	const claimUrl = "http://x/api/internal/authentication/claim-superadmin";
-	const claimRequest = (token: string) => postRequest(claimUrl, { token });
-
-	const user = asIdentity(
-		User.make({
-			id: UserId.make("founder"),
-			authentication: { issuer: "dev", subject: "founder" },
-			displayName: "Founder",
-			roles: [],
-			globalRoles: [],
-		}),
-	);
-
-	const withClaimToken = ConfigProvider.layer(
-		ConfigProvider.fromEnvRecord({
-			SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
-		}),
-	);
-
-	it.effect(
-		"a wrong token keeps the window open and the first success closes it",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([], user, withClaimToken, {
-					loggedIn: ["founder"],
-				});
-				expect(
-					(yield* handler(claimRequest("wrong-token-of-real-length"))).status,
-				).toBe(403);
-				expect(
-					(yield* handler(claimRequest("super-secret-claim-token"))).status,
-				).toBe(204);
-				expect(
-					(yield* handler(claimRequest("super-secret-claim-token"))).status,
-				).toBe(403);
-			}),
-	);
-
-	it.effect("401 for an anonymous caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], undefined, withClaimToken);
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(401);
-		}),
-	);
-
-	it.effect("403 while a superadmin is configured", () =>
-		Effect.gen(function* () {
-			const dev: AuthProvider = {
-				name: "dev",
-				issuer: "dev",
-				authorize: () => Effect.die("unused"),
-				callback: () => Effect.die("unused"),
-			};
-			const handler = yield* webHandler(
-				[],
-				user,
-				ConfigProvider.layer(
-					ConfigProvider.fromEnvRecord({
-						SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
-						SUPERADMINS: "dev:root",
-					}),
-				),
-				{ providers: HashMap.make(["dev", dev]) },
-			);
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(403);
-		}),
-	);
-
-	it.effect("403 when no claim token is configured", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([], user);
-			expect(
-				(yield* handler(claimRequest("super-secret-claim-token"))).status,
-			).toBe(403);
 		}),
 	);
 });

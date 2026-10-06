@@ -7,6 +7,7 @@ import {
 
 import type { AccountId } from "./models/account.ts";
 import type { Identity } from "./models/identity.ts";
+import type { ServiceAccount } from "./models/service-account.ts";
 import type { User } from "./models/user.ts";
 
 export class CurrentIdentity extends Context.Service<
@@ -24,6 +25,11 @@ export class CurrentSessionCaller extends Context.Service<
 	Option.Option<CurrentUser["Service"]>
 >()("CurrentSessionCaller") {}
 
+export class CurrentServiceAccount extends Context.Service<
+	CurrentServiceAccount,
+	{ readonly serviceAccount: ServiceAccount; readonly accountId: AccountId }
+>()("CurrentServiceAccount") {}
+
 export const sessionCookieName = "nodecg.sid";
 
 export const sessionCookieSecurity = HttpApiSecurity.apiKey({
@@ -33,7 +39,7 @@ export const sessionCookieSecurity = HttpApiSecurity.apiKey({
 
 export class UserAuthenticationMiddleware extends HttpApiMiddleware.Service<
 	UserAuthenticationMiddleware,
-	{ provides: CurrentIdentity | CurrentSessionCaller }
+	{ provides: CurrentSessionCaller }
 >()("Authentication", {
 	error: [HttpApiError.Unauthorized, HttpApiError.InternalServerError],
 	security: { cookie: sessionCookieSecurity },
@@ -55,7 +61,7 @@ export class SuperadminMiddleware extends HttpApiMiddleware.Service<
 
 export class ServiceAccountAuthenticationMiddleware extends HttpApiMiddleware.Service<
 	ServiceAccountAuthenticationMiddleware,
-	{ provides: CurrentIdentity }
+	{ provides: CurrentServiceAccount }
 >()("ServiceAccountAuthentication", {
 	error: [HttpApiError.Unauthorized, HttpApiError.InternalServerError],
 	security: { bearer: HttpApiSecurity.bearer },

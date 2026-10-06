@@ -1,7 +1,7 @@
 import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	AdminTierMiddleware,
-	CurrentIdentity,
+	CurrentServiceAccount,
 	CurrentSessionCaller,
 	CurrentUser,
 	UserAuthenticationMiddleware,
@@ -17,8 +17,7 @@ import { RoleRepositoryService } from "../services/repository/role/role-reposito
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { SessionRepositoryService } from "../services/repository/session/session-repository.ts";
 import {
-	anonymousIdentity,
-	resolveServiceAccountIdentity,
+	resolveServiceAccountCaller,
 	resolveSessionCaller,
 } from "./identity.ts";
 import { renewSession, setSessionCookie } from "./session.ts";
@@ -32,38 +31,37 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 		const context = yield* Effect.context<
 			SessionRepositoryService | ConfiguredSuperadmins | Crypto.Crypto
 		>();
-		const resolve = (token: string) =>
-			resolveSessionCaller(token).pipe(
-				Effect.provide(context),
-				Effect.tapCause((cause) =>
-					Effect.logError("Session lookup failed", cause),
-				),
-				Effect.catchTag(["BackendError", "PlatformError"], () =>
-					HttpApiError.InternalServerError.make(),
-				),
-			);
-		const renew = (token: string) =>
-			renewSession(token).pipe(
-				Effect.provide(context),
-				Effect.tapCause((cause) =>
-					Effect.logError("Session renewal failed", cause),
-				),
-				Effect.catchTag(["BackendError", "ConfigError", "PlatformError"], () =>
-					HttpApiError.InternalServerError.make(),
-				),
-			);
 
 		return {
 			cookie: (httpEffect, { credential }) =>
 				Effect.gen(function* () {
 					const value = Redacted.value(credential);
 					const caller =
-						value.length > 0 ? yield* resolve(value) : Option.none();
+						value.length > 0
+							? yield* resolveSessionCaller(value).pipe(
+									Effect.provide(context),
+									Effect.tapCause((cause) =>
+										Effect.logError("Session lookup failed", cause),
+									),
+									Effect.catchTag(["BackendError", "PlatformError"], () =>
+										HttpApiError.InternalServerError.make(),
+									),
+								)
+							: Option.none();
 					if (Option.isNone(caller) && requireAuth) {
 						return yield* HttpApiError.Unauthorized.make();
 					}
 					if (Option.isSome(caller)) {
-						const isRenewed = yield* renew(value);
+						const isRenewed = yield* renewSession(value).pipe(
+							Effect.provide(context),
+							Effect.tapCause((cause) =>
+								Effect.logError("Session renewal failed", cause),
+							),
+							Effect.catchTag(
+								["BackendError", "ConfigError", "PlatformError"],
+								() => HttpApiError.InternalServerError.make(),
+							),
+						);
 						if (isRenewed) {
 							yield* setSessionCookie(value, {
 								path: baseUrl.pathname,
@@ -72,15 +70,6 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 						}
 					}
 					return yield* httpEffect.pipe(
-						Effect.provideService(
-							CurrentIdentity,
-							caller.pipe(
-								Option.match({
-									onNone: () => anonymousIdentity,
-									onSome: ({ user }) => user,
-								}),
-							),
-						),
 						Effect.provideService(CurrentSessionCaller, caller),
 					);
 				}),
@@ -128,28 +117,28 @@ export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 		const context = yield* Effect.context<
 			ServiceAccountRepositoryService | RoleRepositoryService | Crypto.Crypto
 		>();
-		const resolve = (token: string) =>
-			resolveServiceAccountIdentity(token).pipe(
-				Effect.provide(context),
-				Effect.tapCause((cause) =>
-					Effect.logError("API key lookup failed", cause),
-				),
-				Effect.catchTag(["BackendError", "PlatformError"], () =>
-					HttpApiError.InternalServerError.make(),
-				),
-			);
 
 		return {
 			bearer: (httpEffect, { credential }) =>
 				Effect.gen(function* () {
 					const value = Redacted.value(credential);
-					const resolved =
-						value.length > 0 ? yield* resolve(value) : Option.none();
-					if (Option.isNone(resolved)) {
-						return yield* new HttpApiError.Unauthorized();
+					const caller =
+						value.length > 0
+							? yield* resolveServiceAccountCaller(value).pipe(
+									Effect.provide(context),
+									Effect.tapCause((cause) =>
+										Effect.logError("API key lookup failed", cause),
+									),
+									Effect.catchTag(["BackendError", "PlatformError"], () =>
+										HttpApiError.InternalServerError.make(),
+									),
+								)
+							: Option.none();
+					if (Option.isNone(caller)) {
+						return yield* HttpApiError.Unauthorized.make();
 					}
 					return yield* httpEffect.pipe(
-						Effect.provideService(CurrentIdentity, resolved.value),
+						Effect.provideService(CurrentServiceAccount, caller.value),
 					);
 				}),
 		};
