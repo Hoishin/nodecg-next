@@ -37,7 +37,7 @@ import type { Socket } from "effect/unstable/socket";
 import {
 	anonymousIdentity,
 	resolveServiceAccountIdentity,
-	resolveSessionIdentity,
+	resolveSessionCaller,
 } from "../auth/identity.ts";
 import {
 	type ComputedComputeError,
@@ -329,14 +329,17 @@ export const websocketRoute = HttpRouter.use((router) =>
 					sessionCookieSecurity,
 				);
 				const value = Redacted.value(credential);
-				const resolved =
-					value.length > 0
-						? yield* resolveSessionIdentity(value)
-						: Option.none();
-				if (Option.isNone(resolved) && requireAuth) {
+				const caller =
+					value.length > 0 ? yield* resolveSessionCaller(value) : Option.none();
+				if (Option.isNone(caller) && requireAuth) {
 					return HttpServerResponse.empty({ status: 401 });
 				}
-				const identity = Option.getOrElse(resolved, () => anonymousIdentity);
+				const identity = caller.pipe(
+					Option.match({
+						onNone: () => anonymousIdentity,
+						onSome: ({ user }) => user,
+					}),
+				);
 				return yield* serveWebsocket(identity);
 			}),
 		);

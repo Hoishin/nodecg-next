@@ -229,6 +229,34 @@ describe("superadmin claim", () => {
 			),
 		),
 	);
+
+	test(
+		"anonymous attempts do not count toward the limit",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+			const asOperator = yield* login(client, operator);
+
+			for (let attempt = 0; attempt < 10; attempt++) {
+				const anonymousRes = yield* client.post(claimUrl, {
+					body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+				});
+				expect(anonymousRes.status).toBe(401);
+			}
+
+			const claimRes = yield* asOperator.post(claimUrl, {
+				body: yield* HttpBody.json({ token: "super-secret-claim-token" }),
+			});
+			expect(claimRes.status).toBe(204);
+		}).pipe(
+			Effect.provide(
+				ConfigProvider.layer(
+					ConfigProvider.fromEnvRecord({
+						SUPERADMIN_CLAIM_TOKEN: "super-secret-claim-token",
+					}),
+				),
+			),
+		),
+	);
 });
 
 describe("permission", () => {

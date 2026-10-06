@@ -193,7 +193,6 @@ const ServiceAccountsGroup = HttpApiGroup.make("ServiceAccounts")
 		HttpApiEndpoint.post("createApiKey", "/service-accounts", {
 			payload: CreateApiKeyRequestSchema,
 			success: CreateApiKeyResultSchema,
-			error: HttpApiError.NotImplemented,
 		}),
 	)
 	.add(

@@ -16,7 +16,7 @@ import {
 	type SessionRepository,
 	SessionRepositoryService,
 } from "../services/repository/session/session-repository.ts";
-import { resolveSessionIdentity } from "./identity.ts";
+import { resolveSessionCaller } from "./identity.ts";
 import { hashSessionToken } from "./session.ts";
 
 const alice = Authentication.make({ issuer: "dev", subject: "alice" });
@@ -58,7 +58,7 @@ const test = testLayer(
 	),
 );
 
-describe("resolveSessionIdentity", () => {
+describe("resolveSessionCaller", () => {
 	test(
 		"resolves the session to its user, with the roles of its account",
 		Effect.gen(function* () {
@@ -66,18 +66,19 @@ describe("resolveSessionIdentity", () => {
 				Effect.succeedSome({ authentication: alice, user: aliceUser }),
 			);
 
-			const identity = yield* resolveSessionIdentity("token");
+			const caller = yield* resolveSessionCaller("token");
 
-			expect(identity).toStrictEqual(
-				Option.some(
-					User.make({
+			expect(caller).toStrictEqual(
+				Option.some({
+					user: User.make({
 						id: UserId.make("alice-user"),
 						authentication: alice,
 						displayName: "Alice",
 						roles: [viewer],
 						globalRoles: ["admin"],
 					}),
-				),
+					accountId: AccountId.make("alice-account"),
+				}),
 			);
 		}),
 	);
@@ -95,18 +96,19 @@ describe("resolveSessionIdentity", () => {
 				}),
 			);
 
-			const identity = yield* resolveSessionIdentity("token");
+			const caller = yield* resolveSessionCaller("token");
 
-			expect(identity).toStrictEqual(
-				Option.some(
-					User.make({
+			expect(caller).toStrictEqual(
+				Option.some({
+					user: User.make({
 						id: UserId.make("alice-user"),
 						authentication: alice,
 						displayName: "Alice",
 						roles: [viewer],
 						globalRoles: ["admin", "superadmin"],
 					}),
-				),
+					accountId: AccountId.make("alice-account"),
+				}),
 			);
 		}),
 	);
@@ -114,7 +116,7 @@ describe("resolveSessionIdentity", () => {
 	test(
 		"looks the session up by the token's hash",
 		Effect.gen(function* () {
-			yield* resolveSessionIdentity("token");
+			yield* resolveSessionCaller("token");
 
 			const id = yield* hashSessionToken("token");
 			expect(resolve).toHaveBeenCalledExactlyOnceWith(id);
@@ -124,9 +126,9 @@ describe("resolveSessionIdentity", () => {
 	test(
 		"resolves nothing without a live session",
 		Effect.gen(function* () {
-			const identity = yield* resolveSessionIdentity("token");
+			const caller = yield* resolveSessionCaller("token");
 
-			expect(identity).toStrictEqual(Option.none());
+			expect(caller).toStrictEqual(Option.none());
 		}),
 	);
 });

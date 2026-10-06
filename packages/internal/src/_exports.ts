@@ -18,6 +18,8 @@ export {
 	AdminTierMiddleware,
 	SuperadminMiddleware,
 	CurrentIdentity,
+	CurrentSessionCaller,
+	CurrentUser,
 	sessionCookieName,
 	sessionCookieSecurity,
 } from "./auth.ts";

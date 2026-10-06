@@ -14,7 +14,7 @@ import { hashSessionToken } from "./session.ts";
 
 export const anonymousIdentity = AnonymousIdentitySchema.make({});
 
-export const resolveSessionIdentity = Effect.fn("resolveSessionIdentity")(
+export const resolveSessionCaller = Effect.fn("resolveSessionCaller")(
 	function* (token: string) {
 		const sessions = yield* SessionRepositoryService;
 		const superadmins = yield* ConfiguredSuperadmins;
@@ -26,8 +26,8 @@ export const resolveSessionIdentity = Effect.fn("resolveSessionIdentity")(
 		}
 
 		const { authentication, user } = session.value;
-		return Option.some(
-			User.make({
+		return Option.some({
+			user: User.make({
 				id: user.id,
 				authentication,
 				displayName: user.displayName,
@@ -38,7 +38,8 @@ export const resolveSessionIdentity = Effect.fn("resolveSessionIdentity")(
 					? Array.union(user.globalRoles, ["superadmin"] as const)
 					: user.globalRoles,
 			}),
-		);
+			accountId: user.accountId,
+		});
 	},
 );
 

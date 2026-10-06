@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
 	CurrentIdentity,
+	CurrentUser,
 	UserDocumentEntry,
 	ServiceAccountDocumentEntry,
 	RoleAssignmentsDocument,
@@ -459,16 +460,9 @@ const ServiceAccountsGroupLive = HttpApiBuilder.group(
 		handlers
 			.handle("createApiKey", ({ payload: { displayName } }) =>
 				Effect.gen(function* () {
-					const creator = yield* CurrentIdentity;
-					return yield* createServiceAccount(displayName, creator);
-				}).pipe(
-					Effect.catchTags({
-						NotAUser: () => HttpApiError.Forbidden.make(),
-						ServerCreatorNotImplemented: () =>
-							HttpApiError.NotImplemented.make(),
-					}),
-					reportBackendFailure,
-				),
+					const creator = yield* CurrentUser;
+					return yield* createServiceAccount(displayName, creator.accountId);
+				}).pipe(reportBackendFailure),
 			)
 			.handle("list", () =>
 				Effect.gen(function* () {
@@ -591,7 +585,6 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 		)
 		.handle("import", ({ payload: { mode, document } }) =>
 			Effect.gen(function* () {
-				const accounts = yield* AccountRepositoryService;
 				const authentications = yield* AuthenticationRepositoryService;
 				const serviceAccounts = yield* ServiceAccountRepositoryService;
 
@@ -622,21 +615,11 @@ const RolesGroupLive = HttpApiBuilder.group(RootApi, "Roles", (handlers) =>
 										if (Option.isSome(account)) {
 											return account.value.accountId;
 										}
-										const creatorIdentity = yield* CurrentIdentity;
-										if (creatorIdentity._tag !== "user") {
-											return yield* HttpApiError.Forbidden.make();
-										}
-										const creatorAccountId =
-											yield* accounts.resolveByAuthentication(
-												creatorIdentity.authentication,
-											);
-										if (Option.isNone(creatorAccountId)) {
-											return yield* HttpApiError.Forbidden.make();
-										}
+										const creator = yield* CurrentUser;
 										const { accountId } = yield* serviceAccounts.createWithId({
 											id,
 											displayName,
-											createdBy: creatorAccountId.value,
+											createdBy: creator.accountId,
 										});
 										return accountId;
 									}),

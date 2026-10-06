@@ -1,13 +1,14 @@
 import { isAdminTier, isSuperadmin } from "@nodecg-next/core";
 import {
 	AdminTierMiddleware,
-	AnonymousIdentitySchema,
 	CurrentIdentity,
+	CurrentSessionCaller,
+	CurrentUser,
 	UserAuthenticationMiddleware,
 	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
-import { type Crypto, Effect, Layer, Option, Redacted, Schema } from "effect";
+import { type Crypto, Effect, Layer, Option, Redacted } from "effect";
 import { HttpApiError } from "effect/unstable/httpapi";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -18,11 +19,9 @@ import { SessionRepositoryService } from "../services/repository/session/session
 import {
 	anonymousIdentity,
 	resolveServiceAccountIdentity,
-	resolveSessionIdentity,
+	resolveSessionCaller,
 } from "./identity.ts";
 import { renewSession, setSessionCookie } from "./session.ts";
-
-const isAnonymous = Schema.is(AnonymousIdentitySchema);
 
 export const UserAuthenticationMiddlewareLive = Layer.effect(
 	UserAuthenticationMiddleware,
@@ -34,7 +33,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 			SessionRepositoryService | ConfiguredSuperadmins | Crypto.Crypto
 		>();
 		const resolve = (token: string) =>
-			resolveSessionIdentity(token).pipe(
+			resolveSessionCaller(token).pipe(
 				Effect.provide(context),
 				Effect.tapCause((cause) =>
 					Effect.logError("Session lookup failed", cause),
@@ -58,12 +57,12 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 			cookie: (httpEffect, { credential }) =>
 				Effect.gen(function* () {
 					const value = Redacted.value(credential);
-					const identity =
+					const caller =
 						value.length > 0 ? yield* resolve(value) : Option.none();
-					if (Option.isNone(identity) && requireAuth) {
+					if (Option.isNone(caller) && requireAuth) {
 						return yield* HttpApiError.Unauthorized.make();
 					}
-					if (Option.isSome(identity)) {
+					if (Option.isSome(caller)) {
 						const isRenewed = yield* renew(value);
 						if (isRenewed) {
 							yield* setSessionCookie(value, {
@@ -72,10 +71,17 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 							});
 						}
 					}
-					return yield* Effect.provideService(
-						httpEffect,
-						CurrentIdentity,
-						Option.getOrElse(identity, () => anonymousIdentity),
+					return yield* httpEffect.pipe(
+						Effect.provideService(
+							CurrentIdentity,
+							caller.pipe(
+								Option.match({
+									onNone: () => anonymousIdentity,
+									onSome: ({ user }) => user,
+								}),
+							),
+						),
+						Effect.provideService(CurrentSessionCaller, caller),
 					);
 				}),
 		};
@@ -86,14 +92,16 @@ export const AdminTierMiddlewareLive = Layer.succeed(
 	AdminTierMiddleware,
 	(httpEffect) =>
 		Effect.gen(function* () {
-			const identity = yield* CurrentIdentity;
-			if (isAnonymous(identity)) {
+			const caller = yield* CurrentSessionCaller;
+			if (Option.isNone(caller)) {
 				return yield* HttpApiError.Unauthorized.make();
 			}
-			if (!isAdminTier(identity)) {
-				return yield* new HttpApiError.Forbidden();
+			if (!isAdminTier(caller.value.user)) {
+				return yield* HttpApiError.Forbidden.make();
 			}
-			return yield* httpEffect;
+			return yield* httpEffect.pipe(
+				Effect.provideService(CurrentUser, caller.value),
+			);
 		}),
 );
 
@@ -101,14 +109,16 @@ export const SuperadminMiddlewareLive = Layer.succeed(
 	SuperadminMiddleware,
 	(httpEffect) =>
 		Effect.gen(function* () {
-			const identity = yield* CurrentIdentity;
-			if (isAnonymous(identity)) {
+			const caller = yield* CurrentSessionCaller;
+			if (Option.isNone(caller)) {
 				return yield* HttpApiError.Unauthorized.make();
 			}
-			if (!isSuperadmin(identity)) {
-				return yield* new HttpApiError.Forbidden();
+			if (!isSuperadmin(caller.value.user)) {
+				return yield* HttpApiError.Forbidden.make();
 			}
-			return yield* httpEffect;
+			return yield* httpEffect.pipe(
+				Effect.provideService(CurrentUser, caller.value),
+			);
 		}),
 );
 
@@ -138,10 +148,8 @@ export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 					if (Option.isNone(resolved)) {
 						return yield* new HttpApiError.Unauthorized();
 					}
-					return yield* Effect.provideService(
-						httpEffect,
-						CurrentIdentity,
-						resolved.value,
+					return yield* httpEffect.pipe(
+						Effect.provideService(CurrentIdentity, resolved.value),
 					);
 				}),
 		};

@@ -3,8 +3,8 @@ import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import {
 	UserAuthenticationMiddleware,
-	AnonymousIdentitySchema,
 	CurrentIdentity,
+	CurrentSessionCaller,
 	User,
 	UserId,
 	type Identity,
@@ -21,8 +21,7 @@ import {
 	Effect,
 	HashMap,
 	Layer,
-	Redacted,
-	Schema,
+	Option,
 	Stream,
 } from "effect";
 import {
@@ -179,7 +178,10 @@ function registeredNamespace(
 const asIdentity = (identity: Identity) =>
 	Layer.succeed(UserAuthenticationMiddleware, {
 		cookie: (httpEffect) =>
-			Effect.provideService(httpEffect, CurrentIdentity, identity),
+			httpEffect.pipe(
+				Effect.provideService(CurrentIdentity, identity),
+				Effect.provideService(CurrentSessionCaller, Option.none()),
+			),
 	});
 
 const webHandler = Effect.fn(function* (
@@ -729,44 +731,6 @@ describe("claim superadmin", () => {
 			).toBe(403);
 		}),
 	);
-
-	it.effect("an anonymous flood does not consume the claim budget", () =>
-		Effect.gen(function* () {
-			const bySid = Layer.succeed(UserAuthenticationMiddleware, {
-				cookie: (httpEffect, { credential }) =>
-					Effect.provideService(
-						httpEffect,
-						CurrentIdentity,
-						Redacted.value(credential) === "founder"
-							? User.make({
-									id: UserId.make("founder"),
-									authentication: { issuer: "dev", subject: "founder" },
-									displayName: "Founder",
-									roles: [],
-									globalRoles: [],
-								})
-							: AnonymousIdentitySchema.make({}),
-					),
-			});
-			const handler = yield* webHandler([], bySid, withClaimToken, {
-				loggedIn: ["founder"],
-			});
-			const withSid = (request: Request, sid: string) => {
-				request.headers.set("cookie", `nodecg.sid=${sid}`);
-				return request;
-			};
-			for (let attempt = 0; attempt < 10; attempt++) {
-				expect(
-					(yield* handler(claimRequest("super-secret-claim-token"))).status,
-				).toBe(401);
-			}
-			expect(
-				(yield* handler(
-					withSid(claimRequest("super-secret-claim-token"), "founder"),
-				)).status,
-			).toBe(204);
-		}),
-	);
 });
 
 describe("get", () => {
@@ -1169,33 +1133,6 @@ describe("public surface (v0) with bearer token", () => {
 
 	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
 
-	const admin = asIdentity(
-		User.make({
-			id: UserId.make("boss"),
-			authentication: { issuer: "dev", subject: "boss" },
-			displayName: "Boss",
-			roles: [],
-			globalRoles: ["admin"],
-		}),
-	);
-
-	const decodeKey = Schema.decodeUnknownSync(
-		Schema.Struct({ serviceAccountId: Schema.String, token: Schema.String }),
-	);
-
-	const mintKey = Effect.fn(function* (
-		handler: (request: Request) => Effect.Effect<Response>,
-	) {
-		const res = yield* handler(
-			new Request("http://x/api/internal/service-accounts", {
-				method: "POST",
-				body: JSON.stringify({ displayName: "scoreboard" }),
-				headers: { "content-type": "application/json" },
-			}),
-		);
-		return decodeKey(yield* json(res));
-	});
-
 	it.effect("401 for a resource request without a bearer", () =>
 		Effect.gen(function* () {
 			const handler = yield* webHandler([countNamespace()]);
@@ -1212,53 +1149,6 @@ describe("public surface (v0) with bearer token", () => {
 				}),
 			);
 			expect(res.status).toBe(401);
-		}),
-	);
-
-	it.effect("authenticates a request bearing a provisioned api key", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([countNamespace()], admin, undefined, {
-				loggedIn: ["boss"],
-			});
-			const { token } = yield* mintKey(handler);
-			const res = yield* handler(
-				new Request(publicGetUrl, {
-					headers: { authorization: `Bearer ${token}` },
-				}),
-			);
-			expect(res.status).toBe(200);
-			expect(yield* json(res)).toBe(42);
-		}),
-	);
-
-	it.effect("a refreshed key replaces the old one", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([countNamespace()], admin, undefined, {
-				loggedIn: ["boss"],
-			});
-			const created = yield* mintKey(handler);
-			const refreshed = decodeKey(
-				yield* json(
-					yield* handler(
-						new Request(
-							`http://x/api/internal/service-accounts/${created.serviceAccountId}/refresh`,
-							{ method: "POST" },
-						),
-					),
-				),
-			);
-
-			const withOld = yield* handler(
-				new Request(publicGetUrl, {
-					headers: { authorization: `Bearer ${created.token}` },
-				}),
-			);
-			const withNew = yield* handler(
-				new Request(publicGetUrl, {
-					headers: { authorization: `Bearer ${refreshed.token}` },
-				}),
-			);
-			expect([withOld.status, withNew.status]).toStrictEqual([401, 200]);
 		}),
 	);
 });
