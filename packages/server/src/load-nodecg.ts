@@ -31,7 +31,7 @@ import {
 	type BuiltNamespace,
 	BuiltNamespaceRegistry,
 	LoadedNamespacesService,
-	makeUseCross,
+	makeCrossNamespaceHandle,
 } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
@@ -194,7 +194,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		const store = yield* ReplicantStoreService;
 		const useCross = <S extends BaseNamespaceShape>(
 			implemented: ImplementedNamespace<S>,
-		) => Effect.runSyncWith(context)(makeUseCross(implemented));
+		) => Effect.runSyncWith(context)(makeCrossNamespaceHandle(implemented));
 
 		const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 			Target,
@@ -228,7 +228,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 									Effect.tryPromise(async () => {
 										await cleanup();
 									}).pipe(
-										Effect.catch((error) =>
+										Effect.catchTag("UnknownError", (error) =>
 											Effect.logError(
 												`onLoad cleanup for namespace "${implemented.manifest.namespace}" threw`,
 												error,

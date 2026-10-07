@@ -137,7 +137,7 @@ const lookupLoaded = <S extends BaseNamespaceShape>(
 		return yield* registry.lookup(implemented);
 	});
 
-const makeComputeUse = <S extends BaseNamespaceShape>(
+const makeCrossComputeView = <S extends BaseNamespaceShape>(
 	implemented: ImplementedNamespace<S>,
 ) =>
 	Effect.gen(function* () {
@@ -203,7 +203,7 @@ const fieldAccessors =
 		};
 	};
 
-export const makeUseCross = <S extends BaseNamespaceShape>(
+export const makeCrossNamespaceHandle = <S extends BaseNamespaceShape>(
 	implemented: ImplementedNamespace<S>,
 ) =>
 	Effect.gen(function* () {
@@ -264,7 +264,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 			return ownComputedAccessors;
 		},
 		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
-			runSync(makeComputeUse(implemented)),
+			runSync(makeCrossComputeView(implemented)),
 	};
 
 	const computed = yield* zipEffectValues<
@@ -307,7 +307,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const rpcContext: RpcContext<Replicant, Computed, Topic> = {
 		...fieldAccessors(context)({ replicant, computed, topic }),
 		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
-			runSync(makeUseCross(implemented)),
+			runSync(makeCrossNamespaceHandle(implemented)),
 	};
 
 	const rpc = yield* zipEffectValues<

@@ -1,13 +1,11 @@
 import { Authentication } from "@nodecg-next/internal";
-import { Crypto, Effect, Encoding, Function, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { Crypto, Effect, Encoding } from "effect";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
 	buildAuthorizationUrl,
 	Configuration,
 	customFetch,
-	type CustomFetchOptions,
 	discovery,
 	randomNonce,
 	randomPKCECodeVerifier,
@@ -20,6 +18,10 @@ import {
 	ProviderStateMismatch,
 	CredentialExchangeError,
 } from "./auth-provider.ts";
+import {
+	makeTokenResponseFetch,
+	type UnknownRecord,
+} from "./token-response.ts";
 
 export interface OidcProviderConfig {
 	readonly name: string;
@@ -37,31 +39,6 @@ export interface OidcProviderConfig {
 
 const pickString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
-
-const recordSchema = Schema.Record(Schema.String, Schema.Unknown);
-type UnknownRecord = typeof recordSchema.Type;
-
-const decodeRecord = Schema.decodeUnknownEffect(recordSchema);
-const encodeJsonRecord = Schema.encodeEffect(
-	Schema.fromJsonString(recordSchema),
-);
-
-const clientFetch =
-	(transform: (body: UnknownRecord) => UnknownRecord) =>
-	(url: string, options: CustomFetchOptions) =>
-		Effect.gen(function* () {
-			const client = yield* HttpClient.HttpClient;
-			const response = yield* client.execute(
-				HttpClientRequest.fromWeb(new Request(url, options)),
-			);
-			const body = yield* decodeRecord(yield* response.json);
-			const headers = new Headers(response.headers);
-			headers.delete("content-length");
-			return new Response(yield* encodeJsonRecord(transform(body)), {
-				status: response.status,
-				headers,
-			});
-		});
 
 const identityFromClaims = (claims: Record<string, unknown>) => {
 	const issuer = pickString(claims["iss"]);
@@ -142,12 +119,11 @@ export const makeOidcProvider = async (
 			if (config.allowInsecure) {
 				allowInsecureRequests(tokenConfiguration);
 			}
-			const context = yield* Effect.context<HttpClient.HttpClient>();
-			const fetchThroughClient = clientFetch(
-				config.transformTokenResponse ?? Function.identity,
-			);
-			tokenConfiguration[customFetch] = (url, options) =>
-				Effect.runPromiseWith(context)(fetchThroughClient(url, options));
+			if (typeof config.transformTokenResponse !== "undefined") {
+				tokenConfiguration[customFetch] = yield* makeTokenResponseFetch(
+					config.transformTokenResponse,
+				);
+			}
 			const tokens = yield* Effect.tryPromise({
 				try: () =>
 					authorizationCodeGrant(

@@ -577,7 +577,7 @@ export async function loadNamespace<
 					yield* stream.pipe(
 						Stream.runForEach((value) =>
 							Effect.tryPromise(async () => callback(value)).pipe(
-								Effect.catch((error) =>
+								Effect.catchTag("UnknownError", (error) =>
 									Effect.logError(
 										`Subscription handler for "${manifest.namespace}/${name}" threw`,
 										error,

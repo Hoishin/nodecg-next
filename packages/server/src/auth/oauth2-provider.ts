@@ -5,6 +5,7 @@ import {
 	authorizationCodeGrant,
 	buildAuthorizationUrl,
 	Configuration,
+	customFetch,
 	fetchProtectedResource,
 	randomPKCECodeVerifier,
 	randomState,
@@ -17,6 +18,10 @@ import {
 	CredentialExchangeError,
 	ProviderResponseError,
 } from "./auth-provider.ts";
+import {
+	makeTokenResponseFetch,
+	type UnknownRecord,
+} from "./token-response.ts";
 
 export interface OAuth2ProviderConfig {
 	readonly name: string;
@@ -31,6 +36,10 @@ export interface OAuth2ProviderConfig {
 		userinfo: Record<string, unknown>,
 	) => { readonly subject: string; readonly displayName?: string } | undefined;
 	readonly allowInsecure?: boolean;
+	/**
+	 * an escape hatch for non-conformant providers
+	 */
+	readonly transformTokenResponse?: (body: UnknownRecord) => UnknownRecord;
 }
 
 const pickString = (value: unknown): string | undefined =>
@@ -113,10 +122,23 @@ export const makeOAuth2Provider = (
 			if (input.searchParams.get("state") !== input.loginAttempt.state) {
 				return yield* new ProviderStateMismatch();
 			}
+			const tokenConfiguration = new Configuration(
+				configuration.serverMetadata(),
+				config.clientId,
+				config.clientSecret,
+			);
+			if (config.allowInsecure) {
+				allowInsecureRequests(tokenConfiguration);
+			}
+			if (typeof config.transformTokenResponse !== "undefined") {
+				tokenConfiguration[customFetch] = yield* makeTokenResponseFetch(
+					config.transformTokenResponse,
+				);
+			}
 			const tokens = yield* Effect.tryPromise({
 				try: () =>
 					authorizationCodeGrant(
-						configuration,
+						tokenConfiguration,
 						callbackUrl(input.redirectUri, input.searchParams),
 						{
 							expectedState: input.loginAttempt.state,

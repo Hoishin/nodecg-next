@@ -28,6 +28,7 @@ afterEach(async () => {
 
 const startIdp = async (
 	mutateUserinfo?: (response: MutableResponse) => void,
+	mutateTokenResponse?: (response: MutableResponse) => void,
 ) => {
 	const oauth = new OAuth2Server();
 	await oauth.issuer.keys.generate("RS256");
@@ -36,6 +37,9 @@ const startIdp = async (
 			delete response.body["id_token"];
 		}
 	});
+	if (typeof mutateTokenResponse !== "undefined") {
+		oauth.service.on("beforeResponse", mutateTokenResponse);
+	}
 	if (typeof mutateUserinfo !== "undefined") {
 		oauth.service.on("beforeUserinfo", mutateUserinfo);
 	}
@@ -288,5 +292,39 @@ test("maps a provider-specific userinfo shape through identityFromUserinfo", asy
 	expect(identity).toEqual({
 		authentication: { issuer: pinnedIssuer, subject: "583231" },
 		displayName: "octocat",
+	});
+});
+
+test("rewrites a non-conformant token response through transformTokenResponse", async () => {
+	const serverUrl = await startIdp(undefined, (response) => {
+		if (typeof response.body !== "string") {
+			response.body["scope"] = ["identify"];
+		}
+	});
+	const provider = makeLocalProvider(serverUrl, {
+		transformTokenResponse: (body) => {
+			const scope = body["scope"];
+			if (Array.isArray(scope)) {
+				return { ...body, scope: scope.join(" ") };
+			}
+			return body;
+		},
+	});
+
+	const authorized = await runtime.runPromise(
+		provider.authorize({ redirectUri, searchParams: new URLSearchParams() }),
+	);
+	const searchParams = await authorizeCode(authorized.url);
+	const identity = await runtime.runPromise(
+		provider.callback({
+			redirectUri,
+			searchParams,
+			loginAttempt: authorized.loginAttempt,
+		}),
+	);
+
+	expect(identity).toEqual({
+		authentication: { issuer: pinnedIssuer, subject: "johndoe" },
+		displayName: "johndoe",
 	});
 });

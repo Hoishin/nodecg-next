@@ -89,7 +89,7 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 					yield* Effect.forkIn(
 						Stream.runForEach(subscription, (value) =>
 							Effect.tryPromise(async () => handler(value)).pipe(
-								Effect.catch((error) =>
+								Effect.catchTag("UnknownError", (error) =>
 									Effect.logError(
 										`Subscription handler for "${built.namespace}/${name}" threw`,
 										error,

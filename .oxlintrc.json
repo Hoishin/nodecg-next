@@ -7,7 +7,20 @@
 	},
 	"rules": {
 		"no-undef": "off",
-		"max-lines-per-function": "off"
+		"max-lines-per-function": "off",
+		"no-restricted-properties": [
+			"error",
+			{
+				"object": "Effect",
+				"property": "catch",
+				"message": "Name each error with Effect.catchTag."
+			},
+			{
+				"object": "Effect",
+				"property": "catchCause",
+				"message": "Name each error with Effect.catchTag."
+			}
+		]
 	},
 	"env": {
 		"builtin": true
