@@ -20,7 +20,7 @@ const SuperadminEntrySchema = Schema.TemplateLiteralParser([
 				provider,
 				subject,
 			})),
-			encode: SchemaGetter.forbidden(() => "decodeOnly"),
+			encode: SchemaGetter.forbiddenEncoding,
 		},
 	),
 );
@@ -28,7 +28,7 @@ const SuperadminEntrySchema = Schema.TemplateLiteralParser([
 const SuperadminsSchema = Schema.String.pipe(
 	Schema.decodeTo(Schema.Array(Schema.String), {
 		decode: SchemaGetter.split({ separator: "," }),
-		encode: SchemaGetter.forbidden(() => "decodeOnly"),
+		encode: SchemaGetter.forbiddenEncoding,
 	}),
 	Schema.decodeTo(Schema.Array(SuperadminEntrySchema)),
 );
@@ -40,7 +40,7 @@ const Pathname = Schema.String.pipe(
 		decode: SchemaGetter.transform((path) =>
 			path === "/" ? "/" : path.replace(/\/+$/, ""),
 		),
-		encode: SchemaGetter.forbidden(() => "decodeOnly"),
+		encode: SchemaGetter.forbiddenEncoding,
 	}),
 	Schema.decodeTo(Schema.TemplateLiteral(["/", Schema.String])),
 );
@@ -51,7 +51,7 @@ const BaseUrlSchema = Schema.URLFromString.pipe(
 			href: url.href,
 			pathname: url.pathname,
 		})),
-		encode: SchemaGetter.forbidden(() => "decodeOnly"),
+		encode: SchemaGetter.forbiddenEncoding,
 	}),
 );
 
