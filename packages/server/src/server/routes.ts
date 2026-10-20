@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 import {
 	FetchHttpClient,
 	HttpMiddleware,
@@ -12,7 +12,7 @@ import {
 	UserAuthenticationMiddlewareLive,
 } from "../auth/middleware.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
-import { basePathMiddleware } from "./base-path.ts";
+import { basePathRouter } from "./base-path.ts";
 import { frontendRoutes } from "./frontend-serving.ts";
 import { RootApiLive } from "./http-api/build-root-api.ts";
 import { UrlPath } from "./url-path.ts";
@@ -29,12 +29,13 @@ const services = Layer.mergeAll(
 	Layer.provideMerge(FetchHttpClient.layer),
 );
 
-export const routes = Effect.gen(function* () {
-	return Layer.mergeAll(
-		RootApiLive,
-		websocketRoute,
-		frontendRoutes,
-		HttpRouter.middleware(yield* basePathMiddleware, { global: true }),
-		HttpRouter.middleware(HttpMiddleware.compression(), { global: true }),
-	).pipe(HttpRouter.provideRequest(services), Layer.provide(services));
-});
+export const routes = Layer.mergeAll(
+	RootApiLive,
+	websocketRoute,
+	frontendRoutes,
+	HttpRouter.middleware(HttpMiddleware.compression(), { global: true }),
+).pipe(
+	Layer.provide(basePathRouter),
+	HttpRouter.provideRequest(services),
+	Layer.provide(services),
+);

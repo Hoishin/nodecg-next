@@ -78,7 +78,7 @@ export const services = Layer.mergeAll(
 );
 
 export const buildClient = Effect.gen(function* () {
-	const handler = yield* HttpRouter.toHttpEffect(yield* routes);
+	const handler = yield* HttpRouter.toHttpEffect(routes);
 	const context = yield* Effect.context<Layer.Success<typeof services>>();
 	const web = HttpEffect.toWebHandler(Effect.provide(handler, context));
 	const client = yield* HttpClient.HttpClient;

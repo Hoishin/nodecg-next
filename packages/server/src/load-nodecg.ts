@@ -288,12 +288,10 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			LoadedNamespaceLambda
 		>((preparedNamespace) => preparedNamespace.loaded)<Shapes>(prepared);
 
-		const routeLayer = yield* routes;
-
 		const httpServer = yield* makeNodeHttpServer({
 			onReady: options.onReady,
 		});
-		const ServerLive = HttpRouter.serve(routeLayer).pipe(
+		const ServerLive = HttpRouter.serve(routes).pipe(
 			Layer.provide(NamespaceRegistryService.layer(registered)),
 			Layer.provide(Layer.succeed(ReplicantStoreService, store)),
 			Layer.provide(
