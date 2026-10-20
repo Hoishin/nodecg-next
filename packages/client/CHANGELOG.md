@@ -1,5 +1,11 @@
 # @nodecg-next/client
 
+## 0.1.2
+
+### Patch Changes
+
+- field schemas can now be written with Standard Schema (zod, valibot, etc) or JSON Schema (`jsonSchema()`) in addition to Effect Schema ([`d0c1d5c`](https://github.com/Hoishin/nodecg-next/commit/d0c1d5ca5d635a78fc92190a7f086b996f29fdc8))
+
 ## 0.1.1
 
 ### Patch Changes
