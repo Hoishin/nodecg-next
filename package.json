@@ -18,7 +18,7 @@
 		"oxlint": "^1.73.0",
 		"oxlint-tsgolint": "^0.24.0",
 		"playwright": "catalog:",
-		"tsdown": "^0.23.0",
+		"tsdown": "^0.23.1",
 		"typescript": "~7.0.2",
 		"vitest": "catalog:"
 	},

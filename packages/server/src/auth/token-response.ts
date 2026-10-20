@@ -13,7 +13,8 @@ const encodeJsonRecord = Schema.encodeEffect(
 export const makeTokenResponseFetch = Effect.fn("makeTokenResponseFetch")(
 	function* (transform: (body: UnknownRecord) => UnknownRecord) {
 		const context = yield* Effect.context<HttpClient.HttpClient>();
-		return (url: string, options: CustomFetchOptions) =>
+		// Return type is necessary to keep the types portable
+		return (url: string, options: CustomFetchOptions): Promise<Response> =>
 			Effect.gen(function* () {
 				const client = yield* HttpClient.HttpClient;
 				const response = yield* client.execute(
