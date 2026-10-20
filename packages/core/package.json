@@ -20,15 +20,20 @@
 		}
 	},
 	"dependencies": {
+		"@hey-api/spec-types": "^0.2.0",
 		"@nodecg-next/internal": "workspace:*",
+		"@standard-schema/spec": "catalog:",
+		"@standard-schema/utils": "^0.3.0",
 		"effect": "catalog:",
-		"type-fest": "catalog:"
+		"type-fest": "catalog:",
+		"typebox": "^1.3.34"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"playwright": "catalog:",
-		"vitest": "catalog:"
+		"vitest": "catalog:",
+		"zod": "catalog:"
 	}
 }

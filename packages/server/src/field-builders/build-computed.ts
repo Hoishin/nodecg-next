@@ -1,4 +1,5 @@
 import type { FieldManifest } from "@nodecg-next/core";
+import { cloneJson } from "@nodecg-next/internal/utils";
 import { Effect, Stream } from "effect";
 
 import {
@@ -22,7 +23,8 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 ) {
 	const computeEncoded = Effect.fn("computeEncoded")(function* () {
 		const value = yield* computeValue;
-		return yield* manifest.encode(value);
+		const encoded = yield* manifest.encode(value);
+		return cloneJson(encoded);
 	});
 
 	const store = yield* ReplicantStoreService;
@@ -37,7 +39,7 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 	const get = Effect.fn("get")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
 		const encoded = yield* store.readComputed(namespace, name);
-		return yield* manifest.decode(encoded);
+		return yield* manifest.decode(cloneJson(encoded));
 	});
 
 	const getEncodedNoAuth = Effect.fn("getEncodedNoAuth")(function* () {
@@ -56,7 +58,9 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 	const subscribe = Effect.fn("subscribe")(function* () {
 		const stream = yield* subscribeEncoded();
 		return stream.pipe(
-			Stream.mapEffect((value) => manifest.decode(value).pipe(migrationDie)),
+			Stream.mapEffect((value) =>
+				manifest.decode(cloneJson(value)).pipe(migrationDie),
+			),
 		);
 	});
 

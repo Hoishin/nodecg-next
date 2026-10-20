@@ -3,6 +3,7 @@ import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { describe, expect, onTestFinished, vi } from "vitest";
+import { z } from "zod";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
@@ -77,7 +78,10 @@ describe("seeding", () => {
 
 describe("adaptNamespace", () => {
 	const manifest = defineNamespace("ns", {
-		replicant: { count: { schema: Schema.FiniteFromString } },
+		replicant: {
+			count: { schema: Schema.FiniteFromString },
+			title: { schema: z.string().trim() },
+		},
 		computed: { doubled: { schema: Schema.FiniteFromString } },
 		topic: { cheer: { schema: Schema.String } },
 		rpc: {
@@ -98,7 +102,7 @@ describe("adaptNamespace", () => {
 			const publish = vi.spyOn(broker, "publish");
 			const built = yield* buildNamespace(
 				implementNamespace(manifest, {
-					seedReplicant: { count: () => 1 },
+					seedReplicant: { count: () => 1, title: () => "semi" },
 					implementComputed: {
 						doubled: (ctx) => ctx.replicant.count.get() * 2,
 					},
@@ -112,6 +116,8 @@ describe("adaptNamespace", () => {
 			expect(handle.replicant.count.get()).toBe(2);
 			handle.replicant.count.update((count) => count + 1);
 			expect(handle.replicant.count.get()).toBe(3);
+			handle.replicant.title.set(" final ");
+			expect(handle.replicant.title.get()).toBe("final");
 			expect(
 				yield* Effect.promise(() => handle.replicant.count.validate(9)),
 			).toBe("9");

@@ -12,6 +12,7 @@ import {
 	type AddedRpcSchemas,
 	type AddedSchemas,
 	type CaseClashingKeys,
+	type WidestFieldSchema,
 	type FileSafeName,
 	findCaseClash,
 	isFileSafeName,
@@ -21,9 +22,10 @@ import {
 	mergeRecords,
 	type UnsafeNameKeys,
 } from "@nodecg-next/internal/utils";
-import { Effect, type HKT, Option, Schema } from "effect";
-import type { WritableDeep } from "type-fest";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { type HKT, Option, Schema } from "effect";
 
+import { makeCodec, type FieldCodec } from "./field-codec.ts";
 import {
 	computedPermission,
 	replicantPermission,
@@ -41,38 +43,6 @@ import {
 	type RoleManifest,
 	type WriteOnlyPermissionArg,
 } from "./role.ts";
-
-export class FieldEncodeError extends Schema.TaggedError<FieldEncodeError>()(
-	"FieldEncodeError",
-	{
-		fieldName: Schema.String,
-		value: Schema.Unknown,
-		cause: Schema.instanceOf(Error),
-	},
-) {
-	override readonly message = `Failed to encode replicant "${this.fieldName}": ${this.cause.message}`;
-}
-
-export class FieldDecodeError extends Schema.TaggedError<FieldDecodeError>()(
-	"FieldDecodeError",
-	{
-		fieldName: Schema.String,
-		value: Schema.Unknown,
-		cause: Schema.instanceOf(Error),
-	},
-) {
-	override readonly message = `Failed to decode replicant "${this.fieldName}": ${this.cause.message}`;
-}
-
-export interface FieldCodec<D> {
-	readonly encode: (
-		value: D | WritableDeep<D>,
-	) => Effect.Effect<Schema.Json, FieldEncodeError>;
-	readonly decode: (value: Schema.Json) => Effect.Effect<D, FieldDecodeError>;
-	readonly mutableDecode: (
-		value: Schema.Json,
-	) => Effect.Effect<WritableDeep<D>, FieldDecodeError>;
-}
 
 export interface FieldManifest<D> extends FieldCodec<D> {
 	readonly name: string;
@@ -121,32 +91,82 @@ export const declaredRoleNames = (
 	manifest: NamespaceManifest<{}, {}, {}, {}>,
 ): ReadonlySet<RoleName> => new Set(manifest[manifestRolesKey].roles.keys());
 
+type FieldDecoded<S> = S extends Schema.Top
+	? S["Type"]
+	: S extends StandardSchemaV1<unknown, infer Output>
+		? Output
+		: never;
+
+type IsAnyOrUnknown<D> = unknown extends D ? true : false;
+
+// Coerce unknown types to JSON
+type UnknownAsJson<D> =
+	IsAnyOrUnknown<D> extends true
+		? Schema.Json
+		: D extends string | number | boolean | null | undefined
+			? D
+			: D extends (...args: any[]) => any
+				? D
+				: D extends ReadonlyArray<unknown> | object
+					? { [K in keyof D]: UnknownAsJson<D[K]> }
+					: D;
+
+/**
+ * Returns S when JSON compatible, otherwise error string
+ */
+type JsonEncodable<S> =
+	S extends Schema.Codec<unknown, infer Encoded>
+		? [Encoded] extends [Schema.Json]
+			? S
+			: "The schema must encode to JSON"
+		: S extends StandardSchemaV1<unknown, infer Output>
+			? [UnknownAsJson<Output>] extends [Schema.Json]
+				? S
+				: "Every part of the schema's value must be JSON"
+			: never;
+
 interface FieldOption<
-	S extends Schema.Codec<any>,
+	S extends WidestFieldSchema,
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema: [S["Encoded"]] extends [Schema.Json] ? S : never;
+	readonly schema: JsonEncodable<S>;
 	readonly permission?: P;
 }
 
+type FieldOptions<
+	Schemas extends Record<string, WidestFieldSchema>,
+	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
+> = {
+	[K in keyof Schemas & string]: FieldOption<Schemas[K], P>;
+};
+
+type FieldOptionSchema<Option> =
+	Option extends FieldOption<
+		infer S extends WidestFieldSchema,
+		PermissionArg<string> | ReadOnlyPermissionArg<string>
+	>
+		? S
+		: never;
+
+// Target FieldOption since the mapValues calls below fail to type-check with a schema target.
 interface FieldOptionLambda<
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 >
 	extends HKT.TypeLambda {
-	readonly Target: Schema.Codec<any>;
-	readonly type: FieldOption<this["Target"], P>;
+	readonly Target: FieldOption<WidestFieldSchema, P>;
+	readonly type: this["Target"];
 }
-interface FieldManifestFromSchemaLambda extends HKT.TypeLambda {
-	readonly Target: Schema.Codec<any>;
-	readonly type: FieldManifest<Schema.Schema.Type<this["Target"]>>;
+interface FieldManifestFromOptionLambda extends HKT.TypeLambda {
+	readonly Target: object;
+	readonly type: FieldManifest<FieldDecoded<FieldOptionSchema<this["Target"]>>>;
 }
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
 }
 
 type RpcSchemaPair = {
-	readonly request: Schema.Codec<any>;
-	readonly response: Schema.Codec<any>;
+	readonly request: WidestFieldSchema;
+	readonly response: WidestFieldSchema;
 };
 
 interface RpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
@@ -157,8 +177,8 @@ interface RpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
 interface RpcFieldManifestFromSchemaLambda extends HKT.TypeLambda {
 	readonly Target: RpcSchemaPair;
 	readonly type: RpcFieldManifest<
-		Schema.Schema.Type<this["Target"]["request"]>,
-		Schema.Schema.Type<this["Target"]["response"]>
+		FieldDecoded<this["Target"]["request"]>,
+		FieldDecoded<this["Target"]["response"]>
 	>;
 }
 interface RpcFieldManifestLambda extends HKT.TypeLambda {
@@ -169,41 +189,7 @@ interface RpcFieldManifestLambda extends HKT.TypeLambda {
 	>;
 }
 
-function makeCodec<D, E extends Schema.Json>(
-	name: string,
-	schema: Schema.Codec<D, E>,
-) {
-	const decode = Effect.fn("decode")(function* (value: E) {
-		return yield* Schema.decodeEffect(schema)(value).pipe(
-			Effect.catchTag(
-				"SchemaError",
-				(error) =>
-					new FieldDecodeError({ fieldName: name, value, cause: error }),
-			),
-		);
-	});
-	return {
-		encode: Effect.fn("encode")(function* (value: D) {
-			return yield* Schema.encodeEffect(schema)(value).pipe(
-				Effect.catchTag(
-					"SchemaError",
-					(error) =>
-						new FieldEncodeError({ fieldName: name, value, cause: error }),
-				),
-			);
-		}),
-		decode,
-		mutableDecode: Effect.fn("mutableDecode")(function* (value: E) {
-			const decoded = yield* decode(value);
-			return decoded as WritableDeep<D>;
-		}),
-	};
-}
-
-function implementCodec<D, E extends Schema.Json>(
-	name: string,
-	schema: Schema.Codec<D, E>,
-) {
+function implementCodec(name: string, schema: WidestFieldSchema) {
 	return { name, ...makeCodec(name, schema) };
 }
 
@@ -427,45 +413,33 @@ const declareRoles = (
 };
 
 export function defineNamespace<
-	const Roles extends Record<string, RoleArg> = {},
-	Replicant extends Record<string, Schema.Codec<any>> = {},
-	Computed extends Record<string, Schema.Codec<any>> = {},
-	Topic extends Record<string, Schema.Codec<any>> = {},
+	const Namespace extends string,
+	Replicant extends Record<string, WidestFieldSchema> = {},
+	Computed extends Record<string, WidestFieldSchema> = {},
+	Topic extends Record<string, WidestFieldSchema> = {},
 	Rpc extends Record<
 		string,
-		RpcFieldOption<WriteOnlyPermissionArg<keyof Roles & string>>
+		RpcFieldOption<WriteOnlyPermissionArg<DeclaredRoleName>>
 	> = {},
-	const Namespace extends string = string,
+	const DeclaredRoleName extends string = never,
 >(
 	namespace: FileSafeName<Namespace>,
 	defineOption: {
-		roles?: Roles & { [K in UndeclarableRoleName]?: never };
+		roles?: Record<DeclaredRoleName, RoleArg> & {
+			[K in UndeclarableRoleName]?: never;
+		};
 		principals?: PrincipalsArg;
-		replicant?: {
-			[K in keyof Replicant & string]: FieldOption<
-				Replicant[K],
-				PermissionArg<keyof Roles & string>
-			>;
-		} & UnsafeNameKeys<Replicant> &
+		replicant?: FieldOptions<Replicant, PermissionArg<DeclaredRoleName>> &
+			UnsafeNameKeys<Replicant> &
 			CaseClashingKeys<Replicant>;
-		computed?: {
-			[K in keyof Computed & string]: FieldOption<
-				Computed[K],
-				ReadOnlyPermissionArg<keyof Roles & string>
-			>;
-		};
-		topic?: {
-			[K in keyof Topic & string]: FieldOption<
-				Topic[K],
-				PermissionArg<keyof Roles & string>
-			>;
-		};
+		computed?: FieldOptions<Computed, ReadOnlyPermissionArg<DeclaredRoleName>>;
+		topic?: FieldOptions<Topic, PermissionArg<DeclaredRoleName>>;
 		rpc?: Rpc;
 	},
 ): NamespaceManifest<
-	{ [K in keyof Replicant]: Schema.Schema.Type<Replicant[K]> },
-	{ [K in keyof Computed]: Schema.Schema.Type<Computed[K]> },
-	{ [K in keyof Topic]: Schema.Schema.Type<Topic[K]> },
+	{ [K in keyof Replicant]: FieldDecoded<Replicant[K]> },
+	{ [K in keyof Computed]: FieldDecoded<Computed[K]> },
+	{ [K in keyof Topic]: FieldDecoded<Topic[K]> },
 	AddedRpcDecoded<Rpc>
 > {
 	if (!isFileSafeName(namespace)) {
@@ -490,20 +464,12 @@ export function defineNamespace<
 
 	const resolve = (
 		capability: RoleCapability,
-		rule: PermissionRuleArg<keyof Roles & string> | undefined,
+		rule: PermissionRuleArg<DeclaredRoleName> | undefined,
 	) => resolveAccess(registry, declared, capability, undefined, rule);
 
-	const replicantOption:
-		| {
-				[K in keyof Replicant & string]: FieldOption<
-					Replicant[K],
-					PermissionArg<keyof Roles & string>
-				>;
-		  }
-		| undefined = defineOption.replicant;
 	const replicant = mapValues<
-		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
-		FieldManifestFromSchemaLambda
+		FieldOptionLambda<PermissionArg<DeclaredRoleName>>,
+		FieldManifestFromOptionLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: replicantPermission(
@@ -512,11 +478,13 @@ export function defineNamespace<
 			namespace,
 			namedRoles,
 		),
-	}))(replicantOption);
+	}))<FieldOptions<Replicant, PermissionArg<DeclaredRoleName>>>(
+		defineOption.replicant,
+	);
 
 	const computed = mapValues<
-		FieldOptionLambda<ReadOnlyPermissionArg<keyof Roles & string>>,
-		FieldManifestFromSchemaLambda
+		FieldOptionLambda<ReadOnlyPermissionArg<DeclaredRoleName>>,
+		FieldManifestFromOptionLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: computedPermission(
@@ -524,11 +492,13 @@ export function defineNamespace<
 			namespace,
 			namedRoles,
 		),
-	}))(defineOption.computed);
+	}))<FieldOptions<Computed, ReadOnlyPermissionArg<DeclaredRoleName>>>(
+		defineOption.computed,
+	);
 
 	const topic = mapValues<
-		FieldOptionLambda<PermissionArg<keyof Roles & string>>,
-		FieldManifestFromSchemaLambda
+		FieldOptionLambda<PermissionArg<DeclaredRoleName>>,
+		FieldManifestFromOptionLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: topicPermission(
@@ -537,10 +507,10 @@ export function defineNamespace<
 			namespace,
 			namedRoles,
 		),
-	}))(defineOption.topic);
+	}))<FieldOptions<Topic, PermissionArg<DeclaredRoleName>>>(defineOption.topic);
 
 	const rpc = mapRpcValues<
-		RpcFieldOption<WriteOnlyPermissionArg<keyof Roles & string>>,
+		RpcFieldOption<WriteOnlyPermissionArg<DeclaredRoleName>>,
 		RpcFieldManifestFromSchemaLambda
 	>()(defineOption.rpc, (option, name) => ({
 		name,
@@ -555,7 +525,7 @@ export function defineNamespace<
 
 	return {
 		namespace,
-		replicant: replicant,
+		replicant,
 		computed,
 		topic,
 		rpc,
@@ -568,7 +538,7 @@ export function defineNamespace<
 interface ExtendFieldOption<
 	P extends PermissionArg<string> | ReadOnlyPermissionArg<string>,
 > {
-	readonly schema?: Schema.Codec<any>;
+	readonly schema?: WidestFieldSchema;
 	readonly permission?: P;
 }
 
@@ -580,15 +550,13 @@ interface ExtendRpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
 type Override<Precedent, Added> = Omit<Precedent, keyof Added> & Added;
 
 type AddedDecoded<In> = {
-	readonly [K in keyof AddedSchemas<In>]: Schema.Schema.Type<
-		AddedSchemas<In>[K]
-	>;
+	readonly [K in keyof AddedSchemas<In>]: FieldDecoded<AddedSchemas<In>[K]>;
 };
 
 type AddedRpcDecoded<In> = {
 	readonly [K in keyof AddedRpcSchemas<In>]: {
-		readonly request: Schema.Schema.Type<AddedRpcSchemas<In>[K]["request"]>;
-		readonly response: Schema.Schema.Type<AddedRpcSchemas<In>[K]["response"]>;
+		readonly request: FieldDecoded<AddedRpcSchemas<In>[K]["request"]>;
+		readonly response: FieldDecoded<AddedRpcSchemas<In>[K]["response"]>;
 	};
 };
 

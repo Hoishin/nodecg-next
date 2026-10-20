@@ -1,44 +1,42 @@
 import { it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
+import { z } from "zod";
 
-import {
-	defineNamespace,
-	extendNamespace,
-	FieldDecodeError,
-	FieldEncodeError,
-} from "./define-namespace.ts";
+import { defineNamespace, extendNamespace } from "./define-namespace.ts";
+import { FieldDecodeError, FieldEncodeError } from "./field-codec.ts";
 
 describe("defineNamespace", () => {
 	describe("runtime", () => {
-		it.effect("replicant fields encode/decode round-trip", () =>
-			Effect.gen(function* () {
-				const manifest = defineNamespace("match", {
-					replicant: {
-						score: {
-							schema: Schema.Struct({
-								left: Schema.Finite,
-								right: Schema.Finite,
-							}),
+		it.effect(
+			"replicant, computed and topic fields encode/decode round-trip",
+			() =>
+				Effect.gen(function* () {
+					const manifest = defineNamespace("match", {
+						replicant: {
+							score: {
+								schema: Schema.Struct({ left: Schema.FiniteFromString }),
+							},
 						},
-						count: {
-							schema: Schema.BigIntFromString,
-						},
-					},
-				});
+						computed: { title: { schema: z.string().trim() } },
+						topic: { count: { schema: Schema.BigIntFromString } },
+					});
 
-				const encoded = yield* manifest.replicant.score.encode({
-					left: 1,
-					right: 2,
-				});
-				expect(encoded).toEqual({ left: 1, right: 2 });
+					const scoreWire = yield* manifest.replicant.score.encode({ left: 1 });
+					expect(scoreWire).toEqual({ left: "1" });
+					const score = yield* manifest.replicant.score.decode({ left: "2" });
+					expect(score).toEqual({ left: 2 });
 
-				const decoded = yield* manifest.replicant.score.decode({
-					left: 3,
-					right: 4,
-				});
-				expect(decoded).toEqual({ left: 3, right: 4 });
-			}),
+					const titleWire = yield* manifest.computed.title.encode(" final ");
+					expect(titleWire).toBe("final");
+					const title = yield* manifest.computed.title.decode(" semi ");
+					expect(title).toBe("semi");
+
+					const countWire = yield* manifest.topic.count.encode(3n);
+					expect(countWire).toBe("3");
+					const count = yield* manifest.topic.count.decode("4");
+					expect(count).toBe(4n);
+				}),
 		);
 
 		test("decode surfaces FieldDecodeError on bad wire input", () => {
@@ -60,26 +58,24 @@ describe("defineNamespace", () => {
 						rpc: {
 							setScore: {
 								schema: {
-									request: Schema.Struct({
-										left: Schema.Finite,
-										right: Schema.Finite,
-									}),
-									response: Schema.Boolean,
+									request: Schema.FiniteFromString,
+									response: z.string().trim(),
 								},
 							},
 						},
 					});
 
-					expect(
-						yield* manifest.rpc.setScore.request.encode({ left: 1, right: 2 }),
-					).toEqual({ left: 1, right: 2 });
-					expect(
-						yield* manifest.rpc.setScore.request.decode({ left: 3, right: 4 }),
-					).toEqual({ left: 3, right: 4 });
-					expect(yield* manifest.rpc.setScore.response.encode(true)).toBe(true);
-					expect(yield* manifest.rpc.setScore.response.decode(false)).toBe(
-						false,
-					);
+					const requestWire = yield* manifest.rpc.setScore.request.encode(1);
+					expect(requestWire).toBe("1");
+					const request = yield* manifest.rpc.setScore.request.decode("2");
+					expect(request).toBe(2);
+
+					const responseWire =
+						yield* manifest.rpc.setScore.response.encode(" done ");
+					expect(responseWire).toBe("done");
+					const response =
+						yield* manifest.rpc.setScore.response.decode(" kept ");
+					expect(response).toBe("kept");
 				}),
 		);
 	});
@@ -490,7 +486,7 @@ describe("defineNamespace", () => {
 						schema: Schema.NullOr(Schema.Literals(["left", "right"])),
 					},
 				},
-				topic: { start: { schema: Schema.Boolean } },
+				topic: { start: { schema: z.boolean() } },
 				rpc: {
 					setScore: {
 						schema: {
@@ -532,20 +528,116 @@ describe("defineNamespace", () => {
 				.toEqualTypeOf<Schema.Json>();
 		});
 
-		describe("rejects schemas whose Encoded is not Schema.Json-compatible", () => {
-			test("DateFromSelf (Encoded = Date)", () => {
+		describe("rejects schemas whose encoded form is not JSON-compatible", () => {
+			test("Effect Schema.Date", () => {
 				defineNamespace("match", {
-					// @ts-expect-error Schema.DateFromSelf has Encoded=Date, not Schema.Json
-					replicant: { when: { schema: Schema.DateFromSelf } },
+					// @ts-expect-error Schema.Date has Encoded=Date, not Schema.Json
+					replicant: { when: { schema: Schema.Date } },
 				});
 			});
 
-			test("BigIntFromSelf (Encoded = bigint)", () => {
+			test("Effect Schema.BigInt", () => {
 				defineNamespace("match", {
 					// @ts-expect-error bigint is not assignable to Schema.Json
-					replicant: { count: { schema: Schema.BigIntFromSelf } },
+					replicant: { count: { schema: Schema.BigInt } },
 				});
 			});
+
+			test("date", () => {
+				defineNamespace("match", {
+					// @ts-expect-error a Date is not JSON
+					replicant: { startAt: { schema: z.coerce.date() } },
+				});
+			});
+
+			test("bigint", () => {
+				defineNamespace("match", {
+					// @ts-expect-error bigint has no JSON form
+					replicant: { count: { schema: z.bigint() } },
+				});
+			});
+
+			test("object holding a Set", () => {
+				defineNamespace("match", {
+					replicant: {
+						// @ts-expect-error Set has no JSON form
+						tags: { schema: z.object({ names: z.set(z.string()) }) },
+					},
+				});
+			});
+
+			test("object holding unknown beside a bigint", () => {
+				defineNamespace("match", {
+					replicant: {
+						data: {
+							// @ts-expect-error bigint has no JSON form
+							schema: z.object({ data: z.unknown(), count: z.bigint() }),
+						},
+					},
+				});
+			});
+
+			test("interface holding a bigint", () => {
+				interface Tally {
+					count: bigint;
+				}
+
+				defineNamespace("match", {
+					// @ts-expect-error bigint has no JSON form
+					replicant: { tally: { schema: z.custom<Tally>() } },
+				});
+			});
+		});
+
+		test("accepts a schema whose value is an interface", () => {
+			interface Score {
+				readonly left: number;
+				readonly history: ReadonlyArray<Score>;
+			}
+
+			const manifest = defineNamespace("match", {
+				replicant: { score: { schema: z.custom<Score>() } },
+			});
+
+			expectTypeOf(manifest.replicant.score.decode).returns.toEqualTypeOf<
+				Effect.Effect<Score, FieldDecodeError>
+			>();
+		});
+
+		test("accepts a schema that reads another type than its value", () => {
+			const manifest = defineNamespace("match", {
+				replicant: {
+					length: { schema: z.string().transform((text) => text.length) },
+				},
+			});
+
+			expectTypeOf(manifest.replicant.length.decode).returns.toEqualTypeOf<
+				Effect.Effect<number, FieldDecodeError>
+			>();
+		});
+
+		test("accepts unknown, any and never schemas", () => {
+			const manifest = defineNamespace("match", {
+				replicant: {
+					anything: { schema: z.unknown() },
+					raw: { schema: z.any() },
+					nothing: { schema: z.never() },
+					nested: { schema: z.object({ data: z.unknown(), raw: z.any() }) },
+				},
+			});
+
+			expectTypeOf(manifest.replicant.anything.decode).returns.toEqualTypeOf<
+				Effect.Effect<unknown, FieldDecodeError>
+			>();
+			expectTypeOf(manifest.replicant.raw.decode).returns.toEqualTypeOf<
+				Effect.Effect<any, FieldDecodeError>
+			>();
+			expectTypeOf(manifest.replicant.nothing.decode).returns.toEqualTypeOf<
+				Effect.Effect<never, FieldDecodeError>
+			>();
+			expectTypeOf(manifest.replicant.nested.decode).returns.toEqualTypeOf<
+				Effect.Effect<{ data: unknown; raw: any }, FieldDecodeError>
+			>();
 		});
 
 		describe("permission tokens restricted to declared roles", () => {
@@ -714,13 +806,14 @@ describe("extendNamespace", () => {
 				const extended = extendNamespace(base, {
 					replicant: {
 						pinned: {
-							schema: Schema.String,
+							schema: z.string().trim(),
 							permission: { write: { allow: ["judge"] } },
 						},
 					},
 				});
 
-				expect(yield* extended.replicant.pinned.encode("hi")).toBe("hi");
+				const wire = yield* extended.replicant.pinned.encode(" hi ");
+				expect(wire).toBe("hi");
 				expect(extended.replicant.pinned.permission.write).toEqual({
 					roles: new Set(["judge"]),
 					rolesDenied: new Set(),
@@ -1059,7 +1152,7 @@ describe("extendNamespace", () => {
 						),
 					},
 				},
-				computed: { ratio: { schema: Schema.Finite } },
+				computed: { ratio: { schema: z.number() } },
 			});
 
 			expectTypeOf(extended.replicant.score.encode)

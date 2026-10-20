@@ -42,7 +42,8 @@
 		"drizzle-kit": "1.0.0-rc.5-5935859",
 		"oauth2-mock-server": "catalog:",
 		"vite": "catalog:",
-		"vitest": "catalog:"
+		"vitest": "catalog:",
+		"zod": "catalog:"
 	},
 	"peerDependencies": {
 		"vite": "catalog:"

@@ -1,4 +1,6 @@
-import { Effect, Schema, type HKT } from "effect";
+import { Effect, type HKT } from "effect";
+
+import type { WidestFieldSchema } from "./field-schema.ts";
 
 const unsafeObjectKeys = <T extends object>(obj: T) =>
 	Object.keys(obj) as (keyof T & string)[];
@@ -94,7 +96,7 @@ type SchemaKeys<In> = {
 
 export type AddedSchemas<In> = {
 	readonly [K in SchemaKeys<In>]: In[K] extends {
-		readonly schema: infer S extends Schema.Codec<any>;
+		readonly schema: infer S extends WidestFieldSchema;
 	}
 		? S
 		: never;
@@ -102,15 +104,15 @@ export type AddedSchemas<In> = {
 
 export const mapSchemaValues =
 	<
-		Option extends { readonly schema?: Schema.Codec<any> },
+		Option extends { readonly schema?: WidestFieldSchema },
 		G extends HKT.TypeLambda,
 	>() =>
 	<In extends Record<string, Option>>(
 		obj: In | undefined,
 		transform: (
-			value: Option & { readonly schema: Schema.Codec<any> },
+			value: Option & { readonly schema: WidestFieldSchema },
 			key: string,
-		) => HKT.Kind<G, unknown, never, never, Schema.Codec<any>>,
+		) => HKT.Kind<G, unknown, never, never, WidestFieldSchema>,
 	): ApplyLambdaToObjectValues<G, AddedSchemas<In>> => {
 		const result: any = {};
 		if (typeof obj !== "undefined") {
@@ -130,15 +132,15 @@ export const mapSchemaValues =
 	};
 
 type RpcSchemaSlot = {
-	readonly request: Schema.Codec<any>;
-	readonly response: Schema.Codec<any>;
+	readonly request: WidestFieldSchema;
+	readonly response: WidestFieldSchema;
 };
 
 export type AddedRpcSchemas<In> = {
 	readonly [K in SchemaKeys<In>]: In[K] extends {
 		readonly schema: {
-			readonly request: infer Req extends Schema.Codec<any>;
-			readonly response: infer Res extends Schema.Codec<any>;
+			readonly request: infer Req extends WidestFieldSchema;
+			readonly response: infer Res extends WidestFieldSchema;
 		};
 	}
 		? { readonly request: Req; readonly response: Res }

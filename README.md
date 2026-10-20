@@ -307,9 +307,8 @@ match.replicant.label.subscribe((label) => {
 #### Replicant Schema
 
 - ✅ Effect Schema
-- 🚧 JSON Schema
-- 🚧 Zod
-- 🚧 Valibot
+- ✅ Standard Schema v1 (Zod, Valibot, etc)
+- ✅ JSON Schema
 
 ### Messaging
 

@@ -1,3 +1,4 @@
+export { cloneJson } from "./clone.ts";
 export {
 	type CaseClashingKeys,
 	findCaseClash,
@@ -5,6 +6,7 @@ export {
 	isFileSafeName,
 	type UnsafeNameKeys,
 } from "./file-safe-name.ts";
+export { type WidestFieldSchema } from "./field-schema.ts";
 export {
 	mapValues,
 	mapEffectValues,

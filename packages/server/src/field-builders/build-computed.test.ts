@@ -5,8 +5,8 @@ import {
 	ServerIdentity,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Schema, Stream } from "effect";
-import { describe, expect, vi } from "vitest";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
+import { assert, describe, expect, vi } from "vitest";
 
 import {
 	ComputedComputeError,
@@ -44,6 +44,12 @@ const manifest = defineNamespace("ns", {
 		},
 		positive: {
 			schema: Schema.FiniteFromString.check(Schema.isGreaterThan(0)),
+		},
+		doc: {
+			schema: Schema.Struct({
+				count: Schema.FiniteFromString,
+				data: Schema.Json,
+			}),
 		},
 	},
 });
@@ -116,6 +122,42 @@ describe("get", () => {
 				.get()
 				.pipe(Effect.provide(anonymousIdentity), Effect.flip);
 			expect(error._tag).toBe("FieldPermissionDenied");
+		}),
+	);
+
+	test(
+		"returns a value that shares nothing with the store",
+		Effect.gen(function* () {
+			const field = yield* buildComputed(
+				"ns",
+				"doc",
+				manifest.computed.doc,
+				Effect.succeed({ count: 1, data: { tags: ["a"] } }),
+			);
+
+			const first = yield* field.get();
+			const second = yield* field.get();
+
+			expect(first.data).not.toBe(second.data);
+		}),
+	);
+
+	test(
+		"keeps no reference to the value the compute returns",
+		Effect.gen(function* () {
+			const tags = ["a"];
+			const field = yield* buildComputed(
+				"ns",
+				"doc",
+				manifest.computed.doc,
+				Effect.succeed({ count: 1, data: { tags } }),
+			);
+
+			yield* field.get();
+			tags.push("b");
+
+			const doc = yield* field.get();
+			expect(doc).toEqual({ count: 1, data: { tags: ["a"] } });
 		}),
 	);
 });
@@ -224,6 +266,28 @@ describe("subscribe", () => {
 			const field = yield* build;
 			const error = yield* field.subscribe().pipe(Effect.flip);
 			expect(error._tag).toBe("ComputedComputeError");
+		}),
+	);
+
+	test(
+		"emits values that share nothing with the store",
+		Effect.gen(function* () {
+			const field = yield* buildComputed(
+				"ns",
+				"doc",
+				manifest.computed.doc,
+				Effect.succeed({ count: 1, data: { tags: ["a"] } }),
+			);
+
+			const first = yield* field
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead));
+			const second = yield* field
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead));
+
+			assert(Option.isSome(first) && Option.isSome(second));
+			expect(first.value.data).not.toBe(second.value.data);
 		}),
 	);
 });

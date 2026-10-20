@@ -2,13 +2,16 @@ export {
 	declaredRoleNames,
 	defineNamespace,
 	extendNamespace,
-	FieldDecodeError,
-	FieldEncodeError,
-	type FieldCodec,
 	type FieldManifest,
 	type RpcFieldManifest,
 	type NamespaceManifest,
 } from "./define-namespace.ts";
+export {
+	FieldDecodeError,
+	FieldEncodeError,
+	type FieldCodec,
+} from "./field-codec.ts";
+export { jsonSchema } from "./json-schema.ts";
 export {
 	getRolesForNamespace,
 	isAdminTier,

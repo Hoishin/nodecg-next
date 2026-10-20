@@ -502,6 +502,9 @@ export interface LoadedNamespace<
 	readonly [Symbol.dispose]: () => void;
 }
 
+/**
+ * Client-side entrypoint of namespace manifests returned from defineNamespace
+ */
 export async function loadNamespace<
 	Replicant extends Record<string, unknown> = {},
 	Computed extends Record<string, unknown> = {},

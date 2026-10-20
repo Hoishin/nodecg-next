@@ -59,6 +59,12 @@ const manifest = defineNamespace("ns", {
 			schema: Schema.FiniteFromString,
 			permission: { write: { deny: ["scorer"] } },
 		},
+		doc: {
+			schema: Schema.Struct({
+				count: Schema.FiniteFromString,
+				data: Schema.Json,
+			}),
+		},
 	},
 });
 
@@ -114,6 +120,21 @@ describe("get", () => {
 	);
 
 	testStubbed(
+		"returns a value that shares nothing with the store",
+		Effect.gen(function* () {
+			const field = yield* buildReplicant("ns", "doc", manifest.replicant.doc, {
+				count: 1,
+				data: { tags: ["a"] },
+			});
+
+			const first = yield* field.get();
+			const second = yield* field.get();
+
+			expect(first.data).not.toBe(second.data);
+		}),
+	);
+
+	testStubbed(
 		"dies when the stored value does not match the schema",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
@@ -146,6 +167,22 @@ describe("set", () => {
 			);
 			yield* field.set(7);
 			expect((yield* store.readReplicant("ns", "count")).value).toBe("7");
+		}),
+	);
+
+	testStubbed(
+		"keeps no reference to the value it was given",
+		Effect.gen(function* () {
+			const field = yield* buildReplicant("ns", "doc", manifest.replicant.doc, {
+				count: 0,
+				data: null,
+			});
+			const tags = ["a"];
+
+			yield* field.set({ count: 1, data: { tags } });
+			tags.push("b");
+
+			expect(yield* field.get()).toEqual({ count: 1, data: { tags: ["a"] } });
 		}),
 	);
 
@@ -199,6 +236,22 @@ describe("update", () => {
 			const store = yield* ReplicantStoreService;
 			yield* field.update((v) => v + 3);
 			expect((yield* store.readReplicant("ns", "count")).value).toBe("13");
+		}),
+	);
+
+	testStubbed(
+		"keeps no reference to the value the fn returns",
+		Effect.gen(function* () {
+			const field = yield* buildReplicant("ns", "doc", manifest.replicant.doc, {
+				count: 0,
+				data: null,
+			});
+			const tags = ["a"];
+
+			yield* field.update(() => ({ count: 1, data: { tags } }));
+			tags.push("b");
+
+			expect(yield* field.get()).toEqual({ count: 1, data: { tags: ["a"] } });
 		}),
 	);
 
@@ -308,6 +361,26 @@ describe("subscribe", () => {
 
 			const events = yield* stream.pipe(Stream.take(2), Stream.runCollect);
 			expect(events).toEqual([0, 7]);
+		}),
+	);
+
+	testInMemory(
+		"emits values that share nothing with the store",
+		Effect.gen(function* () {
+			const field = yield* buildReplicant("ns", "doc", manifest.replicant.doc, {
+				count: 1,
+				data: { tags: ["a"] },
+			});
+
+			const first = yield* field
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead));
+			const second = yield* field
+				.subscribe()
+				.pipe(Effect.flatMap(Stream.runHead));
+
+			assert(Option.isSome(first) && Option.isSome(second));
+			expect(first.value.data).not.toBe(second.value.data);
 		}),
 	);
 

@@ -1,7 +1,7 @@
 import type { FieldManifest } from "@nodecg-next/core";
 import type { Updater } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
-import { toError } from "@nodecg-next/internal/utils";
+import { cloneJson, toError } from "@nodecg-next/internal/utils";
 import { Effect, Schema, Stream } from "effect";
 
 import {
@@ -64,7 +64,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* requirePermission(manifest.permission, namespace, name, "read");
 		const store = yield* ReplicantStoreService;
 		const { value } = yield* store.readReplicant(namespace, name);
-		return yield* manifest.decode(value).pipe(migrationDie);
+		return yield* manifest.decode(cloneJson(value)).pipe(migrationDie);
 	});
 
 	const getRevisioned = Effect.fn("getRevisioned")(function* () {
@@ -75,7 +75,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		const encoded = yield* manifest.encode(value);
-		yield* commit(() => Effect.succeed(encoded));
+		yield* commit(() => Effect.succeed(cloneJson(encoded)));
 	});
 
 	// Wire write: applies the client's patch, the decode gate validates the applied document
@@ -108,7 +108,8 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 							cause: toError(error),
 						}),
 				});
-				return yield* manifest.encode(next);
+				const encoded = yield* manifest.encode(next);
+				return cloneJson(encoded);
 			}),
 		);
 	});
@@ -121,7 +122,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		const stream = yield* store.subscribeReplicant(namespace, name);
 		return stream.pipe(
 			Stream.mapEffect((frame) =>
-				manifest.decode(frame.value).pipe(migrationDie),
+				manifest.decode(cloneJson(frame.value)).pipe(migrationDie),
 			),
 		);
 	});

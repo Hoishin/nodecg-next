@@ -1,5 +1,10 @@
-import { defineNamespace, extendNamespace } from "@nodecg-next/core";
+import {
+	defineNamespace,
+	extendNamespace,
+	jsonSchema,
+} from "@nodecg-next/core";
 import { Schema } from "effect";
+import { z } from "zod";
 
 const everyoneRead = { read: { everyone: "allow" } } as const;
 const everyoneReadWrite = {
@@ -16,7 +21,7 @@ export const fixtureManifest = defineNamespace("e2e", {
 	replicant: {
 		count: { schema: Schema.Finite, permission: everyoneRead },
 		scoreboard: {
-			schema: Schema.Struct({ home: Schema.Finite, away: Schema.Finite }),
+			schema: z.object({ home: z.number(), away: z.number() }),
 			permission: everyoneReadWrite,
 		},
 		tallies: {
@@ -24,9 +29,15 @@ export const fixtureManifest = defineNamespace("e2e", {
 			permission: everyoneReadWrite,
 		},
 		roster: {
-			schema: Schema.Array(
-				Schema.Struct({ id: Schema.String, score: Schema.Finite }),
-			),
+			schema: jsonSchema({
+				type: "array",
+				items: {
+					type: "object",
+					properties: { id: { type: "string" }, score: { type: "number" } },
+					required: ["id", "score"],
+					additionalProperties: false,
+				},
+			}),
 			permission: everyoneReadWrite,
 		},
 		mirrorSource: { schema: Schema.Finite, permission: everyoneReadWrite },

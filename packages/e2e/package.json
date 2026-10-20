@@ -14,6 +14,7 @@
 		"effect": "catalog:",
 		"get-port": "^7.2.0",
 		"playwright": "catalog:",
-		"vitest": "catalog:"
+		"vitest": "catalog:",
+		"zod": "catalog:"
 	}
 }

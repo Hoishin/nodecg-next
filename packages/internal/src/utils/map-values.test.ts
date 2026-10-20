@@ -195,6 +195,60 @@ describe("mapValues", () => {
 			{ a: "no id" },
 		);
 	});
+
+	describe("an object Target holding a union-bounded value", () => {
+		type Shape = { readonly kind: "circle" } | { readonly kind: "square" };
+		type Checked<S> = S extends { readonly kind: infer Kind }
+			? [Kind] extends [unknown]
+				? S
+				: never
+			: never;
+		interface Tagged<S extends Shape> {
+			readonly shape: Checked<S>;
+		}
+		type Tags<Shapes extends Record<string, Shape>> = {
+			readonly [K in keyof Shapes & string]: Tagged<Shapes[K]>;
+		};
+		interface TaggedLambda extends HKT.TypeLambda {
+			readonly Target: Tagged<Shape>;
+			readonly type: this["Target"];
+		}
+
+		test("maps a generic record", () => {
+			const box = <Shapes extends Record<string, Shape>>(
+				tags: Tags<Shapes>,
+			): { readonly [K in keyof Shapes & string]: Box<Tagged<Shapes[K]>> } =>
+				mapValues<TaggedLambda, BoxLambda>((value) => ({ value }))<
+					Tags<Shapes>
+				>(tags);
+
+			const result = box<{ a: { readonly kind: "circle" } }>({
+				a: { shape: { kind: "circle" } },
+			});
+
+			expectTypeOf(result).toEqualTypeOf<{
+				readonly a: Box<Tagged<{ readonly kind: "circle" }>>;
+			}>();
+			expect(result).toEqual({ a: { value: { shape: { kind: "circle" } } } });
+		});
+
+		test("rejects a generic record that belongs to other Targets", () => {
+			const box = <
+				Shapes extends Record<string, Shape>,
+				Others extends Record<string, Shape>,
+			>(
+				tags: Tags<Others>,
+			) =>
+				mapValues<TaggedLambda, BoxLambda>((value) => ({ value }))<
+					Tags<Shapes>
+				>(
+					// @ts-expect-error the tags belong to another record
+					tags,
+				);
+
+			expectTypeOf(box).toBeFunction();
+		});
+	});
 });
 
 describe("mapEffectValues", () => {

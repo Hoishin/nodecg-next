@@ -19,7 +19,15 @@ import {
 	Stream,
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
+import {
+	assert,
+	describe,
+	expect,
+	expectTypeOf,
+	onTestFinished,
+	test,
+	vi,
+} from "vitest";
 
 import { derive } from "./derive.ts";
 import { loadNamespace, loadNamespaceEffect } from "./load-namespace.ts";
@@ -60,12 +68,12 @@ describe("get", () => {
 		"decodes the value returned by the transport",
 		Effect.gen(function* () {
 			const transportStub = createTransportStub();
-			transportStub.getReplicant.mockReturnValue(Effect.succeed(42));
+			transportStub.getReplicant.mockReturnValue(Effect.succeed("42"));
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Finite } },
+				replicant: { count: { schema: Schema.FiniteFromString } },
 			});
 
-			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const namespace = yield* loadNamespaceEffect(manifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
 				Effect.provideService(
 					MessageChannelService,
@@ -73,11 +81,11 @@ describe("get", () => {
 				),
 			);
 
-			expect(
-				yield* loaded.replicant.count
-					.get()
-					.pipe(Effect.provideService(FieldTransportService, transportStub)),
-			).toBe(42);
+			const count = yield* namespace.replicant.count
+				.get()
+				.pipe(Effect.provideService(FieldTransportService, transportStub));
+			expect(count).toBe(42);
+			expectTypeOf(count).toEqualTypeOf<number>();
 		}),
 	);
 
@@ -170,10 +178,10 @@ describe("set", () => {
 		Effect.gen(function* () {
 			const transportStub = createTransportStub();
 			const manifest = defineNamespace("root", {
-				replicant: { count: { schema: Schema.Finite } },
+				replicant: { count: { schema: Schema.FiniteFromString } },
 			});
 
-			const loaded = yield* loadNamespaceEffect(manifest).pipe(
+			const namespace = yield* loadNamespaceEffect(manifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
 				Effect.provideService(
 					MessageChannelService,
@@ -181,14 +189,17 @@ describe("set", () => {
 				),
 			);
 
-			yield* loaded.replicant.count
+			yield* namespace.replicant.count
 				.set(7)
 				.pipe(Effect.provideService(FieldTransportService, transportStub));
-			expect(transportStub.updateReplicant).toHaveBeenCalledWith(
+			expect(transportStub.updateReplicant).toHaveBeenCalledExactlyOnceWith(
 				"root",
 				"count",
-				[{ op: "replace", path: "", value: 7 }],
+				[{ op: "replace", path: "", value: "7" }],
 			);
+			expectTypeOf(namespace.replicant.count.set)
+				.parameter(0)
+				.toEqualTypeOf<number>();
 		}),
 	);
 
