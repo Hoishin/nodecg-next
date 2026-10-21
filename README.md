@@ -290,10 +290,11 @@ match.replicant.label.subscribe((label) => {
   loadNodeCG({ namespaces: { overlay, commercial } });
   ```
 
+- ✅ Replicant in client-side is synchronized on reconnect
+
 - 🚧 Admin dashboard (view, clear, export, import, freeze)
 - 🚧 boolean option for persistence
 - 🚧 Hooks: `beforeUpdate`, `afterUpdate`
-- 🚧 Replicant in client-side is synchronized on reconnect
 - 🚧 Revision number
 - 🚧 Conflict resolution with custom logic
 - 🚧 Subscription update frequency control
