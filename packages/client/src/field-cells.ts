@@ -1,6 +1,6 @@
 import type { FieldManifest } from "@nodecg-next/core";
 import {
-	type ClientMessage,
+	ClientMessage,
 	type ComputedFieldIdentifier,
 	type FieldIdentifier,
 	type FieldValueMessage,
@@ -19,6 +19,7 @@ import { type Signal, signal } from "@preact/signals-core";
 import {
 	Context,
 	Effect,
+	HashSet,
 	Layer,
 	Match,
 	MutableHashMap,
@@ -26,7 +27,7 @@ import {
 	Queue,
 	Ref,
 	Result,
-	type Schema,
+	Schema,
 	Stream,
 } from "effect";
 
@@ -47,12 +48,17 @@ import {
 	FieldPermissionDenied,
 	FieldUnavailable,
 } from "./services/field-transport/field-transport.ts";
-import { MessageChannelService } from "./services/message-channel/message-channel.ts";
+import {
+	ConnectionStatus,
+	MessageChannelService,
+} from "./services/message-channel/message-channel.ts";
 
 export type TerminalFieldFailure = FieldNotFound | FieldPermissionDenied;
 export type FieldFailure = TerminalFieldFailure | FieldUnavailable;
 
 const isCold = Loadable.$is("Cold");
+const isConnectionStatus = Schema.is(ConnectionStatus);
+const isClientMessage = Schema.is(ClientMessage);
 
 export interface ReplicantCell<Decoded> {
 	readonly signal: Signal<ReplicantLoadable<Decoded, FieldFailure>>;
@@ -350,20 +356,63 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 				return { signal: cell, peek: () => cell.peek() };
 			};
 
-			// Sender: drain mailbox and send changes to server
-			yield* Effect.forkScoped(
-				Stream.fromQueue(outbound).pipe(
-					Stream.runForEach((message) =>
-						channel
-							.send(message)
-							.pipe(
-								Effect.catchTag("MessageEncodeError", (error) =>
-									Effect.logError(
-										`Failed to send "${message._tag}" message:`,
-										error,
-									),
-								),
+			const connected = yield* Ref.make(false);
+			const subscribed = yield* Ref.make(HashSet.empty<FieldIdentifier>());
+
+			const sendMessage = (message: ClientMessage) =>
+				channel
+					.send(message)
+					.pipe(
+						Effect.catchTag("MessageEncodeError", (error) =>
+							Effect.logError(
+								`Failed to send "${message._tag}" message:`,
+								error,
 							),
+						),
+					);
+
+			const handleMessage = Effect.fn(function* (message: ClientMessage) {
+				yield* Ref.update(subscribed, (fields) =>
+					Match.value(message).pipe(
+						Match.tag("subscribe", ({ field }) => HashSet.add(fields, field)),
+						Match.tag("unsubscribe", ({ field }) =>
+							HashSet.remove(fields, field),
+						),
+						Match.tag("resync", "ping", () => fields),
+						Match.exhaustive,
+					),
+				);
+				const isConnected = yield* Ref.get(connected);
+				if (isConnected) {
+					yield* sendMessage(message);
+				}
+			});
+
+			const handleStatus = Effect.fn(function* (status: ConnectionStatus) {
+				const isConnected = Match.value(status).pipe(
+					Match.when("connected", () => true),
+					Match.when("disconnected", () => false),
+					Match.exhaustive,
+				);
+				yield* Ref.set(connected, isConnected);
+				if (isConnected) {
+					const fields = yield* Ref.get(subscribed);
+					yield* Effect.forEach(
+						fields,
+						(field) => sendMessage(SubscribeMessage.make({ field })),
+						{ discard: true },
+					);
+				}
+			});
+
+			yield* Effect.forkScoped(
+				Stream.merge(Stream.fromQueue(outbound), channel.status).pipe(
+					Stream.runForEach((next) =>
+						Match.value(next).pipe(
+							Match.when(isConnectionStatus, handleStatus),
+							Match.when(isClientMessage, handleMessage),
+							Match.exhaustive,
+						),
 					),
 				),
 			);

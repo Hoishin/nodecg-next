@@ -4,11 +4,20 @@ import {
 	ReplicantDeltaMessage,
 	ReplicantSnapshotMessage,
 	type ServerMessage,
+	SubscribeMessage,
 	SubscribeRejectedMessage,
 } from "@nodecg-next/internal";
 import { computeFingerprint } from "@nodecg-next/internal/occ";
 import { effect, type Signal } from "@preact/signals-core";
-import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect";
+import {
+	Context,
+	Effect,
+	Layer,
+	PubSub,
+	Schema,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { describe, expect, onTestFinished, vi } from "vitest";
 
 import { FieldCellsService } from "./field-cells.ts";
@@ -19,6 +28,7 @@ import {
 	FieldUnavailable,
 } from "./services/field-transport/field-transport.ts";
 import {
+	type ConnectionStatus,
 	type MessageChannel,
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
@@ -35,16 +45,24 @@ const namespace = defineNamespace("match", {
 
 const makeFakeChannel = Effect.gen(function* () {
 	const pubsub = yield* PubSub.unbounded<ServerMessage>();
+	const status = yield* SubscriptionRef.make<ConnectionStatus>("connected");
 	const sent: Parameters<MessageChannel["send"]>[0][] = [];
 	const channel: MessageChannel = {
 		send: (message) =>
-			Effect.sync(() => {
-				sent.push(message);
-			}),
+			SubscriptionRef.changes(status).pipe(
+				Stream.filter(Schema.is(Schema.Literal("connected"))),
+				Stream.runHead,
+				Effect.andThen(
+					Effect.sync(() => {
+						sent.push(message);
+					}),
+				),
+			),
 		receive: () =>
 			PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+		status: SubscriptionRef.changes(status),
 	};
-	return { channel, pubsub, sent };
+	return { channel, pubsub, status, sent };
 });
 
 const snapshot = (
@@ -664,6 +682,100 @@ describe("FieldCellsService", () => {
 					]);
 				});
 				expect(resyncs()).toBe(1);
+			}),
+	);
+});
+
+describe("connection status", () => {
+	const subscribeLeft = SubscribeMessage.make({
+		field: { type: "replicant", namespace: "match", name: "scoreLeft" },
+	});
+	const subscribeRight = SubscribeMessage.make({
+		field: { type: "replicant", namespace: "match", name: "scoreRight" },
+	});
+
+	it.effect(
+		"subscribes a field watched while disconnected once on connect",
+		() =>
+			Effect.gen(function* () {
+				const { channel, status, sent } = yield* makeFakeChannel;
+				yield* SubscriptionRef.set(status, "disconnected");
+				const cells = yield* makeCells.pipe(
+					Effect.provideService(MessageChannelService, channel),
+				);
+				const left = yield* cells.replicant(
+					"match",
+					"scoreLeft",
+					namespace.replicant.scoreLeft,
+				);
+				observe(left.signal);
+
+				yield* SubscriptionRef.set(status, "connected");
+				yield* waitFor(() => {
+					expect(sent).toEqual([subscribeLeft]);
+				});
+				const right = yield* cells.replicant(
+					"match",
+					"scoreRight",
+					namespace.replicant.scoreRight,
+				);
+				observe(right.signal);
+				yield* waitFor(() => {
+					expect(sent).toEqual([subscribeLeft, subscribeRight]);
+				});
+			}),
+	);
+
+	it.effect("resubscribes watched fields after a reconnect", () =>
+		Effect.gen(function* () {
+			const { channel, status, sent } = yield* makeFakeChannel;
+			const cells = yield* makeCells.pipe(
+				Effect.provideService(MessageChannelService, channel),
+			);
+			const cell = yield* cells.replicant(
+				"match",
+				"scoreLeft",
+				namespace.replicant.scoreLeft,
+			);
+			observe(cell.signal);
+			yield* waitFor(() => {
+				expect(sent).toEqual([subscribeLeft]);
+			});
+
+			yield* SubscriptionRef.set(status, "disconnected");
+			yield* SubscriptionRef.set(status, "connected");
+			yield* waitFor(() => {
+				expect(sent).toEqual([subscribeLeft, subscribeLeft]);
+			});
+		}),
+	);
+
+	it.effect(
+		"leaves a field unwatched while disconnected out of the subscribe",
+		() =>
+			Effect.gen(function* () {
+				const { channel, status, sent } = yield* makeFakeChannel;
+				yield* SubscriptionRef.set(status, "disconnected");
+				const cells = yield* makeCells.pipe(
+					Effect.provideService(MessageChannelService, channel),
+				);
+				const left = yield* cells.replicant(
+					"match",
+					"scoreLeft",
+					namespace.replicant.scoreLeft,
+				);
+				const right = yield* cells.replicant(
+					"match",
+					"scoreRight",
+					namespace.replicant.scoreRight,
+				);
+				observe(left.signal).dispose();
+				observe(right.signal);
+
+				yield* SubscriptionRef.set(status, "connected");
+				yield* waitFor(() => {
+					expect(sent).toEqual([subscribeRight]);
+				});
 			}),
 	);
 });

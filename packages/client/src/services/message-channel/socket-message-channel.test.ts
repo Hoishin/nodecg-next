@@ -1,73 +1,111 @@
 import { it } from "@effect/vitest";
 import {
+	type FieldIdentifier,
 	ReplicantSnapshotMessage,
 	SubscribeMessage,
 } from "@nodecg-next/internal";
-import { Effect, Layer, Option, Queue, Stream } from "effect";
-import { TestConsole } from "effect/testing";
+import { Deferred, Effect, Fiber, Layer, Option, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { Socket } from "effect/unstable/socket";
 import { assert, describe, expect, vi } from "vitest";
 
 import { MessageChannelService } from "./message-channel.ts";
 import { SocketMessageChannel } from "./socket-message-channel.ts";
 
-const makeFakeSocket = Effect.gen(function* () {
-	const incoming = yield* Queue.make<string | Uint8Array, Socket.SocketError>();
-	const write = vi.fn<
-		(
-			chunk: string | Uint8Array | Socket.CloseEvent,
-		) => Effect.Effect<void, Socket.SocketError>
-	>(() => Effect.void);
-
+const makeFakeSocket = () => {
+	const write = vi.fn<Socket.Writer["write"]>(() => Effect.void);
+	const pull = vi.fn<() => Socket.Reader["pull"]>(() => Effect.never);
+	const open = Effect.succeed({ pull: Effect.suspend(pull), upgrade: vi.fn() });
+	const reader = vi.fn<() => Socket.Socket["reader"]>(() => open);
 	const socket = Socket.make({
-		reader: Effect.succeed({
-			pull: Queue.takeAll(incoming),
-			upgrade: vi.fn(() => Effect.die("FakeSocket.upgrade is not used")),
-		}),
-		writer: Effect.succeed({
-			write,
-			writeAll: vi.fn(() => Effect.die("FakeSocket.writeAll is not used")),
-		}),
+		reader: Effect.suspend(reader),
+		writer: Effect.succeed({ write, writeAll: vi.fn() }),
 	});
+	return { socket, write, pull, open, reader };
+};
 
-	return {
-		socket,
-		write,
-		deliver: (data: string | Uint8Array) => Queue.offer(incoming, data),
-		closeClean: Queue.fail(
-			incoming,
-			new Socket.SocketError({
-				reason: new Socket.SocketCloseError({ code: 1000 }),
-			}),
-		),
-		closeWithError: (error: Socket.SocketError) => Queue.fail(incoming, error),
-	};
-});
+const closed = Effect.fail(
+	Socket.SocketError.make({
+		reason: Socket.SocketReadError.make({ cause: new Error("simulated") }),
+	}),
+);
+
+const refused = Effect.fail(
+	Socket.SocketError.make({
+		reason: Socket.SocketOpenError.make({
+			kind: "Unknown",
+			cause: new Error("simulated"),
+		}),
+	}),
+);
 
 const layerFor = (socket: Socket.Socket) =>
 	SocketMessageChannel.pipe(
 		Layer.provide(Layer.succeed(Socket.Socket, socket)),
 	);
 
+const waitFor = (assertion: () => void) =>
+	Effect.promise(() => vi.waitFor(assertion));
+
+const countField: FieldIdentifier = {
+	type: "replicant",
+	namespace: "root",
+	name: "count",
+};
+
+const countSnapshot = JSON.stringify(
+	ReplicantSnapshotMessage.make({ field: countField, value: 42, revision: 3 }),
+);
+
 describe("send", () => {
 	it.effect("encodes ClientMessage and writes JSON to the socket", () =>
 		Effect.gen(function* () {
-			const { socket, write } = yield* makeFakeSocket;
+			const { socket, write } = makeFakeSocket();
 
 			yield* Effect.gen(function* () {
 				const channel = yield* MessageChannelService;
-				yield* channel.send(
-					SubscribeMessage.make({
-						field: { type: "replicant", namespace: "root", name: "count" },
-					}),
-				);
+				yield* channel.send(SubscribeMessage.make({ field: countField }));
 			}).pipe(Effect.provide(layerFor(socket)));
 
-			expect(write).toHaveBeenCalledTimes(1);
-			expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual({
-				_tag: "subscribe",
-				field: { type: "replicant", namespace: "root", name: "count" },
-			});
+			expect(write).toHaveBeenCalledExactlyOnceWith(
+				JSON.stringify({
+					_tag: "subscribe",
+					field: { type: "replicant", namespace: "root", name: "count" },
+				}),
+			);
+		}),
+	);
+});
+
+describe("status", () => {
+	it.effect("reports each connect and drop in order", () =>
+		Effect.gen(function* () {
+			const { socket, pull, open, reader } = makeFakeSocket();
+			const openFirst = yield* Deferred.make<void>();
+			reader.mockReturnValueOnce(
+				Deferred.await(openFirst).pipe(Effect.andThen(open)),
+			);
+			pull.mockReturnValueOnce(closed);
+
+			yield* Effect.gen(function* () {
+				const channel = yield* MessageChannelService;
+				const seen = yield* channel.status.pipe(
+					Stream.tap(() => Deferred.succeed(openFirst, undefined)),
+					Stream.take(4),
+					Stream.runCollect,
+					Effect.forkChild,
+				);
+				yield* Deferred.await(openFirst);
+				yield* TestClock.adjust("1200 millis");
+
+				const statuses = yield* Fiber.join(seen);
+				expect(statuses).toEqual([
+					"disconnected",
+					"connected",
+					"disconnected",
+					"connected",
+				]);
+			}).pipe(Effect.provide(layerFor(socket)));
 		}),
 	);
 });
@@ -77,20 +115,16 @@ describe("receive", () => {
 		"decodes incoming JSON frames into ServerMessage stream values",
 		() =>
 			Effect.gen(function* () {
-				const { socket, deliver } = yield* makeFakeSocket;
+				const { socket, pull } = makeFakeSocket();
+				const subscribed = yield* Deferred.make<void>();
+				pull.mockReturnValueOnce(
+					Deferred.await(subscribed).pipe(Effect.as([countSnapshot] as const)),
+				);
 
 				yield* Effect.gen(function* () {
 					const channel = yield* MessageChannelService;
 					const stream = yield* channel.receive();
-					yield* deliver(
-						JSON.stringify(
-							ReplicantSnapshotMessage.make({
-								field: { type: "replicant", namespace: "root", name: "count" },
-								value: 42,
-								revision: 1,
-							}),
-						),
-					);
+					yield* Deferred.succeed(subscribed, undefined);
 
 					const first = yield* Stream.runHead(stream);
 					assert(Option.isSome(first));
@@ -98,101 +132,137 @@ describe("receive", () => {
 						_tag: "snapshot",
 						field: { type: "replicant", namespace: "root", name: "count" },
 						value: 42,
-						revision: 1,
+						revision: 3,
 					});
 				}).pipe(Effect.provide(layerFor(socket)));
 			}),
 	);
 
-	it.effect("completes the stream without logging on clean socket close", () =>
-		Effect.gen(function* () {
-			const { socket, closeClean } = yield* makeFakeSocket;
-
-			yield* Effect.gen(function* () {
-				const channel = yield* MessageChannelService;
-				const stream = yield* channel.receive();
-				yield* closeClean;
-				const all = yield* Stream.runCollect(stream).pipe(
-					Effect.timeout("1 second"),
-				);
-				expect(all).toEqual([]);
-				expect(yield* TestConsole.logLines).toEqual([]);
-			}).pipe(Effect.provide(layerFor(socket)));
-		}),
-	);
-
-	it.effect("ends the stream and logs the error on socket error", () =>
-		Effect.gen(function* () {
-			const { socket, closeWithError } = yield* makeFakeSocket;
-			const error = new Socket.SocketError({
-				reason: new Socket.SocketReadError({ cause: new Error("simulated") }),
-			});
-
-			yield* Effect.gen(function* () {
-				const channel = yield* MessageChannelService;
-				const stream = yield* channel.receive();
-				yield* closeWithError(error);
-				const all = yield* Stream.runCollect(stream).pipe(
-					Effect.timeout("1 second"),
-				);
-				expect(all).toEqual([]);
-				expect(yield* TestConsole.logLines).toEqual([
-					expect.stringMatching(/ ERROR \(#\d+\):$/),
-					"Message channel closed:",
-					error,
-				]);
-			}).pipe(Effect.provide(layerFor(socket)));
-		}),
-	);
-
-	it.effect("drops malformed JSON frames without failing the stream", () =>
-		Effect.gen(function* () {
-			const { socket, deliver } = yield* makeFakeSocket;
-
-			yield* Effect.gen(function* () {
-				const channel = yield* MessageChannelService;
-				const stream = yield* channel.receive();
-				yield* deliver("not valid json");
-				yield* deliver(
-					JSON.stringify(
-						ReplicantSnapshotMessage.make({
-							field: { type: "replicant", namespace: "root", name: "count" },
-							value: 7,
-							revision: 1,
-						}),
+	it.effect(
+		"ends receive and status streams when the connection loop dies",
+		() =>
+			Effect.gen(function* () {
+				const { socket, reader } = makeFakeSocket();
+				const crash = yield* Deferred.make<void>();
+				reader.mockReturnValueOnce(
+					Deferred.await(crash).pipe(
+						Effect.andThen(Effect.die(new Error("simulated"))),
 					),
 				);
 
-				const first = yield* Stream.runHead(stream);
-				assert(Option.isSome(first));
-				expect(first.value).toMatchObject({
+				yield* Effect.gen(function* () {
+					const channel = yield* MessageChannelService;
+					const messages = yield* channel.receive();
+					const statuses = yield* channel.status.pipe(
+						Stream.tap(() => Deferred.succeed(crash, undefined)),
+						Stream.runCollect,
+						Effect.forkChild,
+					);
+
+					const received = yield* Stream.runCollect(messages);
+					const seen = yield* Fiber.join(statuses);
+					expect(received).toEqual([]);
+					expect(seen).toEqual(["disconnected"]);
+				}).pipe(Effect.provide(layerFor(socket)));
+			}),
+	);
+
+	it.effect("ends the stream when the channel scope closes", () =>
+		Effect.gen(function* () {
+			const { socket } = makeFakeSocket();
+
+			const stream = yield* Effect.gen(function* () {
+				const channel = yield* MessageChannelService;
+				return yield* channel.receive();
+			}).pipe(Effect.provide(layerFor(socket)));
+
+			const all = yield* Stream.runCollect(stream);
+			expect(all).toEqual([]);
+		}),
+	);
+
+	it.effect(
+		"drops malformed JSON and binary frames without failing the stream",
+		() =>
+			Effect.gen(function* () {
+				const { socket, pull } = makeFakeSocket();
+				const subscribed = yield* Deferred.make<void>();
+				pull.mockReturnValueOnce(
+					Deferred.await(subscribed).pipe(
+						Effect.as([
+							"not valid json",
+							new Uint8Array([1, 2, 3]),
+							countSnapshot,
+						] as const),
+					),
+				);
+
+				yield* Effect.gen(function* () {
+					const channel = yield* MessageChannelService;
+					const stream = yield* channel.receive();
+					yield* Deferred.succeed(subscribed, undefined);
+
+					const first = yield* Stream.runHead(stream);
+					assert(Option.isSome(first));
+					expect(first.value).toEqual({
+						_tag: "snapshot",
+						field: { type: "replicant", namespace: "root", name: "count" },
+						value: 42,
+						revision: 3,
+					});
+				}).pipe(Effect.provide(layerFor(socket)));
+			}),
+	);
+});
+
+describe("reconnect", () => {
+	it.effect("keeps a receive stream going across a reconnect", () =>
+		Effect.gen(function* () {
+			const { socket, pull } = makeFakeSocket();
+			pull
+				.mockReturnValueOnce(closed)
+				.mockReturnValueOnce(Effect.succeed([countSnapshot] as const));
+
+			yield* Effect.gen(function* () {
+				const channel = yield* MessageChannelService;
+				const stream = yield* channel.receive();
+				yield* TestClock.adjust("1200 millis");
+
+				const head = yield* Stream.runHead(stream);
+				assert(Option.isSome(head));
+				expect(head.value).toEqual({
 					_tag: "snapshot",
-					value: 7,
+					field: { type: "replicant", namespace: "root", name: "count" },
+					value: 42,
+					revision: 3,
 				});
 			}).pipe(Effect.provide(layerFor(socket)));
 		}),
 	);
 
-	it.effect("drops binary frames", () =>
+	it.effect("resets the backoff after a successful open", () =>
 		Effect.gen(function* () {
-			const { socket, deliver } = yield* makeFakeSocket;
+			const { socket, pull, open, reader } = makeFakeSocket();
+			const refuseAgain = yield* Deferred.make<void>();
+			reader
+				.mockReturnValueOnce(refused)
+				.mockReturnValueOnce(open)
+				.mockReturnValueOnce(
+					Deferred.await(refuseAgain).pipe(Effect.andThen(refused)),
+				);
+			pull.mockReturnValueOnce(closed);
 
 			yield* Effect.gen(function* () {
-				const channel = yield* MessageChannelService;
-				const stream = yield* channel.receive();
-				yield* deliver(new Uint8Array([1, 2, 3]));
-				yield* deliver(
-					JSON.stringify(
-						ReplicantSnapshotMessage.make({
-							field: { type: "replicant", namespace: "root", name: "ok" },
-							value: 1,
-							revision: 1,
-						}),
-					),
-				);
+				yield* MessageChannelService;
+				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(1));
+				yield* TestClock.adjust("120 millis");
+				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(2));
 
-				const first = yield* Stream.runHead(stream);
-				assert(Option.isSome(first));
+				yield* TestClock.adjust("1200 millis");
+				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(3));
+				yield* Deferred.succeed(refuseAgain, undefined);
+				yield* TestClock.adjust("120 millis");
+				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(4));
 			}).pipe(Effect.provide(layerFor(socket)));
 		}),
 	);

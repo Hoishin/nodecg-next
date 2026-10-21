@@ -1,17 +1,21 @@
 import { ClientMessage, ServerMessage } from "@nodecg-next/internal";
 import {
+	Duration,
 	Effect,
+	Fiber,
 	Layer,
 	Match,
 	Predicate,
 	PubSub,
+	Schedule,
 	Schema,
-	Scope,
 	Stream,
+	SubscriptionRef,
 } from "effect";
 import { Socket } from "effect/unstable/socket";
 
 import {
+	type ConnectionStatus,
 	MessageChannelService,
 	MessageEncodeError,
 } from "./message-channel.ts";
@@ -22,13 +26,19 @@ const encodeClientMessage = Schema.encodeEffect(
 const decodeServerMessage = Schema.decodeEffect(
 	Schema.fromJsonString(ServerMessage),
 );
+const isSocketOpenError = Schema.is(Socket.SocketOpenError);
 
 export const SocketMessageChannel = Layer.effect(
 	MessageChannelService,
 	Effect.gen(function* () {
 		const socket = yield* Socket.Socket;
-		const pubsub = yield* PubSub.unbounded<ServerMessage>();
-		const scope = yield* Effect.scope;
+		const { write } = yield* socket.writer;
+		const pubsub = yield* Effect.acquireRelease(
+			PubSub.unbounded<ServerMessage>(),
+			PubSub.shutdown,
+		);
+		const status =
+			yield* SubscriptionRef.make<ConnectionStatus>("disconnected");
 
 		const handleData = Effect.fn(
 			function* (data: string | Uint8Array) {
@@ -44,57 +54,72 @@ export const SocketMessageChannel = Layer.effect(
 			),
 		);
 
-		yield* Effect.forkScoped(
-			Effect.gen(function* () {
-				const { pull } = yield* socket.reader;
-				return yield* pull.pipe(
-					Effect.flatMap(
-						Effect.forEach((data) => handleData(data), { discard: true }),
-					),
-					Effect.forever,
-				);
-			}).pipe(
-				Effect.scoped,
-				Effect.catchReason(
-					"SocketError",
-					"SocketCloseError",
-					({ code }, error) =>
-						code === 1000 || code === 1005
-							? Effect.void
-							: Effect.logError("Message channel closed:", error),
-					(_, error) => Effect.logError("Message channel closed:", error),
+		const startConnection = Effect.gen(function* () {
+			const { pull } = yield* socket.reader.pipe(
+				Effect.tapError((error) =>
+					Effect.logWarning("Message channel could not connect:", error),
 				),
-				Effect.ensuring(PubSub.shutdown(pubsub)),
+			);
+			yield* SubscriptionRef.set(status, "connected");
+			yield* Effect.addFinalizer(() =>
+				SubscriptionRef.set(status, "disconnected"),
+			);
+			return yield* pull.pipe(
+				Effect.flatMap(
+					Effect.forEach((data) => handleData(data), { discard: true }),
+				),
+				Effect.forever,
+			);
+		});
+
+		const reconnectLoop = yield* Effect.forkScoped(
+			startConnection.pipe(
+				Effect.scoped,
+				Effect.retry({
+					schedule: Schedule.min([
+						Schedule.exponential(Duration.millis(100)),
+						Schedule.spaced(Duration.seconds(10)),
+					]).pipe(Schedule.jittered),
+					while: (error) => isSocketOpenError(error.reason),
+				}),
+				Effect.catchTag("SocketError", (error) =>
+					Effect.logWarning("Message channel closed, reconnecting:", error),
+				),
+				Effect.repeat(
+					Schedule.spaced(Duration.seconds(1)).pipe(Schedule.jittered),
+				),
 				Effect.satisfiesErrorType<never>(),
 			),
 		);
 
-		const send = Effect.fn("WebsocketMessageChannel.send")(function* (
-			message: ClientMessage,
-		) {
-			const { write } = yield* socket.writer;
-			const data = yield* encodeClientMessage(message).pipe(
-				Effect.mapError((error) =>
-					Match.value(error).pipe(
-						Match.tag(
-							"SchemaError",
-							(error) => new MessageEncodeError({ cause: error }),
+		return {
+			send: Effect.fn("WebsocketMessageChannel.send")(function* (
+				message: ClientMessage,
+			) {
+				const data = yield* encodeClientMessage(message).pipe(
+					Effect.mapError((error) =>
+						Match.value(error).pipe(
+							Match.tag("SchemaError", (error) =>
+								MessageEncodeError.make({ cause: error }),
+							),
+							Match.exhaustive,
 						),
-						Match.exhaustive,
 					),
-				),
-			);
-			yield* write(data).pipe(
-				Effect.satisfiesErrorType<Socket.SocketError>(),
-				Effect.orDie,
-			);
-		}, Scope.provide(scope));
-
-		const receive = Effect.fn("WebsocketMessageChannel.receive")(function* () {
-			const subscription = yield* PubSub.subscribe(pubsub);
-			return Stream.fromSubscription(subscription);
-		});
-
-		return { send, receive };
+				);
+				yield* write(data).pipe(
+					Effect.satisfiesErrorType<Socket.SocketError>(),
+					Effect.orDie,
+				);
+			}),
+			receive: Effect.fn("WebsocketMessageChannel.receive")(function* () {
+				const subscription = yield* PubSub.subscribe(pubsub);
+				return Stream.fromSubscription(subscription).pipe(
+					Stream.interruptWhen(Fiber.await(reconnectLoop)),
+				);
+			}),
+			status: SubscriptionRef.changes(status).pipe(
+				Stream.interruptWhen(Fiber.await(reconnectLoop)),
+			),
+		};
 	}),
 );

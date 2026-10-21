@@ -8,6 +8,9 @@ export class MessageEncodeError extends Schema.TaggedError<MessageEncodeError>()
 	override readonly message = `Could not encode message: ${this.cause.message}`;
 }
 
+export const ConnectionStatus = Schema.Literals(["connected", "disconnected"]);
+export type ConnectionStatus = typeof ConnectionStatus.Type;
+
 export interface MessageChannel {
 	send: (message: ClientMessage) => Effect.Effect<void, MessageEncodeError>;
 	receive: () => Effect.Effect<
@@ -15,6 +18,7 @@ export interface MessageChannel {
 		never,
 		Scope.Scope
 	>;
+	status: Stream.Stream<ConnectionStatus>;
 }
 
 export class MessageChannelService extends Context.Service<

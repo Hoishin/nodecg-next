@@ -61,6 +61,7 @@ const createMessageChannelStub = () =>
 	({
 		send: vi.fn<MessageChannel["send"]>(() => Effect.void),
 		receive: () => Effect.succeed(Stream.never),
+		status: Stream.succeed("connected"),
 	}) satisfies MessageChannel;
 
 describe("get", () => {
@@ -496,6 +497,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -532,6 +534,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: {
@@ -579,6 +582,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -613,6 +617,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -653,6 +658,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -715,6 +721,7 @@ describe("subscribe", () => {
 				send,
 				receive: () =>
 					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -787,6 +794,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -821,6 +829,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -855,6 +864,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -903,6 +913,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -956,6 +967,7 @@ describe("subscribe", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const manifest = defineNamespace("root", {
 				replicant: { count: { schema: Schema.Finite } },
@@ -1060,6 +1072,7 @@ describe("computed", () => {
 				send,
 				receive: () =>
 					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+				status: Stream.succeed("connected"),
 			};
 
 			const loaded = yield* loadNamespaceEffect(computedManifest).pipe(
@@ -1171,6 +1184,7 @@ describe("topic", () => {
 				send,
 				receive: () =>
 					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+				status: Stream.succeed("connected"),
 			};
 			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
@@ -1210,6 +1224,7 @@ describe("topic", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
@@ -1263,6 +1278,7 @@ describe("topic", () => {
 				send,
 				receive: () =>
 					PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+				status: Stream.succeed("connected"),
 			};
 			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
@@ -1312,6 +1328,7 @@ describe("topic", () => {
 			const messageChannelStub: MessageChannel = {
 				send,
 				receive: () => Effect.succeed(Stream.fromQueue(queue)),
+				status: Stream.succeed("connected"),
 			};
 			const loaded = yield* loadNamespaceEffect(topicManifest).pipe(
 				Effect.provideService(FieldTransportService, transportStub),
@@ -1508,6 +1525,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 		const messageChannelStub: MessageChannel = {
 			send,
 			receive: () => Effect.succeed(Stream.fromQueue(queue)),
+			status: Stream.succeed("connected"),
 		};
 		const manifest = defineNamespace("root", {
 			replicant: { count: { schema: Schema.Finite } },
@@ -1584,6 +1602,7 @@ describe("derivation over loaded fields", () => {
 			send,
 			receive: () =>
 				PubSub.subscribe(pubsub).pipe(Effect.map(Stream.fromSubscription)),
+			status: Stream.succeed("connected"),
 		};
 		return { channel, pubsub, send };
 	});
