@@ -21,11 +21,7 @@ afterEach(() => {
 
 const test = testLayer(
 	Layer.mergeAll(
-		Layer.succeed(RoleRepositoryService, {
-			listAll: vi.fn(),
-			globalRoleExists,
-			revokeAllRoles: vi.fn(),
-		}),
+		Layer.mock(RoleRepositoryService)({ globalRoleExists }),
 		Layer.succeed(ConfiguredSuperadmins, [root]),
 	),
 );

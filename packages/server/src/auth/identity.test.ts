@@ -45,12 +45,7 @@ afterEach(() => {
 
 const test = testLayer(
 	Layer.mergeAll(
-		Layer.succeed(SessionRepositoryService, {
-			create: vi.fn(),
-			resolve,
-			refreshTTL: vi.fn(),
-			revoke: vi.fn(),
-		}),
+		Layer.mock(SessionRepositoryService)({ resolve }),
 		Layer.succeed(ConfiguredSuperadmins, [root, aliceSecondAuthentication]),
 		NodeCrypto.layer,
 	),

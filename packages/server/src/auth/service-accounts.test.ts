@@ -30,18 +30,7 @@ afterEach(() => {
 const test = testLayer(
 	Layer.mergeAll(
 		NodeCrypto.layer,
-		Layer.succeed(ServiceAccountRepositoryService, {
-			create,
-			createWithId: vi.fn(),
-			resolveById: vi.fn(),
-			resolveByKeyHash: vi.fn(),
-			listAll: vi.fn(),
-			addKey,
-			replaceKey: vi.fn(),
-			delete: vi.fn(),
-			grantRoles: vi.fn(),
-			revokeRoles: vi.fn(),
-		}),
+		Layer.mock(ServiceAccountRepositoryService)({ create, addKey }),
 		Layer.succeed(TransactionService, { wrap: (effect) => effect }),
 	),
 );

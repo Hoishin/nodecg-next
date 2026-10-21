@@ -1,18 +1,22 @@
-import { it } from "@effect/vitest";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { assert, describe, expect, vi } from "vitest";
+import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import { FieldTransportService } from "../field-transport/field-transport.ts";
 import { httpFieldTransport } from "../field-transport/http-field-transport.ts";
 
-const HttpFieldTransport = httpFieldTransport();
+const fetch = vi.fn<typeof globalThis.fetch>();
+afterEach(() => {
+	fetch.mockReset();
+});
 
-const test = testLayer(HttpFieldTransport);
-
-const mockFetch = (respond: () => Response) =>
-	vi.fn<typeof globalThis.fetch>(async () => respond());
+const test = testLayer(
+	Layer.merge(
+		httpFieldTransport(),
+		Layer.succeed(FetchHttpClient.Fetch, fetch),
+	),
+);
 
 const errorResponse = (tag: string, status: number) =>
 	new Response(JSON.stringify({ _tag: tag }), {
@@ -20,8 +24,8 @@ const errorResponse = (tag: string, status: number) =>
 		headers: { "content-type": "application/json" },
 	});
 
-const requestOf = (fetch: ReturnType<typeof mockFetch>) => {
-	const call = fetch.mock.calls[0];
+const getLastRequest = () => {
+	const call = fetch.mock.lastCall;
 	if (typeof call === "undefined") {
 		throw new Error("fetch was not called");
 	}
@@ -33,14 +37,12 @@ describe("get", () => {
 		"issues a GET to the replicant URL and returns the decoded body",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
-			const fetch = mockFetch(() => new Response(JSON.stringify(42)));
+			fetch.mockResolvedValue(new Response(JSON.stringify(42)));
 
-			const value = yield* transport
-				.getReplicant("root", "count")
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			const value = yield* transport.getReplicant("root", "count");
 
 			expect(value).toBe(42);
-			const request = requestOf(fetch);
+			const request = getLastRequest();
 			expect(request.method).toBe("GET");
 			expect(request.url).toContain(
 				"/api/internal/namespaces/root/replicant/count",
@@ -52,14 +54,11 @@ describe("get", () => {
 		"fails with FieldNotFound when the server responds 404",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
+			fetch.mockResolvedValue(errorResponse("NotFound", 404));
 
-			const error = yield* transport.getReplicant("root", "count").pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(() => errorResponse("NotFound", 404)),
-				),
-				Effect.flip,
-			);
+			const error = yield* transport
+				.getReplicant("root", "count")
+				.pipe(Effect.flip);
 
 			expect(error._tag).toBe("FieldNotFound");
 		}),
@@ -69,14 +68,11 @@ describe("get", () => {
 		"fails with FieldPermissionDenied when the server responds 403",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
+			fetch.mockResolvedValue(errorResponse("Forbidden", 403));
 
-			const error = yield* transport.getReplicant("root", "count").pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(() => errorResponse("Forbidden", 403)),
-				),
-				Effect.flip,
-			);
+			const error = yield* transport
+				.getReplicant("root", "count")
+				.pipe(Effect.flip);
 
 			expect(error._tag).toBe("FieldPermissionDenied");
 		}),
@@ -88,15 +84,13 @@ describe("update", () => {
 		"issues a PUT with the JSON-encoded patch body",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
-			const fetch = mockFetch(() => new Response(null, { status: 204 }));
+			fetch.mockResolvedValue(new Response(null, { status: 204 }));
 
-			yield* transport
-				.updateReplicant("root", "count", [
-					{ op: "replace", path: "", value: 7 },
-				])
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			yield* transport.updateReplicant("root", "count", [
+				{ op: "replace", path: "", value: 7 },
+			]);
 
-			const request = requestOf(fetch);
+			const request = getLastRequest();
 			expect(request.method).toBe("PUT");
 			expect(request.url).toContain(
 				"/api/internal/namespaces/root/replicant/count",
@@ -110,18 +104,13 @@ describe("update", () => {
 		"fails with FieldPermissionDenied when the server responds 403",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
+			fetch.mockResolvedValue(errorResponse("Forbidden", 403));
 
 			const error = yield* transport
 				.updateReplicant("root", "count", [
 					{ op: "replace", path: "", value: 7 },
 				])
-				.pipe(
-					Effect.provideService(
-						FetchHttpClient.Fetch,
-						mockFetch(() => errorResponse("Forbidden", 403)),
-					),
-					Effect.flip,
-				);
+				.pipe(Effect.flip);
 
 			expect(error._tag).toBe("FieldPermissionDenied");
 		}),
@@ -137,24 +126,18 @@ describe("update", () => {
 				revision: 4,
 				reason: "HashMismatch",
 			};
+			fetch.mockResolvedValue(
+				new Response(JSON.stringify(conflict), {
+					status: 409,
+					headers: { "content-type": "application/json" },
+				}),
+			);
 
 			const error = yield* transport
 				.updateReplicant("root", "count", [
 					{ op: "replace", path: "/a", value: 7 },
 				])
-				.pipe(
-					Effect.provideService(
-						FetchHttpClient.Fetch,
-						mockFetch(
-							() =>
-								new Response(JSON.stringify(conflict), {
-									status: 409,
-									headers: { "content-type": "application/json" },
-								}),
-						),
-					),
-					Effect.flip,
-				);
+				.pipe(Effect.flip);
 
 			assert(error._tag === "RevisionConflict");
 			expect(error.value).toEqual({ a: 9 });
@@ -169,13 +152,11 @@ describe("publishTopic", () => {
 		"issues a POST to the topic URL with the JSON-encoded body",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
-			const fetch = mockFetch(() => new Response(null, { status: 204 }));
+			fetch.mockResolvedValue(new Response(null, { status: 204 }));
 
-			yield* transport
-				.publishTopic("root", "chat", 7)
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			yield* transport.publishTopic("root", "chat", 7);
 
-			const request = requestOf(fetch);
+			const request = getLastRequest();
 			expect(request.method).toBe("POST");
 			expect(request.url).toContain("/api/internal/namespaces/root/topic/chat");
 			const body = yield* Effect.promise(() => request.text());
@@ -187,14 +168,11 @@ describe("publishTopic", () => {
 		"fails with FieldPermissionDenied when the server responds 403",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
+			fetch.mockResolvedValue(errorResponse("Forbidden", 403));
 
-			const error = yield* transport.publishTopic("root", "chat", 7).pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(() => errorResponse("Forbidden", 403)),
-				),
-				Effect.flip,
-			);
+			const error = yield* transport
+				.publishTopic("root", "chat", 7)
+				.pipe(Effect.flip);
 
 			expect(error._tag).toBe("FieldPermissionDenied");
 		}),
@@ -206,14 +184,12 @@ describe("callRpc", () => {
 		"issues a POST to the rpc URL and returns the decoded response",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
-			const fetch = mockFetch(() => new Response(JSON.stringify(84)));
+			fetch.mockResolvedValue(new Response(JSON.stringify(84)));
 
-			const response = yield* transport
-				.callRpc("root", "echo", 42)
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			const response = yield* transport.callRpc("root", "echo", 42);
 
 			expect(response).toBe(84);
-			const request = requestOf(fetch);
+			const request = getLastRequest();
 			expect(request.method).toBe("POST");
 			expect(request.url).toContain("/api/internal/namespaces/root/rpc/echo");
 			const body = yield* Effect.promise(() => request.text());
@@ -225,23 +201,19 @@ describe("callRpc", () => {
 		"fails with RpcCallError when the handler errors (500)",
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
-
-			const error = yield* transport.callRpc("root", "echo", 42).pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(
-						() =>
-							new Response(
-								JSON.stringify({ _tag: "RpcCallError", message: "boom" }),
-								{
-									status: 500,
-									headers: { "content-type": "application/json" },
-								},
-							),
-					),
+			fetch.mockResolvedValue(
+				new Response(
+					JSON.stringify({ _tag: "RpcCallError", message: "boom" }),
+					{
+						status: 500,
+						headers: { "content-type": "application/json" },
+					},
 				),
-				Effect.flip,
 			);
+
+			const error = yield* transport
+				.callRpc("root", "echo", 42)
+				.pipe(Effect.flip);
 
 			expect(error._tag).toBe("RpcCallError");
 		}),
@@ -252,14 +224,13 @@ describe("base URL", () => {
 	const requestUrl = (baseUrl?: string) =>
 		Effect.gen(function* () {
 			const transport = yield* FieldTransportService;
-			const fetch = mockFetch(() => new Response(JSON.stringify(42)));
-			yield* transport
-				.getReplicant("root", "count")
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
-			return requestOf(fetch).url;
+			fetch.mockImplementation(async () => new Response(JSON.stringify(42)));
+			yield* transport.getReplicant("root", "count");
+			return getLastRequest().url;
 		}).pipe(Effect.provide(httpFieldTransport(baseUrl)));
 
-	it.effect("builds request URL correctly for various base URLs", () =>
+	test(
+		"builds request URL correctly for various base URLs",
 		Effect.gen(function* () {
 			expect(yield* requestUrl()).toBe(
 				`${new URL(import.meta.url).origin}/api/internal/namespaces/root/replicant/count`,

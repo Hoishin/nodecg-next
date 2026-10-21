@@ -1,15 +1,24 @@
-import { it } from "@effect/vitest";
-import { Effect, Result } from "effect";
+import { testLayer } from "@nodecg-next/test-utils";
+import { Effect, Layer, Result } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { loginUrl, makeAuthClient } from "./auth-client.ts";
 
-const mockFetch = (respond: () => Response) =>
-	vi.fn<typeof globalThis.fetch>(async () => respond());
+const fetch = vi.fn<typeof globalThis.fetch>();
+afterEach(() => {
+	fetch.mockReset();
+});
 
-const requestOf = (fetch: ReturnType<typeof mockFetch>) => {
-	const call = fetch.mock.calls[0];
+const testFetch = testLayer(
+	Layer.merge(
+		FetchHttpClient.layer,
+		Layer.succeed(FetchHttpClient.Fetch, fetch),
+	),
+);
+
+const getLastRequest = () => {
+	const call = fetch.mock.lastCall;
 	if (typeof call === "undefined") {
 		throw new Error("fetch was not called");
 	}
@@ -35,10 +44,6 @@ const mePayload = {
 	},
 };
 
-const buildClient = makeAuthClient().pipe(
-	Effect.provide(FetchHttpClient.layer),
-);
-
 describe("loginUrl", () => {
 	test("returns the provider URL, appending an encoded returnTo when given", () => {
 		const dev = { name: "dev", url: "/api/internal/authentication/login/dev" };
@@ -54,41 +59,34 @@ describe("loginUrl", () => {
 });
 
 describe("providers", () => {
-	it.effect(
+	testFetch(
 		"issues a GET to the provider list and returns the decoded entries",
-		() =>
-			Effect.gen(function* () {
-				const fetch = mockFetch(() =>
-					jsonResponse([
-						{ name: "dev", url: "/api/internal/authentication/login/dev" },
-					]),
-				);
-				const client = yield* buildClient;
-
-				const providers = yield* client
-					.providers()
-					.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
-
-				expect(providers).toEqual([
+		Effect.gen(function* () {
+			fetch.mockResolvedValue(
+				jsonResponse([
 					{ name: "dev", url: "/api/internal/authentication/login/dev" },
-				]);
-				const request = requestOf(fetch);
-				expect(request.method).toBe("GET");
-				expect(request.url).toContain("/api/internal/authentication/providers");
-			}),
+				]),
+			);
+			const client = yield* makeAuthClient();
+
+			const providers = yield* client.providers();
+
+			expect(providers).toEqual([
+				{ name: "dev", url: "/api/internal/authentication/login/dev" },
+			]);
+			const request = getLastRequest();
+			expect(request.method).toBe("GET");
+			expect(request.url).toContain("/api/internal/authentication/providers");
+		}),
 	);
 
-	it.effect("fails with AuthRequestFailed when the server errors", () =>
+	testFetch(
+		"fails with AuthRequestFailed when the server errors",
 		Effect.gen(function* () {
-			const client = yield* buildClient;
+			fetch.mockResolvedValue(new Response(null, { status: 500 }));
+			const client = yield* makeAuthClient();
 
-			const error = yield* client.providers().pipe(
-				Effect.provideService(
-					FetchHttpClient.Fetch,
-					mockFetch(() => new Response(null, { status: 500 })),
-				),
-				Effect.flip,
-			);
+			const error = yield* client.providers().pipe(Effect.flip);
 
 			expect(error._tag).toBe("AuthRequestFailed");
 		}),
@@ -96,18 +94,17 @@ describe("providers", () => {
 });
 
 describe("me", () => {
-	it.effect("issues a GET to /me and returns the decoded payload", () =>
+	testFetch(
+		"issues a GET to /me and returns the decoded payload",
 		Effect.gen(function* () {
-			const fetch = mockFetch(() => jsonResponse(mePayload));
-			const client = yield* buildClient;
+			fetch.mockResolvedValue(jsonResponse(mePayload));
+			const client = yield* makeAuthClient();
 
-			const payload = yield* client
-				.me()
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			const payload = yield* client.me();
 
 			expect(payload.identity._tag).toBe("user");
 			expect(payload.namespaces["fixture"]?.roles).toEqual(["producer"]);
-			const request = requestOf(fetch);
+			const request = getLastRequest();
 			expect(request.method).toBe("GET");
 			expect(request.url).toContain("/api/internal/me");
 		}),
@@ -115,16 +112,15 @@ describe("me", () => {
 });
 
 describe("logout", () => {
-	it.effect("issues a POST to the logout endpoint", () =>
+	testFetch(
+		"issues a POST to the logout endpoint",
 		Effect.gen(function* () {
-			const fetch = mockFetch(() => new Response(null, { status: 204 }));
-			const client = yield* buildClient;
+			fetch.mockResolvedValue(new Response(null, { status: 204 }));
+			const client = yield* makeAuthClient();
 
-			yield* client
-				.logout()
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
+			yield* client.logout();
 
-			const request = requestOf(fetch);
+			const request = getLastRequest();
 			expect(request.method).toBe("POST");
 			expect(request.url).toContain("/api/internal/authentication/logout");
 		}),
@@ -132,35 +128,31 @@ describe("logout", () => {
 });
 
 describe("base URL", () => {
-	const requestUrl = (baseUrl?: string) =>
-		Effect.gen(function* () {
-			const client = yield* makeAuthClient(baseUrl);
-			const fetch = mockFetch(() => jsonResponse([]));
-			yield* client
-				.providers()
-				.pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
-			return requestOf(fetch).url;
-		}).pipe(Effect.provide(FetchHttpClient.layer));
+	const requestUrl = Effect.fn(function* (baseUrl?: string) {
+		const client = yield* makeAuthClient(baseUrl);
+		fetch.mockImplementation(async () => jsonResponse([]));
+		yield* client.providers();
+		return getLastRequest().url;
+	});
 
-	it.effect(
+	testFetch(
 		"prefixes requests with the base URL, with or without a trailing slash",
-		() =>
-			Effect.gen(function* () {
-				expect(yield* requestUrl()).toBe(
-					`${new URL(import.meta.url).origin}/api/internal/authentication/providers`,
-				);
-				expect(yield* requestUrl("https://host")).toBe(
-					"https://host/api/internal/authentication/providers",
-				);
-				expect(yield* requestUrl("https://host/")).toBe(
-					"https://host/api/internal/authentication/providers",
-				);
-				expect(yield* requestUrl("https://host/prefix/")).toBe(
-					"https://host/prefix/api/internal/authentication/providers",
-				);
-				expect(yield* requestUrl("https://host/prefix")).toBe(
-					"https://host/prefix/api/internal/authentication/providers",
-				);
-			}),
+		Effect.gen(function* () {
+			expect(yield* requestUrl()).toBe(
+				`${new URL(import.meta.url).origin}/api/internal/authentication/providers`,
+			);
+			expect(yield* requestUrl("https://host")).toBe(
+				"https://host/api/internal/authentication/providers",
+			);
+			expect(yield* requestUrl("https://host/")).toBe(
+				"https://host/api/internal/authentication/providers",
+			);
+			expect(yield* requestUrl("https://host/prefix/")).toBe(
+				"https://host/prefix/api/internal/authentication/providers",
+			);
+			expect(yield* requestUrl("https://host/prefix")).toBe(
+				"https://host/prefix/api/internal/authentication/providers",
+			);
+		}),
 	);
 });

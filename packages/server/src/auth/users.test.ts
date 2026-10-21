@@ -33,17 +33,8 @@ afterEach(() => {
 
 const test = testLayer(
 	Layer.mergeAll(
-		Layer.succeed(AuthenticationRepositoryService, {
-			findOrCreateAuthentication: vi.fn(),
-			resolveByUserId,
-		}),
-		Layer.succeed(UserRepositoryService, {
-			listAll: vi.fn(),
-			grantRoles: vi.fn(),
-			revokeRoles: vi.fn(),
-			grantGlobalRole: vi.fn(),
-			revokeGlobalRole: deleteGlobalRole,
-		}),
+		Layer.mock(AuthenticationRepositoryService)({ resolveByUserId }),
+		Layer.mock(UserRepositoryService)({ revokeGlobalRole: deleteGlobalRole }),
 		Layer.succeed(ConfiguredSuperadmins, [root]),
 	),
 );

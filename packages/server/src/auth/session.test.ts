@@ -48,16 +48,8 @@ afterEach(() => {
 
 const test = testLayer(
 	Layer.mergeAll(
-		Layer.succeed(AuthenticationRepositoryService, {
-			findOrCreateAuthentication,
-			resolveByUserId: vi.fn(),
-		}),
-		Layer.succeed(SessionRepositoryService, {
-			create,
-			resolve: vi.fn(),
-			refreshTTL: vi.fn(),
-			revoke,
-		}),
+		Layer.mock(AuthenticationRepositoryService)({ findOrCreateAuthentication }),
+		Layer.mock(SessionRepositoryService)({ create, revoke }),
 		Layer.succeed(TransactionService, { wrap: (effect) => effect }),
 		NodeCrypto.layer,
 		ConfigProvider.layer(
