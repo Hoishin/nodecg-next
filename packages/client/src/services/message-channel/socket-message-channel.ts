@@ -12,7 +12,7 @@ import {
 	Stream,
 	SubscriptionRef,
 } from "effect";
-import { Socket } from "effect/unstable/socket";
+import { Socket } from "effect/socket";
 
 import {
 	type ConnectionStatus,

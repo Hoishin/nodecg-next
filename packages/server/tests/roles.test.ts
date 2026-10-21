@@ -6,7 +6,7 @@ import {
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Crypto, Effect, HashSet, Layer } from "effect";
-import { HttpBody } from "effect/unstable/http";
+import { HttpBody } from "effect/http";
 import { describe, expect } from "vitest";
 
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
@@ -75,7 +75,7 @@ describe("unknown user", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
-			const userId = UserId.make(yield* crypto.randomUUIDv7);
+			const userId = UserId.make(yield* crypto.randomUUIDv7());
 
 			const asAdmin = yield* loginAdmin(client, admin);
 

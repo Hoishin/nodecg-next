@@ -9,7 +9,7 @@ import {
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, HashSet, Layer, Crypto } from "effect";
-import { HttpBody } from "effect/unstable/http";
+import { HttpBody } from "effect/http";
 import { describe, expect } from "vitest";
 
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
@@ -229,7 +229,7 @@ describe("merge", () => {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
 			const serviceAccountId = ServiceAccountId.make(
-				yield* crypto.randomUUIDv7,
+				yield* crypto.randomUUIDv7(),
 			);
 
 			const asAdmin = yield* loginAdmin(client, admin);
@@ -462,7 +462,7 @@ describe("account creation", () => {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
 			const serviceAccountId = ServiceAccountId.make(
-				yield* crypto.randomUUIDv7,
+				yield* crypto.randomUUIDv7(),
 			);
 
 			const asAdmin = yield* loginAdmin(client, admin);

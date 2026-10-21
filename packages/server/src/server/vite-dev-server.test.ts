@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import { NodeFileSystem } from "@effect/platform-node";
 import { testLayer } from "@nodecg-next/test-utils";
 import { ConfigProvider, Effect, FileSystem, Layer } from "effect";
-import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient } from "effect/http";
 import { describe, expect } from "vitest";
 
 import { UrlPath } from "./url-path.ts";

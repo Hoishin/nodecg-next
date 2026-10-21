@@ -27,13 +27,9 @@ import {
 	Stream,
 	SynchronizedRef,
 } from "effect";
-import {
-	HttpRouter,
-	HttpServerRequest,
-	HttpServerResponse,
-} from "effect/unstable/http";
-import { HttpApiBuilder, HttpApiSecurity } from "effect/unstable/httpapi";
-import type { Socket } from "effect/unstable/socket";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import { HttpApiBuilder, HttpApiSecurity } from "effect/http-api";
+import type { Socket } from "effect/socket";
 
 import {
 	getSessionIdentity,

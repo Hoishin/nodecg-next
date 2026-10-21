@@ -8,8 +8,8 @@ import {
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq } from "drizzle-orm";
 import { Array, Effect, HashSet, Layer, Option, Schema } from "effect";
+import { Reactivity } from "effect/reactivity";
 import { TestClock } from "effect/testing";
-import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";

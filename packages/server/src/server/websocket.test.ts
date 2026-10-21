@@ -1,7 +1,7 @@
 import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { ConfigProvider, HashMap, Layer } from "effect";
-import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
-import { Reactivity } from "effect/unstable/reactivity";
+import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
+import { Reactivity } from "effect/reactivity";
 import { describe, expect, test } from "vitest";
 
 import {

@@ -1,6 +1,6 @@
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Result } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { loginUrl, makeAuthClient } from "./auth-client.ts";

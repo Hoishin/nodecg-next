@@ -7,8 +7,8 @@ import {
 } from "@nodecg-next/internal";
 import { buildRelativeUrl } from "@nodecg-next/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
-import { HttpApiClient } from "effect/unstable/httpapi";
+import { FetchHttpClient } from "effect/http";
+import { HttpApiClient } from "effect/http-api";
 
 export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
 	"AuthRequestFailed",

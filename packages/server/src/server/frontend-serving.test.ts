@@ -1,7 +1,7 @@
 import { NodeHttpServer } from "@effect/platform-node";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { HttpEffect, HttpRouter } from "effect/unstable/http";
+import { HttpEffect, HttpRouter } from "effect/http";
 import { describe, expect } from "vitest";
 
 import type { FrontendConfig } from "../implement-namespace.ts";

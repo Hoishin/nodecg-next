@@ -16,8 +16,8 @@ import {
 	Path,
 	Schema,
 } from "effect";
+import { Reactivity } from "effect/reactivity";
 import { TestConsole } from "effect/testing";
-import { Reactivity } from "effect/unstable/reactivity";
 import { assert, describe, expect, vi } from "vitest";
 
 import {

@@ -4,7 +4,7 @@ import {
 	HttpServerError,
 	HttpServerRequest,
 	HttpServerResponse,
-} from "effect/unstable/http";
+} from "effect/http";
 
 export type NodeMiddleware = (
 	req: ReturnType<typeof NodeHttpServerRequest.toIncomingMessage>,

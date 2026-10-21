@@ -1,5 +1,6 @@
 import { Authentication } from "@nodecg-next/internal";
-import { Crypto, Effect, Encoding } from "effect";
+import { Crypto, Effect } from "effect";
+import { Base64Url } from "effect/encoding";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
@@ -102,7 +103,7 @@ export const makeOAuth2Provider = (
 			const parameters: Record<string, string> = {
 				redirect_uri: input.redirectUri,
 				state,
-				code_challenge: Encoding.encodeBase64Url(codeChallenge),
+				code_challenge: Base64Url.encode(codeChallenge),
 				code_challenge_method: "S256",
 			};
 			if (scope.length > 0) {

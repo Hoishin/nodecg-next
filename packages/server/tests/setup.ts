@@ -15,8 +15,8 @@ import {
 	HttpEffect,
 	HttpPlatform,
 	HttpRouter,
-} from "effect/unstable/http";
-import { Reactivity } from "effect/unstable/reactivity";
+} from "effect/http";
+import { Reactivity } from "effect/reactivity";
 import { assert } from "vitest";
 
 import {

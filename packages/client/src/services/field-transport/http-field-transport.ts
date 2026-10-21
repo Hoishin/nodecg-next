@@ -2,8 +2,8 @@ import { InternalApi } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { toError } from "@nodecg-next/internal/utils";
 import { Effect, Layer, Match, type Schema } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
-import { HttpApiClient } from "effect/unstable/httpapi";
+import { FetchHttpClient } from "effect/http";
+import { HttpApiClient } from "effect/http-api";
 
 import {
 	RpcCallError,

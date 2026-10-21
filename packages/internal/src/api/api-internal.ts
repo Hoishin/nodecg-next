@@ -5,7 +5,7 @@ import {
 	HttpApiError,
 	HttpApiGroup,
 	HttpApiSchema,
-} from "effect/unstable/httpapi";
+} from "effect/http-api";
 
 import {
 	AdminTierMiddleware,

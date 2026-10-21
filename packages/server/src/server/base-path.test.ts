@@ -5,7 +5,7 @@ import {
 	HttpRouter,
 	HttpServerRequest,
 	HttpServerResponse,
-} from "effect/unstable/http";
+} from "effect/http";
 import { describe, expect } from "vitest";
 
 import { basePathRouter } from "./base-path.ts";

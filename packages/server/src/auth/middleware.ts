@@ -9,7 +9,7 @@ import {
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
 import { type Crypto, Effect, Layer, Option, Redacted } from "effect";
-import { HttpApiError } from "effect/unstable/httpapi";
+import { HttpApiError } from "effect/http-api";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { config } from "../server-config.ts";

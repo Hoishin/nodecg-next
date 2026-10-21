@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
-import { Reactivity } from "effect/unstable/reactivity";
+import { Reactivity } from "effect/reactivity";
 import { expectTypeOf, test } from "vitest";
 
 import {

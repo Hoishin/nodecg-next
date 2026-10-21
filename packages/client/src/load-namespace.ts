@@ -31,7 +31,7 @@ import {
 	Scope,
 	Stream,
 } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import type { Promisable } from "type-fest";
 
 import { type FieldSource, fieldSource } from "./derive.ts";

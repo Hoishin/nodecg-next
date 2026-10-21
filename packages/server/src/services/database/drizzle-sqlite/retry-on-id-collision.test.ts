@@ -3,7 +3,7 @@ import { testLayer } from "@nodecg-next/test-utils";
 import { sql } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Crypto, Effect, Layer } from "effect";
-import { Reactivity } from "effect/unstable/reactivity";
+import { Reactivity } from "effect/reactivity";
 import { afterEach, describe, expect, vi } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "./drizzle-sqlite-database.ts";
@@ -38,7 +38,7 @@ const insertAccount = Effect.fn(function* (displayName: string) {
 	return yield* db
 		.insert(accounts)
 		.values({
-			id: AccountId.make(yield* crypto.randomUUIDv7),
+			id: AccountId.make(yield* crypto.randomUUIDv7()),
 			displayName,
 			createdAt: 0,
 		})

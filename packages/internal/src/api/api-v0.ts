@@ -1,4 +1,4 @@
-import { HttpApi } from "effect/unstable/httpapi";
+import { HttpApi } from "effect/http-api";
 
 import { ServiceAccountAuthenticationMiddleware } from "../auth.ts";
 import { fieldGroup } from "./shared.ts";

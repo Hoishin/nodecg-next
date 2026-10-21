@@ -59,7 +59,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		) {
 			const now = yield* DateTime.now;
 			yield* db.insert(apiKeys).values({
-				id: ApiKeyId.make(yield* crypto.randomUUIDv7),
+				id: ApiKeyId.make(yield* crypto.randomUUIDv7()),
 				serviceAccountId,
 				keyHash: key.hash,
 				label: key.label,
@@ -69,7 +69,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 
 		const insertAccount = Effect.fn(function* (displayName: string) {
 			const now = yield* DateTime.now;
-			const uuid = yield* crypto.randomUUIDv7;
+			const uuid = yield* crypto.randomUUIDv7();
 			const id = AccountId.make(uuid);
 			yield* db.insert(accounts).values({
 				id,
@@ -83,7 +83,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			accountId: AccountId,
 			createdBy: UserId,
 		) {
-			const uuid = yield* crypto.randomUUIDv7;
+			const uuid = yield* crypto.randomUUIDv7();
 			const id = ServiceAccountId.make(uuid);
 			yield* db.insert(serviceAccounts).values({ id, accountId, createdBy });
 			return id;

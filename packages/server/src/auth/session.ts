@@ -4,15 +4,9 @@ import {
 	sessionCookieSecurity,
 	UserSessionId,
 } from "@nodecg-next/internal";
-import {
-	Crypto,
-	DateTime,
-	type Duration,
-	Effect,
-	Encoding,
-	Schema,
-} from "effect";
-import { HttpApiBuilder } from "effect/unstable/httpapi";
+import { Crypto, DateTime, type Duration, Effect, Schema } from "effect";
+import { Base64Url } from "effect/encoding";
+import { HttpApiBuilder } from "effect/http-api";
 
 import { config } from "../server-config.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
@@ -29,7 +23,7 @@ export const hashSessionToken = Effect.fnUntraced(function* (token: string) {
 		"SHA-256",
 		new TextEncoder().encode(token),
 	);
-	return UserSessionId.make(Encoding.encodeBase64Url(digest));
+	return UserSessionId.make(Base64Url.encode(digest));
 });
 
 export const cookieOptions = {
@@ -53,7 +47,7 @@ const insertSession = Effect.fn("insertSession")(
 		const crypto = yield* Crypto.Crypto;
 		const sessions = yield* SessionRepositoryService;
 		const bytes = yield* crypto.randomBytes(32);
-		const token = Encoding.encodeBase64Url(bytes);
+		const token = Base64Url.encode(bytes);
 		const id = yield* hashSessionToken(token);
 		yield* sessions.create(id, authenticationId, expiresAt);
 		return token;

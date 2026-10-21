@@ -74,15 +74,15 @@ describe("jsonSchema", () => {
 		expect(() =>
 			// @ts-expect-error not is unsupported
 			jsonSchema({ not: { type: "string" } }),
-		).toThrow('Unsupported JSON Schema keyword "not"');
+		).toThrow('Cannot import JSON Schema keyword "not"');
 		expect(() =>
 			// @ts-expect-error if is unsupported
 			jsonSchema({ if: { type: "string" }, else: { minimum: 1 } }),
-		).toThrow('Unsupported JSON Schema keyword "if"');
+		).toThrow('Cannot import JSON Schema keyword "if"');
 		expect(() =>
 			// @ts-expect-error contains is unsupported
 			jsonSchema({ type: "array", contains: { type: "string" } }),
-		).toThrow('Unsupported JSON Schema keyword "contains"');
+		).toThrow('Cannot import JSON Schema keyword "contains"');
 	});
 
 	test("refuses a logical keyword inside a subschema", () => {
@@ -92,14 +92,14 @@ describe("jsonSchema", () => {
 				// @ts-expect-error not is unsupported
 				properties: { name: { not: { type: "string" } } },
 			}),
-		).toThrow('Unsupported JSON Schema keyword "not"');
+		).toThrow('Cannot import JSON Schema keyword "not"');
 		expect(() =>
 			jsonSchema({
 				type: "array",
 				// @ts-expect-error contains is unsupported
 				items: { type: "array", contains: { type: "string" } },
 			}),
-		).toThrow('Unsupported JSON Schema keyword "contains"');
+		).toThrow('Cannot import JSON Schema keyword "contains"');
 		expect(() =>
 			jsonSchema({
 				anyOf: [
@@ -108,7 +108,7 @@ describe("jsonSchema", () => {
 					{ if: { type: "number" }, else: { minimum: 1 } },
 				],
 			}),
-		).toThrow('Unsupported JSON Schema keyword "if"');
+		).toThrow('Cannot import JSON Schema keyword "if"');
 	});
 
 	test("accepts a property named like a logical keyword", () => {

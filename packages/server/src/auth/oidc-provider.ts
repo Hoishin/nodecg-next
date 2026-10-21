@@ -1,5 +1,6 @@
 import { Authentication } from "@nodecg-next/internal";
-import { Crypto, Effect, Encoding } from "effect";
+import { Crypto, Effect } from "effect";
+import { Base64Url } from "effect/encoding";
 import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
@@ -94,7 +95,7 @@ export const makeOidcProvider = async (
 				scope,
 				state,
 				nonce,
-				code_challenge: Encoding.encodeBase64Url(codeChallenge),
+				code_challenge: Base64Url.encode(codeChallenge),
 				code_challenge_method: "S256",
 			});
 			return {

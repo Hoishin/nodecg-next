@@ -5,8 +5,8 @@ import {
 	SubscribeMessage,
 } from "@nodecg-next/internal";
 import { Deferred, Effect, Fiber, Layer, Option, Stream } from "effect";
+import { Socket } from "effect/socket";
 import { TestClock } from "effect/testing";
-import { Socket } from "effect/unstable/socket";
 import { assert, describe, expect, vi } from "vitest";
 
 import { MessageChannelService } from "./message-channel.ts";

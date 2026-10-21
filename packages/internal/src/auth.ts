@@ -3,7 +3,7 @@ import {
 	HttpApiError,
 	HttpApiMiddleware,
 	HttpApiSecurity,
-} from "effect/unstable/httpapi";
+} from "effect/http-api";
 
 import type { Identity } from "./models/identity.ts";
 import type { ServiceAccount } from "./models/service-account.ts";

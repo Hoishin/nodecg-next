@@ -20,8 +20,8 @@ import {
 	Schema,
 	Scope,
 } from "effect";
-import { HttpRouter } from "effect/unstable/http";
-import { Reactivity } from "effect/unstable/reactivity";
+import { HttpRouter } from "effect/http";
+import { Reactivity } from "effect/reactivity";
 
 import {
 	type AuthProvider,

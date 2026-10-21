@@ -3,7 +3,7 @@ import type { LoginAttempt } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { sql } from "drizzle-orm";
 import { Effect, Layer, Option, Schema } from "effect";
-import { Reactivity } from "effect/unstable/reactivity";
+import { Reactivity } from "effect/reactivity";
 import { assert, describe, expect } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";

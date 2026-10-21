@@ -1,5 +1,5 @@
 import { Result, Schema } from "effect";
-import { Url, UrlParams } from "effect/unstable/http";
+import { Url, UrlParams } from "effect/http";
 
 export class MalformedUrl extends Schema.TaggedError<MalformedUrl>()(
 	"MalformedUrl",

@@ -8,7 +8,7 @@ import {
 	type MePayload,
 } from "@nodecg-next/client";
 import { AnonymousIdentitySchema } from "@nodecg-next/internal";
-import { Duration, Effect, Option, Schedule, Schema } from "effect";
+import { Duration, Effect, Option, Schema } from "effect";
 
 import { nodecgBase } from "./base.ts";
 
@@ -48,12 +48,10 @@ const watchLoginSession = (client: AuthClient, popup: Window) =>
 		if (closed) {
 			return yield* LoginAbandoned.make({ reason: "closed" });
 		}
+		yield* Effect.sleep(Duration.millis(500));
 		return Option.none();
 	}).pipe(
-		Effect.repeat({
-			schedule: Schedule.spaced(Duration.millis(500)),
-			until: Option.isSome<User>,
-		}),
+		Effect.repeat({ until: Option.isSome<User> }),
 		Effect.map((found) => found.value),
 		Effect.timeoutOrElse({
 			duration: Duration.minutes(5),

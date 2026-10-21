@@ -1,6 +1,6 @@
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import { FieldTransportService } from "../field-transport/field-transport.ts";

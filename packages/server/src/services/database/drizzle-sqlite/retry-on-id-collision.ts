@@ -1,6 +1,6 @@
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect, Option, Schema } from "effect";
-import { SqlError } from "effect/unstable/sql";
+import { SqlError } from "effect/sql";
 
 // https://www.sqlite.org/rescode.html#constraint_primarykey
 const isSqlitePrimaryKeyViolation = Schema.is(

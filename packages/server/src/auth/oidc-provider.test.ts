@@ -1,6 +1,6 @@
 import { NodeCrypto } from "@effect/platform-node";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { type MutableToken, OAuth2Server } from "oauth2-mock-server";
 import { afterEach, expect, test } from "vitest";
 

@@ -10,7 +10,7 @@ import {
 } from "@effect/platform-node";
 import { baseUrlCookieName } from "@nodecg-next/internal";
 import { Effect, Layer } from "effect";
-import { Cookies } from "effect/unstable/http";
+import { Cookies } from "effect/http";
 
 import { config } from "../server-config.ts";
 

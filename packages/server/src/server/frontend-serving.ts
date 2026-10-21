@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { Effect } from "effect";
-import { HttpRouter, HttpStaticServer } from "effect/unstable/http";
+import { HttpRouter, HttpStaticServer } from "effect/http";
 
 import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { config } from "../server-config.ts";

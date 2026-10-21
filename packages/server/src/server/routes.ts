@@ -1,9 +1,5 @@
 import { Layer } from "effect";
-import {
-	FetchHttpClient,
-	HttpMiddleware,
-	HttpRouter,
-} from "effect/unstable/http";
+import { FetchHttpClient, HttpMiddleware, HttpRouter } from "effect/http";
 
 import {
 	AdminTierMiddlewareLive,

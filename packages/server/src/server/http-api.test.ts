@@ -13,8 +13,8 @@ import {
 	HttpEffect,
 	HttpRouter,
 	HttpServer,
-} from "effect/unstable/http";
-import { Reactivity } from "effect/unstable/reactivity";
+} from "effect/http";
+import { Reactivity } from "effect/reactivity";
 import { describe, expect, vi } from "vitest";
 
 import {

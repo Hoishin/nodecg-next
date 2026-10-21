@@ -1,5 +1,6 @@
 import type { UserId } from "@nodecg-next/internal";
-import { Crypto, Effect, Encoding, Redacted } from "effect";
+import { Crypto, Effect, Redacted } from "effect";
+import { Base64Url } from "effect/encoding";
 
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { TransactionService } from "../services/transaction/transaction.ts";
@@ -10,13 +11,13 @@ export const hashApiKey = Effect.fnUntraced(function* (token: string) {
 		"SHA-256",
 		new TextEncoder().encode(token),
 	);
-	return Encoding.encodeBase64Url(digest);
+	return Base64Url.encode(digest);
 });
 
 export const newApiKey = Effect.fnUntraced(function* () {
 	const crypto = yield* Crypto.Crypto;
 	const bytes = yield* crypto.randomBytes(32);
-	return Redacted.make(Encoding.encodeBase64Url(bytes));
+	return Redacted.make(Base64Url.encode(bytes));
 });
 
 export const createServiceAccount = Effect.fn("createServiceAccount")(

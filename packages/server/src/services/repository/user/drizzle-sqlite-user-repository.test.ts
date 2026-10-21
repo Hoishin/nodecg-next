@@ -2,7 +2,7 @@ import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { Role, RoleNameSchema, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Array, Effect, HashSet, Layer } from "effect";
-import { Reactivity } from "effect/unstable/reactivity";
+import { Reactivity } from "effect/reactivity";
 import { describe, expect } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";

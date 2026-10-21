@@ -30,12 +30,8 @@ import {
 	Result,
 	Semaphore,
 } from "effect";
-import {
-	HttpServerRequest,
-	HttpServerResponse,
-	Url,
-} from "effect/unstable/http";
-import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi";
+import { HttpServerRequest, HttpServerResponse, Url } from "effect/http";
+import { HttpApiBuilder, HttpApiError } from "effect/http-api";
 
 import { AuthProviderRegistry } from "../../auth/auth-provider.ts";
 import { getSessionIdentity } from "../../auth/identity.ts";

@@ -1,7 +1,7 @@
 import { RpcCallError } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { Effect, Match, type Schema } from "effect";
-import { HttpApiError } from "effect/unstable/httpapi";
+import { HttpApiError } from "effect/http-api";
 
 import { NamespaceRegistryService } from "../../namespace-registry.ts";
 

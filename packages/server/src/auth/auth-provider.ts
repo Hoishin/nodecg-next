@@ -7,7 +7,7 @@ import {
 	type PlatformError,
 	Schema,
 } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import type { HttpClient } from "effect/http";
 
 export class ProviderStateMismatch extends Schema.TaggedError<ProviderStateMismatch>()(
 	"ProviderStateMismatch",

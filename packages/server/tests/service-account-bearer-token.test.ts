@@ -5,7 +5,7 @@ import {
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Redacted, Schema } from "effect";
-import { HttpClientResponse } from "effect/unstable/http";
+import { HttpClientResponse } from "effect/http";
 import { describe, expect } from "vitest";
 
 import { buildNamespace } from "../src/build-namespace.ts";

@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 import type { CustomFetchOptions } from "openid-client";
 
 const recordSchema = Schema.Record(Schema.String, Schema.Unknown);

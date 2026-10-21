@@ -3,8 +3,8 @@ import { type Authentication, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq, sql } from "drizzle-orm";
 import { Crypto, Effect, Layer, Schema } from "effect";
+import { Reactivity } from "effect/reactivity";
 import { TestClock } from "effect/testing";
-import { Reactivity } from "effect/unstable/reactivity";
 import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";

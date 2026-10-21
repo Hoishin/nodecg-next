@@ -1,7 +1,7 @@
 import { Authentication, RoleNameSchema } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Crypto, Effect, Layer } from "effect";
-import { HttpBody } from "effect/unstable/http";
+import { HttpBody } from "effect/http";
 import { describe, expect } from "vitest";
 
 import { NamespaceRegistryService } from "../src/namespace-registry.ts";
@@ -109,7 +109,7 @@ describe("delete", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7;
+			const unknownId = yield* crypto.randomUUIDv7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.del(`${serviceAccountsUrl}/${unknownId}`);
@@ -147,7 +147,7 @@ describe("refresh", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7;
+			const unknownId = yield* crypto.randomUUIDv7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.post(
@@ -242,7 +242,7 @@ describe("grant role", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7;
+			const unknownId = yield* crypto.randomUUIDv7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.post(
@@ -300,7 +300,7 @@ describe("revoke role", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7;
+			const unknownId = yield* crypto.randomUUIDv7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.post(
