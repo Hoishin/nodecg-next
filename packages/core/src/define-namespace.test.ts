@@ -6,6 +6,8 @@ import { z } from "zod";
 import { defineNamespace, extendNamespace } from "./define-namespace.ts";
 import { FieldDecodeError, FieldEncodeError } from "./field-codec.ts";
 
+const decodeJsonText = Schema.decodeSync(Schema.fromJsonString(Schema.Json));
+
 describe("defineNamespace", () => {
 	describe("runtime", () => {
 		it.effect(
@@ -49,6 +51,36 @@ describe("defineNamespace", () => {
 			);
 			expect(error).toBeInstanceOf(FieldDecodeError);
 		});
+
+		it.effect(
+			"encode and decode refuse an object key every object inherits",
+			() =>
+				Effect.gen(function* () {
+					const manifest = defineNamespace("match", {
+						replicant: {
+							scores: {
+								schema: Schema.Record(Schema.String, Schema.FiniteFromString),
+							},
+						},
+					});
+
+					const encodeError = yield* manifest.replicant.scores
+						.encode({ home: 1, toString: 2 })
+						.pipe(Effect.flip);
+					expect(encodeError).toBeInstanceOf(FieldEncodeError);
+					expect(encodeError.message).toBe(
+						'Failed to encode replicant "scores": Object key "toString" is a name every object inherits',
+					);
+
+					const decodeError = yield* manifest.replicant.scores
+						.decode(decodeJsonText('{"home":"1","__proto__":"2"}'))
+						.pipe(Effect.flip);
+					expect(decodeError).toBeInstanceOf(FieldDecodeError);
+					expect(decodeError.message).toBe(
+						'Failed to decode replicant "scores": Object key "__proto__" is a name every object inherits',
+					);
+				}),
+		);
 
 		it.effect(
 			"rpc request and response encode/decode round-trip independently",

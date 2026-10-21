@@ -3,6 +3,7 @@
 import { Data, Match, Option, Result, type Schema } from "effect";
 
 import { cloneJson } from "../utils/clone.ts";
+import { isInheritedKey } from "../utils/inherited-key.ts";
 import { stableStringify, computeTestHash } from "./hash.ts";
 import type { ChangeOp, PatchOp, Pointer } from "./schema.ts";
 
@@ -132,8 +133,7 @@ const add = (
 		return Result.succeed(root);
 	}
 	if (parent !== null && typeof parent === "object") {
-		// Assigning __proto__ would fire the inherited setter instead of adding a key
-		if (targetToken === "__proto__") {
+		if (isInheritedKey(targetToken)) {
 			return Result.fail(ApplyFailure.ForbiddenKey({ key: targetToken }));
 		}
 		parent[targetToken] = value;

@@ -119,13 +119,11 @@ describe("applyPatch", () => {
 			).toEqual(ApplyFailure.ForbiddenKey({ key: "__proto__" }));
 		});
 
-		test("constructor is an ordinary data key", () => {
-			const result = applied({ a: 1 }, [
-				{ op: "add", path: "/constructor", value: 2 },
-			]);
-			assert(result !== null && typeof result === "object");
-			expect(Object.hasOwn(result, "constructor")).toBe(true);
-			expect(Reflect.get(result, "constructor")).toBe(2);
+		test("a key every object inherits is refused", () => {
+			expect(
+				failure({ a: 1 }, [{ op: "add", path: "/constructor", value: 2 }])
+					.cause,
+			).toEqual(ApplyFailure.ForbiddenKey({ key: "constructor" }));
 		});
 	});
 

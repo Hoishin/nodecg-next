@@ -7,6 +7,7 @@ export {
 	type UnsafeNameKeys,
 } from "./file-safe-name.ts";
 export { type WidestFieldSchema } from "./field-schema.ts";
+export { findInheritedKey, isInheritedKey } from "./inherited-key.ts";
 export {
 	mapValues,
 	mapEffectValues,

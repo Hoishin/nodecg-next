@@ -1,7 +1,7 @@
-import { cloneJson } from "@nodecg-next/internal/utils";
+import { cloneJson, findInheritedKey } from "@nodecg-next/internal/utils";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { getDotPath } from "@standard-schema/utils";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import type { WritableDeep } from "type-fest";
 
 const decodeJson = Schema.decodeUnknownResult(Schema.Json);
@@ -121,12 +121,38 @@ export function makeCodec<D>(
 	name: string,
 	schema: Schema.Codec<D, Schema.Json> | StandardSchemaV1<unknown, D>,
 ): FieldCodec<D> {
-	const { encode, decode } = Schema.isSchema(schema)
+	const codec = Schema.isSchema(schema)
 		? makeEffectCodec(name, schema)
 		: makeStandardCodec(name, schema);
+	const decode = Effect.fn("decode")(function* (value: Schema.Json) {
+		const inheritedKey = findInheritedKey(value);
+		if (Option.isSome(inheritedKey)) {
+			return yield* FieldDecodeError.make({
+				fieldName: name,
+				value,
+				cause: new Error(
+					`Object key "${inheritedKey.value}" is a name every object inherits`,
+				),
+			});
+		}
+		return yield* codec.decode(value);
+	});
 	return {
-		// Asserting mutable object as immutable is safe in this context
-		encode: (value) => encode(value as D),
+		encode: Effect.fn("encode")(function* (value: D | WritableDeep<D>) {
+			// Asserting mutable object as immutable is safe in this context
+			const encoded = yield* codec.encode(value as D);
+			const inheritedKey = findInheritedKey(encoded);
+			if (Option.isSome(inheritedKey)) {
+				return yield* FieldEncodeError.make({
+					fieldName: name,
+					value,
+					cause: new Error(
+						`Object key "${inheritedKey.value}" is a name every object inherits`,
+					),
+				});
+			}
+			return encoded;
+		}),
 		decode,
 		mutableDecode: Effect.fn("mutableDecode")(function* (value: Schema.Json) {
 			// Decode a copy because a schema may hand back parts of its input, so the result is safe to assert as mutable
