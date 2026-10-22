@@ -2,6 +2,9 @@ import type {
 	NamespaceManifest,
 	FieldManifest,
 	RpcFieldManifest,
+	EmptyNamespaceFields,
+	WidestNamespaceFields,
+	WidestRpcField,
 } from "@nodecg-next/core";
 import type { Updater } from "@nodecg-next/internal";
 import { diffSignedPatch } from "@nodecg-next/internal/occ";
@@ -56,11 +59,6 @@ import {
 	MessageChannelService,
 } from "./services/message-channel/message-channel.ts";
 import { webSocketMessageChannel } from "./services/message-channel/websocket-message-channel.ts";
-
-type RpcShape = Record<
-	string,
-	{ readonly request: unknown; readonly response: unknown }
->;
 
 export type RetryPolicy = boolean | number;
 
@@ -398,7 +396,7 @@ interface TopicFieldPromiseLambda extends HKT.TypeLambda {
 }
 
 interface RpcFieldManifestLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcFieldManifest<
 		this["Target"]["request"],
 		this["Target"]["response"]
@@ -406,7 +404,7 @@ interface RpcFieldManifestLambda extends HKT.TypeLambda {
 }
 
 interface RpcFieldEffectLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcFieldEffect<
 		this["Target"]["request"],
 		this["Target"]["response"]
@@ -414,20 +412,15 @@ interface RpcFieldEffectLambda extends HKT.TypeLambda {
 }
 
 interface RpcFieldPromiseLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcField<
 		this["Target"]["request"],
 		this["Target"]["response"]
 	>;
 }
 
-const buildNamespace = <
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
->(
-	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
+const buildNamespace = <S extends WidestNamespaceFields>(
+	manifest: NamespaceManifest<S>,
 ) =>
 	Layer.build(FieldCellsService.layer).pipe(
 		Effect.flatMap((context) =>
@@ -462,11 +455,8 @@ const buildNamespace = <
 	);
 
 export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
-	Replicant extends Record<string, unknown> = {},
-	Computed extends Record<string, unknown> = {},
-	Topic extends Record<string, unknown> = {},
-	Rpc extends RpcShape = {},
->(manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>) {
+	S extends WidestNamespaceFields = EmptyNamespaceFields,
+>(manifest: NamespaceManifest<S>) {
 	return yield* buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields, topicFields, rpcFields }) => ({
 			replicant: fields,
@@ -478,24 +468,25 @@ export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 });
 
 export interface LoadedNamespace<
-	Replicant extends Record<string, unknown> = Record<string, unknown>,
-	Computed extends Record<string, unknown> = Record<string, unknown>,
-	Topic extends Record<string, unknown> = Record<string, unknown>,
-	Rpc extends RpcShape = RpcShape,
+	S extends WidestNamespaceFields = WidestNamespaceFields,
 > {
 	readonly replicant: {
-		readonly [K in keyof Replicant & string]: ReplicantField<Replicant[K]>;
+		readonly [K in keyof S["replicant"] & string]: ReplicantField<
+			S["replicant"][K]
+		>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
+		readonly [K in keyof S["computed"] & string]: ComputedField<
+			S["computed"][K]
+		>;
 	};
 	readonly topic: {
-		readonly [K in keyof Topic & string]: TopicField<Topic[K]>;
+		readonly [K in keyof S["topic"] & string]: TopicField<S["topic"][K]>;
 	};
 	readonly rpc: {
-		readonly [K in keyof Rpc & string]: RpcField<
-			Rpc[K]["request"],
-			Rpc[K]["response"]
+		readonly [K in keyof S["rpc"] & string]: RpcField<
+			S["rpc"][K]["request"],
+			S["rpc"][K]["response"]
 		>;
 	};
 	readonly dispose: () => void;
@@ -506,12 +497,9 @@ export interface LoadedNamespace<
  * Client-side entrypoint of namespace manifests returned from defineNamespace
  */
 export async function loadNamespace<
-	Replicant extends Record<string, unknown> = {},
-	Computed extends Record<string, unknown> = {},
-	Topic extends Record<string, unknown> = {},
-	Rpc extends RpcShape = {},
+	S extends WidestNamespaceFields = EmptyNamespaceFields,
 >(
-	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<S>,
 	options?: {
 		baseUrl?: string;
 		fieldTransport?:
@@ -521,7 +509,7 @@ export async function loadNamespace<
 			| (() => MessageChannel)
 			| Effect.Effect<MessageChannel, never, never>;
 	},
-): Promise<LoadedNamespace<Replicant, Computed, Topic, Rpc>> {
+): Promise<LoadedNamespace<S>> {
 	const baseUrl = options?.baseUrl;
 	const fieldTransport = options?.fieldTransport;
 	const messageChannel = options?.messageChannel;

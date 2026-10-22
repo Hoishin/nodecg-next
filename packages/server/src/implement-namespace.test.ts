@@ -69,6 +69,39 @@ describe("implementNamespace", () => {
 
 		expect(implementNamespace(manifest, { onLoad }).impl?.onLoad).toBe(onLoad);
 	});
+
+	test("requires the impl of every field group that has fields", () => {
+		const replicant = defineNamespace("ns", {
+			replicant: { count: { schema: Schema.Finite } },
+		});
+		const computed = defineNamespace("ns", {
+			computed: { total: { schema: Schema.Finite } },
+		});
+		const rpc = defineNamespace("ns", {
+			rpc: {
+				bump: { schema: { request: Schema.Finite, response: Schema.Finite } },
+			},
+		});
+
+		// @ts-expect-error missing seedReplicant
+		implementNamespace(replicant, {});
+		// @ts-expect-error missing implementComputed
+		implementNamespace(computed, {});
+		// @ts-expect-error missing implementRpc
+		implementNamespace(rpc, {});
+	});
+
+	test("refuses the impl of a field group without fields", () => {
+		const manifest = defineNamespace("ns", {
+			replicant: { count: { schema: Schema.Finite } },
+		});
+
+		implementNamespace(manifest, {
+			seedReplicant: { count: () => 0 },
+			// @ts-expect-error no computed fields to implement
+			implementComputed: {},
+		});
+	});
 });
 
 describe("implementExtendedNamespace", () => {
@@ -107,6 +140,25 @@ describe("implementExtendedNamespace", () => {
 			expect(yield* built.replicant.score.get()).toBe(10);
 			expect(yield* built.replicant.round.get()).toBe(3);
 			expect(yield* built.computed.total.get()).toBe(13);
+		}),
+	);
+
+	testInMemory(
+		"overrides an impl the base already covers",
+		Effect.gen(function* () {
+			const extended = extendNamespace(base, {
+				replicant: { round: { schema: Schema.Finite } },
+			});
+
+			const implemented = implementExtendedNamespace(
+				extended,
+				baseImplemented,
+				{ seedReplicant: { round: () => 3, score: () => 99 } },
+			);
+			const built = yield* buildNamespace(implemented);
+
+			expect(yield* built.replicant.score.get()).toBe(99);
+			expect(yield* built.replicant.label.get()).toBe("m1");
 		}),
 	);
 
@@ -156,6 +208,27 @@ describe("implementExtendedNamespace", () => {
 		expect(composed.impl?.onLoad).not.toBe(baseOnLoad);
 		expect(composed.impl?.onLoad).not.toBe(extensionOnLoad);
 		expect(composed.impl?.onLoad).toBeTypeOf("function");
+	});
+
+	test("requires the impl of every field group with added fields", () => {
+		const replicant = extendNamespace(base, {
+			replicant: { round: { schema: Schema.Finite } },
+		});
+		const computed = extendNamespace(base, {
+			computed: { total: { schema: Schema.Finite } },
+		});
+		const rpc = extendNamespace(base, {
+			rpc: {
+				bump: { schema: { request: Schema.Finite, response: Schema.Finite } },
+			},
+		});
+
+		// @ts-expect-error missing seedReplicant
+		implementExtendedNamespace(replicant, baseImplemented, {});
+		// @ts-expect-error missing implementComputed
+		implementExtendedNamespace(computed, baseImplemented, {});
+		// @ts-expect-error missing implementRpc
+		implementExtendedNamespace(rpc, baseImplemented, {});
 	});
 
 	testInMemory(

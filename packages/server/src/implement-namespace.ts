@@ -1,25 +1,17 @@
-import type { NamespaceManifest } from "@nodecg-next/core";
+import type {
+	EmptyNamespaceFields,
+	WidestNamespaceFields,
+	NamespaceManifest,
+} from "@nodecg-next/core";
 import type { Updater } from "@nodecg-next/internal";
 import { mergeRecords } from "@nodecg-next/internal/utils";
 import type { Schema } from "effect";
-import type { Promisable } from "type-fest";
+import type { Promisable, SetOptional } from "type-fest";
 
 export type FrontendConfig = {
 	readonly dir: ReadonlyArray<string | URL>;
 	readonly spa?: boolean;
 	readonly vite?: { readonly root: string | URL };
-};
-
-export type RpcShape = Record<
-	string,
-	{ readonly request: unknown; readonly response: unknown }
->;
-
-export type BaseNamespaceShape = {
-	readonly replicant: Record<string, unknown>;
-	readonly computed: Record<string, unknown>;
-	readonly topic: Record<string, unknown>;
-	readonly rpc: RpcShape;
 };
 
 export type SeedReplicant<out Replicant extends Record<string, unknown>> = {
@@ -42,7 +34,7 @@ export type CrossComputeView<
 	};
 };
 
-export type ComputeContextUse = <S extends BaseNamespaceShape>(
+export type ComputeContextUse = <S extends WidestNamespaceFields>(
 	implemented: ImplementedNamespace<S>,
 ) => CrossComputeView<S["replicant"], S["computed"]>;
 
@@ -99,44 +91,36 @@ export type RpcField<in Request, out Response> = (
 ) => Promise<Response>;
 
 export interface LoadedNamespace<
-	in out Replicant extends Record<string, unknown> = Record<string, unknown>,
-	out Computed extends Record<string, unknown> = Record<string, unknown>,
-	in out Topic extends Record<string, unknown> = Record<string, unknown>,
-	in out Rpc extends RpcShape = RpcShape,
+	S extends WidestNamespaceFields = WidestNamespaceFields,
 > {
 	readonly replicant: {
-		readonly [K in keyof Replicant & string]: ReplicantField<Replicant[K]>;
+		readonly [K in keyof S["replicant"] & string]: ReplicantField<
+			S["replicant"][K]
+		>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: ComputedField<Computed[K]>;
+		readonly [K in keyof S["computed"] & string]: ComputedField<
+			S["computed"][K]
+		>;
 	};
 	readonly topic: {
-		readonly [K in keyof Topic & string]: TopicField<Topic[K]>;
+		readonly [K in keyof S["topic"] & string]: TopicField<S["topic"][K]>;
 	};
 	readonly rpc: {
-		readonly [K in keyof Rpc & string]: RpcField<
-			Rpc[K]["request"],
-			Rpc[K]["response"]
+		readonly [K in keyof S["rpc"] & string]: RpcField<
+			S["rpc"][K]["request"],
+			S["rpc"][K]["response"]
 		>;
 	};
 }
 
-export type OnLoadContext<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
-> = LoadedNamespace<Replicant, Computed, Topic, Rpc> & {
-	readonly use: UseCrossNamespace;
-};
+export type OnLoadContext<S extends WidestNamespaceFields> =
+	LoadedNamespace<S> & {
+		readonly use: UseCrossNamespace;
+	};
 
-export type OnLoad<
-	in out Replicant extends Record<string, unknown>,
-	in Computed extends Record<string, unknown>,
-	in out Topic extends Record<string, unknown>,
-	in out Rpc extends RpcShape,
-> = (
-	ctx: OnLoadContext<Replicant, Computed, Topic, Rpc>,
+export type OnLoad<S extends WidestNamespaceFields> = (
+	ctx: OnLoadContext<S>,
 ) => Promisable<void | (() => Promisable<void>)>;
 
 export type RpcReplicantAccessor<in out Decoded> = {
@@ -153,109 +137,87 @@ export type RpcTopicAccessor<in Decoded> = {
 	readonly publish: (value: Decoded) => Promise<void>;
 };
 
-type RpcFieldAccessors<
-	in out Replicant extends Record<string, unknown>,
-	out Computed extends Record<string, unknown>,
-	in out Topic extends Record<string, unknown>,
-> = {
+type RpcFieldAccessors<in out S extends WidestNamespaceFields> = {
 	readonly replicant: {
-		readonly [K in keyof Replicant & string]: RpcReplicantAccessor<
-			Replicant[K]
+		readonly [K in keyof S["replicant"] & string]: RpcReplicantAccessor<
+			S["replicant"][K]
 		>;
 	};
 	readonly computed: {
-		readonly [K in keyof Computed & string]: RpcComputedAccessor<Computed[K]>;
-	};
-	readonly topic: {
-		readonly [K in keyof Topic & string]: RpcTopicAccessor<Topic[K]>;
-	};
-};
-
-export type CrossNamespaceHandle<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
-> = RpcFieldAccessors<Replicant, Computed, Topic> & {
-	readonly rpc: {
-		readonly [K in keyof Rpc & string]: RpcField<
-			Rpc[K]["request"],
-			Rpc[K]["response"]
+		readonly [K in keyof S["computed"] & string]: RpcComputedAccessor<
+			S["computed"][K]
 		>;
 	};
+	readonly topic: {
+		readonly [K in keyof S["topic"] & string]: RpcTopicAccessor<S["topic"][K]>;
+	};
 };
 
-export type UseCrossNamespace = <S extends BaseNamespaceShape>(
+export type CrossNamespaceHandle<S extends WidestNamespaceFields> =
+	RpcFieldAccessors<S> & {
+		readonly rpc: {
+			readonly [K in keyof S["rpc"] & string]: RpcField<
+				S["rpc"][K]["request"],
+				S["rpc"][K]["response"]
+			>;
+		};
+	};
+
+export type UseCrossNamespace = <S extends WidestNamespaceFields>(
 	implemented: ImplementedNamespace<S>,
-) => CrossNamespaceHandle<S["replicant"], S["computed"], S["topic"], S["rpc"]>;
+) => CrossNamespaceHandle<S>;
 
-export type RpcContext<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-> = RpcFieldAccessors<Replicant, Computed, Topic> & {
-	readonly use: UseCrossNamespace;
+export type RpcContext<S extends WidestNamespaceFields> =
+	RpcFieldAccessors<S> & {
+		readonly use: UseCrossNamespace;
+	};
+
+export type ImplementRpc<S extends WidestNamespaceFields> = {
+	readonly [K in keyof S["rpc"] & string]: (
+		request: S["rpc"][K]["request"],
+		ctx: RpcContext<S>,
+	) => Promisable<S["rpc"][K]["response"]>;
 };
 
-export type ImplementRpc<
-	in out Replicant extends Record<string, unknown>,
-	in Computed extends Record<string, unknown>,
-	in out Topic extends Record<string, unknown>,
-	in out Rpc extends RpcShape,
-> = {
-	readonly [K in keyof Rpc & string]: (
-		request: Rpc[K]["request"],
-		ctx: RpcContext<Replicant, Computed, Topic>,
-	) => Promisable<Rpc[K]["response"]>;
+export type NamespaceOptions<in out S extends WidestNamespaceFields> = {
+	readonly seedReplicant?: SeedReplicant<S["replicant"]>;
+	readonly implementComputed?: ImplementComputed<S["replicant"], S["computed"]>;
+	readonly implementRpc?: ImplementRpc<S>;
+	readonly onLoad?: OnLoad<S>;
 };
 
-export type NamespaceOptions<
-	in out Replicant extends Record<string, unknown>,
-	in out Computed extends Record<string, unknown>,
-	in out Topic extends Record<string, unknown>,
-	in out Rpc extends RpcShape,
-> = {
-	readonly seedReplicant?: SeedReplicant<Replicant>;
-	readonly implementComputed?: ImplementComputed<Replicant, Computed>;
-	readonly implementRpc?: ImplementRpc<Replicant, Computed, Topic, Rpc>;
-	readonly onLoad?: OnLoad<Replicant, Computed, Topic, Rpc>;
-};
-
-export type RequiredOptions<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
-> = ([keyof Replicant] extends [never]
+export type RequiredOptions<S extends WidestNamespaceFields> = ([
+	keyof S["replicant"],
+] extends [never]
 	? {}
-	: { readonly seedReplicant: SeedReplicant<Replicant> }) &
-	([keyof Computed] extends [never]
-		? {}
-		: { readonly implementComputed: ImplementComputed<Replicant, Computed> }) &
-	([keyof Rpc] extends [never]
+	: { readonly seedReplicant: SeedReplicant<S["replicant"]> }) &
+	([keyof S["computed"]] extends [never]
 		? {}
 		: {
-				readonly implementRpc: ImplementRpc<Replicant, Computed, Topic, Rpc>;
+				readonly implementComputed: ImplementComputed<
+					S["replicant"],
+					S["computed"]
+				>;
+			}) &
+	([keyof S["rpc"]] extends [never]
+		? {}
+		: {
+				readonly implementRpc: ImplementRpc<S>;
 			});
 
-export interface ImplementedNamespace<in out S extends BaseNamespaceShape> {
-	readonly manifest: NamespaceManifest<
-		S["replicant"],
-		S["computed"],
-		S["topic"],
-		S["rpc"]
-	>;
+export interface ImplementedNamespace<in out S extends WidestNamespaceFields> {
+	readonly manifest: NamespaceManifest<S>;
 	readonly impl:
-		| (NamespaceOptions<S["replicant"], S["computed"], S["topic"], S["rpc"]> & {
+		| (NamespaceOptions<S> & {
 				readonly frontend?: FrontendConfig;
 		  })
 		| undefined;
 }
 
 export interface WidenedImplementedNamespace {
-	readonly manifest: NamespaceManifest<{}, {}, {}, {}>;
+	readonly manifest: NamespaceManifest<EmptyNamespaceFields>;
 	readonly impl:
-		| (Omit<NamespaceOptions<{}, {}, {}, {}>, "onLoad"> & {
+		| (Omit<NamespaceOptions<EmptyNamespaceFields>, "onLoad"> & {
 				readonly onLoad?: (
 					ctx: never,
 				) => Promisable<void | (() => Promisable<void>)>;
@@ -265,98 +227,64 @@ export interface WidenedImplementedNamespace {
 }
 
 export function implementNamespace<
-	Replicant extends Record<string, unknown> = {},
-	Computed extends Record<string, unknown> = {},
-	Topic extends Record<string, unknown> = {},
-	Rpc extends RpcShape = {},
+	S extends WidestNamespaceFields = EmptyNamespaceFields,
 >(
-	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
-	...rest: [keyof Replicant | keyof Computed | keyof Rpc] extends [never]
+	manifest: NamespaceManifest<S>,
+	...rest: [
+		keyof S["replicant"] | keyof S["computed"] | keyof S["rpc"],
+	] extends [never]
 		? [
 				options?: {
 					readonly frontend?: FrontendConfig;
-					readonly onLoad?: OnLoad<Replicant, Computed, Topic, Rpc>;
+					readonly onLoad?: OnLoad<S>;
 				},
 			]
 		: [
-				impl: RequiredOptions<Replicant, Computed, Topic, Rpc> & {
+				impl: RequiredOptions<S> & {
 					readonly frontend?: FrontendConfig;
-					readonly onLoad?: OnLoad<Replicant, Computed, Topic, Rpc>;
+					readonly onLoad?: OnLoad<S>;
 				},
 			]
-): ImplementedNamespace<{
-	replicant: Replicant;
-	computed: Computed;
-	topic: Topic;
-	rpc: Rpc;
-}> {
+): ImplementedNamespace<S> {
 	const [impl] = rest;
 	return { manifest, impl };
 }
 
-type RelaxCovered<O, Covered extends PropertyKey> = Omit<O, Covered> &
-	Partial<Pick<O, Extract<keyof O, Covered>>>;
+type RequiredIfAnyKey<Name extends string, Keys, Value> = [Keys] extends [never]
+	? { readonly [P in Name]?: Value }
+	: { readonly [P in Name]: Value };
 
 type ExtensionSupplement<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
-	CoveredReplicant extends PropertyKey,
-	CoveredComputed extends PropertyKey,
-	CoveredRpc extends PropertyKey,
-> = ([keyof Omit<Replicant, CoveredReplicant>] extends [never]
-	? {
-			readonly seedReplicant?: RelaxCovered<
-				SeedReplicant<Replicant>,
-				CoveredReplicant
-			>;
-		}
-	: {
-			readonly seedReplicant: RelaxCovered<
-				SeedReplicant<Replicant>,
-				CoveredReplicant
-			>;
-		}) &
-	([keyof Omit<Computed, CoveredComputed>] extends [never]
-		? {
-				readonly implementComputed?: RelaxCovered<
-					ImplementComputed<Replicant, Computed>,
-					CoveredComputed
-				>;
-			}
-		: {
-				readonly implementComputed: RelaxCovered<
-					ImplementComputed<Replicant, Computed>,
-					CoveredComputed
-				>;
-			}) &
-	([keyof Omit<Rpc, CoveredRpc>] extends [never]
-		? {
-				readonly implementRpc?: RelaxCovered<
-					ImplementRpc<Replicant, Computed, Topic, Rpc>,
-					CoveredRpc
-				>;
-			}
-		: {
-				readonly implementRpc: RelaxCovered<
-					ImplementRpc<Replicant, Computed, Topic, Rpc>,
-					CoveredRpc
-				>;
-			}) & {
-		readonly onLoad?: OnLoad<Replicant, Computed, Topic, Rpc>;
+	S extends WidestNamespaceFields,
+	BaseReplicantKeys extends keyof S["replicant"] & string,
+	BaseComputedKeys extends keyof S["computed"] & string,
+	BaseRpcKeys extends keyof S["rpc"] & string,
+> = RequiredIfAnyKey<
+	"seedReplicant",
+	keyof Omit<S["replicant"], BaseReplicantKeys>,
+	SetOptional<SeedReplicant<S["replicant"]>, BaseReplicantKeys>
+> &
+	RequiredIfAnyKey<
+		"implementComputed",
+		keyof Omit<S["computed"], BaseComputedKeys>,
+		SetOptional<
+			ImplementComputed<S["replicant"], S["computed"]>,
+			BaseComputedKeys
+		>
+	> &
+	RequiredIfAnyKey<
+		"implementRpc",
+		keyof Omit<S["rpc"], BaseRpcKeys>,
+		SetOptional<ImplementRpc<S>, BaseRpcKeys>
+	> & {
+		readonly onLoad?: OnLoad<S>;
 		readonly frontend?: FrontendConfig;
 	};
 
-const combineOnLoad = <
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
->(
-	base: OnLoad<Replicant, Computed, Topic, Rpc> | undefined,
-	extension: OnLoad<Replicant, Computed, Topic, Rpc> | undefined,
-): OnLoad<Replicant, Computed, Topic, Rpc> | undefined => {
+const combineOnLoad = <S extends WidestNamespaceFields>(
+	base: OnLoad<S> | undefined,
+	extension: OnLoad<S> | undefined,
+): OnLoad<S> | undefined => {
 	if (typeof base === "undefined") return extension;
 	if (typeof extension === "undefined") return base;
 	return async (ctx) => {
@@ -370,29 +298,18 @@ const combineOnLoad = <
 };
 
 export function implementExtendedNamespace<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
+	S extends WidestNamespaceFields,
 	const Base extends ImplementedNamespace<any>,
 >(
-	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
+	manifest: NamespaceManifest<S>,
 	implemented: Base,
 	additional: ExtensionSupplement<
-		Replicant,
-		Computed,
-		Topic,
-		Rpc,
-		keyof Base["manifest"]["replicant"] & string,
-		keyof Base["manifest"]["computed"] & string,
-		keyof Base["manifest"]["rpc"] & string
+		S,
+		keyof Base["manifest"]["replicant"] & keyof S["replicant"] & string,
+		keyof Base["manifest"]["computed"] & keyof S["computed"] & string,
+		keyof Base["manifest"]["rpc"] & keyof S["rpc"] & string
 	>,
-): ImplementedNamespace<{
-	replicant: Replicant;
-	computed: Computed;
-	topic: Topic;
-	rpc: Rpc;
-}> {
+): ImplementedNamespace<S> {
 	const baseFrontend = implemented.impl?.frontend;
 	const frontend =
 		baseFrontend && additional.frontend
@@ -405,15 +322,14 @@ export function implementExtendedNamespace<
 	return {
 		manifest,
 		impl: {
-			seedReplicant: mergeRecords<SeedReplicant<Replicant>>(
+			seedReplicant: mergeRecords<SeedReplicant<S["replicant"]>>(
 				implemented.impl?.seedReplicant,
 				additional.seedReplicant,
 			),
-			implementComputed: mergeRecords<ImplementComputed<Replicant, Computed>>(
-				implemented.impl?.implementComputed,
-				additional.implementComputed,
-			),
-			implementRpc: mergeRecords<ImplementRpc<Replicant, Computed, Topic, Rpc>>(
+			implementComputed: mergeRecords<
+				ImplementComputed<S["replicant"], S["computed"]>
+			>(implemented.impl?.implementComputed, additional.implementComputed),
+			implementRpc: mergeRecords<ImplementRpc<S>>(
 				implemented.impl?.implementRpc,
 				additional.implementRpc,
 			),

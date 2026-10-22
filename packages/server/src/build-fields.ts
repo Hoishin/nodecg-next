@@ -1,4 +1,7 @@
-import type { NamespaceManifest } from "@nodecg-next/core";
+import type {
+	WidestNamespaceFields,
+	NamespaceManifest,
+} from "@nodecg-next/core";
 import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import {
 	mapValues,
@@ -39,12 +42,10 @@ import type {
 	TopicFieldEffectLambda,
 } from "./field-lambdas.ts";
 import type {
-	BaseNamespaceShape,
 	ComputeContext,
 	ImplementedNamespace,
 	NamespaceOptions,
 	RpcContext,
-	RpcShape,
 	WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
 import {
@@ -77,19 +78,14 @@ export class BuiltNamespaceRegistry extends Context.Service<BuiltNamespaceRegist
 		make: Effect.sync(() => {
 			const map = new WeakMap<WidenedImplementedNamespace, unknown>();
 			return {
-				register: <S extends BaseNamespaceShape>(
+				register: <S extends WidestNamespaceFields>(
 					implemented: ImplementedNamespace<S>,
-					built: BuiltNamespace<
-						S["replicant"],
-						S["computed"],
-						S["topic"],
-						S["rpc"]
-					>,
+					built: BuiltNamespace<S>,
 				) =>
 					Effect.sync(() => {
 						map.set(implemented, built);
 					}),
-				lookup: <S extends BaseNamespaceShape>(
+				lookup: <S extends WidestNamespaceFields>(
 					implemented: ImplementedNamespace<S>,
 				) =>
 					Effect.gen(function* () {
@@ -99,12 +95,7 @@ export class BuiltNamespaceRegistry extends Context.Service<BuiltNamespaceRegist
 								namespace: implemented.manifest.namespace,
 							});
 						}
-						return found as BuiltNamespace<
-							S["replicant"],
-							S["computed"],
-							S["topic"],
-							S["rpc"]
-						>;
+						return found as BuiltNamespace<S>;
 					}),
 			};
 		}),
@@ -128,7 +119,7 @@ type FieldOps =
 
 type FieldOpsContext = Context.Context<FieldOps>;
 
-const lookupLoaded = <S extends BaseNamespaceShape>(
+const lookupLoaded = <S extends WidestNamespaceFields>(
 	implemented: ImplementedNamespace<S>,
 ) =>
 	Effect.gen(function* () {
@@ -137,7 +128,7 @@ const lookupLoaded = <S extends BaseNamespaceShape>(
 		return yield* registry.lookup(implemented);
 	});
 
-const makeCrossComputeView = <S extends BaseNamespaceShape>(
+const makeCrossComputeView = <S extends WidestNamespaceFields>(
 	implemented: ImplementedNamespace<S>,
 ) =>
 	Effect.gen(function* () {
@@ -203,7 +194,7 @@ const fieldAccessors =
 		};
 	};
 
-export const makeCrossNamespaceHandle = <S extends BaseNamespaceShape>(
+export const makeCrossNamespaceHandle = <S extends WidestNamespaceFields>(
 	implemented: ImplementedNamespace<S>,
 ) =>
 	Effect.gen(function* () {
@@ -219,14 +210,8 @@ export const makeCrossNamespaceHandle = <S extends BaseNamespaceShape>(
 	});
 
 export const buildFields = Effect.fn("buildFields")(function* <
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
->(
-	manifest: NamespaceManifest<Replicant, Computed, Topic, Rpc>,
-	options?: NamespaceOptions<Replicant, Computed, Topic, Rpc>,
-) {
+	S extends WidestNamespaceFields,
+>(manifest: NamespaceManifest<S>, options?: NamespaceOptions<S>) {
 	const seedReplicantFns = options?.seedReplicant;
 	const computeFns = options?.implementComputed;
 	const rpcHandlers = options?.implementRpc;
@@ -241,15 +226,15 @@ export const buildFields = Effect.fn("buildFields")(function* <
 		SeedFnLambda,
 		ReplicantFieldEffectLambda,
 		unknown,
-		Replicant
+		S["replicant"]
 	>()(manifest.replicant, seedReplicantFns, (codec, seed, name) =>
 		buildReplicant(manifest.namespace, name, codec, seed()),
 	);
 
-	let ownComputedAccessors:
-		| ComputeContext<Replicant, Computed>["computed"]
-		| undefined;
-	const computeContext: ComputeContext<Replicant, Computed> = {
+	type OwnComputeContext = ComputeContext<S["replicant"], S["computed"]>;
+
+	let ownComputedAccessors: OwnComputeContext["computed"] | undefined;
+	const computeContext: OwnComputeContext = {
 		replicant: mapValues<ReplicantFieldEffectLambda, CrossFieldReadLambda>(
 			(field) => ({
 				get: () => runSync(field[fieldInternal].get().pipe(asServer)),
@@ -263,16 +248,15 @@ export const buildFields = Effect.fn("buildFields")(function* <
 			}
 			return ownComputedAccessors;
 		},
-		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
-			runSync(makeCrossComputeView(implemented)),
+		use: (implemented) => runSync(makeCrossComputeView(implemented)),
 	};
 
 	const computed = yield* zipEffectValues<
 		FieldManifestLambda,
 		ComputeFnLambda,
 		ComputedFieldEffectLambda,
-		ComputeContext<Replicant, Computed>,
-		Computed
+		OwnComputeContext,
+		S["computed"]
 	>()(manifest.computed, computeFns, (codec, compute, name) =>
 		buildComputed(
 			manifest.namespace,
@@ -304,18 +288,17 @@ export const buildFields = Effect.fn("buildFields")(function* <
 		manifest.topic,
 	);
 
-	const rpcContext: RpcContext<Replicant, Computed, Topic> = {
+	const rpcContext: RpcContext<S> = {
 		...fieldAccessors(context)({ replicant, computed, topic }),
-		use: <S extends BaseNamespaceShape>(implemented: ImplementedNamespace<S>) =>
-			runSync(makeCrossNamespaceHandle(implemented)),
+		use: (implemented) => runSync(makeCrossNamespaceHandle(implemented)),
 	};
 
 	const rpc = yield* zipEffectValues<
 		RpcFieldManifestLambda,
 		RpcHandlerLambda,
 		RpcFieldEffectLambda,
-		RpcContext<Replicant, Computed, Topic>,
-		Rpc
+		RpcContext<S>,
+		S["rpc"]
 	>()(manifest.rpc, rpcHandlers, (codec, handler, name) =>
 		buildRpc(manifest.namespace, name, codec, handler, rpcContext),
 	);
@@ -324,10 +307,5 @@ export const buildFields = Effect.fn("buildFields")(function* <
 });
 
 export interface BuiltNamespace<
-	Replicant extends Record<string, unknown> = Record<string, unknown>,
-	Computed extends Record<string, unknown> = Record<string, unknown>,
-	Topic extends Record<string, unknown> = Record<string, unknown>,
-	Rpc extends RpcShape = RpcShape,
-> extends Effect.Success<
-	ReturnType<typeof buildFields<Replicant, Computed, Topic, Rpc>>
-> {}
+	S extends WidestNamespaceFields = WidestNamespaceFields,
+> extends Effect.Success<ReturnType<typeof buildFields<S>>> {}

@@ -1,3 +1,4 @@
+import type { WidestNamespaceFields } from "@nodecg-next/core";
 import { mapValues } from "@nodecg-next/internal/utils";
 import { Effect, Exit, Schema, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
@@ -19,10 +20,8 @@ import type {
 	TopicFieldLambda,
 } from "./field-lambdas.ts";
 import type {
-	BaseNamespaceShape,
 	ImplementedNamespace,
 	LoadedNamespace,
-	RpcShape,
 } from "./implement-namespace.ts";
 import { ReplicantStoreService } from "./replicant-store.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
@@ -35,7 +34,7 @@ export class MissingReplicantSeed extends Schema.TaggedError<MissingReplicantSee
 }
 
 export const buildNamespace = Effect.fn("buildNamespace")(function* <
-	S extends BaseNamespaceShape,
+	S extends WidestNamespaceFields,
 >(implemented: ImplementedNamespace<S>) {
 	const { manifest, impl } = implemented;
 	const seedReplicant = impl?.seedReplicant;
@@ -57,11 +56,8 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 });
 
 export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends RpcShape,
->(built: BuiltNamespace<Replicant, Computed, Topic, Rpc>) {
+	S extends WidestNamespaceFields,
+>(built: BuiltNamespace<S>) {
 	const context = yield* Effect.context<
 		TopicBrokerService | ReplicantStoreService
 	>();
@@ -105,7 +101,7 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 				}),
 			);
 
-	const loaded: LoadedNamespace<Replicant, Computed, Topic, Rpc> = {
+	const loaded: LoadedNamespace<S> = {
 		replicant: mapValues<ReplicantFieldEffectLambda, ReplicantFieldLambda>(
 			(field, name) => ({
 				get: () => runSync(field.get().pipe(asServer)),

@@ -5,6 +5,10 @@ export {
 	type FieldManifest,
 	type RpcFieldManifest,
 	type NamespaceManifest,
+	type EmptyNamespaceFields,
+	type WidestNamespaceFields,
+	type WidestRpcField,
+	type WidestRpcFields,
 } from "./define-namespace.ts";
 export {
 	FieldDecodeError,

@@ -262,11 +262,12 @@ describe("rpc ctx", () => {
 		},
 	});
 
-	type Ctx = RpcContext<
-		{ count: number },
-		{ doubled: number },
-		{ cheer: string }
-	>;
+	type Ctx = RpcContext<{
+		replicant: { count: number };
+		computed: { doubled: number };
+		topic: { cheer: string };
+		rpc: {};
+	}>;
 
 	const load = (
 		bump: (request: number, ctx: Ctx) => Promise<number> | number,

@@ -1,5 +1,9 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { declaredRoleNames } from "@nodecg-next/core";
+import {
+	declaredRoleNames,
+	type EmptyNamespaceFields,
+	type WidestNamespaceFields,
+} from "@nodecg-next/core";
 import type { RoleName } from "@nodecg-next/internal";
 import {
 	findCaseClash,
@@ -39,7 +43,6 @@ import {
 	type FrontendConfig,
 	type ImplementedNamespace,
 	type LoadedNamespace,
-	type BaseNamespaceShape,
 	type WidenedImplementedNamespace,
 } from "./implement-namespace.ts";
 import {
@@ -64,7 +67,7 @@ export type StorageOption =
 	| Effect.Effect<ReplicantRepository, never, never>;
 
 export type LoadNodeCGOptions<
-	Shapes extends Record<string, BaseNamespaceShape>,
+	Shapes extends Record<string, WidestNamespaceFields>,
 > = {
 	// TODO: Accept array of namespaces and use namespace names for keys
 	namespaces: {
@@ -76,14 +79,9 @@ export type LoadNodeCGOptions<
 };
 
 export type LoadedNamespaces<
-	Shapes extends Record<string, BaseNamespaceShape>,
+	Shapes extends Record<string, WidestNamespaceFields>,
 > = {
-	readonly [K in keyof Shapes & string]: LoadedNamespace<
-		Shapes[K]["replicant"],
-		Shapes[K]["computed"],
-		Shapes[K]["topic"],
-		Shapes[K]["rpc"]
-	>;
+	readonly [K in keyof Shapes & string]: LoadedNamespace<Shapes[K]>;
 };
 
 export class OnLoadError extends Schema.TaggedError<OnLoadError>()(
@@ -102,49 +100,27 @@ const replicantRepository = (storage: StorageOption | undefined) => {
 		: Layer.succeed(ReplicantRepositoryService, storage);
 };
 
-interface NamespaceShapeTarget {
-	readonly replicant: {};
-	readonly computed: {};
-	readonly topic: {};
-	readonly rpc: {};
-}
-
 interface ImplementedNamespaceLambda extends HKT.TypeLambda {
-	readonly Target: NamespaceShapeTarget;
+	readonly Target: EmptyNamespaceFields;
 	readonly type: ImplementedNamespace<this["Target"]>;
 }
 
-interface PreparedNamespace<S extends BaseNamespaceShape> {
-	readonly built: BuiltNamespace<
-		S["replicant"],
-		S["computed"],
-		S["topic"],
-		S["rpc"]
-	>;
-	readonly loaded: LoadedNamespace<
-		S["replicant"],
-		S["computed"],
-		S["topic"],
-		S["rpc"]
-	>;
+interface PreparedNamespace<S extends WidestNamespaceFields> {
+	readonly built: BuiltNamespace<S>;
+	readonly loaded: LoadedNamespace<S>;
 	readonly declaredRoles: ReadonlySet<RoleName>;
 	readonly frontend: FrontendConfig | undefined;
 	readonly runOnLoad: Effect.Effect<void, OnLoadError, Scope.Scope>;
 }
 
 interface PreparedNamespaceLambda extends HKT.TypeLambda {
-	readonly Target: NamespaceShapeTarget;
+	readonly Target: EmptyNamespaceFields;
 	readonly type: PreparedNamespace<this["Target"]>;
 }
 
 interface LoadedNamespaceLambda extends HKT.TypeLambda {
-	readonly Target: NamespaceShapeTarget;
-	readonly type: LoadedNamespace<
-		this["Target"]["replicant"],
-		this["Target"]["computed"],
-		this["Target"]["topic"],
-		this["Target"]["rpc"]
-	>;
+	readonly Target: EmptyNamespaceFields;
+	readonly type: LoadedNamespace<this["Target"]>;
 }
 
 /**
@@ -158,7 +134,7 @@ const validateComputedFields = (fields: RegisteredNamespace["fields"]) =>
 	);
 
 export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
-	Shapes extends Record<string, BaseNamespaceShape>,
+	Shapes extends Record<string, WidestNamespaceFields>,
 >(options: LoadNodeCGOptions<Shapes>) {
 	const widenedNamespaces: Readonly<
 		Record<string, WidenedImplementedNamespace>
@@ -192,7 +168,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
 		>();
 		const store = yield* ReplicantStoreService;
-		const useCross = <S extends BaseNamespaceShape>(
+		const useCross = <S extends WidestNamespaceFields>(
 			implemented: ImplementedNamespace<S>,
 		) => Effect.runSyncWith(context)(makeCrossNamespaceHandle(implemented));
 
@@ -260,7 +236,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		>()(prepareNamespace)<Shapes>(options.namespaces);
 
 		const preparedRecord: Readonly<
-			Record<string, PreparedNamespace<NamespaceShapeTarget>>
+			Record<string, PreparedNamespace<EmptyNamespaceFields>>
 		> = prepared;
 		const registered = Object.values(preparedRecord).map(
 			({ built, declaredRoles, frontend }): RegisteredNamespace => ({
@@ -323,13 +299,15 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 });
 
 export interface LoadedNodeCG<
-	Shapes extends Record<string, BaseNamespaceShape>,
+	Shapes extends Record<string, WidestNamespaceFields>,
 > {
 	readonly namespaces: LoadedNamespaces<Shapes>;
 	readonly start: () => void;
 }
 
-export const loadNodeCG = <Shapes extends Record<string, BaseNamespaceShape>>(
+export const loadNodeCG = <
+	Shapes extends Record<string, WidestNamespaceFields>,
+>(
 	options: LoadNodeCGOptions<Shapes>,
 ): Promise<LoadedNodeCG<Shapes>> => {
 	const runtime = ManagedRuntime.make(

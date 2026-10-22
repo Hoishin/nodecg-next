@@ -1,4 +1,8 @@
-import type { FieldManifest, RpcFieldManifest } from "@nodecg-next/core";
+import type {
+	FieldManifest,
+	RpcFieldManifest,
+	WidestRpcField,
+} from "@nodecg-next/core";
 import type { HKT } from "effect";
 import type { Promisable } from "type-fest";
 
@@ -51,7 +55,7 @@ export interface TopicFieldEffectLambda extends HKT.TypeLambda {
 }
 
 export interface RpcFieldEffectLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcFieldEffect<
 		this["Target"]["request"],
 		this["Target"]["response"]
@@ -59,7 +63,7 @@ export interface RpcFieldEffectLambda extends HKT.TypeLambda {
 }
 
 export interface RpcFieldManifestLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcFieldManifest<
 		this["Target"]["request"],
 		this["Target"]["response"]
@@ -67,7 +71,7 @@ export interface RpcFieldManifestLambda extends HKT.TypeLambda {
 }
 
 export interface RpcHandlerLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: (
 		request: this["Target"]["request"],
 		ctx: this["In"],
@@ -99,7 +103,7 @@ export interface TopicFieldLambda extends HKT.TypeLambda {
 }
 
 export interface RpcFieldLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcField<
 		this["Target"]["request"],
 		this["Target"]["response"]

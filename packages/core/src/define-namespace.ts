@@ -58,37 +58,50 @@ export interface RpcFieldManifest<Request, Response> {
 
 const manifestRolesKey = Symbol("manifestRolesKey");
 
-export interface NamespaceManifest<
-	Replicant extends Record<string, unknown>,
-	Computed extends Record<string, unknown>,
-	Topic extends Record<string, unknown>,
-	Rpc extends Record<
-		string,
-		{ readonly request: unknown; readonly response: unknown }
-	> = {},
-> {
+export type WidestRpcField = {
+	readonly request: unknown;
+	readonly response: unknown;
+};
+
+export type WidestRpcFields = Record<string, WidestRpcField>;
+
+export type WidestNamespaceFields = {
+	readonly replicant: Record<string, unknown>;
+	readonly computed: Record<string, unknown>;
+	readonly topic: Record<string, unknown>;
+	readonly rpc: WidestRpcFields;
+};
+
+export type EmptyNamespaceFields = {
+	readonly replicant: {};
+	readonly computed: {};
+	readonly topic: {};
+	readonly rpc: {};
+};
+
+export interface NamespaceManifest<S extends WidestNamespaceFields> {
 	readonly namespace: string;
 	readonly [manifestRolesKey]: RoleRegistry;
 
 	readonly replicant: {
-		[K in keyof Replicant & string]: FieldManifest<Replicant[K]>;
+		[K in keyof S["replicant"] & string]: FieldManifest<S["replicant"][K]>;
 	};
 	readonly computed: {
-		[K in keyof Computed & string]: FieldManifest<Computed[K]>;
+		[K in keyof S["computed"] & string]: FieldManifest<S["computed"][K]>;
 	};
 	readonly topic: {
-		[K in keyof Topic & string]: FieldManifest<Topic[K]>;
+		[K in keyof S["topic"] & string]: FieldManifest<S["topic"][K]>;
 	};
 	readonly rpc: {
-		[K in keyof Rpc & string]: RpcFieldManifest<
-			Rpc[K]["request"],
-			Rpc[K]["response"]
+		[K in keyof S["rpc"] & string]: RpcFieldManifest<
+			S["rpc"][K]["request"],
+			S["rpc"][K]["response"]
 		>;
 	};
 }
 
 export const declaredRoleNames = (
-	manifest: NamespaceManifest<{}, {}, {}, {}>,
+	manifest: NamespaceManifest<EmptyNamespaceFields>,
 ): ReadonlySet<RoleName> => new Set(manifest[manifestRolesKey].roles.keys());
 
 type FieldDecoded<S> = S extends Schema.Top
@@ -182,7 +195,7 @@ interface RpcFieldManifestFromSchemaLambda extends HKT.TypeLambda {
 	>;
 }
 interface RpcFieldManifestLambda extends HKT.TypeLambda {
-	readonly Target: { readonly request: unknown; readonly response: unknown };
+	readonly Target: WidestRpcField;
 	readonly type: RpcFieldManifest<
 		this["Target"]["request"],
 		this["Target"]["response"]
@@ -436,12 +449,12 @@ export function defineNamespace<
 		topic?: FieldOptions<Topic, PermissionArg<DeclaredRoleName>>;
 		rpc?: Rpc;
 	},
-): NamespaceManifest<
-	{ [K in keyof Replicant]: FieldDecoded<Replicant[K]> },
-	{ [K in keyof Computed]: FieldDecoded<Computed[K]> },
-	{ [K in keyof Topic]: FieldDecoded<Topic[K]> },
-	AddedRpcDecoded<Rpc>
-> {
+): NamespaceManifest<{
+	replicant: { [K in keyof Replicant]: FieldDecoded<Replicant[K]> };
+	computed: { [K in keyof Computed]: FieldDecoded<Computed[K]> };
+	topic: { [K in keyof Topic]: FieldDecoded<Topic[K]> };
+	rpc: AddedRpcDecoded<Rpc>;
+}> {
 	if (!isFileSafeName(namespace)) {
 		throw new Error(
 			`Namespace "${namespace}" must use only A-Z, a-z, 0-9, "_" and "-", and not be a Windows device name`,
@@ -564,10 +577,7 @@ export function extendNamespace<
 	PReplicant extends Record<string, unknown>,
 	PComputed extends Record<string, unknown>,
 	PTopic extends Record<string, unknown>,
-	PRpc extends Record<
-		string,
-		{ readonly request: unknown; readonly response: unknown }
-	>,
+	PRpc extends WidestRpcFields,
 	const EReplicant extends Record<
 		string,
 		ExtendFieldOption<PermissionArg<string>>
@@ -585,7 +595,12 @@ export function extendNamespace<
 		ExtendRpcFieldOption<WriteOnlyPermissionArg<string>>
 	> = {},
 >(
-	manifest: NamespaceManifest<PReplicant, PComputed, PTopic, PRpc>,
+	manifest: NamespaceManifest<{
+		replicant: PReplicant;
+		computed: PComputed;
+		topic: PTopic;
+		rpc: PRpc;
+	}>,
 	extendOptionOrFn:
 		| {
 				readonly roles?: Record<string, RoleArg>;
@@ -597,7 +612,14 @@ export function extendNamespace<
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
 		  }
-		| ((precedent: NamespaceManifest<PReplicant, PComputed, PTopic, PRpc>) => {
+		| ((
+				precedent: NamespaceManifest<{
+					replicant: PReplicant;
+					computed: PComputed;
+					topic: PTopic;
+					rpc: PRpc;
+				}>,
+		  ) => {
 				readonly roles?: Record<string, RoleArg>;
 				readonly principals?: PrincipalsArg;
 				readonly replicant?: EReplicant &
@@ -607,12 +629,19 @@ export function extendNamespace<
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
 		  }),
-): NamespaceManifest<
-	Override<PReplicant, AddedDecoded<EReplicant>>,
-	Override<PComputed, AddedDecoded<EComputed>>,
-	Override<PTopic, AddedDecoded<ETopic>>,
-	Override<PRpc, AddedRpcDecoded<ERpc>>
-> {
+): NamespaceManifest<{
+	replicant: Override<PReplicant, AddedDecoded<EReplicant>>;
+	computed: Override<PComputed, AddedDecoded<EComputed>>;
+	topic: Override<PTopic, AddedDecoded<ETopic>>;
+	rpc: Override<PRpc, AddedRpcDecoded<ERpc>>;
+}> {
+	type Extended = {
+		replicant: Override<PReplicant, AddedDecoded<EReplicant>>;
+		computed: Override<PComputed, AddedDecoded<EComputed>>;
+		topic: Override<PTopic, AddedDecoded<ETopic>>;
+		rpc: Override<PRpc, AddedRpcDecoded<ERpc>>;
+	};
+
 	const extendOption =
 		typeof extendOptionOrFn === "function"
 			? extendOptionOrFn(manifest)
@@ -686,13 +715,10 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const replicant = mergeRecords<
-		NamespaceManifest<
-			Override<PReplicant, AddedDecoded<EReplicant>>,
-			PComputed,
-			PTopic
-		>["replicant"]
-	>(replicantRemap, replicantAdded);
+	const replicant = mergeRecords<NamespaceManifest<Extended>["replicant"]>(
+		replicantRemap,
+		replicantAdded,
+	);
 
 	const computedRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
@@ -725,13 +751,10 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const computed = mergeRecords<
-		NamespaceManifest<
-			PReplicant,
-			Override<PComputed, AddedDecoded<EComputed>>,
-			PTopic
-		>["computed"]
-	>(computedRemap, computedAdded);
+	const computed = mergeRecords<NamespaceManifest<Extended>["computed"]>(
+		computedRemap,
+		computedAdded,
+	);
 
 	const topicRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
 		(field, name) => {
@@ -770,13 +793,10 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const topic = mergeRecords<
-		NamespaceManifest<
-			PReplicant,
-			PComputed,
-			Override<PTopic, AddedDecoded<ETopic>>
-		>["topic"]
-	>(topicRemap, topicAdded);
+	const topic = mergeRecords<NamespaceManifest<Extended>["topic"]>(
+		topicRemap,
+		topicAdded,
+	);
 
 	const rpcRemap = mapValues<RpcFieldManifestLambda, RpcFieldManifestLambda>(
 		(field, name) => {
@@ -810,14 +830,10 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const rpc = mergeRecords<
-		NamespaceManifest<
-			PReplicant,
-			PComputed,
-			PTopic,
-			Override<PRpc, AddedRpcDecoded<ERpc>>
-		>["rpc"]
-	>(rpcRemap, rpcAdded);
+	const rpc = mergeRecords<NamespaceManifest<Extended>["rpc"]>(
+		rpcRemap,
+		rpcAdded,
+	);
 
 	return {
 		namespace: manifest.namespace,
