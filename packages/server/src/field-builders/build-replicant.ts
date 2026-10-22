@@ -1,4 +1,4 @@
-import type { FieldManifest } from "@nodecg-next/core";
+import type { ReplicantFieldManifest } from "@nodecg-next/core";
 import type { Updater } from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { cloneJson, toError } from "@nodecg-next/internal/utils";
@@ -27,7 +27,7 @@ export class ReplicantUpdateFnError extends Schema.TaggedError<ReplicantUpdateFn
 export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	namespace: string,
 	name: string,
-	manifest: FieldManifest<Decoded>,
+	manifest: ReplicantFieldManifest<Decoded>,
 	initialValue: Decoded,
 ) {
 	const store = yield* ReplicantStoreService;
@@ -37,6 +37,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		name,
 		manifest.decode,
 		yield* manifest.encode(initialValue),
+		manifest.persistent,
 	);
 
 	const retryContention = <A, E, R>(

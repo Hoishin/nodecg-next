@@ -49,6 +49,10 @@ export interface FieldManifest<D> extends FieldCodec<D> {
 	readonly permission: ResolvedPermission;
 }
 
+export interface ReplicantFieldManifest<D> extends FieldManifest<D> {
+	readonly persistent: boolean;
+}
+
 export interface RpcFieldManifest<Request, Response> {
 	readonly name: string;
 	readonly request: FieldCodec<Request>;
@@ -84,7 +88,9 @@ export interface NamespaceManifest<S extends WidestNamespaceFields> {
 	readonly [manifestRolesKey]: RoleRegistry;
 
 	readonly replicant: {
-		[K in keyof S["replicant"] & string]: FieldManifest<S["replicant"][K]>;
+		[K in keyof S["replicant"] & string]: ReplicantFieldManifest<
+			S["replicant"][K]
+		>;
 	};
 	readonly computed: {
 		[K in keyof S["computed"] & string]: FieldManifest<S["computed"][K]>;
@@ -153,6 +159,20 @@ type FieldOptions<
 	[K in keyof Schemas & string]: FieldOption<Schemas[K], P>;
 };
 
+interface ReplicantFieldOption<
+	S extends WidestFieldSchema,
+	P extends PermissionArg<string>,
+> extends FieldOption<S, P> {
+	readonly persistent?: boolean;
+}
+
+type ReplicantFieldOptions<
+	Schemas extends Record<string, WidestFieldSchema>,
+	P extends PermissionArg<string>,
+> = {
+	[K in keyof Schemas & string]: ReplicantFieldOption<Schemas[K], P>;
+};
+
 type FieldOptionSchema<Option> =
 	Option extends FieldOption<
 		infer S extends WidestFieldSchema,
@@ -170,11 +190,23 @@ interface FieldOptionLambda<
 	readonly type: this["Target"];
 }
 interface FieldManifestFromOptionLambda extends HKT.TypeLambda {
-	readonly Target: object;
 	readonly type: FieldManifest<FieldDecoded<FieldOptionSchema<this["Target"]>>>;
 }
 interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
+}
+interface ReplicantFieldOptionLambda<P extends PermissionArg<string>>
+	extends HKT.TypeLambda {
+	readonly Target: ReplicantFieldOption<WidestFieldSchema, P>;
+	readonly type: this["Target"];
+}
+interface ReplicantFieldManifestFromOptionLambda extends HKT.TypeLambda {
+	readonly type: ReplicantFieldManifest<
+		FieldDecoded<FieldOptionSchema<this["Target"]>>
+	>;
+}
+interface ReplicantFieldManifestLambda extends HKT.TypeLambda {
+	readonly type: ReplicantFieldManifest<this["Target"]>;
 }
 
 type RpcSchemaPair = {
@@ -442,7 +474,10 @@ export function defineNamespace<
 			[K in UndeclarableRoleName]?: never;
 		};
 		principals?: PrincipalsArg;
-		replicant?: FieldOptions<Replicant, PermissionArg<DeclaredRoleName>> &
+		replicant?: ReplicantFieldOptions<
+			Replicant,
+			PermissionArg<DeclaredRoleName>
+		> &
 			UnsafeNameKeys<Replicant> &
 			CaseClashingKeys<Replicant>;
 		computed?: FieldOptions<Computed, ReadOnlyPermissionArg<DeclaredRoleName>>;
@@ -481,8 +516,8 @@ export function defineNamespace<
 	) => resolveAccess(registry, declared, capability, undefined, rule);
 
 	const replicant = mapValues<
-		FieldOptionLambda<PermissionArg<DeclaredRoleName>>,
-		FieldManifestFromOptionLambda
+		ReplicantFieldOptionLambda<PermissionArg<DeclaredRoleName>>,
+		ReplicantFieldManifestFromOptionLambda
 	>((option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: replicantPermission(
@@ -491,7 +526,8 @@ export function defineNamespace<
 			namespace,
 			namedRoles,
 		),
-	}))<FieldOptions<Replicant, PermissionArg<DeclaredRoleName>>>(
+		persistent: option.persistent ?? true,
+	}))<ReplicantFieldOptions<Replicant, PermissionArg<DeclaredRoleName>>>(
 		defineOption.replicant,
 	);
 
@@ -555,6 +591,12 @@ interface ExtendFieldOption<
 	readonly permission?: P;
 }
 
+interface ExtendReplicantFieldOption<
+	P extends PermissionArg<string>,
+> extends ExtendFieldOption<P> {
+	readonly persistent?: boolean;
+}
+
 interface ExtendRpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
 	readonly schema?: RpcSchemaPair;
 	readonly permission?: P;
@@ -580,7 +622,7 @@ export function extendNamespace<
 	PRpc extends WidestRpcFields,
 	const EReplicant extends Record<
 		string,
-		ExtendFieldOption<PermissionArg<string>>
+		ExtendReplicantFieldOption<PermissionArg<string>>
 	> = {},
 	const EComputed extends Record<
 		string,
@@ -677,35 +719,37 @@ export function extendNamespace<
 		rule: PermissionRuleArg<string> | undefined,
 	) => resolveAccess(registry, declared, capability, precedent, rule);
 
-	const replicantRemap = mapValues<FieldManifestLambda, FieldManifestLambda>(
-		(field, name) => {
-			const override = extendOption.replicant?.[name];
-			return {
-				name: field.name,
-				decode: field.decode,
-				encode: field.encode,
-				mutableDecode: field.mutableDecode,
-				permission: replicantPermission(
-					remap(
-						"replicant-read",
-						field.permission.read,
-						override?.permission?.read,
-					),
-					remap(
-						"replicant-write",
-						field.permission.write,
-						override?.permission?.write,
-					),
-					manifest.namespace,
-					namedRoles,
+	const replicantRemap = mapValues<
+		ReplicantFieldManifestLambda,
+		ReplicantFieldManifestLambda
+	>((field, name) => {
+		const override = extendOption.replicant?.[name];
+		return {
+			name: field.name,
+			decode: field.decode,
+			encode: field.encode,
+			mutableDecode: field.mutableDecode,
+			permission: replicantPermission(
+				remap(
+					"replicant-read",
+					field.permission.read,
+					override?.permission?.read,
 				),
-			};
-		},
-	)(manifest.replicant);
+				remap(
+					"replicant-write",
+					field.permission.write,
+					override?.permission?.write,
+				),
+				manifest.namespace,
+				namedRoles,
+			),
+			persistent: override?.persistent ?? field.persistent,
+		};
+	})(manifest.replicant);
 
 	const replicantAdded = mapSchemaValues<
-		ExtendFieldOption<PermissionArg<string>>,
-		FieldManifestLambda
+		ExtendReplicantFieldOption<PermissionArg<string>>,
+		ReplicantFieldManifestLambda
 	>()(extendOption.replicant, (option, name) => ({
 		...implementCodec(name, option.schema),
 		permission: replicantPermission(
@@ -714,6 +758,7 @@ export function extendNamespace<
 			manifest.namespace,
 			namedRoles,
 		),
+		persistent: option.persistent ?? true,
 	}));
 	const replicant = mergeRecords<NamespaceManifest<Extended>["replicant"]>(
 		replicantRemap,

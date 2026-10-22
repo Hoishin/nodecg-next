@@ -833,6 +833,23 @@ describe("extendNamespace", () => {
 			});
 		});
 
+		test("keeps a replicant's persistence unless the extension sets it", () => {
+			const unpersisted = extendNamespace(base, {
+				replicant: {
+					score: { persistent: false },
+					live: { schema: Schema.Boolean, persistent: false },
+				},
+			});
+			const extended = extendNamespace(unpersisted, {
+				replicant: { score: { permission: { read: { deny: ["viewer"] } } } },
+			});
+
+			expect(base.replicant.score.persistent).toBe(true);
+			expect(extended.replicant.score.persistent).toBe(false);
+			expect(extended.replicant.live.persistent).toBe(false);
+			expect(extended.replicant.secret.persistent).toBe(true);
+		});
+
 		it.effect("adds a new field with a schema, keeping existing fields", () =>
 			Effect.gen(function* () {
 				const extended = extendNamespace(base, {

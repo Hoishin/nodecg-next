@@ -2,7 +2,11 @@ import { playwright } from "@vitest/browser-playwright";
 import getPort from "get-port";
 import { defineProject } from "vitest/config";
 
-import { closeLoginPopup, countPages } from "./src/server/browser-commands.ts";
+import {
+	closeLoginPopup,
+	countPages,
+	restartServer,
+} from "./src/server/browser-commands.ts";
 import type { Backend } from "./src/server/global-setup.ts";
 import { scanSuites } from "./tests/suites.ts";
 
@@ -42,7 +46,7 @@ export const projects = await Promise.all(
 					headless: true,
 					instances: [{ browser, globalSetup: "./src/server/global-setup.ts" }],
 					screenshotFailures: false,
-					commands: { closeLoginPopup, countPages },
+					commands: { closeLoginPopup, countPages, restartServer },
 				},
 			},
 		});

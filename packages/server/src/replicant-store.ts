@@ -169,7 +169,10 @@ const sameValue = (current: LeafValue, value: Schema.Json) => {
 	);
 };
 
-type ReplicantNode = Signal<LeafValue>;
+interface ReplicantNode {
+	readonly signal: Signal<LeafValue>;
+	readonly persistent: boolean;
+}
 
 export type ComputedResult = Exit.Exit<
 	Schema.Json,
@@ -216,17 +219,20 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 					value: Schema.Json,
 				) => Effect.Effect<unknown, FieldDecodeError>,
 				defaultValue: Schema.Json,
+				persistent: boolean,
 			) {
-				const persistedValue = yield* repository.read(namespace, name).pipe(
-					Effect.asSome,
-					Effect.catchTags({
-						ReplicantNotFound: () => Effect.succeedNone,
-						DecodeError: (cause) =>
-							ReplicantLoadError.make({ namespace, name, cause }),
-						BackendError: (cause) =>
-							ReplicantLoadError.make({ namespace, name, cause }),
-					}),
-				);
+				const persistedValue = persistent
+					? yield* repository.read(namespace, name).pipe(
+							Effect.asSome,
+							Effect.catchTags({
+								ReplicantNotFound: () => Effect.succeedNone,
+								DecodeError: (cause) =>
+									ReplicantLoadError.make({ namespace, name, cause }),
+								BackendError: (cause) =>
+									ReplicantLoadError.make({ namespace, name, cause }),
+							}),
+						)
+					: Option.none();
 				const initial = yield* Option.match(persistedValue, {
 					onNone: () => Effect.succeed(defaultValue),
 					onSome: (value) =>
@@ -252,10 +258,10 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 							Effect.withSpan("setSignal", { attributes: { namespace, name } }),
 							Effect.orDie,
 						);
-						return HashMap.set(map, key, replicant);
+						return HashMap.set(map, key, { signal: replicant, persistent });
 					}),
 				);
-				if (Option.isNone(persistedValue)) {
+				if (persistent && Option.isNone(persistedValue)) {
 					yield* repository
 						.write(namespace, name, defaultValue)
 						.pipe(
@@ -276,7 +282,7 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 			});
 
 			const readLeaf = (node: ReplicantNode, namespace: string, name: string) =>
-				readSignal(node).pipe(
+				readSignal(node.signal).pipe(
 					Effect.mapError((error) =>
 						ReplicantStoreReadError.make({
 							namespace,
@@ -326,21 +332,23 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 			) =>
 				SynchronizedRef.modifyEffect(replicants, (map) =>
 					Effect.gen(function* () {
-						if (node.peek().revision !== stored.revision) {
+						if (node.signal.peek().revision !== stored.revision) {
 							return yield* CommitContended.make({ namespace, name });
 						}
 						yield* setSignal(
-							node,
+							node.signal,
 							makeLeafValue(frame.value, frame.revision),
 						).pipe(
 							Effect.withSpan("setSignal", { attributes: { namespace, name } }),
 							Effect.orDie,
 						);
-						yield* Queue.offer(pendingWrites, {
-							namespace,
-							name,
-							value: frame.value,
-						});
+						if (node.persistent) {
+							yield* Queue.offer(pendingWrites, {
+								namespace,
+								name,
+								value: frame.value,
+							});
+						}
 						yield* PubSub.publish(changes, { namespace, name, frame });
 						return [
 							{ value: frame.value, revision: frame.revision },
@@ -355,7 +363,7 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 				produce: (current: RevisionedValue) => Effect.Effect<Schema.Json, E>,
 			) {
 				const node = yield* lookupNode(namespace, name);
-				const stored = node.peek();
+				const stored = node.signal.peek();
 				const nextEncoded = yield* produce({
 					value: stored.value,
 					revision: stored.revision,
@@ -379,7 +387,7 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 				validate: (applied: Schema.Json) => Effect.Effect<unknown, E>,
 			) {
 				const node = yield* lookupNode(namespace, name);
-				const stored = node.peek();
+				const stored = node.signal.peek();
 				const applied = applyPatch(stored.value, patch);
 				if (Result.isFailure(applied)) {
 					const { op, cause } = applied.failure;

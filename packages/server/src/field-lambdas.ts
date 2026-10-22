@@ -1,5 +1,6 @@
 import type {
 	FieldManifest,
+	ReplicantFieldManifest,
 	RpcFieldManifest,
 	WidestRpcField,
 } from "@nodecg-next/core";
@@ -22,6 +23,10 @@ import type {
 
 export interface FieldManifestLambda extends HKT.TypeLambda {
 	readonly type: FieldManifest<this["Target"]>;
+}
+
+export interface ReplicantFieldManifestLambda extends HKT.TypeLambda {
+	readonly type: ReplicantFieldManifest<this["Target"]>;
 }
 
 export interface DecodedLambda extends HKT.TypeLambda {

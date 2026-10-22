@@ -31,6 +31,7 @@ import type {
 	CrossFieldReadLambda,
 	FieldManifestLambda,
 	ReplicantFieldEffectLambda,
+	ReplicantFieldManifestLambda,
 	RpcComputedAccessorLambda,
 	RpcFieldEffectLambda,
 	RpcFieldLambda,
@@ -222,7 +223,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const runSync = Effect.runSyncWith(context);
 
 	const replicant = yield* zipEffectValues<
-		FieldManifestLambda,
+		ReplicantFieldManifestLambda,
 		SeedFnLambda,
 		ReplicantFieldEffectLambda,
 		unknown,

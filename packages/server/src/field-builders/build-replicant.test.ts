@@ -55,6 +55,7 @@ const manifest = defineNamespace("ns", {
 	replicant: {
 		count: { schema: Schema.FiniteFromString },
 		other: { schema: Schema.FiniteFromString },
+		live: { schema: Schema.FiniteFromString, persistent: false },
 		locked: {
 			schema: Schema.FiniteFromString,
 			permission: { write: { deny: ["scorer"] } },
@@ -80,6 +81,22 @@ const scorer = Layer.succeed(
 );
 
 describe("buildReplicant", () => {
+	testStubbed(
+		"starts a replicant that is not persisted from its seed",
+		Effect.gen(function* () {
+			repository.read.mockReturnValue(Effect.succeed("42"));
+			const field = yield* buildReplicant(
+				"ns",
+				"live",
+				manifest.replicant.live,
+				0,
+			);
+
+			expect(yield* field.get()).toBe(0);
+			expect(repository.read).not.toHaveBeenCalled();
+		}),
+	);
+
 	testStubbed(
 		"fails when the stored value does not match the schema",
 		Effect.gen(function* () {

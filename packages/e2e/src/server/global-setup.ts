@@ -2,15 +2,27 @@ import { type ChildProcess, fork } from "node:child_process";
 
 import { NodeServices } from "@effect/platform-node";
 import {
+	Cause,
 	Duration,
 	Effect,
+	FiberSet,
 	FileSystem,
+	HashMap,
 	Layer,
 	ManagedRuntime,
+	Option,
 	Path,
 	Schema,
+	SynchronizedRef,
 } from "effect";
 import type { TestProject } from "vitest/node";
+
+import {
+	Restarted,
+	RestartError,
+	restartChannelName,
+	RestartRequest,
+} from "./restart-channel.ts";
 
 const BackendSchema = Schema.Struct({
 	name: Schema.String,
@@ -21,9 +33,11 @@ const BackendSchema = Schema.Struct({
 });
 export type Backend = typeof BackendSchema.Type;
 
-const decodeBackends = Schema.decodeUnknownSync(
+export const decodeBackends = Schema.decodeUnknownSync(
 	Schema.fromJsonString(Schema.Array(BackendSchema)),
 );
+
+const isRestartRequest = Schema.is(RestartRequest);
 
 const exited = (child: ChildProcess) =>
 	child.exitCode !== null || child.signalCode !== null;
@@ -75,6 +89,7 @@ const forkServer = (
 				);
 			}
 		});
+		return stopChild(child);
 	});
 
 const stopChild = (child: ChildProcess): Effect.Effect<void> =>
@@ -95,6 +110,21 @@ const stopChild = (child: ChildProcess): Effect.Effect<void> =>
 		);
 	});
 
+interface SuiteServer {
+	readonly backend: Backend;
+	readonly dataDir: string;
+	readonly child: SynchronizedRef.SynchronizedRef<ChildProcess>;
+}
+
+const restartServer = Effect.fn(function* (server: SuiteServer) {
+	yield* SynchronizedRef.updateEffect(server.child, (current) =>
+		Effect.gen(function* () {
+			yield* stopChild(current);
+			return yield* forkServer(server.backend, server.dataDir);
+		}),
+	);
+});
+
 export default async function setup(project: TestProject) {
 	const backends = decodeBackends(project.config.env["E2E_BACKENDS"]);
 	const runtime = Effect.gen(function* () {
@@ -103,15 +133,57 @@ export default async function setup(project: TestProject) {
 		const dataRoot = yield* fs.makeTempDirectoryScoped({
 			prefix: "nodecg-e2e-",
 		});
-		yield* Effect.forEach(
-			backends,
-			(backend) =>
-				Effect.acquireRelease(
-					forkServer(backend, path.join(dataRoot, backend.name)),
-					stopChild,
-				),
-			{ concurrency: "unbounded", discard: true },
+		const servers = HashMap.fromIterable(
+			yield* Effect.forEach(
+				backends,
+				(backend) =>
+					Effect.gen(function* () {
+						const dataDir = path.join(dataRoot, backend.name);
+						const child = yield* Effect.acquireRelease(
+							Effect.gen(function* () {
+								const forked = yield* forkServer(backend, dataDir);
+								return yield* SynchronizedRef.make(forked);
+							}),
+							(child) =>
+								Effect.gen(function* () {
+									yield* stopChild(yield* SynchronizedRef.get(child));
+								}),
+						);
+						const server: SuiteServer = { backend, dataDir, child };
+						return [backend.port, server] as const;
+					}),
+				{ concurrency: "unbounded" },
+			),
 		);
+		const runPromise = yield* FiberSet.makeRuntimePromise();
+		const channel = yield* Effect.acquireRelease(
+			Effect.sync(() => new BroadcastChannel(restartChannelName)),
+			(channel) => Effect.sync(() => channel.close()),
+		);
+		channel.onmessage = ({ data }) => {
+			if (!isRestartRequest(data)) {
+				return;
+			}
+			const server = HashMap.get(servers, data.port);
+			if (Option.isNone(server)) {
+				return;
+			}
+			void runPromise(
+				Effect.gen(function* () {
+					const reply = yield* restartServer(server.value).pipe(
+						Effect.matchCause({
+							onSuccess: () => Restarted.make({ port: data.port }),
+							onFailure: (cause) =>
+								RestartError.make({
+									port: data.port,
+									message: Cause.pretty(cause),
+								}),
+						}),
+					);
+					channel.postMessage(reply);
+				}),
+			);
+		};
 	}).pipe(
 		Layer.effectDiscard,
 		Layer.provide(NodeServices.layer),

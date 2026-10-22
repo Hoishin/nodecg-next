@@ -76,7 +76,7 @@ const doubledCount = Effect.gen(function* () {
 
 const initCount = (value: string) =>
 	Effect.flatMap(ReplicantStoreService, (store) =>
-		store.initializeReplicant("ns", "count", Effect.succeed, value),
+		store.initializeReplicant("ns", "count", Effect.succeed, value, true),
 	);
 
 const setCount = (value: string) =>

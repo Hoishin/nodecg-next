@@ -3,6 +3,7 @@ export {
 	defineNamespace,
 	extendNamespace,
 	type FieldManifest,
+	type ReplicantFieldManifest,
 	type RpcFieldManifest,
 	type NamespaceManifest,
 	type EmptyNamespaceFields,
