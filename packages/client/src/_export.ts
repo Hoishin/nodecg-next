@@ -20,6 +20,13 @@ export {
 	type TopicField,
 	type RpcField,
 } from "./load-namespace.ts";
+export {
+	DuplicateNamespace,
+	loadNodeCG,
+	loadNodeCGEffect,
+	type LoadedNodeCG,
+	type LoadNodeCGOptions,
+} from "./load-nodecg.ts";
 export { type FieldFailure, type TerminalFieldFailure } from "./field-cells.ts";
 export {
 	FieldNotFound,

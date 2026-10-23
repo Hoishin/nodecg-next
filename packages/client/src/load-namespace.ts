@@ -459,6 +459,7 @@ export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 >(manifest: NamespaceManifest<S>) {
 	return yield* buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields, topicFields, rpcFields }) => ({
+			namespace: manifest.namespace,
 			replicant: fields,
 			computed: computedFields,
 			topic: topicFields,
@@ -466,6 +467,97 @@ export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 		})),
 	);
 });
+
+export interface BuiltNamespace<
+	S extends WidestNamespaceFields = WidestNamespaceFields,
+> extends Effect.Success<ReturnType<typeof loadNamespaceEffect<S>>> {}
+
+export const adaptNamespace = <S extends WidestNamespaceFields, R, E>(
+	runtime: ManagedRuntime.ManagedRuntime<R, E>,
+	built: BuiltNamespace<S>,
+) => {
+	const subscribeEffectToPromise =
+		<Decoded, SubscribeError>(
+			subscribe: () => Effect.Effect<
+				Stream.Stream<Decoded, TerminalFieldFailure>,
+				SubscribeError,
+				Scope.Scope
+			>,
+			name: string,
+			awaitSeed: boolean,
+		) =>
+		async (
+			callback: (value: Decoded) => Promisable<void>,
+			onError?: (error: TerminalFieldFailure) => void,
+		) =>
+			runtime.runPromise(
+				Effect.gen(function* () {
+					const scope = yield* Scope.make();
+					const stream = yield* subscribe().pipe(
+						Scope.provide(scope),
+						Effect.onError(() => Scope.close(scope, Exit.void)),
+					);
+					const seeded = yield* Deferred.make<void>();
+					yield* stream.pipe(
+						Stream.runForEach((value) =>
+							Effect.tryPromise(async () => callback(value)).pipe(
+								Effect.catchTag("UnknownError", (error) =>
+									Effect.logError(
+										`Subscription handler for "${built.namespace}/${name}" threw`,
+										error,
+									),
+								),
+								Effect.tap(() => Deferred.succeed(seeded, undefined)),
+							),
+						),
+						Effect.catchTag(
+							["FieldNotFound", "FieldPermissionDenied"],
+							(error) => Effect.sync(() => onError?.(error)),
+						),
+						Effect.forkIn(scope),
+					);
+					if (awaitSeed) {
+						yield* Deferred.await(seeded);
+					}
+					return () => runtime.runPromise(Scope.close(scope, Exit.void));
+				}),
+			);
+
+	const replicant = mapValues<
+		ReplicantFieldEffectLambda,
+		ReplicantFieldPromiseLambda
+	>((field, name) => ({
+		get: () => runtime.runPromise(field.get()),
+		set: (value) => runtime.runPromise(field.set(value)),
+		update: (fn, options) => runtime.runPromise(field.update(fn, options)),
+		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
+		[fieldSource]: field[fieldSource],
+	}))(built.replicant);
+
+	const computed = mapValues<
+		ComputedFieldEffectLambda,
+		ComputedFieldPromiseLambda
+	>((field, name) => ({
+		get: () => runtime.runPromise(field.get()),
+		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
+		[fieldSource]: field[fieldSource],
+	}))(built.computed);
+
+	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(
+		(field, name) => ({
+			publish: (value) => runtime.runPromise(field.publish(value)),
+			subscribe: subscribeEffectToPromise(field.subscribe, name, false),
+		}),
+	)(built.topic);
+
+	const rpc = mapValues<RpcFieldEffectLambda, RpcFieldPromiseLambda>(
+		(field) => ({
+			call: (request) => runtime.runPromise(field.call(request)),
+		}),
+	)(built.rpc);
+
+	return { replicant, computed, topic, rpc };
+};
 
 export interface LoadedNamespace<
 	S extends WidestNamespaceFields = WidestNamespaceFields,
@@ -490,7 +582,6 @@ export interface LoadedNamespace<
 		>;
 	};
 	readonly dispose: () => void;
-	readonly [Symbol.dispose]: () => void;
 }
 
 /**
@@ -534,101 +625,19 @@ export async function loadNamespace<
 		).pipe(Layer.provide(Path.layer)),
 	);
 
-	const {
-		fields: effectFields,
-		computedFields: effectComputedFields,
-		topicFields: effectTopicFields,
-		rpcFields: effectRpcFields,
-	} = await runtime.runPromise(
-		buildNamespace(manifest).pipe(Scope.provide(runtime.scope)),
+	const built = await runtime.runPromise(
+		loadNamespaceEffect(manifest).pipe(
+			Scope.provide(runtime.scope),
+			Effect.onError(() => runtime.disposeEffect),
+		),
 	);
-
-	const subscribeEffectToPromise =
-		<Decoded, E>(
-			subscribe: () => Effect.Effect<
-				Stream.Stream<Decoded, TerminalFieldFailure>,
-				E,
-				Scope.Scope
-			>,
-			name: string,
-			awaitSeed: boolean,
-		) =>
-		async (
-			callback: (value: Decoded) => Promisable<void>,
-			onError?: (error: TerminalFieldFailure) => void,
-		) =>
-			runtime.runPromise(
-				Effect.gen(function* () {
-					const scope = yield* Scope.make();
-					const stream = yield* subscribe().pipe(
-						Scope.provide(scope),
-						Effect.onError(() => Scope.close(scope, Exit.void)),
-					);
-					const seeded = yield* Deferred.make<void>();
-					yield* stream.pipe(
-						Stream.runForEach((value) =>
-							Effect.tryPromise(async () => callback(value)).pipe(
-								Effect.catchTag("UnknownError", (error) =>
-									Effect.logError(
-										`Subscription handler for "${manifest.namespace}/${name}" threw`,
-										error,
-									),
-								),
-								Effect.tap(() => Deferred.succeed(seeded, undefined)),
-							),
-						),
-						Effect.catchTag(
-							["FieldNotFound", "FieldPermissionDenied"],
-							(error) => Effect.sync(() => onError?.(error)),
-						),
-						Effect.forkIn(scope),
-					);
-					if (awaitSeed) {
-						yield* Deferred.await(seeded);
-					}
-					return () => runtime.runPromise(Scope.close(scope, Exit.void));
-				}),
-			);
-
-	const replicant = mapValues<
-		ReplicantFieldEffectLambda,
-		ReplicantFieldPromiseLambda
-	>((field, name) => ({
-		get: () => runtime.runPromise(field.get()),
-		set: (value) => runtime.runPromise(field.set(value)),
-		update: (fn, options) => runtime.runPromise(field.update(fn, options)),
-		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
-		[fieldSource]: field[fieldSource],
-	}))(effectFields);
-
-	const computed = mapValues<
-		ComputedFieldEffectLambda,
-		ComputedFieldPromiseLambda
-	>((field, name) => ({
-		get: () => runtime.runPromise(field.get()),
-		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
-		[fieldSource]: field[fieldSource],
-	}))(effectComputedFields);
-
-	const topic = mapValues<TopicFieldEffectLambda, TopicFieldPromiseLambda>(
-		(field, name) => ({
-			publish: (value) => runtime.runPromise(field.publish(value)),
-			subscribe: subscribeEffectToPromise(field.subscribe, name, false),
-		}),
-	)(effectTopicFields);
-
-	const rpc = mapValues<RpcFieldEffectLambda, RpcFieldPromiseLambda>(
-		(field) => ({
-			call: (request) => runtime.runPromise(field.call(request)),
-		}),
-	)(effectRpcFields);
+	const { replicant, computed, topic, rpc } = adaptNamespace(runtime, built);
 
 	return {
-		replicant: replicant,
+		replicant,
 		computed,
 		topic,
 		rpc,
 		dispose: runtime.dispose,
-		[Symbol.dispose]: () => runtime.dispose(),
 	};
 }

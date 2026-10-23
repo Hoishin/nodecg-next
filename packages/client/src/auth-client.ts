@@ -81,21 +81,27 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	return { providers, me, logout, listUsers, grantRole, revokeRole };
 });
 
+export const adaptAuthClient = <R, E>(
+	runtime: ManagedRuntime.ManagedRuntime<R, E>,
+	client: Effect.Success<ReturnType<typeof makeAuthClient>>,
+) => ({
+	providers: () => runtime.runPromise(client.providers()),
+	me: () => runtime.runPromise(client.me()),
+	logout: () => runtime.runPromise(client.logout()),
+	listUsers: () => runtime.runPromise(client.listUsers()),
+	grantRole: (assignment: RoleAssignment) =>
+		runtime.runPromise(client.grantRole(assignment)),
+	revokeRole: (assignment: RoleAssignment) =>
+		runtime.runPromise(client.revokeRole(assignment)),
+});
+
 export function loadAuthClient(baseUrl?: string) {
 	const runtime = ManagedRuntime.make(FetchHttpClient.layer);
 	const client = runtime.runSync(makeAuthClient(baseUrl));
 
 	return {
-		providers: () => runtime.runPromise(client.providers()),
-		me: () => runtime.runPromise(client.me()),
-		logout: () => runtime.runPromise(client.logout()),
-		listUsers: () => runtime.runPromise(client.listUsers()),
-		grantRole: (assignment: RoleAssignment) =>
-			runtime.runPromise(client.grantRole(assignment)),
-		revokeRole: (assignment: RoleAssignment) =>
-			runtime.runPromise(client.revokeRole(assignment)),
+		...adaptAuthClient(runtime, client),
 		dispose: () => void runtime.dispose(),
-		[Symbol.dispose]: () => void runtime.dispose(),
 	};
 }
 

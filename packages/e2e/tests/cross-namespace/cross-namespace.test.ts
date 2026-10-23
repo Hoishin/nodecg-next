@@ -1,4 +1,4 @@
-import { loadNamespace } from "@nodecg-next/client";
+import { loadNodeCG } from "@nodecg-next/client";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { suiteBase } from "../../src/client/suite-base.ts";
@@ -8,8 +8,12 @@ const base = suiteBase("cross-namespace");
 
 describe("cross-namespace rpc via ctx.use", () => {
 	test("an rpc writes another namespace's replicant", async () => {
-		const cross = await loadNamespace(crossManifest, { baseUrl: base });
-		const extended = await loadNamespace(extendedManifest, { baseUrl: base });
+		const {
+			namespaces: { cross, extended },
+		} = await loadNodeCG({
+			baseUrl: base,
+			namespaces: { cross: crossManifest, extended: extendedManifest },
+		});
 		const before = await extended.replicant.score.get();
 
 		const returned = await cross.rpc.addScore.call(5);
@@ -21,8 +25,12 @@ describe("cross-namespace rpc via ctx.use", () => {
 
 describe("cross-namespace computed via ctx.use", () => {
 	test("recomputes when the source in the other namespace changes", async () => {
-		const cross = await loadNamespace(crossManifest, { baseUrl: base });
-		const extended = await loadNamespace(extendedManifest, { baseUrl: base });
+		const {
+			namespaces: { cross, extended },
+		} = await loadNodeCG({
+			baseUrl: base,
+			namespaces: { cross: crossManifest, extended: extendedManifest },
+		});
 		const score = await extended.replicant.score.get();
 
 		expect(await cross.computed.scaledScore.get()).toBe(score * 2);

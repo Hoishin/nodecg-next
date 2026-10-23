@@ -30,7 +30,6 @@ const stubClient = () => {
 		grantRole,
 		revokeRole,
 		dispose,
-		[Symbol.dispose]: dispose,
 	};
 	return { client, me, logout };
 };

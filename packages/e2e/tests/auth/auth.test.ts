@@ -1,4 +1,4 @@
-import { loadAuthClient } from "@nodecg-next/client";
+import { loadAuthClient, loadNodeCG } from "@nodecg-next/client";
 import { assert, describe, expect, onTestFinished, test } from "vitest";
 
 import { makeAuthHelpers } from "../../src/client/auth.ts";
@@ -88,6 +88,25 @@ describe("loadAuthClient", () => {
 
 		await client.logout();
 		expect((await me()).identity).toEqual({ _tag: "anonymous" });
+	});
+});
+
+describe("loadNodeCG", () => {
+	test("passes me through to the live server", async () => {
+		await login("alice");
+		onTestFinished(async () => {
+			await logout();
+		});
+		const nodecg = await loadNodeCG({ baseUrl: base, namespaces: {} });
+		onTestFinished(() => {
+			nodecg.dispose();
+		});
+
+		const payload = await nodecg.auth.me();
+		expect(payload.identity).toMatchObject({
+			_tag: "user",
+			authentication: { issuer: "dev", subject: "alice" },
+		});
 	});
 });
 
