@@ -1,5 +1,11 @@
 # @nodecg-next/internal
 
+## 0.0.4
+
+### Patch Changes
+
+- Internal updates
+
 ## 0.0.3
 
 ### Patch Changes
