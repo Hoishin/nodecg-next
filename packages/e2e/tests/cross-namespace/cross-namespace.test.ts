@@ -10,10 +10,12 @@ describe("cross-namespace rpc via ctx.use", () => {
 	test("an rpc writes another namespace's replicant", async () => {
 		const {
 			namespaces: { cross, extended },
+			dispose,
 		} = await loadNodeCG({
 			baseUrl: base,
 			namespaces: { cross: crossManifest, extended: extendedManifest },
 		});
+		onTestFinished(dispose);
 		const before = await extended.replicant.score.get();
 
 		const returned = await cross.rpc.addScore.call(5);
@@ -27,10 +29,12 @@ describe("cross-namespace computed via ctx.use", () => {
 	test("recomputes when the source in the other namespace changes", async () => {
 		const {
 			namespaces: { cross, extended },
+			dispose,
 		} = await loadNodeCG({
 			baseUrl: base,
 			namespaces: { cross: crossManifest, extended: extendedManifest },
 		});
+		onTestFinished(dispose);
 		const score = await extended.replicant.score.get();
 
 		expect(await cross.computed.scaledScore.get()).toBe(score * 2);

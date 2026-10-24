@@ -348,9 +348,13 @@ export const loadNodeCG = <
 			InMemoryTopicBroker,
 			DrizzleSqliteRepositories,
 			Layer.effect(Scope.Scope, Effect.scope),
-			Logger.layer([Logger.consolePretty()]),
-			Layer.succeed(References.MinimumLogLevel, "Warn"),
 		).pipe(
+			Layer.provideMerge(
+				Layer.merge(
+					Logger.layer([Logger.consolePretty()]),
+					Layer.succeed(References.MinimumLogLevel, "Warn"),
+				),
+			),
 			Layer.provideMerge(
 				ConfigProvider.layer(
 					ConfigProvider.fromEnv().pipe(ConfigProvider.nested("NODECG")),
