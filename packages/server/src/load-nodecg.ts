@@ -24,6 +24,7 @@ import {
 	Logger,
 	ManagedRuntime,
 	Option,
+	References,
 	Schema,
 	Scope,
 	Stream,
@@ -348,6 +349,7 @@ export const loadNodeCG = <
 			DrizzleSqliteRepositories,
 			Layer.effect(Scope.Scope, Effect.scope),
 			Logger.layer([Logger.consolePretty()]),
+			Layer.succeed(References.MinimumLogLevel, "Warn"),
 		).pipe(
 			Layer.provideMerge(
 				ConfigProvider.layer(
