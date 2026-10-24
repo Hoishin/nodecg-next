@@ -1,5 +1,14 @@
 # @nodecg-next/client
 
+## 0.1.3
+
+### Patch Changes
+
+- client `loadNodeCG` loading several namespaces over one connection ([`06978bf`](https://github.com/Hoishin/nodecg-next/commit/06978bfc834fca511e010f814c025799024bd6a3))
+- the client socket reconnects on disconnection with backoff and re-subscribes every live field ([`e82b7d4`](https://github.com/Hoishin/nodecg-next/commit/e82b7d4615c8a677d13fffbe8e0c3f6bf891fb96))
+- popup login is removed ([`39c449c`](https://github.com/Hoishin/nodecg-next/commit/39c449c1341230a0fbef90d6a0cc29e3e13b3763))
+- Field value is refused when an object key is a name every object inherits (`toString`, `constructor`, `__proto__`, etc) ([`76d2eba`](https://github.com/Hoishin/nodecg-next/commit/76d2ebafc04a88308f31b7038f11e47e2ff0a00c))
+
 ## 0.1.2
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @nodecg-next/server
 
+## 0.1.3
+
+### Patch Changes
+
+- popup login is removed ([`39c449c`](https://github.com/Hoishin/nodecg-next/commit/39c449c1341230a0fbef90d6a0cc29e3e13b3763))
+- Field value is refused when an object key is a name every object inherits (`toString`, `constructor`, `__proto__`, etc) ([`76d2eba`](https://github.com/Hoishin/nodecg-next/commit/76d2ebafc04a88308f31b7038f11e47e2ff0a00c))
+- replicants declared with `persistent: false` are not written to storage ([`04e8e3d`](https://github.com/Hoishin/nodecg-next/commit/04e8e3d827e9450d35a79e9deb0131addf73d01d))
+- the server shuts down on the IPC message `"shutdown"` ([`b5ee674`](https://github.com/Hoishin/nodecg-next/commit/b5ee674c253393088dde8b718f6bd79780ee4b55))
+
 ## 0.1.2
 
 ### Patch Changes

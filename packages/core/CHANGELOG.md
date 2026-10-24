@@ -1,5 +1,12 @@
 # @nodecg-next/core
 
+## 0.1.3
+
+### Patch Changes
+
+- Field value is refused when an object key is a name every object inherits (`toString`, `constructor`, `__proto__`, etc) ([`76d2eba`](https://github.com/Hoishin/nodecg-next/commit/76d2ebafc04a88308f31b7038f11e47e2ff0a00c))
+- replicants declared with `persistent: false` are not written to storage ([`04e8e3d`](https://github.com/Hoishin/nodecg-next/commit/04e8e3d827e9450d35a79e9deb0131addf73d01d))
+
 ## 0.1.2
 
 ### Patch Changes
