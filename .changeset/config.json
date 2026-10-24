@@ -5,6 +5,6 @@
 		{ "repo": "Hoishin/nodecg-next", "template": "- {summary} {ref}" }
 	],
 	"linked": [
-		["@nodecg-next/core", "@nodecg-next/client", "@nodecg-next/server"]
+		["@nodecg-next/core", "@nodecg-next/server", "@nodecg-next/client", "@nodecg-next/browser"]
 	]
 }
