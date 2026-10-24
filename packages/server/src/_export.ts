@@ -2,6 +2,7 @@ export {
 	loadNodeCGEffect,
 	loadNodeCG,
 	OnLoadError,
+	ShutdownMessageError,
 	type LoadedNamespaces,
 	type LoadedNodeCG,
 	type LoadNodeCGOptions,

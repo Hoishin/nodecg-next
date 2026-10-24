@@ -1,3 +1,5 @@
+import { on } from "node:events";
+
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import {
 	declaredRoleNames,
@@ -15,6 +17,7 @@ import {
 	ConfigProvider,
 	Effect,
 	Exit,
+	Formatter,
 	HashMap,
 	type HKT,
 	Layer,
@@ -23,6 +26,7 @@ import {
 	Option,
 	Schema,
 	Scope,
+	Stream,
 } from "effect";
 import { HttpRouter } from "effect/http";
 import { Reactivity } from "effect/reactivity";
@@ -90,6 +94,17 @@ export class OnLoadError extends Schema.TaggedError<OnLoadError>()(
 ) {
 	override readonly message = `onLoad for namespace "${this.namespace}" failed: ${this.cause.message}`;
 }
+
+export class ShutdownMessageError extends Schema.TaggedError<ShutdownMessageError>()(
+	"ShutdownMessageError",
+	{ cause: Schema.Defect() },
+) {
+	override readonly message = `Handling the shutdown message failed:${Formatter.format(this.cause)}`;
+}
+
+const isShutdownMessage = Schema.is(
+	Schema.Tuple([Schema.Literal("shutdown"), Schema.Unknown]),
+);
 
 const replicantRepository = (storage: StorageOption | undefined) => {
 	if (typeof storage === "undefined") {
@@ -286,8 +301,24 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		);
 		const serverRequirement =
 			yield* Effect.context<Layer.Services<typeof ServerLive>>();
+
+		const shutdownMessage = Effect.gen(function* () {
+			const processMessages = Stream.fromAsyncIterable(
+				on(process, "message"),
+				(cause) => ShutdownMessageError.make({ cause }),
+			);
+			yield* Stream.runDrain(
+				processMessages.pipe(Stream.filter(isShutdownMessage), Stream.take(1)),
+			);
+			if (process.connected) {
+				process.disconnect();
+			}
+			process.emit("SIGINT");
+		});
+
 		const start = Layer.launch(ServerLive).pipe(
 			Effect.provide(serverRequirement),
+			Effect.raceFirst(shutdownMessage),
 			Effect.satisfiesServicesType<never>(),
 		);
 

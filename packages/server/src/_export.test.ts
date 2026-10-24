@@ -34,5 +34,5 @@ test("loads and starts with exported layers only", () => {
 		),
 	);
 
-	expectTypeOf(program).toExtend<Effect.Effect<never, unknown, never>>();
+	expectTypeOf(program).toExtend<Effect.Effect<void, unknown, never>>();
 });

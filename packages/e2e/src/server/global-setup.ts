@@ -1,6 +1,7 @@
 import { type ChildProcess, fork } from "node:child_process";
 
 import { NodeServices } from "@effect/platform-node";
+import { OperatingSystemService } from "@nodecg-next/server";
 import {
 	Cause,
 	Duration,
@@ -10,6 +11,7 @@ import {
 	HashMap,
 	Layer,
 	ManagedRuntime,
+	Match,
 	Option,
 	Path,
 	Schema,
@@ -60,44 +62,47 @@ class SuiteServerExited extends Schema.TaggedError<SuiteServerExited>()(
 	override readonly message = `suite server ${this.name} exited before ready (${this.code})`;
 }
 
-const forkServer = (
-	backend: Backend,
-	dataDir: string,
-): Effect.Effect<ChildProcess, SuiteServerExited> =>
-	Effect.callback((resume) => {
-		const child = fork(backend.serverEntry, {
-			env: {
-				NODECG_PORT: String(backend.port),
-				NODECG_BASE_URL: backend.baseUrl,
-				NODECG_DATA_DIR: dataDir,
-				NODECG_SUPERADMINS: backend.superadmins,
-			},
-			stdio: ["ignore", "inherit", "inherit", "ipc"],
-		});
-		let settled = false;
-		child.once("message", (message: { type?: string }) => {
-			if (message.type === "ready" && !settled) {
-				settled = true;
-				resume(Effect.succeed(child));
-			}
-		});
-		child.once("exit", (code) => {
-			if (!settled) {
-				settled = true;
-				resume(
-					Effect.fail(new SuiteServerExited({ name: backend.name, code })),
-				);
-			}
-		});
-		return stopChild(child);
-	});
+const forkServer = (backend: Backend, dataDir: string) =>
+	Effect.callback<ChildProcess, SuiteServerExited, OperatingSystemService>(
+		(resume) => {
+			const child = fork(backend.serverEntry, {
+				env: {
+					NODECG_PORT: String(backend.port),
+					NODECG_BASE_URL: backend.baseUrl,
+					NODECG_DATA_DIR: dataDir,
+					NODECG_SUPERADMINS: backend.superadmins,
+				},
+				stdio: ["ignore", "inherit", "inherit", "ipc"],
+			});
+			let settled = false;
+			child.once("message", (message: { type?: string }) => {
+				if (message.type === "ready" && !settled) {
+					settled = true;
+					resume(Effect.succeed(child));
+				}
+			});
+			child.once("exit", (code) => {
+				if (!settled) {
+					settled = true;
+					resume(
+						Effect.fail(new SuiteServerExited({ name: backend.name, code })),
+					);
+				}
+			});
+			return stopChild(child);
+		},
+	);
 
-const stopChild = (child: ChildProcess): Effect.Effect<void> =>
+const stopChild = (child: ChildProcess) =>
 	Effect.gen(function* () {
 		if (exited(child)) {
 			return;
 		}
-		child.kill();
+		Match.value(yield* OperatingSystemService).pipe(
+			Match.when("windows", () => child.send("shutdown")),
+			Match.whenOr("macos", "linux", () => child.kill()),
+			Match.exhaustive,
+		);
 		yield* onceExit(child).pipe(
 			Effect.timeoutOrElse({
 				duration: Duration.seconds(2),
@@ -155,7 +160,8 @@ export default async function setup(project: TestProject) {
 				{ concurrency: "unbounded" },
 			),
 		);
-		const runPromise = yield* FiberSet.makeRuntimePromise();
+		const runPromise =
+			yield* FiberSet.makeRuntimePromise<OperatingSystemService>();
 		const channel = yield* Effect.acquireRelease(
 			Effect.sync(() => new BroadcastChannel(restartChannelName)),
 			(channel) => Effect.sync(() => channel.close()),
@@ -186,7 +192,9 @@ export default async function setup(project: TestProject) {
 		};
 	}).pipe(
 		Layer.effectDiscard,
-		Layer.provide(NodeServices.layer),
+		Layer.provide(
+			Layer.merge(NodeServices.layer, OperatingSystemService.layer),
+		),
 		ManagedRuntime.make,
 	);
 	await runtime.context();

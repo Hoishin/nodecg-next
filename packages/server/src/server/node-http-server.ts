@@ -1,6 +1,5 @@
 import {
 	createServer,
-	type Server,
 	// @effect-diagnostics-next-line nodeBuiltinImport:off
 } from "node:http";
 
@@ -9,7 +8,7 @@ import {
 	type NodeHttpServerRequest,
 } from "@effect/platform-node";
 import { baseUrlCookieName } from "@nodecg-next/internal";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { Cookies } from "effect/http";
 
 import { config } from "../server-config.ts";
@@ -27,22 +26,6 @@ const baseUrlCookieListener = Effect.gen(function* () {
 		response.setHeader("set-cookie", setCookieHeader);
 	};
 });
-
-const forceShutdownServer = Effect.fn("forceShutdownServer")(function* (
-	server: Server,
-) {
-	yield* Effect.logInfo("Server stopping");
-	yield* Effect.sleep("3 seconds");
-	yield* Effect.logWarning("Graceful shutdown exceeded timeout");
-	yield* Effect.sync(() => {
-		server.closeAllConnections();
-	});
-});
-
-const boundedClose = (server: Server) =>
-	Layer.effectDiscard(
-		Effect.addFinalizer(() => Effect.forkDetach(forceShutdownServer(server))),
-	);
 
 export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
 	onReady,
@@ -66,7 +49,8 @@ export const makeNodeHttpServer = Effect.fn("makeNodeHttpServer")(function* ({
 	}
 
 	const port = yield* config.port;
-	return boundedClose(server).pipe(
-		Layer.provideMerge(NodeHttpServer.layer(() => server, { port })),
-	);
+	return NodeHttpServer.layer(() => server, {
+		port,
+		gracefulShutdownTimeout: "3 seconds",
+	});
 });
