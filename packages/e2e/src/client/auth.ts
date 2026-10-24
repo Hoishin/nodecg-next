@@ -1,9 +1,9 @@
-import { authSession } from "@nodecg-next/browser";
 import { loadAuthClient, type RoleAssignment } from "@nodecg-next/client";
+import { Url, UrlParams } from "effect/http";
+import { commands } from "vitest/browser";
 
 export const makeAuthHelpers = (baseUrl: string) => {
 	const client = loadAuthClient(baseUrl);
-	const session = authSession(client);
 
 	const login = async (subject: string) => {
 		await client.logout();
@@ -12,7 +12,12 @@ export const makeAuthHelpers = (baseUrl: string) => {
 		if (typeof dev === "undefined") {
 			throw new Error("dev provider is not registered");
 		}
-		return session.popupLogin({ ...dev, url: `${dev.url}?as=${subject}` });
+		const params = UrlParams.setAll({
+			as: subject,
+			returnTo: `${new URL(baseUrl).pathname}/api/internal/me`,
+		});
+		const url = Url.modifyUrlParams(dev.url, params);
+		await commands.navigate(url.href);
 	};
 
 	const logout = () => client.logout();
@@ -61,7 +66,6 @@ export const makeAuthHelpers = (baseUrl: string) => {
 
 	return {
 		client,
-		session,
 		login,
 		logout,
 		me,

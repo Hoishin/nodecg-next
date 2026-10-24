@@ -5,9 +5,8 @@ import {
 	type LoginProvider,
 	UserId,
 } from "@nodecg-next/internal";
-import { buildRelativeUrl } from "@nodecg-next/internal/utils";
 import { Effect, ManagedRuntime, Schema } from "effect";
-import { FetchHttpClient } from "effect/http";
+import { FetchHttpClient, Url, UrlParams } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
 
 export class AuthRequestFailed extends Schema.TaggedError<AuthRequestFailed>()(
@@ -22,8 +21,10 @@ export interface RoleAssignment {
 	readonly role: typeof Role.Encoded;
 }
 
-export const loginUrl = (provider: LoginProvider, returnTo?: string) =>
-	buildRelativeUrl(provider.url, { returnTo });
+export const loginUrl = (provider: LoginProvider, returnTo?: string) => {
+	const params = UrlParams.setAll({ returnTo });
+	return Url.modifyUrlParams(provider.url, params).href;
+};
 
 export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	baseUrl?: string,

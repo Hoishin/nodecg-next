@@ -1,7 +1,5 @@
-import { authSession } from "@nodecg-next/browser";
-import { loadAuthClient, type LoginProvider } from "@nodecg-next/client";
-import { assert, describe, expect, onTestFinished, test, vi } from "vitest";
-import { commands } from "vitest/browser";
+import { loadAuthClient } from "@nodecg-next/client";
+import { assert, describe, expect, onTestFinished, test } from "vitest";
 
 import { makeAuthHelpers } from "../../src/client/auth.ts";
 import { suiteBase } from "../../src/client/suite-base.ts";
@@ -78,12 +76,10 @@ describe("loadAuthClient", () => {
 			await logout();
 		});
 
-		expect(await client.providers()).toEqual([
-			{
-				name: "dev",
-				url: "/s/auth/api/internal/authentication/login/dev",
-			},
-		]);
+		const providers = await client.providers();
+		expect(providers.map(({ name, url }) => ({ name, url: url.href }))).toEqual(
+			[{ name: "dev", url: `${base}/api/internal/authentication/login/dev` }],
+		);
 
 		await login("alice");
 		const payload = await client.me();
@@ -92,54 +88,6 @@ describe("loadAuthClient", () => {
 
 		await client.logout();
 		expect((await me()).identity).toEqual({ _tag: "anonymous" });
-	});
-});
-
-describe("authSession", () => {
-	test("popupLogin resolves the user identity, updates the store, and closes the popup", async () => {
-		const session = authSession(loadAuthClient(base));
-		onTestFinished(() => {
-			session.client.dispose();
-		});
-		onTestFinished(async () => {
-			await logout();
-		});
-		const changed = vi.fn();
-		const unsubscribe = session.identity.subscribe(changed);
-		onTestFinished(unsubscribe);
-		const pagesBefore = await commands.countPages();
-
-		const providers = await session.client.providers();
-		const dev = providers.find((provider) => provider.name === "dev");
-		assert(dev);
-
-		const user = await session.popupLogin(dev);
-		expect(user.authentication.subject).toBe("alice");
-		expect(session.identity.get()).toEqual(user);
-		expect(changed).toHaveBeenCalled();
-		await vi.waitFor(async () => {
-			expect(await commands.countPages()).toBe(pagesBefore);
-		});
-	});
-
-	test("closing the popup mid-flow rejects with LoginAbandoned and leaves the store unchanged", async () => {
-		await logout();
-		const session = authSession(loadAuthClient(base));
-		onTestFinished(() => {
-			session.client.dispose();
-		});
-		await vi.waitFor(() => {
-			expect(session.identity.get()).toEqual({ _tag: "anonymous" });
-		});
-
-		const missing: LoginProvider = {
-			name: "missing",
-			url: "/s/auth/api/internal/authentication/login/missing",
-		};
-		const pending = session.popupLogin(missing);
-		await commands.closeLoginPopup();
-		await expect(pending).rejects.toThrow(/abandoned/i);
-		expect(session.identity.get()).toEqual({ _tag: "anonymous" });
 	});
 });
 

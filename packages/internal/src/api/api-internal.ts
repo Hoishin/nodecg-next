@@ -51,7 +51,7 @@ export type MePayload = typeof MePayload.Type;
 
 export const LoginProvider = Schema.Struct({
 	name: Schema.String,
-	url: Schema.String,
+	url: Schema.URLFromString,
 });
 export type LoginProvider = typeof LoginProvider.Type;
 
@@ -70,6 +70,7 @@ const AuthenticationGroup = HttpApiGroup.make("Authentication")
 	.add(
 		HttpApiEndpoint.get("providers", "/authentication/providers", {
 			success: Schema.Array(LoginProvider),
+			error: MalformedUrl.pipe(HttpApiSchema.status(400)),
 		}),
 	)
 	.add(

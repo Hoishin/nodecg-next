@@ -8,15 +8,19 @@ import {
 	RestartRequest,
 } from "./restart-channel.ts";
 
-export const closeLoginPopup: BrowserCommand<[]> = async (ctx) => {
-	const popup =
-		ctx.context.pages().find((page) => page !== ctx.page) ??
-		(await ctx.context.waitForEvent("page"));
-	await popup.close();
+export const navigate: BrowserCommand<[url: string]> = async (ctx, url) => {
+	const page = await ctx.context.newPage();
+	try {
+		const res = await page.goto(url);
+		if (res === null || !res.ok()) {
+			throw new Error(
+				`Navigation to ${url} ended with status ${res?.status() ?? "none"}`,
+			);
+		}
+	} finally {
+		await page.close();
+	}
 };
-
-export const countPages: BrowserCommand<[]> = (ctx) =>
-	ctx.context.pages().length;
 
 class UnknownSuite extends Schema.TaggedError<UnknownSuite>()("UnknownSuite", {
 	suite: Schema.String,

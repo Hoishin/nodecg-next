@@ -1,5 +1,5 @@
 import { Result, Schema } from "effect";
-import { Url, UrlParams } from "effect/http";
+import { Url } from "effect/http";
 
 export class MalformedUrl extends Schema.TaggedError<MalformedUrl>()(
 	"MalformedUrl",
@@ -19,12 +19,4 @@ export const parseRelativeUrl = (url: string) =>
 			pathname: parsed.pathname,
 			search: parsed.search,
 		})),
-	);
-
-export const buildRelativeUrl = (url: string, params: UrlParams.Input) =>
-	parseWithPlaceholder(url).pipe(
-		Result.map((parsed) =>
-			Url.modifyUrlParams(parsed, UrlParams.setAll(params)),
-		),
-		Result.map((updated) => updated.pathname + updated.search),
 	);

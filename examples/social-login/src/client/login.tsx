@@ -1,6 +1,6 @@
 import { authSession } from "@nodecg-next/browser";
-import { type LoginProvider } from "@nodecg-next/client";
-import { Suspense, use, useState, useSyncExternalStore } from "react";
+import { loginUrl } from "@nodecg-next/client";
+import { Suspense, use, useSyncExternalStore } from "react";
 
 const session = authSession();
 const providersPromise = session.client.providers();
@@ -8,27 +8,14 @@ const providersPromise = session.client.providers();
 const useIdentity = () =>
 	useSyncExternalStore(session.identity.subscribe, session.identity.get);
 
-function LoginButtons({ onError }: { onError: (message: string) => void }) {
+function LoginLinks() {
 	const providers = use(providersPromise);
-	const logIn = (provider: LoginProvider) => {
-		void session.popupLogin(provider).catch((cause: unknown) => {
-			onError(
-				cause instanceof Error && cause.message.includes("blocked")
-					? "Popups are blocked — allow them for this page and try again"
-					: String(cause),
-			);
-		});
-	};
 	return (
 		<>
 			{providers.map((provider) => (
-				<button
-					key={provider.name}
-					type="button"
-					onClick={() => logIn(provider)}
-				>
+				<a key={provider.name} href={loginUrl(provider, location.pathname)}>
 					Log in with {provider.name}
-				</button>
+				</a>
 			))}
 		</>
 	);
@@ -36,7 +23,6 @@ function LoginButtons({ onError }: { onError: (message: string) => void }) {
 
 export function Login() {
 	const identity = useIdentity();
-	const [error, setError] = useState<string | undefined>(undefined);
 
 	if (typeof identity === "undefined") {
 		return <p>Checking session…</p>;
@@ -66,9 +52,8 @@ export function Login() {
 		<div>
 			<p>Not logged in.</p>
 			<Suspense fallback={null}>
-				<LoginButtons onError={setError} />
+				<LoginLinks />
 			</Suspense>
-			{typeof error === "undefined" ? null : <p>{error}</p>}
 		</div>
 	);
 }

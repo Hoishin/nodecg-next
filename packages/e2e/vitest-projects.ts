@@ -2,11 +2,7 @@ import { playwright } from "@vitest/browser-playwright";
 import getPort from "get-port";
 import { defineProject } from "vitest/config";
 
-import {
-	closeLoginPopup,
-	countPages,
-	restartServer,
-} from "./src/server/browser-commands.ts";
+import { navigate, restartServer } from "./src/server/browser-commands.ts";
 import type { Backend } from "./src/server/global-setup.ts";
 import { scanSuites } from "./tests/suites.ts";
 
@@ -40,13 +36,14 @@ export const projects = await Promise.all(
 				sequence: { groupOrder: index + 2 }, // 0 and 1 are unit tests
 				include: ["tests/**/*.test.ts"],
 				env: { E2E_BACKENDS: JSON.stringify(backends) },
+				api: { port: vitePort, strictPort: true },
 				browser: {
 					enabled: true,
 					provider: playwright(),
 					headless: true,
 					instances: [{ browser, globalSetup: "./src/server/global-setup.ts" }],
 					screenshotFailures: false,
-					commands: { closeLoginPopup, countPages, restartServer },
+					commands: { navigate, restartServer },
 				},
 			},
 		});

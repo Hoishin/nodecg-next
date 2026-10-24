@@ -5,6 +5,7 @@ export default defineConfig({
 		"packages/internal",
 		"packages/core",
 		"packages/client",
+		"packages/browser",
 		"packages/server",
 	],
 	platform: "neutral",

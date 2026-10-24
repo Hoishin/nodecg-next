@@ -88,10 +88,11 @@ const callbackUrl = Effect.fn("callbackUrl")(function* (
 	provider: string,
 ) {
 	const path = yield* UrlPath;
-	const url = yield* Effect.fromResult(Url.fromString(baseUrl)).pipe(
-		Effect.mapError((error) =>
+	const url = yield* Url.fromString(baseUrl).pipe(
+		Result.mapError((error) =>
 			MalformedUrl.make({ url: baseUrl, cause: error.cause }),
 		),
+		Effect.fromResult,
 	);
 	return Url.setPathname(
 		url,
@@ -99,12 +100,21 @@ const callbackUrl = Effect.fn("callbackUrl")(function* (
 	).href;
 });
 
-const loginPath = Effect.fn("loginPath")(function* (
-	basePath: string,
+const loginUrl = Effect.fn("loginUrl")(function* (
+	baseUrl: string,
 	provider: string,
 ) {
 	const path = yield* UrlPath;
-	return path.join(basePath, "api/internal/authentication/login", provider);
+	const url = yield* Url.fromString(baseUrl).pipe(
+		Result.mapError((error) =>
+			MalformedUrl.make({ url: baseUrl, cause: error.cause }),
+		),
+		Effect.fromResult,
+	);
+	return Url.setPathname(
+		url,
+		path.join(url.pathname, "api/internal/authentication/login", provider),
+	);
 });
 
 const tokenEquals = Effect.fnUntraced(function* (
@@ -187,7 +197,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 					Effect.forEach(
 						Array.fromIterable(HashMap.keys(registry)).toSorted(),
 						(name) =>
-							loginPath(baseUrl.pathname, name).pipe(
+							loginUrl(baseUrl.href, name).pipe(
 								Effect.map((url) => ({ name, url })),
 							),
 					),
@@ -314,11 +324,9 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 							path: baseUrl.pathname,
 							maxAge: sessionTtl,
 						});
-						const returnTo = loginAttempt.value.returnTo;
-						return yield* (
-							typeof returnTo === "undefined"
-								? HttpServerResponse.text("Success")
-								: HttpServerResponse.redirect(returnTo, { status: 302 })
+						return yield* HttpServerResponse.redirect(
+							loginAttempt.value.returnTo ?? baseUrl.pathname,
+							{ status: 302 },
 						).pipe(clearLoginAttemptCookie);
 					}),
 				)

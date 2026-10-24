@@ -1,5 +1,5 @@
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -46,14 +46,15 @@ const mePayload = {
 
 describe("loginUrl", () => {
 	test("returns the provider URL, appending an encoded returnTo when given", () => {
-		const dev = { name: "dev", url: "/api/internal/authentication/login/dev" };
-		expect(loginUrl(dev)).toEqual(
-			Result.succeed("/api/internal/authentication/login/dev"),
+		const dev = {
+			name: "dev",
+			url: new URL("https://host/api/internal/authentication/login/dev"),
+		};
+		expect(loginUrl(dev)).toBe(
+			"https://host/api/internal/authentication/login/dev",
 		);
-		expect(loginUrl(dev, "/dash?tab=1")).toEqual(
-			Result.succeed(
-				"/api/internal/authentication/login/dev?returnTo=%2Fdash%3Ftab%3D1",
-			),
+		expect(loginUrl(dev, "/dash?tab=1")).toBe(
+			"https://host/api/internal/authentication/login/dev?returnTo=%2Fdash%3Ftab%3D1",
 		);
 	});
 });
@@ -64,15 +65,23 @@ describe("providers", () => {
 		Effect.gen(function* () {
 			fetch.mockResolvedValue(
 				jsonResponse([
-					{ name: "dev", url: "/api/internal/authentication/login/dev" },
+					{
+						name: "dev",
+						url: "https://host/api/internal/authentication/login/dev",
+					},
 				]),
 			);
 			const client = yield* makeAuthClient();
 
 			const providers = yield* client.providers();
 
-			expect(providers).toEqual([
-				{ name: "dev", url: "/api/internal/authentication/login/dev" },
+			expect(
+				providers.map(({ name, url }) => ({ name, url: url.href })),
+			).toEqual([
+				{
+					name: "dev",
+					url: "https://host/api/internal/authentication/login/dev",
+				},
 			]);
 			const request = getLastRequest();
 			expect(request.method).toBe("GET");
@@ -84,6 +93,22 @@ describe("providers", () => {
 		"fails with AuthRequestFailed when the server errors",
 		Effect.gen(function* () {
 			fetch.mockResolvedValue(new Response(null, { status: 500 }));
+			const client = yield* makeAuthClient();
+
+			const error = yield* client.providers().pipe(Effect.flip);
+
+			expect(error._tag).toBe("AuthRequestFailed");
+		}),
+	);
+
+	testFetch(
+		"fails with AuthRequestFailed when a provider URL does not decode",
+		Effect.gen(function* () {
+			fetch.mockResolvedValue(
+				jsonResponse([
+					{ name: "dev", url: "/api/internal/authentication/login/dev" },
+				]),
+			);
 			const client = yield* makeAuthClient();
 
 			const error = yield* client.providers().pipe(Effect.flip);

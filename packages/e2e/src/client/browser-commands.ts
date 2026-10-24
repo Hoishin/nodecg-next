@@ -1,7 +1,6 @@
 declare module "vitest/internal/browser" {
 	interface BrowserCommands {
-		closeLoginPopup: () => Promise<void>;
-		countPages: () => Promise<number>;
+		navigate: (url: string) => Promise<void>;
 		restartServer: (suite: string) => Promise<void>;
 	}
 }
