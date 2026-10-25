@@ -99,7 +99,7 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		expect(await ns.replicant.count.get()).toBe(42);
 	});
 
-	test("subscribe receives the current value, then published updates", async () => {
+	test("a subscriber gets the old value", async () => {
 		const {
 			namespaces: { fixture: ns },
 			dispose,
@@ -109,14 +109,19 @@ describe("client ⇄ server replicant sync (as producer)", () => {
 		});
 		onTestFinished(dispose);
 		await ns.replicant.count.set(5);
-		const received: number[] = [];
-		const cancel = await ns.replicant.count.subscribe((value) => {
-			received.push(value);
+		const received: Array<[number, number | undefined]> = [];
+		const cancel = await ns.replicant.count.subscribe((value, oldValue) => {
+			received.push([value, oldValue]);
 		});
 		onTestFinished(() => cancel());
-		await vi.waitFor(() => expect(received).toEqual([5]));
+		await vi.waitFor(() => expect(received).toEqual([[5, undefined]]));
 		await ns.replicant.count.set(7);
-		await vi.waitFor(() => expect(received).toEqual([5, 7]));
+		await vi.waitFor(() =>
+			expect(received).toEqual([
+				[5, undefined],
+				[7, 5],
+			]),
+		);
 	});
 
 	test("a subscriber receives its own update exactly once", async () => {

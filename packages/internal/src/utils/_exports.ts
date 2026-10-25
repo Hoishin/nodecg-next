@@ -21,6 +21,7 @@ export {
 export {
 	type EffectToPromiseLambda,
 	type EffectToSyncLambda,
+	type StreamToSubscribeTopicLambda,
 	type StreamToSubscribeLambda,
 	type IdentityLambda,
 	type ApplyLambdaToObject,

@@ -1221,6 +1221,91 @@ describe("loadNamespace (Promise wrapper)", () => {
 		expect(received).toEqual([1]);
 	});
 
+	it("a replicant subscriber gets the old value", async () => {
+		const { stub: channelStub } = createMessageChannelStub();
+		const queue = Effect.runSync(Queue.unbounded<ServerMessage>());
+		channelStub.receive.mockReturnValue(
+			Effect.succeed(Stream.fromQueue(queue)),
+		);
+		const manifest = defineNamespace("root", {
+			replicant: { count: { schema: Schema.FiniteFromString } },
+		});
+		const field = {
+			type: "replicant",
+			namespace: "root",
+			name: "count",
+		} as const;
+		const loaded = await loadNamespace(manifest, {
+			fieldTransport: () => createTransportStub().stub,
+			messageChannel: () => channelStub,
+		});
+
+		const received: Array<[number, number | undefined]> = [];
+		const subscribed = loaded.replicant.count.subscribe((value, oldValue) => {
+			received.push([value, oldValue]);
+		});
+		Queue.offerUnsafe(
+			queue,
+			ReplicantSnapshotMessage.make({ field, value: "1", revision: 1 }),
+		);
+		const cancel = await subscribed;
+		onTestFinished(() => cancel());
+		Queue.offerUnsafe(
+			queue,
+			ReplicantSnapshotMessage.make({ field, value: "2", revision: 2 }),
+		);
+		Queue.offerUnsafe(
+			queue,
+			ReplicantSnapshotMessage.make({ field, value: "3", revision: 3 }),
+		);
+
+		await vi.waitFor(() =>
+			expect(received).toEqual([
+				[1, undefined],
+				[2, 1],
+				[3, 2],
+			]),
+		);
+	});
+
+	it("a computed subscriber gets the old value", async () => {
+		const { stub: channelStub } = createMessageChannelStub();
+		const queue = Effect.runSync(Queue.unbounded<ServerMessage>());
+		channelStub.receive.mockReturnValue(
+			Effect.succeed(Stream.fromQueue(queue)),
+		);
+		const manifest = defineNamespace("root", {
+			computed: { doubled: { schema: Schema.FiniteFromString } },
+		});
+		const field = {
+			type: "computed",
+			namespace: "root",
+			name: "doubled",
+		} as const;
+		const loaded = await loadNamespace(manifest, {
+			fieldTransport: () => createTransportStub().stub,
+			messageChannel: () => channelStub,
+		});
+
+		const received: Array<[number, number | undefined]> = [];
+		const subscribed = loaded.computed.doubled.subscribe((value, oldValue) => {
+			received.push([value, oldValue]);
+		});
+		Queue.offerUnsafe(queue, FieldValueMessage.make({ field, value: "2" }));
+		const cancel = await subscribed;
+		onTestFinished(() => cancel());
+		Queue.offerUnsafe(queue, FieldValueMessage.make({ field, value: "6" }));
+		Queue.offerUnsafe(queue, FieldValueMessage.make({ field, value: "10" }));
+
+		await vi.waitFor(() =>
+			expect(received).toEqual([
+				[2, undefined],
+				[6, 2],
+				[10, 6],
+			]),
+		);
+	});
+
 	it("topic subscribe resolves before any event is published", async () => {
 		const manifest = defineNamespace("root", {
 			topic: { chat: { schema: Schema.Finite } },

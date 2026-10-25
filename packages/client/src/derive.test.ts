@@ -36,6 +36,28 @@ describe("derive", () => {
 		expect(seen).toEqual([2, 9]);
 	});
 
+	it("a listener gets the old value", () => {
+		const count = source(ready(1));
+		const doubled = derive((get) => get(count.handle) * 2);
+
+		const seen: Array<[number, number | undefined]> = [];
+		const unsubscribe = doubled.subscribe(
+			(value, oldValue) => {
+				seen.push([value, oldValue]);
+			},
+			() => {},
+		);
+		onTestFinished(unsubscribe);
+		count.s.value = ready(2);
+		count.s.value = Loadable.Failure({ error: new Error("rejected") });
+		count.s.value = ready(3);
+		expect(seen).toEqual([
+			[2, undefined],
+			[4, 2],
+			[6, 4],
+		]);
+	});
+
 	it("a batched multi-source write recomputes once, glitch-free", () => {
 		const a = source(ready(1));
 		const b = source(ready(2));

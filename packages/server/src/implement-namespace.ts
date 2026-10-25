@@ -65,6 +65,10 @@ export type ImplementComputed<
 };
 
 export type Subscribe<out Decoded> = (
+	handler: (value: Decoded, oldValue: Decoded | undefined) => Promisable<void>,
+) => Promise<() => Promise<void>>;
+
+export type SubscribeTopic<out Decoded> = (
 	handler: (value: Decoded) => Promisable<void>,
 ) => Promise<() => Promise<void>>;
 
@@ -83,7 +87,7 @@ export type ComputedField<out Decoded> = {
 
 export type TopicField<in out Decoded> = {
 	readonly publish: (value: Decoded) => Promise<void>;
-	readonly subscribe: Subscribe<Decoded>;
+	readonly subscribe: SubscribeTopic<Decoded>;
 };
 
 export type RpcField<in Request, out Response> = (

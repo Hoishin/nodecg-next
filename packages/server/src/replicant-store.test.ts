@@ -931,7 +931,7 @@ describe("subscribeComputed", () => {
 						const number = yield* Schema.decodeUnknownEffect(Schema.Finite)(
 							value,
 						);
-						return Math.floor(number / 10);
+						return { tens: Math.floor(number / 10) };
 					}).pipe(Effect.orDie, Effect.exit),
 				),
 			);
@@ -941,10 +941,12 @@ describe("subscribeComputed", () => {
 				Effect.sync(() => received.push(value)),
 			).pipe(Effect.forkChild);
 
-			yield* waitFor(() => expect(received).toEqual([1]));
+			yield* waitFor(() => expect(received).toEqual([{ tens: 1 }]));
 			yield* store.commit("ns", "a", () => Effect.succeed(15));
 			yield* store.commit("ns", "a", () => Effect.succeed(27));
-			yield* waitFor(() => expect(received).toEqual([1, 2]));
+			yield* waitFor(() =>
+				expect(received).toEqual([{ tens: 1 }, { tens: 2 }]),
+			);
 		}),
 	);
 
@@ -981,6 +983,46 @@ describe("subscribeComputed", () => {
 			yield* store.commit("ns", "a", () => Effect.succeed(2));
 			yield* store.commit("ns", "a", () => Effect.succeed(3));
 			yield* waitFor(() => expect(received).toEqual([1, 3]));
+		}),
+	);
+
+	test(
+		"recovering to the value from before a failure is no change",
+		Effect.gen(function* () {
+			const store = yield* ReplicantStoreService;
+			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
+			const context = yield* Effect.context();
+			yield* store.initializeComputed("ns", "c", () =>
+				Effect.runSyncWith(context)(
+					Effect.gen(function* () {
+						const { value } = yield* store
+							.readReplicant("ns", "a")
+							.pipe(Effect.orDie);
+						if (value === 2) {
+							return yield* ComputedComputeError.make({
+								namespace: "ns",
+								name: "c",
+								cause: new Error("boom"),
+							});
+						}
+						return { value };
+					}).pipe(Effect.exit),
+				),
+			);
+			const stream = yield* store.subscribeComputed("ns", "c");
+			const received: Schema.Json[] = [];
+			yield* Stream.runForEach(stream, (value) =>
+				Effect.sync(() => received.push(value)),
+			).pipe(Effect.forkChild);
+
+			yield* waitFor(() => expect(received).toEqual([{ value: 1 }]));
+			yield* store.commit("ns", "a", () => Effect.succeed(2));
+			yield* store.commit("ns", "a", () => Effect.succeed(1));
+			yield* store.commit("ns", "a", () => Effect.succeed(2));
+			yield* store.commit("ns", "a", () => Effect.succeed(3));
+			yield* waitFor(() =>
+				expect(received).toEqual([{ value: 1 }, { value: 3 }]),
+			);
 		}),
 	);
 

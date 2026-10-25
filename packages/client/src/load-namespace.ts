@@ -13,6 +13,7 @@ import {
 	mapValues,
 	toError,
 	type EffectToPromiseLambda,
+	type StreamToSubscribeTopicLambda,
 	type StreamToSubscribeLambda,
 	type ApplyLambdaToObject,
 } from "@nodecg-next/internal/utils";
@@ -27,6 +28,7 @@ import {
 	Layer,
 	ManagedRuntime,
 	Match,
+	Option,
 	Path,
 	Queue,
 	Ref,
@@ -337,7 +339,7 @@ export type TopicField<Decoded> = ApplyLambdaToObject<
 	TopicFieldEffect<Decoded>,
 	{
 		publish: EffectToPromiseLambda;
-		subscribe: StreamToSubscribeLambda;
+		subscribe: StreamToSubscribeTopicLambda;
 	}
 >;
 
@@ -530,7 +532,15 @@ export const adaptNamespace = <S extends WidestNamespaceFields, R, E>(
 		get: () => runtime.runPromise(field.get()),
 		set: (value) => runtime.runPromise(field.set(value)),
 		update: (fn, options) => runtime.runPromise(field.update(fn, options)),
-		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
+		subscribe: (callback, onError) =>
+			subscribeEffectToPromise(
+				() => field.subscribe().pipe(Effect.map(Stream.zipWithPrevious)),
+				name,
+				true,
+			)(
+				([oldValue, value]) => callback(value, Option.getOrUndefined(oldValue)),
+				onError,
+			),
 		[fieldSource]: field[fieldSource],
 	}))(built.replicant);
 
@@ -539,7 +549,15 @@ export const adaptNamespace = <S extends WidestNamespaceFields, R, E>(
 		ComputedFieldPromiseLambda
 	>((field, name) => ({
 		get: () => runtime.runPromise(field.get()),
-		subscribe: subscribeEffectToPromise(field.subscribe, name, true),
+		subscribe: (callback, onError) =>
+			subscribeEffectToPromise(
+				() => field.subscribe().pipe(Effect.map(Stream.zipWithPrevious)),
+				name,
+				true,
+			)(
+				([oldValue, value]) => callback(value, Option.getOrUndefined(oldValue)),
+				onError,
+			),
 		[fieldSource]: field[fieldSource],
 	}))(built.computed);
 

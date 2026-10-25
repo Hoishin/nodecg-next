@@ -24,7 +24,7 @@ export interface FieldSource<T> {
 export interface DerivedHandle<T> extends FieldSource<T> {
 	readonly get: () => Promise<T>;
 	readonly subscribe: (
-		listener: (value: T) => void,
+		listener: (value: T, oldValue: T | undefined) => void,
 		onError?: (error: unknown) => void,
 	) => () => void;
 }
@@ -104,17 +104,23 @@ export const derive = <T>(
 		});
 
 	const subscribe = (
-		listener: (value: T) => void,
+		listener: (value: T, oldValue: T | undefined) => void,
 		onError?: (error: unknown) => void,
-	) =>
-		effect(() => {
+	) => {
+		let lastValue: T | undefined;
+		return effect(() => {
 			Loadable.$match(derived.value, {
-				Ready: ({ value }) => listener(value.decoded),
+				Ready: ({ value }) => {
+					const oldValue = lastValue;
+					lastValue = value.decoded;
+					listener(value.decoded, oldValue);
+				},
 				Failure: ({ error }) => onError?.(error),
 				Cold: () => {},
 				Pending: () => {},
 			});
 		});
+	};
 
 	return { get, subscribe, [fieldSource]: derived };
 };

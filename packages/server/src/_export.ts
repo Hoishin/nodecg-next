@@ -104,4 +104,5 @@ export {
 	type RpcComputedAccessor,
 	type RpcTopicAccessor,
 	type Subscribe,
+	type SubscribeTopic,
 } from "./implement-namespace.ts";

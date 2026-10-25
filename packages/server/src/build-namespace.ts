@@ -1,6 +1,6 @@
 import type { WidestNamespaceFields } from "@nodecg-next/core";
 import { mapValues } from "@nodecg-next/internal/utils";
-import { Effect, Exit, Schema, Scope, Stream } from "effect";
+import { Effect, Exit, Option, Schema, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
 import {
@@ -108,13 +108,25 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 				set: (value) => runSync(field.set(value).pipe(asServer)),
 				update: (fn) => runSync(field.update(fn).pipe(asServer)),
 				validate: (value) => runPromise(field.validate(value)),
-				subscribe: subscribeAdapter(field.subscribe, name),
+				subscribe: (handler) =>
+					subscribeAdapter(
+						() => field.subscribe().pipe(Effect.map(Stream.zipWithPrevious)),
+						name,
+					)(([oldValue, value]) =>
+						handler(value, Option.getOrUndefined(oldValue)),
+					),
 			}),
 		)(built.replicant),
 		computed: mapValues<ComputedFieldEffectLambda, ComputedFieldLambda>(
 			(field, name) => ({
 				get: () => runSync(field.get().pipe(asServer)),
-				subscribe: subscribeAdapter(field.subscribe, name),
+				subscribe: (handler) =>
+					subscribeAdapter(
+						() => field.subscribe().pipe(Effect.map(Stream.zipWithPrevious)),
+						name,
+					)(([oldValue, value]) =>
+						handler(value, Option.getOrUndefined(oldValue)),
+					),
 			}),
 		)(built.computed),
 		topic: mapValues<TopicFieldEffectLambda, TopicFieldLambda>(

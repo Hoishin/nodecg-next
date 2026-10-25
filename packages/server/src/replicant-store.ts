@@ -174,10 +174,20 @@ interface ReplicantNode {
 	readonly persistent: boolean;
 }
 
-export type ComputedResult = Exit.Exit<
+type ComputeFailure =
+	| ComputedComputeError
+	| ReplicantNotFound
+	| FieldEncodeError;
+
+export type ComputedResult = Result.Result<
 	Schema.Json,
-	ComputedComputeError | ReplicantNotFound | FieldEncodeError
+	Cause.Cause<ComputeFailure>
 >;
+
+const liftComputedResult = Result.match({
+	onSuccess: (value: Schema.Json) => Effect.succeed(value),
+	onFailure: (cause: Cause.Cause<ComputeFailure>) => Effect.failCause(cause),
+});
 
 /**
  * Container of replicant side effect logic
@@ -446,7 +456,11 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 			);
 
 			const initializeComputed = Effect.fn("ReplicantStore.initializeComputed")(
-				(namespace: string, name: string, evaluate: () => ComputedResult) =>
+				(
+					namespace: string,
+					name: string,
+					evaluate: () => Exit.Exit<Schema.Json, ComputeFailure>,
+				) =>
 					SynchronizedRef.updateEffect(computedResults, (map) =>
 						Effect.gen(function* () {
 							const key = fieldKey(namespace, name);
@@ -457,33 +471,49 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 								});
 							}
 
-							let last: ComputedResult | undefined;
-							let lastHash: number | undefined;
+							let lastResult = Option.none<ComputedResult>();
+							let lastValue = Option.none<{
+								readonly value: Schema.Json;
+								readonly hash: number;
+							}>();
+
 							const result = computed(() =>
 								Exit.match(evaluate(), {
 									onSuccess: (value) => {
 										const hash = Hash.string(JSON.stringify(value));
+
 										if (
-											typeof last === "undefined" ||
-											!Exit.isSuccess(last) ||
-											lastHash !== hash ||
-											JSON.stringify(value) !== JSON.stringify(last.value)
+											Option.isNone(lastResult) ||
+											Option.isNone(lastValue) ||
+											lastValue.value.hash !== hash ||
+											JSON.stringify(lastValue.value.value) !==
+												JSON.stringify(value)
 										) {
-											last = Exit.succeed(value);
-											lastHash = hash;
+											const next = Result.succeed(value);
+											lastResult = Option.some(next);
+											lastValue = Option.some({ value, hash });
+											return next;
 										}
-										return last;
+
+										if (Result.isSuccess(lastResult.value)) {
+											return lastResult.value;
+										}
+
+										const next = Result.succeed(lastValue.value.value);
+										lastResult = Option.some(next);
+										return next;
 									},
 									onFailure: (cause) => {
 										if (
-											typeof last === "undefined" ||
-											!Exit.isFailure(last) ||
-											!Equal.equals(cause, last.cause)
+											Option.isSome(lastResult) &&
+											Result.isFailure(lastResult.value) &&
+											Equal.equals(cause, lastResult.value.failure)
 										) {
-											last = Exit.failCause(cause);
-											lastHash = undefined;
+											return lastResult.value;
 										}
-										return last;
+										const next = Result.fail(cause);
+										lastResult = Option.some(next);
+										return next;
 									},
 								}),
 							);
@@ -511,23 +541,21 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 					),
 					Effect.orDie,
 				);
-				return yield* stored; // Unwrap the Exit
+				return yield* liftComputedResult(stored);
 			});
 
 			const subscribeComputed = Effect.fn("ReplicantStore.subscribeComputed")(
 				function* (namespace: string, name: string) {
-					const result = Option.getOrUndefined(
-						HashMap.get(
-							yield* SynchronizedRef.get(computedResults),
-							fieldKey(namespace, name),
-						),
+					const result = HashMap.get(
+						yield* SynchronizedRef.get(computedResults),
+						fieldKey(namespace, name),
 					);
-					if (typeof result === "undefined") {
+					if (Option.isNone(result)) {
 						return yield* ComputedNotFound.make({ namespace, name });
 					}
 					const updates = yield* Queue.make<Schema.Json>();
 					const readNode = Effect.gen(function* () {
-						const evaluation = yield* readSignal(result).pipe(
+						const evaluation = yield* readSignal(result.value).pipe(
 							Effect.mapError((error) =>
 								ComputedComputeError.make({
 									namespace,
@@ -536,7 +564,7 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 								}),
 							),
 						);
-						return yield* evaluation;
+						return yield* liftComputedResult(evaluation);
 					});
 					yield* Effect.acquireRelease(
 						Effect.sync(() =>
@@ -563,9 +591,11 @@ export class ReplicantStoreService extends Context.Service<ReplicantStoreService
 						),
 						(dispose) => Effect.sync(dispose),
 					);
-					// Gate: reject the subscribe if the current value can't be produced.
+					// Fast-fail the subscribe when the current value fails to compute
 					yield* readNode;
-					return Stream.fromQueue(updates);
+					return Stream.fromQueue(updates).pipe(
+						Stream.changesWith((previous, next) => previous === next),
+					);
 				},
 			);
 

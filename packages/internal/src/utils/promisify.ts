@@ -2,6 +2,11 @@ import { Effect, HKT, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
 type Subscribe<A, E> = (
+	callback: (value: A, oldValue: A | undefined) => Promisable<void>,
+	onError?: (error: E) => void,
+) => Promise<() => Promise<void>>;
+
+type SubscribeTopic<A, E> = (
 	callback: (value: A) => Promisable<void>,
 	onError?: (error: E) => void,
 ) => Promise<() => Promise<void>>;
@@ -33,17 +38,17 @@ export interface StreamToSubscribeLambda extends HKT.TypeLambda {
 		any
 	>
 		? Subscribe<A, E>
-		: this["Target"] extends () => Stream.Stream<infer A, infer E, any>
-			? Subscribe<A, E>
-			: this["Target"] extends Effect.Effect<
-						Stream.Stream<infer A, infer E, any>,
-						any,
-						any
-				  >
-				? Subscribe<A, E>
-				: this["Target"] extends Stream.Stream<infer A, infer E, any>
-					? Subscribe<A, E>
-					: never;
+		: never;
+}
+
+export interface StreamToSubscribeTopicLambda extends HKT.TypeLambda {
+	type: this["Target"] extends () => Effect.Effect<
+		Stream.Stream<infer A, infer E, any>,
+		any,
+		any
+	>
+		? SubscribeTopic<A, E>
+		: never;
 }
 
 export interface IdentityLambda extends HKT.TypeLambda {
