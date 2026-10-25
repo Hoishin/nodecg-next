@@ -31,8 +31,4 @@ allowBuilds:
 
 minimumReleaseAge: 4320
 
-minimumReleaseAgeExclude:
-  - drizzle-orm@1.0.0-rc.5
-  - drizzle-kit@1.0.0-rc.5
-
 verifyDepsBeforeRun: warn
