@@ -121,8 +121,8 @@ const can = (
 	}
 	const roles = getRolesForNamespace(caller, namespace);
 
-	const isClient = roles.some((role) => namedRoles.has(role));
-	if (isClient && access.client === "deny") {
+	const isMember = roles.some((role) => namedRoles.has(role));
+	if (isMember && access.member === "deny") {
 		return false;
 	}
 
@@ -134,7 +134,7 @@ const can = (
 	}
 
 	return (
-		(isClient && access.client === "allow") ||
+		(isMember && access.member === "allow") ||
 		access.everyone === "allow" ||
 		roles.some((role) => access.roles.has(role))
 	);

@@ -167,13 +167,13 @@ describe("canRead / canWrite", () => {
 		).toBe(false);
 	});
 
-	test("a client grant admits any declared role, including one added by a later extend", () => {
+	test("a member grant admits any declared role, including one added by a later extend", () => {
 		const members = defineNamespace("match", {
 			roles: { judge: { permission: [] } },
 			replicant: {
 				lounge: {
 					schema: Schema.Finite,
-					permission: { read: { client: "allow" } },
+					permission: { read: { member: "allow" } },
 				},
 			},
 		});

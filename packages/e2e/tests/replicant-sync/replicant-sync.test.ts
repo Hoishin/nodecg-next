@@ -534,7 +534,7 @@ describe("extended namespace sync (as producer)", () => {
 });
 
 describe("role-gated field access (HTTP)", () => {
-	test("anonymous is denied the role-gated and the client-gated field", async () => {
+	test("anonymous is denied the role-gated and the member-gated field", async () => {
 		await logout();
 		const {
 			namespaces: { fixture: ns },
@@ -552,7 +552,7 @@ describe("role-gated field access (HTTP)", () => {
 		);
 	});
 
-	test("an explicit producer reads the producer-only and client fields", async () => {
+	test("an explicit producer reads the producer-only and member fields", async () => {
 		await login("prod");
 		const {
 			namespaces: { fixture: ns },
@@ -566,7 +566,7 @@ describe("role-gated field access (HTTP)", () => {
 		expect(await ns.replicant.membersOnly.get()).toBe("members-only");
 	});
 
-	test("a viewer reads the client field via the umbrella but not the producer-only field", async () => {
+	test("a viewer reads the member field via the umbrella but not the producer-only field", async () => {
 		await login("view");
 		const {
 			namespaces: { fixture: ns },

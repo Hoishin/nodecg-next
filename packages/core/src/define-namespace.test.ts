@@ -133,7 +133,7 @@ describe("defineNamespace", () => {
 				banner: {
 					schema: Schema.String,
 					permission: {
-						read: { client: "allow" },
+						read: { member: "allow" },
 						write: { allow: [] },
 					},
 				},
@@ -168,11 +168,11 @@ describe("defineNamespace", () => {
 			});
 		});
 
-		test("a client grant stays a symbolic slot, not an expansion to role names", () => {
+		test("a member grant stays a symbolic slot, not an expansion to role names", () => {
 			expect(manifest.replicant.banner.permission.read).toEqual({
 				roles: new Set(["judge", "viewer"]),
 				rolesDenied: new Set(),
-				client: "allow",
+				member: "allow",
 			});
 		});
 
@@ -211,7 +211,7 @@ describe("defineNamespace", () => {
 			});
 		});
 
-		test("a client grant does not drop a namespace-wide everyone base", () => {
+		test("a member grant does not drop a namespace-wide everyone base", () => {
 			const manifest = defineNamespace("match", {
 				principals: { everyone: { permission: ["replicant-read"] } },
 				roles: {
@@ -221,7 +221,7 @@ describe("defineNamespace", () => {
 				replicant: {
 					internal: {
 						schema: Schema.Finite,
-						permission: { read: { client: "allow" } },
+						permission: { read: { member: "allow" } },
 					},
 				},
 			});
@@ -230,13 +230,13 @@ describe("defineNamespace", () => {
 				roles: new Set(["judge"]),
 				rolesDenied: new Set(),
 				everyone: "allow",
-				client: "allow",
+				member: "allow",
 			});
 		});
 
-		test("client is a blanket base every named role holds", () => {
+		test("member is a blanket base every named role holds", () => {
 			const manifest = defineNamespace("match", {
-				principals: { client: { permission: ["replicant-read"] } },
+				principals: { member: { permission: ["replicant-read"] } },
 				roles: {
 					judge: { permission: ["replicant-write"] },
 					viewer: { permission: [] },
@@ -247,7 +247,7 @@ describe("defineNamespace", () => {
 			expect(manifest.replicant.score.permission.read).toEqual({
 				roles: new Set(["judge"]),
 				rolesDenied: new Set(),
-				client: "allow",
+				member: "allow",
 			});
 			expect(manifest.replicant.score.permission.write).toEqual({
 				roles: new Set(["judge"]),
@@ -681,7 +681,7 @@ describe("defineNamespace", () => {
 							schema: Schema.Finite,
 							permission: {
 								read: { allow: ["judge"], everyone: "allow" },
-								write: { allow: [], client: "allow" },
+								write: { allow: [], member: "allow" },
 							},
 						},
 					},
@@ -691,12 +691,12 @@ describe("defineNamespace", () => {
 					roles: new Set(["judge"]),
 					rolesDenied: new Set(),
 					everyone: "allow",
-					client: "allow",
+					member: "allow",
 				});
 				expect(manifest.replicant.score.permission.write).toEqual({
 					roles: new Set(),
 					rolesDenied: new Set(),
-					client: "allow",
+					member: "allow",
 				});
 			});
 
@@ -1044,9 +1044,9 @@ describe("extendNamespace", () => {
 			}
 		});
 
-		test("a client blanket reaches roles added in a later extend", () => {
+		test("a member blanket reaches roles added in a later extend", () => {
 			const blanketed = extendNamespace(base, {
-				principals: { client: { permission: ["replicant-read"] } },
+				principals: { member: { permission: ["replicant-read"] } },
 			});
 			const withAuditor = extendNamespace(blanketed, {
 				roles: { auditor: { permission: [] } },
@@ -1055,23 +1055,23 @@ describe("extendNamespace", () => {
 			expect(withAuditor.replicant.score.permission.read).toEqual({
 				roles: new Set(["judge", "viewer"]),
 				rolesDenied: new Set(),
-				client: "allow",
+				member: "allow",
 			});
 		});
 
-		test("re-listing client drops the blanket but keeps roles holding the capability outright", () => {
+		test("re-listing member drops the blanket but keeps roles holding the capability outright", () => {
 			const blanketed = extendNamespace(base, {
-				principals: { client: { permission: ["replicant-write"] } },
+				principals: { member: { permission: ["replicant-write"] } },
 				roles: { viewer: { permission: ["replicant-read"] } },
 			});
 			expect(blanketed.replicant.score.permission.write).toEqual({
 				roles: new Set(["judge"]),
 				rolesDenied: new Set(),
-				client: "allow",
+				member: "allow",
 			});
 
 			const revoked = extendNamespace(blanketed, {
-				principals: { client: { permission: [] } },
+				principals: { member: { permission: [] } },
 			});
 			expect(revoked.replicant.score.permission.write).toEqual({
 				roles: new Set(["judge"]),

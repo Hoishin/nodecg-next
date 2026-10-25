@@ -5,7 +5,7 @@ export const Principal = Brand.nominal<Principal>();
 
 export const DeclarablePrincipalNameSchema = Schema.Literals([
 	"everyone",
-	"client",
+	"member",
 ]);
 
 export const UndeniablePrincipalNameSchema = Schema.Literals([
@@ -22,7 +22,7 @@ export const PRINCIPAL: Record<typeof PrincipalNameSchema.Type, Principal> = {
 	// Unauthenticated users and users with no role
 	everyone: Principal("everyone"),
 	// Every named role a namespace declares
-	client: Principal("client"),
+	member: Principal("member"),
 	// Exclusive to server-side calls
 	server: Principal("server"),
 	// Holds every capability

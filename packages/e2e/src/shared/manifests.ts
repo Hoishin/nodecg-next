@@ -50,7 +50,7 @@ export const fixtureManifest = defineNamespace("e2e", {
 		},
 		membersOnly: {
 			schema: Schema.String,
-			permission: { read: { client: "allow" } },
+			permission: { read: { member: "allow" } },
 		},
 	},
 	computed: {
