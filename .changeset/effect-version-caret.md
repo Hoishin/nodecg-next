@@ -2,7 +2,6 @@
 "@nodecg-next/browser": patch
 "@nodecg-next/client": patch
 "@nodecg-next/core": patch
-"@nodecg-next/internal": patch
 "@nodecg-next/server": patch
 ---
 
