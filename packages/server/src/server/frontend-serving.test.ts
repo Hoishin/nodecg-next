@@ -1,7 +1,12 @@
 import { NodeHttpServer } from "@effect/platform-node";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { HttpEffect, HttpRouter } from "effect/http";
+import {
+	FetchHttpClient,
+	HttpClient,
+	HttpEffect,
+	HttpRouter,
+} from "effect/http";
 import { describe, expect } from "vitest";
 
 import type { FrontendConfig } from "../implement-namespace.ts";
@@ -50,13 +55,18 @@ const serve = Effect.fn(function* (frontend: FrontendConfig) {
 		),
 	);
 	const web = HttpEffect.toWebHandler(handler);
-	return (pathname: string, init?: RequestInit) =>
-		Effect.promise(() =>
-			web(new Request(`http://x/frontend/namespaces/ns${pathname}`, init)),
-		);
+	const fetch: typeof globalThis.fetch = (input, init) =>
+		web(new Request(input, init));
+	const client = yield* HttpClient.HttpClient.pipe(
+		Effect.map(HttpClient.followRedirects()),
+		Effect.provide(FetchHttpClient.layer),
+		Effect.provideService(FetchHttpClient.Fetch, fetch),
+	);
+	return (pathname: string, headers?: Record<string, string>) =>
+		client.get(`http://x/frontend/namespaces/ns${pathname}`, { headers });
 });
 
-const text = (response: Response) => Effect.promise(() => response.text());
+const html = { accept: "text/html" };
 
 describe("frontendRoutes", () => {
 	test(
@@ -66,10 +76,8 @@ describe("frontendRoutes", () => {
 			const get = yield* serve({ dir: [first, second] });
 			const response = yield* get("/");
 			expect(response.status).toBe(200);
-			expect(response.headers.get("content-type")).toBe(
-				"text/html; charset=utf-8",
-			);
-			expect(yield* text(response)).toBe("first index");
+			expect(response.headers["content-type"]).toBe("text/html; charset=utf-8");
+			expect(yield* response.text).toBe("first index");
 		}),
 	);
 
@@ -80,10 +88,10 @@ describe("frontendRoutes", () => {
 			const get = yield* serve({ dir: [first] });
 			const response = yield* get("/app.js");
 			expect(response.status).toBe(200);
-			expect(response.headers.get("content-type")).toBe(
+			expect(response.headers["content-type"]).toBe(
 				"text/javascript; charset=utf-8",
 			);
-			expect(yield* text(response)).toBe("app module");
+			expect(yield* response.text).toBe("app module");
 		}),
 	);
 
@@ -94,7 +102,7 @@ describe("frontendRoutes", () => {
 			const get = yield* serve({ dir: [first, second] });
 			const response = yield* get("/widget.js");
 			expect(response.status).toBe(200);
-			expect(yield* text(response)).toBe("widget module");
+			expect(yield* response.text).toBe("widget module");
 		}),
 	);
 
@@ -103,7 +111,7 @@ describe("frontendRoutes", () => {
 		Effect.gen(function* () {
 			const { first, second } = yield* fixtures;
 			const get = yield* serve({ dir: [first, second] });
-			expect(yield* text(yield* get("/shared.txt"))).toBe("from first");
+			expect(yield* (yield* get("/shared.txt")).text).toBe("from first");
 		}),
 	);
 
@@ -121,10 +129,10 @@ describe("frontendRoutes", () => {
 		Effect.gen(function* () {
 			const { first } = yield* fixtures;
 			const get = yield* serve({ dir: [first] });
-			expect(yield* text(yield* get("/about.html"))).toBe("about page");
-			expect(
-				(yield* get("/about", { headers: { accept: "text/html" } })).status,
-			).toBe(404);
+			const response = yield* get("/about.html");
+			expect(yield* response.text).toBe("about page");
+			const response2 = yield* get("/about", html);
+			expect(response2.status).toBe(404);
 		}),
 	);
 
@@ -142,13 +150,11 @@ describe("frontendRoutes", () => {
 		Effect.gen(function* () {
 			const { first } = yield* fixtures;
 			const get = yield* serve({ dir: [first] });
-			const etag = (yield* get("/app.js")).headers.get("etag");
-			expect(etag).not.toBeNull();
-			const response = yield* get("/app.js", {
-				headers: { "if-none-match": etag ?? "" },
-			});
+			const etag = (yield* get("/app.js")).headers["etag"];
+			expect(etag).toBeDefined();
+			const response = yield* get("/app.js", { "if-none-match": etag ?? "" });
 			expect(response.status).toBe(304);
-			expect(yield* text(response)).toBe("");
+			expect(yield* response.text).toBe("");
 		}),
 	);
 
@@ -158,11 +164,9 @@ describe("frontendRoutes", () => {
 			Effect.gen(function* () {
 				const { first, second } = yield* fixtures;
 				const get = yield* serve({ dir: [second, first], spa: true });
-				const response = yield* get("/some/route", {
-					headers: { accept: "text/html" },
-				});
+				const response = yield* get("/some/route", html);
 				expect(response.status).toBe(200);
-				expect(yield* text(response)).toBe("first index");
+				expect(yield* response.text).toBe("first index");
 			}),
 		);
 
@@ -171,11 +175,8 @@ describe("frontendRoutes", () => {
 			Effect.gen(function* () {
 				const { first, second } = yield* fixtures;
 				const get = yield* serve({ dir: [first, second], spa: true });
-				expect(
-					yield* text(
-						yield* get("/docs", { headers: { accept: "text/html" } }),
-					),
-				).toBe("docs index");
+				const response = yield* get("/docs", html);
+				expect(yield* response.text).toBe("docs index");
 			}),
 		);
 

@@ -5,7 +5,10 @@ import { HttpRouter, HttpStaticServer } from "effect/http";
 
 import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { config } from "../server-config.ts";
-import { nodeMiddlewareToHttpApp } from "./node-connect-middleware.ts";
+import {
+	type NodeMiddleware,
+	nodeMiddlewareToHttpApp,
+} from "./node-connect-middleware.ts";
 import { buildViteServer } from "./vite-dev-server.ts";
 
 const frontendPrefix = (namespace: string) =>
@@ -33,9 +36,11 @@ export const frontendRoutes = HttpRouter.use((router) =>
 					prefix: frontendPrefix(name),
 					spa,
 				});
+				// Vite runs these middlewares under HTTP/2 too, but types them for node:http only.
+				const middlewares = devServer.middlewares as NodeMiddleware;
 				yield* router
 					.prefixed(frontendPrefix(name))
-					.add("*", "/*", nodeMiddlewareToHttpApp(devServer.middlewares));
+					.add("*", "/*", nodeMiddlewareToHttpApp(middlewares));
 			} else {
 				const roots = frontend.dir.map(coerceToPath);
 				const apps = yield* Effect.forEach(roots, (root) =>
