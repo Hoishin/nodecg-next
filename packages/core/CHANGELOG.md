@@ -1,5 +1,12 @@
 # @nodecg-next/core
 
+## 0.1.4
+
+### Patch Changes
+
+- effect packages in dependencies are now specified with `^` ([`c7752bd`](https://github.com/Hoishin/nodecg-next/commit/c7752bd75608bb4a32d5feb3aa00a4039072452f))
+- the `client` principal is renamed to `member` ([`b6d2513`](https://github.com/Hoishin/nodecg-next/commit/b6d25139483bacc21af8b6cfffdc4016ecc81042))
+
 ## 0.1.3
 
 ### Patch Changes

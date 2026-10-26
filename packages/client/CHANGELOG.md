@@ -1,5 +1,12 @@
 # @nodecg-next/client
 
+## 0.1.4
+
+### Patch Changes
+
+- effect packages in dependencies are now specified with `^` ([`c7752bd`](https://github.com/Hoishin/nodecg-next/commit/c7752bd75608bb4a32d5feb3aa00a4039072452f))
+- replicant, computed and derive subscribers receive the old value as a second argument ([`b8aaab9`](https://github.com/Hoishin/nodecg-next/commit/b8aaab9c26b60b7ddd6132be31f6a3909650b35a))
+
 ## 0.1.3
 
 ### Patch Changes
