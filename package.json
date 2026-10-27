@@ -11,7 +11,7 @@
 	"devDependencies": {
 		"@changesets/changelog-github": "^1.0.0",
 		"@changesets/cli": "^3.0.1",
-		"@effect/tsgo": "^0.41.0",
+		"@effect/tsgo": "^0.56.0",
 		"@vitest/browser": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"oxfmt": "^0.58.0",
