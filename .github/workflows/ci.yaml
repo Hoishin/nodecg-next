@@ -81,7 +81,16 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install
-      - run: pnpm exec playwright install --with-deps
+      - id: playwright
+        run: echo "version=$(pnpm exec playwright --version)" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - uses: actions/cache@v5
+        with:
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/.cache/ms-playwright' }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - run: pnpm exec playwright install
+      - run: pnpm exec playwright install-deps
+        if: runner.os == 'Linux'
       - run: pnpm vitest run
 
   test:
