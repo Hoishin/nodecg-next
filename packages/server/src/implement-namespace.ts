@@ -1,4 +1,5 @@
 import type {
+	WidestChildManifests,
 	EmptyNamespaceFields,
 	WidestNamespaceFields,
 	NamespaceManifest,
@@ -209,11 +210,21 @@ export type RequiredOptions<S extends WidestNamespaceFields> = ([
 				readonly implementRpc: ImplementRpc<S>;
 			});
 
-export interface ImplementedNamespace<in out S extends WidestNamespaceFields> {
-	readonly manifest: NamespaceManifest<S>;
+export type ImplementedChildren<Children extends WidestChildManifests> = {
+	readonly [K in keyof Children]: ImplementedNamespace<
+		Children[K] extends NamespaceManifest<infer S> ? S : never
+	>;
+};
+
+export interface ImplementedNamespace<
+	in out S extends WidestNamespaceFields,
+	out Children extends WidestChildManifests = WidestChildManifests,
+> {
+	readonly manifest: NamespaceManifest<S, Children>;
 	readonly impl:
 		| (NamespaceOptions<S> & {
 				readonly frontend?: FrontendConfig;
+				readonly children?: ImplementedChildren<Children>;
 		  })
 		| undefined;
 }
@@ -226,16 +237,21 @@ export interface WidenedImplementedNamespace {
 					ctx: never,
 				) => Promisable<void | (() => Promisable<void>)>;
 				readonly frontend?: FrontendConfig;
+				readonly children?: ImplementedChildren<WidestChildManifests>;
 		  })
 		| undefined;
 }
 
 export function implementNamespace<
 	S extends WidestNamespaceFields = EmptyNamespaceFields,
+	Children extends WidestChildManifests = {},
 >(
-	manifest: NamespaceManifest<S>,
+	manifest: NamespaceManifest<S, Children>,
 	...rest: [
-		keyof S["replicant"] | keyof S["computed"] | keyof S["rpc"],
+		| keyof S["replicant"]
+		| keyof S["computed"]
+		| keyof S["rpc"]
+		| keyof Children,
 	] extends [never]
 		? [
 				options?: {
@@ -244,12 +260,17 @@ export function implementNamespace<
 				},
 			]
 		: [
-				impl: RequiredOptions<S> & {
-					readonly frontend?: FrontendConfig;
-					readonly onLoad?: OnLoad<S>;
-				},
+				impl: RequiredOptions<S> &
+					RequiredIfAnyKey<
+						"children",
+						keyof Children,
+						ImplementedChildren<Children>
+					> & {
+						readonly frontend?: FrontendConfig;
+						readonly onLoad?: OnLoad<S>;
+					},
 			]
-): ImplementedNamespace<S> {
+): ImplementedNamespace<S, Children> {
 	const [impl] = rest;
 	return { manifest, impl };
 }
@@ -260,9 +281,11 @@ type RequiredIfAnyKey<Name extends string, Keys, Value> = [Keys] extends [never]
 
 type ExtensionSupplement<
 	S extends WidestNamespaceFields,
+	Children extends WidestChildManifests,
 	BaseReplicantKeys extends keyof S["replicant"] & string,
 	BaseComputedKeys extends keyof S["computed"] & string,
 	BaseRpcKeys extends keyof S["rpc"] & string,
+	BaseChildKeys extends keyof Children & string,
 > = RequiredIfAnyKey<
 	"seedReplicant",
 	keyof Omit<S["replicant"], BaseReplicantKeys>,
@@ -280,6 +303,11 @@ type ExtensionSupplement<
 		"implementRpc",
 		keyof Omit<S["rpc"], BaseRpcKeys>,
 		SetOptional<ImplementRpc<S>, BaseRpcKeys>
+	> &
+	RequiredIfAnyKey<
+		"children",
+		keyof Omit<Children, BaseChildKeys>,
+		SetOptional<ImplementedChildren<Children>, BaseChildKeys>
 	> & {
 		readonly onLoad?: OnLoad<S>;
 		readonly frontend?: FrontendConfig;
@@ -303,17 +331,22 @@ const combineOnLoad = <S extends WidestNamespaceFields>(
 
 export function implementExtendedNamespace<
 	S extends WidestNamespaceFields,
+	Children extends WidestChildManifests,
 	const Base extends ImplementedNamespace<any>,
 >(
-	manifest: NamespaceManifest<S>,
+	manifest: NamespaceManifest<S, Children>,
 	implemented: Base,
 	additional: ExtensionSupplement<
 		S,
+		Children,
 		keyof Base["manifest"]["replicant"] & keyof S["replicant"] & string,
 		keyof Base["manifest"]["computed"] & keyof S["computed"] & string,
-		keyof Base["manifest"]["rpc"] & keyof S["rpc"] & string
+		keyof Base["manifest"]["rpc"] & keyof S["rpc"] & string,
+		keyof NonNullable<NonNullable<Base["impl"]>["children"]> &
+			keyof Children &
+			string
 	>,
-): ImplementedNamespace<S> {
+): ImplementedNamespace<S, Children> {
 	const baseFrontend = implemented.impl?.frontend;
 	const frontend =
 		baseFrontend && additional.frontend
@@ -339,6 +372,10 @@ export function implementExtendedNamespace<
 			),
 			onLoad: combineOnLoad(implemented.impl?.onLoad, additional.onLoad),
 			frontend,
+			children: mergeRecords<ImplementedChildren<Children>>(
+				implemented.impl?.children,
+				additional.children,
+			),
 		},
 	};
 }

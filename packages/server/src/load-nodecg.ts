@@ -1,12 +1,12 @@
 import { on } from "node:events";
 
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import {
-	declaredRoleNames,
-	type EmptyNamespaceFields,
-	type WidestNamespaceFields,
+import type {
+	EmptyNamespaceFields,
+	WidestChildManifests,
+	WidestNamespaceFields,
 } from "@nodecg-next/core";
-import type { RoleName } from "@nodecg-next/internal";
+import { manifestChildrenKey, manifestRolesKey } from "@nodecg-next/internal";
 import {
 	findCaseClash,
 	mapEffectValues,
@@ -24,6 +24,7 @@ import {
 	Logger,
 	ManagedRuntime,
 	Option,
+	Record,
 	References,
 	Schema,
 	Scope,
@@ -37,7 +38,6 @@ import {
 	AuthProviderRegistry,
 } from "./auth/auth-provider.ts";
 import {
-	type BuiltNamespace,
 	BuiltNamespaceRegistry,
 	LoadedNamespacesService,
 	makeCrossNamespaceHandle,
@@ -45,7 +45,7 @@ import {
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
 import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import {
-	type FrontendConfig,
+	type ImplementedChildren,
 	type ImplementedNamespace,
 	type LoadedNamespace,
 	type WidenedImplementedNamespace,
@@ -107,6 +107,30 @@ const isShutdownMessage = Schema.is(
 	Schema.Tuple([Schema.Literal("shutdown"), Schema.Unknown]),
 );
 
+export class UnimplementedChild extends Schema.TaggedError<UnimplementedChild>()(
+	"UnimplementedChild",
+	{ namespace: Schema.String, child: Schema.String },
+) {
+	override readonly message = `Child "${this.child}" of namespace "${this.namespace}" is not implemented with its declared manifest`;
+}
+
+// Make sure children implementations match manifests by name
+const checkChildren = Effect.fn("checkChildren")(function* ({
+	manifest,
+	impl,
+}: WidenedImplementedNamespace) {
+	for (const [child, declared] of Object.entries(
+		manifest[manifestChildrenKey],
+	)) {
+		if (impl?.children?.[child]?.manifest !== declared) {
+			return yield* UnimplementedChild.make({
+				namespace: manifest.namespace,
+				child,
+			});
+		}
+	}
+});
+
 const replicantRepository = (storage: StorageOption | undefined) => {
 	if (typeof storage === "undefined") {
 		return JsonFileReplicantRepository;
@@ -122,10 +146,8 @@ interface ImplementedNamespaceLambda extends HKT.TypeLambda {
 }
 
 interface PreparedNamespace<S extends WidestNamespaceFields> {
-	readonly built: BuiltNamespace<S>;
+	readonly registered: RegisteredNamespace;
 	readonly loaded: LoadedNamespace<S>;
-	readonly declaredRoles: ReadonlySet<RoleName>;
-	readonly frontend: FrontendConfig | undefined;
 	readonly runOnLoad: Effect.Effect<void, OnLoadError, Scope.Scope>;
 }
 
@@ -149,16 +171,92 @@ const validateComputedFields = (fields: RegisteredNamespace["fields"]) =>
 		{ concurrency: "unbounded", discard: true },
 	);
 
+const prepareNamespace = Effect.fn("prepareNamespace")(function* <
+	S extends WidestNamespaceFields,
+>(implemented: ImplementedNamespace<S>) {
+	const context = yield* Effect.context<
+		TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
+	>();
+	const useCross = <S extends WidestNamespaceFields>(
+		cross: ImplementedNamespace<S>,
+	) => Effect.runSyncWith(context)(makeCrossNamespaceHandle(cross));
+	const built = yield* buildNamespace(implemented);
+	const handle = yield* adaptNamespace(built);
+	const onLoad = implemented.impl?.onLoad;
+	const runOnLoad =
+		typeof onLoad === "undefined"
+			? Effect.void
+			: Effect.gen(function* () {
+					const cleanup = yield* Effect.tryPromise({
+						try: async () => onLoad({ ...handle, use: useCross }),
+						catch: (error) =>
+							OnLoadError.make({
+								namespace: implemented.manifest.namespace,
+								cause: toError(error),
+							}),
+					});
+					if (typeof cleanup === "function") {
+						yield* Effect.addFinalizer(() =>
+							Effect.tryPromise(async () => {
+								await cleanup();
+							}).pipe(
+								Effect.catchTag("UnknownError", (error) =>
+									Effect.logError(
+										`onLoad cleanup for namespace "${implemented.manifest.namespace}" threw`,
+										error,
+									),
+								),
+							),
+						);
+					}
+				});
+	const prepared: PreparedNamespace<S> = {
+		registered: {
+			namespace: built.namespace,
+			declaredRoles: new Set(
+				implemented.manifest[manifestRolesKey].roles.keys(),
+			),
+			frontend: implemented.impl?.frontend,
+			fields: built,
+		},
+		loaded: handle,
+		runOnLoad,
+	};
+	return prepared;
+});
+
 export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 	Shapes extends Record<string, WidestNamespaceFields>,
 >(options: LoadNodeCGOptions<Shapes>) {
-	const widenedNamespaces: Readonly<
-		Record<string, WidenedImplementedNamespace>
-	> = options.namespaces;
+	const namespaces = new Set(
+		Record.values<string, WidenedImplementedNamespace>(options.namespaces),
+	);
+	const childrenNamespaces = new Set<
+		ImplementedNamespace<EmptyNamespaceFields>
+	>();
+	const walkChildren = (
+		children: ImplementedChildren<WidestChildManifests> | undefined,
+	) => {
+		for (const child of Object.values(children ?? {})) {
+			if (!namespaces.has(child)) {
+				namespaces.add(child);
+				childrenNamespaces.add(child);
+			}
+			walkChildren(child.impl?.children);
+		}
+	};
+	for (const { impl } of namespaces) {
+		walkChildren(impl?.children);
+	}
+
+	yield* Effect.forEach(namespaces, checkChildren, { discard: true });
 
 	// Check duplicate namespace names
 	const loaded = new Set<string>();
-	for (const { manifest } of Object.values(widenedNamespaces)) {
+	for (const { manifest } of [
+		...Record.values<string, WidenedImplementedNamespace>(options.namespaces),
+		...childrenNamespaces,
+	]) {
 		if (loaded.has(manifest.namespace)) {
 			return yield* Effect.die(
 				new Error(`Namespace "${manifest.namespace}" was loaded twice`),
@@ -180,88 +278,19 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 	);
 
 	return yield* Effect.gen(function* () {
-		const context = yield* Effect.context<
-			TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
-		>();
 		const store = yield* ReplicantStoreService;
-		const useCross = <S extends WidestNamespaceFields>(
-			implemented: ImplementedNamespace<S>,
-		) => Effect.runSyncWith(context)(makeCrossNamespaceHandle(implemented));
-
-		const prepareNamespace = Effect.fn("prepareNamespace")(function* <
-			Target,
-			In,
-		>(
-			implemented: HKT.Kind<
-				ImplementedNamespaceLambda,
-				In,
-				never,
-				never,
-				Target
-			>,
-		) {
-			const built = yield* buildNamespace(implemented);
-			const handle = yield* adaptNamespace(built);
-			const onLoad = implemented.impl?.onLoad;
-			const runOnLoad =
-				typeof onLoad === "undefined"
-					? Effect.void
-					: Effect.gen(function* () {
-							const cleanup = yield* Effect.tryPromise({
-								try: async () => onLoad({ ...handle, use: useCross }),
-								catch: (error) =>
-									new OnLoadError({
-										namespace: implemented.manifest.namespace,
-										cause: toError(error),
-									}),
-							});
-							if (typeof cleanup === "function") {
-								yield* Effect.addFinalizer(() =>
-									Effect.tryPromise(async () => {
-										await cleanup();
-									}).pipe(
-										Effect.catchTag("UnknownError", (error) =>
-											Effect.logError(
-												`onLoad cleanup for namespace "${implemented.manifest.namespace}" threw`,
-												error,
-											),
-										),
-									),
-								);
-							}
-						});
-			const prepared: HKT.Kind<
-				PreparedNamespaceLambda,
-				In,
-				never,
-				never,
-				Target
-			> = {
-				built,
-				loaded: handle,
-				declaredRoles: declaredRoleNames(implemented.manifest),
-				frontend: implemented.impl?.frontend,
-				runOnLoad,
-			};
-			return prepared;
-		});
 
 		const prepared = yield* mapEffectValues<
 			ImplementedNamespaceLambda,
 			PreparedNamespaceLambda
 		>()(prepareNamespace)<Shapes>(options.namespaces);
 
-		const preparedRecord: Readonly<
-			Record<string, PreparedNamespace<EmptyNamespaceFields>>
-		> = prepared;
-		const registered = Object.values(preparedRecord).map(
-			({ built, declaredRoles, frontend }): RegisteredNamespace => ({
-				namespace: built.namespace,
-				declaredRoles,
-				frontend,
-				fields: built,
-			}),
+		const preparedChildren = yield* Effect.forEach(
+			childrenNamespaces,
+			(child) => prepareNamespace(child),
 		);
+		const preparedAll = [...preparedChildren, ...Record.values(prepared)];
+		const registered = preparedAll.map(({ registered }) => registered);
 
 		yield* Effect.forEach(
 			registered,
@@ -269,11 +298,9 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			{ concurrency: "unbounded", discard: true },
 		);
 
-		yield* Effect.forEach(
-			Object.values(preparedRecord),
-			({ runOnLoad }) => runOnLoad,
-			{ discard: true },
-		);
+		yield* Effect.forEach(preparedAll, ({ runOnLoad }) => runOnLoad, {
+			discard: true,
+		});
 
 		const namespaces: LoadedNamespaces<Shapes> = mapValues<
 			PreparedNamespaceLambda,

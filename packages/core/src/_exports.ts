@@ -1,9 +1,9 @@
 export {
-	declaredRoleNames,
 	defineNamespace,
 	extendNamespace,
 	type FieldManifest,
 	type ReplicantFieldManifest,
+	type WidestChildManifests,
 	type RpcFieldManifest,
 	type NamespaceManifest,
 	type EmptyNamespaceFields,

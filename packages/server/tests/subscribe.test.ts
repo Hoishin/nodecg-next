@@ -1,4 +1,5 @@
-import { declaredRoleNames, defineNamespace } from "@nodecg-next/core";
+import { defineNamespace } from "@nodecg-next/core";
+import { manifestRolesKey } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Schema } from "effect";
 import { HttpBody } from "effect/http";
@@ -35,7 +36,7 @@ const namespaces = Layer.effect(
 		return yield* NamespaceRegistryService.make([
 			{
 				namespace: "show",
-				declaredRoles: declaredRoleNames(show.manifest),
+				declaredRoles: new Set(show.manifest[manifestRolesKey].roles.keys()),
 				fields,
 			},
 		]);

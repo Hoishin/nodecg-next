@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { manifestChildrenKey } from "@nodecg-next/internal";
 import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { z } from "zod";
@@ -771,6 +772,13 @@ describe("defineNamespace", () => {
 			});
 		});
 	});
+
+	test("keeps its declared children", () => {
+		const assets = defineNamespace("show-assets", {});
+		const show = defineNamespace("show", { children: { assets } });
+
+		expect(show[manifestChildrenKey]).toStrictEqual({ assets });
+	});
 });
 
 describe("extendNamespace", () => {
@@ -1233,6 +1241,25 @@ describe("extendNamespace", () => {
 			expectTypeOf(extended.rpc.setScore.response.decode).returns.toEqualTypeOf<
 				Effect.Effect<boolean, FieldDecodeError>
 			>();
+		});
+	});
+
+	describe("children", () => {
+		const assets = defineNamespace("show-assets", {});
+		const media = defineNamespace("show-media", {});
+		const show = defineNamespace("show", { children: { assets } });
+
+		test("adds children beside the precedent's", () => {
+			const extended = extendNamespace(show, { children: { media } });
+
+			expect(extended[manifestChildrenKey]).toStrictEqual({ assets, media });
+		});
+
+		test("rejects re-declaring a child", () => {
+			extendNamespace(show, {
+				// @ts-expect-error "assets" is already a child of "show"
+				children: { assets },
+			});
 		});
 	});
 });

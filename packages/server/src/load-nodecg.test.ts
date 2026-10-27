@@ -11,7 +11,11 @@ import {
 	implementExtendedNamespace,
 	implementNamespace,
 } from "./implement-namespace.ts";
-import { loadNodeCG, loadNodeCGEffect } from "./load-nodecg.ts";
+import {
+	loadNodeCG,
+	loadNodeCGEffect,
+	UnimplementedChild,
+} from "./load-nodecg.ts";
 import { AuthenticationRepositoryService } from "./services/repository/authentication/authentication-repository.ts";
 import { LoginAttemptRepositoryService } from "./services/repository/login-attempt/login-attempt-repository.ts";
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
@@ -347,6 +351,130 @@ describe("duplicate namespaces", () => {
 			assert(defect.success instanceof Error);
 			expect(defect.success.message).toBe(
 				'Namespace "Counter" differs from "counter" only in case',
+			);
+		}),
+	);
+});
+
+describe("children", () => {
+	const assetsManifest = defineNamespace("assets", {
+		replicant: { files: { schema: Schema.FiniteFromString } },
+	});
+
+	testInMemory(
+		"loads a grandchild reached only through its grandparent",
+		Effect.gen(function* () {
+			const assets = implementNamespace(assetsManifest, {
+				seedReplicant: { files: () => 4 },
+			});
+			const sponsors = implementNamespace(
+				defineNamespace("sponsors", { children: { assets: assetsManifest } }),
+				{ children: { assets } },
+			);
+			const show = implementNamespace(
+				defineNamespace("show", {
+					replicant: { files: { schema: Schema.FiniteFromString } },
+					children: { sponsors: sponsors.manifest },
+				}),
+				{
+					seedReplicant: { files: () => 0 },
+					children: { sponsors },
+					onLoad: (ctx) => {
+						ctx.replicant.files.set(ctx.use(assets).replicant.files.get());
+					},
+				},
+			);
+
+			const { namespaces } = yield* loadNodeCGEffect({ namespaces: { show } });
+
+			expect(namespaces.show.replicant.files.get()).toBe(4);
+		}),
+	);
+
+	testInMemory(
+		"loads a child reached from two parents and the entry script once",
+		Effect.gen(function* () {
+			const onLoad = vi.fn();
+			const assets = implementNamespace(assetsManifest, {
+				seedReplicant: { files: () => 4 },
+				onLoad,
+			});
+			const show = implementNamespace(
+				defineNamespace("show", { children: { assets: assetsManifest } }),
+				{ children: { assets } },
+			);
+			const stage = implementNamespace(
+				defineNamespace("stage", { children: { assets: assetsManifest } }),
+				{ children: { assets } },
+			);
+
+			const { namespaces } = yield* loadNodeCGEffect({
+				namespaces: { show, stage, assets },
+			});
+
+			expect(onLoad).toHaveBeenCalledTimes(1);
+			expect(namespaces.assets.replicant.files.get()).toBe(4);
+		}),
+	);
+
+	testInMemory(
+		"dies when two child objects share a name",
+		Effect.gen(function* () {
+			const show = implementNamespace(
+				defineNamespace("show", { children: { assets: assetsManifest } }),
+				{
+					children: {
+						assets: implementNamespace(assetsManifest, {
+							seedReplicant: { files: () => 0 },
+						}),
+					},
+				},
+			);
+			const stage = implementNamespace(
+				defineNamespace("stage", { children: { assets: assetsManifest } }),
+				{
+					children: {
+						assets: implementNamespace(assetsManifest, {
+							seedReplicant: { files: () => 0 },
+						}),
+					},
+				},
+			);
+
+			const cause = yield* loadNodeCGEffect({
+				namespaces: { show, stage },
+			}).pipe(Effect.sandbox, Effect.flip);
+
+			const defect = Cause.findDefect(cause);
+			assert(Result.isSuccess(defect));
+			assert(defect.success instanceof Error);
+			expect(defect.success.message).toContain('"assets" was loaded twice');
+		}),
+	);
+
+	testInMemory(
+		"fails when a child is implemented for another manifest of the same shape",
+		Effect.gen(function* () {
+			const lookalike = defineNamespace("assets", {
+				replicant: { files: { schema: Schema.FiniteFromString } },
+			});
+			const show = implementNamespace(
+				defineNamespace("show", { children: { assets: assetsManifest } }),
+				{
+					children: {
+						assets: implementNamespace(lookalike, {
+							seedReplicant: { files: () => 0 },
+						}),
+					},
+				},
+			);
+
+			const error = yield* loadNodeCGEffect({
+				namespaces: { show },
+			}).pipe(Effect.flip);
+
+			expect(error).toStrictEqual(
+				UnimplementedChild.make({ namespace: "show", child: "assets" }),
 			);
 		}),
 	);

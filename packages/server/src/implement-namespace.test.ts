@@ -102,6 +102,27 @@ describe("implementNamespace", () => {
 			implementComputed: {},
 		});
 	});
+
+	test("requires each declared child, implemented for its own manifest", () => {
+		const assets = defineNamespace("assets", {
+			replicant: { files: { schema: Schema.Finite } },
+		});
+		const labels = defineNamespace("labels", {
+			replicant: { files: { schema: Schema.String } },
+		});
+		const show = defineNamespace("show", { children: { assets } });
+
+		// @ts-expect-error the child "assets" has no implementation
+		implementNamespace(show, {});
+		implementNamespace(show, {
+			children: {
+				// @ts-expect-error implemented for "labels", not "assets"
+				assets: implementNamespace(labels, {
+					seedReplicant: { files: () => "" },
+				}),
+			},
+		});
+	});
 });
 
 describe("implementExtendedNamespace", () => {
@@ -229,6 +250,38 @@ describe("implementExtendedNamespace", () => {
 		implementExtendedNamespace(computed, baseImplemented, {});
 		// @ts-expect-error missing implementRpc
 		implementExtendedNamespace(rpc, baseImplemented, {});
+	});
+
+	test("merges the base and extension children", () => {
+		const assetsManifest = defineNamespace("assets", {});
+		const mediaManifest = defineNamespace("media", {});
+		const showManifest = defineNamespace("show", {
+			children: { assets: assetsManifest },
+		});
+		const assets = implementNamespace(assetsManifest);
+		const media = implementNamespace(mediaManifest);
+		const show = implementNamespace(showManifest, { children: { assets } });
+
+		const extended = implementExtendedNamespace(
+			extendNamespace(showManifest, { children: { media: mediaManifest } }),
+			show,
+			{ children: { media } },
+		);
+
+		expect(extended.impl?.children).toStrictEqual({ assets, media });
+	});
+
+	test("requires each child the extension adds", () => {
+		const assetsManifest = defineNamespace("assets", {});
+		const showManifest = defineNamespace("show", {});
+		const show = implementNamespace(showManifest);
+
+		implementExtendedNamespace(
+			extendNamespace(showManifest, { children: { assets: assetsManifest } }),
+			show,
+			// @ts-expect-error the added child "assets" has no implementation
+			{},
+		);
 	});
 
 	testInMemory(

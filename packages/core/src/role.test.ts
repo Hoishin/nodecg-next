@@ -12,11 +12,7 @@ import {
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 
-import {
-	declaredRoleNames,
-	defineNamespace,
-	extendNamespace,
-} from "./define-namespace.ts";
+import { defineNamespace, extendNamespace } from "./define-namespace.ts";
 import { getRolesForNamespace, isAdminTier } from "./role.ts";
 
 const authentication = Authentication.make({
@@ -316,31 +312,5 @@ describe("getRolesForNamespace", () => {
 	test("is empty for anonymous and server", () => {
 		expect(getRolesForNamespace(anonymous, "match")).toEqual([]);
 		expect(getRolesForNamespace(server, "match")).toEqual([]);
-	});
-});
-
-describe("declaredRoleNames", () => {
-	test("returns every declared role, capability-less ones included", () => {
-		const declared = defineNamespace("declared", {
-			roles: {
-				producer: { permission: ["replicant-write"] },
-				idle: { permission: [] },
-			},
-		});
-		expect(declaredRoleNames(declared)).toEqual(
-			new Set([RoleName("producer"), RoleName("idle")]),
-		);
-	});
-
-	test("includes roles a later extend adds", () => {
-		const base = defineNamespace("base", {
-			roles: { producer: { permission: ["replicant-write"] } },
-		});
-		const extended = extendNamespace(base, {
-			roles: { moderator: { permission: [] } },
-		});
-		expect(declaredRoleNames(extended)).toEqual(
-			new Set([RoleName("producer"), RoleName("moderator")]),
-		);
 	});
 });

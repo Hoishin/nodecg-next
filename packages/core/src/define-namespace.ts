@@ -1,6 +1,8 @@
 import {
 	DeclarablePrincipalNameSchema,
 	isUndeclarableRole,
+	manifestChildrenKey,
+	manifestRolesKey,
 	PRINCIPAL,
 	RoleName,
 	UndeniablePrincipalNameSchema,
@@ -60,8 +62,6 @@ export interface RpcFieldManifest<Request, Response> {
 	readonly permission: ResolvedPermission;
 }
 
-const manifestRolesKey = Symbol("manifestRolesKey");
-
 export type WidestRpcField = {
 	readonly request: unknown;
 	readonly response: unknown;
@@ -83,9 +83,18 @@ export type EmptyNamespaceFields = {
 	readonly rpc: {};
 };
 
-export interface NamespaceManifest<S extends WidestNamespaceFields> {
+export type WidestChildManifests = Record<
+	string,
+	NamespaceManifest<EmptyNamespaceFields>
+>;
+
+export interface NamespaceManifest<
+	S extends WidestNamespaceFields,
+	Children extends WidestChildManifests = WidestChildManifests,
+> {
 	readonly namespace: string;
 	readonly [manifestRolesKey]: RoleRegistry;
+	readonly [manifestChildrenKey]: Children;
 
 	readonly replicant: {
 		[K in keyof S["replicant"] & string]: ReplicantFieldManifest<
@@ -105,10 +114,6 @@ export interface NamespaceManifest<S extends WidestNamespaceFields> {
 		>;
 	};
 }
-
-export const declaredRoleNames = (
-	manifest: NamespaceManifest<EmptyNamespaceFields>,
-): ReadonlySet<RoleName> => new Set(manifest[manifestRolesKey].roles.keys());
 
 type FieldDecoded<S> = S extends Schema.Top
 	? S["Type"]
@@ -467,6 +472,7 @@ export function defineNamespace<
 		RpcFieldOption<WriteOnlyPermissionArg<DeclaredRoleName>>
 	> = {},
 	const DeclaredRoleName extends string = never,
+	Children extends WidestChildManifests = {},
 >(
 	namespace: FileSafeName<Namespace>,
 	defineOption: {
@@ -483,13 +489,17 @@ export function defineNamespace<
 		computed?: FieldOptions<Computed, ReadOnlyPermissionArg<DeclaredRoleName>>;
 		topic?: FieldOptions<Topic, PermissionArg<DeclaredRoleName>>;
 		rpc?: Rpc;
+		children?: Children;
 	},
-): NamespaceManifest<{
-	replicant: { [K in keyof Replicant]: FieldDecoded<Replicant[K]> };
-	computed: { [K in keyof Computed]: FieldDecoded<Computed[K]> };
-	topic: { [K in keyof Topic]: FieldDecoded<Topic[K]> };
-	rpc: AddedRpcDecoded<Rpc>;
-}> {
+): NamespaceManifest<
+	{
+		replicant: { [K in keyof Replicant]: FieldDecoded<Replicant[K]> };
+		computed: { [K in keyof Computed]: FieldDecoded<Computed[K]> };
+		topic: { [K in keyof Topic]: FieldDecoded<Topic[K]> };
+		rpc: AddedRpcDecoded<Rpc>;
+	},
+	Children
+> {
 	if (!isFileSafeName(namespace)) {
 		throw new Error(
 			`Namespace "${namespace}" must use only A-Z, a-z, 0-9, "_" and "-", and not be a Windows device name`,
@@ -509,6 +519,8 @@ export function defineNamespace<
 	validatePermissionTokens("computed", defineOption.computed, registry.roles);
 	validatePermissionTokens("topic", defineOption.topic, registry.roles);
 	validatePermissionTokens("rpc", defineOption.rpc, registry.roles);
+
+	const children = defineOption.children ?? ({} as Children);
 
 	const resolve = (
 		capability: RoleCapability,
@@ -579,6 +591,7 @@ export function defineNamespace<
 		topic,
 		rpc,
 		[manifestRolesKey]: registry,
+		[manifestChildrenKey]: children,
 	};
 }
 
@@ -604,6 +617,12 @@ interface ExtendRpcFieldOption<P extends WriteOnlyPermissionArg<string>> {
 
 type Override<Precedent, Added> = Omit<Precedent, keyof Added> & Added;
 
+type RedeclaredKeys<T, Existing> = {
+	[K in keyof T as K extends Existing
+		? K
+		: never]: "Already declared by the precedent";
+};
+
 type AddedDecoded<In> = {
 	readonly [K in keyof AddedSchemas<In>]: FieldDecoded<AddedSchemas<In>[K]>;
 };
@@ -620,6 +639,7 @@ export function extendNamespace<
 	PComputed extends Record<string, unknown>,
 	PTopic extends Record<string, unknown>,
 	PRpc extends WidestRpcFields,
+	PChildren extends WidestChildManifests,
 	const EReplicant extends Record<
 		string,
 		ExtendReplicantFieldOption<PermissionArg<string>>
@@ -636,13 +656,17 @@ export function extendNamespace<
 		string,
 		ExtendRpcFieldOption<WriteOnlyPermissionArg<string>>
 	> = {},
+	EChildren extends WidestChildManifests = {},
 >(
-	manifest: NamespaceManifest<{
-		replicant: PReplicant;
-		computed: PComputed;
-		topic: PTopic;
-		rpc: PRpc;
-	}>,
+	manifest: NamespaceManifest<
+		{
+			replicant: PReplicant;
+			computed: PComputed;
+			topic: PTopic;
+			rpc: PRpc;
+		},
+		PChildren
+	>,
 	extendOptionOrFn:
 		| {
 				readonly roles?: Record<string, RoleArg>;
@@ -653,14 +677,19 @@ export function extendNamespace<
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
+				readonly children?: EChildren &
+					RedeclaredKeys<EChildren, keyof PChildren>;
 		  }
 		| ((
-				precedent: NamespaceManifest<{
-					replicant: PReplicant;
-					computed: PComputed;
-					topic: PTopic;
-					rpc: PRpc;
-				}>,
+				precedent: NamespaceManifest<
+					{
+						replicant: PReplicant;
+						computed: PComputed;
+						topic: PTopic;
+						rpc: PRpc;
+					},
+					PChildren
+				>,
 		  ) => {
 				readonly roles?: Record<string, RoleArg>;
 				readonly principals?: PrincipalsArg;
@@ -670,13 +699,18 @@ export function extendNamespace<
 				readonly computed?: EComputed;
 				readonly topic?: ETopic;
 				readonly rpc?: ERpc;
+				readonly children?: EChildren &
+					RedeclaredKeys<EChildren, keyof PChildren>;
 		  }),
-): NamespaceManifest<{
-	replicant: Override<PReplicant, AddedDecoded<EReplicant>>;
-	computed: Override<PComputed, AddedDecoded<EComputed>>;
-	topic: Override<PTopic, AddedDecoded<ETopic>>;
-	rpc: Override<PRpc, AddedRpcDecoded<ERpc>>;
-}> {
+): NamespaceManifest<
+	{
+		replicant: Override<PReplicant, AddedDecoded<EReplicant>>;
+		computed: Override<PComputed, AddedDecoded<EComputed>>;
+		topic: Override<PTopic, AddedDecoded<ETopic>>;
+		rpc: Override<PRpc, AddedRpcDecoded<ERpc>>;
+	},
+	Override<PChildren, EChildren>
+> {
 	type Extended = {
 		replicant: Override<PReplicant, AddedDecoded<EReplicant>>;
 		computed: Override<PComputed, AddedDecoded<EComputed>>;
@@ -707,6 +741,11 @@ export function extendNamespace<
 	validatePermissionTokens("computed", extendOption.computed, registry.roles);
 	validatePermissionTokens("topic", extendOption.topic, registry.roles);
 	validatePermissionTokens("rpc", extendOption.rpc, registry.roles);
+
+	const children = mergeRecords<Override<PChildren, EChildren>>(
+		manifest[manifestChildrenKey],
+		extendOption.children,
+	);
 
 	const resolve = (
 		capability: RoleCapability,
@@ -883,6 +922,7 @@ export function extendNamespace<
 	return {
 		namespace: manifest.namespace,
 		[manifestRolesKey]: registry,
+		[manifestChildrenKey]: children,
 		replicant: replicant,
 		computed,
 		topic,
