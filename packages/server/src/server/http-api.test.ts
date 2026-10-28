@@ -1,4 +1,6 @@
-import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
 import { CurrentIdentity, RoleName } from "@nodecg-next/internal";

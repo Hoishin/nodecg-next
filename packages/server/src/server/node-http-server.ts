@@ -1,12 +1,8 @@
-import {
-	createServer,
-	// @effect-diagnostics-next-line nodeBuiltinImport:off
-} from "node:http";
+// @effect-diagnostics-next-line nodeBuiltinImport:off
+import { createServer } from "node:http";
 
-import {
-	NodeHttpServer,
-	type NodeHttpServerRequest,
-} from "@effect/platform-node";
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import type * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import { baseUrlCookieName } from "@nodecg-next/internal";
 import { Effect } from "effect";
 import { Cookies } from "effect/http";

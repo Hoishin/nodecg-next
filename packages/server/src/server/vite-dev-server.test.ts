@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { testLayer } from "@nodecg-next/test-utils";
 import { ConfigProvider, Effect, FileSystem, Layer } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/http";

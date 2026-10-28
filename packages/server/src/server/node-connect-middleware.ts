@@ -1,4 +1,4 @@
-import { NodeHttpServerRequest } from "@effect/platform-node";
+import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import { Effect } from "effect";
 import {
 	HttpServerError,

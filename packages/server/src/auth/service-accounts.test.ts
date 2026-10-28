@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { NodeCrypto } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { ServiceAccountId, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, Layer, Redacted } from "effect";

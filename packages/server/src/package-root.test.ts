@@ -1,4 +1,5 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, FileSystem, Layer, Option, Path } from "effect";
 import { describe, expect } from "vitest";

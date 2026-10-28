@@ -1,4 +1,6 @@
-import { NodeCrypto, NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Role, RoleNameSchema, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Array, Effect, HashSet, Layer } from "effect";

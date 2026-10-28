@@ -1,4 +1,4 @@
-import { NodeHttpServer } from "@effect/platform-node";
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import {
