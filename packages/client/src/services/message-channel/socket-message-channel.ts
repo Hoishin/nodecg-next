@@ -14,6 +14,7 @@ import {
 } from "effect";
 import { Socket } from "effect/socket";
 
+import { SilenceDetectorService } from "../silence-detector/silence-detector.ts";
 import {
 	type ConnectionStatus,
 	MessageChannelService,
@@ -32,6 +33,7 @@ export const SocketMessageChannel = Layer.effect(
 	MessageChannelService,
 	Effect.gen(function* () {
 		const socket = yield* Socket.Socket;
+		const silenceDetector = yield* SilenceDetectorService;
 		const { write } = yield* socket.writer;
 		const pubsub = yield* Effect.acquireRelease(
 			PubSub.unbounded<ServerMessage>(),
@@ -47,6 +49,7 @@ export const SocketMessageChannel = Layer.effect(
 					return;
 				}
 				const message = yield* decodeServerMessage(data);
+				yield* silenceDetector.onMessage(message);
 				yield* PubSub.publish(pubsub, message);
 			},
 			Effect.catchTag("SchemaError", (error) =>
@@ -69,6 +72,7 @@ export const SocketMessageChannel = Layer.effect(
 					Effect.forEach((data) => handleData(data), { discard: true }),
 				),
 				Effect.forever,
+				Effect.raceFirst(silenceDetector.silence),
 			);
 		});
 
@@ -80,11 +84,24 @@ export const SocketMessageChannel = Layer.effect(
 						Schedule.exponential(Duration.millis(100)),
 						Schedule.spaced(Duration.seconds(10)),
 					]).pipe(Schedule.jittered),
-					while: (error) => isSocketOpenError(error.reason),
+					while: (error) =>
+						Match.value(error).pipe(
+							Match.tag("SocketError", ({ reason }) =>
+								isSocketOpenError(reason),
+							),
+							Match.tag("ConnectionIdle", () => false),
+							Match.exhaustive,
+						),
 				}),
-				Effect.catchTag("SocketError", (error) =>
-					Effect.logWarning("Message channel closed, reconnecting:", error),
-				),
+				Effect.catchTags({
+					SocketError: (error) =>
+						Effect.logWarning("Message channel closed, reconnecting:", error),
+					ConnectionIdle: (error) =>
+						Effect.logWarning(
+							"Message channel went silent, reconnecting:",
+							error,
+						),
+				}),
 				Effect.repeat(
 					Schedule.spaced(Duration.seconds(1)).pipe(Schedule.jittered),
 				),

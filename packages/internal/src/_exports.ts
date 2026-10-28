@@ -28,6 +28,7 @@ export {
 	ClientMessage,
 	FieldValueMessage,
 	PingMessage,
+	PongMessage,
 	PublishMessage,
 	ReplicantDeltaMessage,
 	ReplicantSnapshotMessage,

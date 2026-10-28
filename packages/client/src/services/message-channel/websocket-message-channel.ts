@@ -1,6 +1,7 @@
-import { Effect, Layer, Path } from "effect";
+import { Duration, Effect, Layer, Path } from "effect";
 import { Socket } from "effect/socket";
 
+import { pingSilenceDetector } from "../silence-detector/ping-silence-detector.ts";
 import { SocketMessageChannel } from "./socket-message-channel.ts";
 
 // TODO: infer this from HttpApi from internal or have internal const
@@ -19,6 +20,12 @@ const wsUrl = Effect.fn("wsUrl")(function* (baseUrl?: string) {
 
 export const webSocketMessageChannel = (baseUrl?: string) =>
 	SocketMessageChannel.pipe(
+		Layer.provide(
+			pingSilenceDetector({
+				interval: Duration.seconds(30),
+				pongTimeout: Duration.seconds(15),
+			}),
+		),
 		Layer.provide(
 			Layer.effect(
 				Socket.Socket,

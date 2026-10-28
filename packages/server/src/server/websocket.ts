@@ -5,7 +5,7 @@ import {
 	type FieldIdentifier,
 	FieldValueMessage,
 	type Identity,
-	PingMessage,
+	PongMessage,
 	ReplicantDeltaMessage,
 	type ReplicantFieldIdentifier,
 	ReplicantSnapshotMessage,
@@ -242,19 +242,11 @@ export const websocketRoute = HttpRouter.use((router) =>
 				}
 				const message = yield* decodeClientMessage(data);
 				yield* Match.value(message).pipe(
-					Match.tag("ping", (msg) =>
-						Match.value(msg).pipe(
-							Match.when({ kind: "ping" }, () =>
-								Effect.gen(function* () {
-									yield* Effect.logDebug("Received ping");
-									yield* send(PingMessage.make({ kind: "pong" }));
-								}),
-							),
-							Match.when({ kind: "pong" }, () =>
-								Effect.logDebug("Received pong"),
-							),
-							Match.exhaustive,
-						),
+					Match.tag("ping", () =>
+						Effect.gen(function* () {
+							yield* Effect.logDebug("Received ping");
+							yield* send(PongMessage.make({}));
+						}),
 					),
 					Match.tag("subscribe", (msg) =>
 						SynchronizedRef.updateEffect(subscriptions, (map) =>

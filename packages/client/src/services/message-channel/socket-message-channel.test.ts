@@ -4,11 +4,24 @@ import {
 	ReplicantSnapshotMessage,
 	SubscribeMessage,
 } from "@nodecg-next/internal";
-import { Deferred, Effect, Fiber, Layer, Option, Stream } from "effect";
+import {
+	Deferred,
+	Duration,
+	Effect,
+	Fiber,
+	Layer,
+	Option,
+	Stream,
+} from "effect";
 import { Socket } from "effect/socket";
 import { TestClock } from "effect/testing";
-import { assert, describe, expect, vi } from "vitest";
+import { afterEach, assert, describe, expect, vi } from "vitest";
 
+import {
+	ConnectionIdle,
+	type SilenceDetector,
+	SilenceDetectorService,
+} from "../silence-detector/silence-detector.ts";
 import { MessageChannelService } from "./message-channel.ts";
 import { SocketMessageChannel } from "./socket-message-channel.ts";
 
@@ -39,7 +52,18 @@ const refused = Effect.fail(
 	}),
 );
 
-const layerFor = (socket: Socket.Socket) =>
+const onMessage = vi.fn<SilenceDetector["onMessage"]>(() => Effect.void);
+const silence = vi.fn<() => SilenceDetector["silence"]>(() => Effect.never);
+afterEach(() => {
+	onMessage.mockReset();
+	silence.mockReset();
+});
+const silenceDetector: SilenceDetector = {
+	onMessage,
+	silence: Effect.suspend(silence),
+};
+
+const makeChannelLayer = (socket: Socket.Socket) =>
 	SocketMessageChannel.pipe(
 		Layer.provide(Layer.succeed(Socket.Socket, socket)),
 	);
@@ -65,7 +89,7 @@ describe("send", () => {
 			yield* Effect.gen(function* () {
 				const channel = yield* MessageChannelService;
 				yield* channel.send(SubscribeMessage.make({ field: countField }));
-			}).pipe(Effect.provide(layerFor(socket)));
+			}).pipe(Effect.provide(makeChannelLayer(socket)));
 
 			expect(write).toHaveBeenCalledExactlyOnceWith(
 				JSON.stringify({
@@ -105,7 +129,7 @@ describe("status", () => {
 					"disconnected",
 					"connected",
 				]);
-			}).pipe(Effect.provide(layerFor(socket)));
+			}).pipe(Effect.provide(makeChannelLayer(socket)));
 		}),
 	);
 });
@@ -134,7 +158,7 @@ describe("receive", () => {
 						value: 42,
 						revision: 3,
 					});
-				}).pipe(Effect.provide(layerFor(socket)));
+				}).pipe(Effect.provide(makeChannelLayer(socket)));
 			}),
 	);
 
@@ -163,7 +187,7 @@ describe("receive", () => {
 					const seen = yield* Fiber.join(statuses);
 					expect(received).toEqual([]);
 					expect(seen).toEqual(["disconnected"]);
-				}).pipe(Effect.provide(layerFor(socket)));
+				}).pipe(Effect.provide(makeChannelLayer(socket)));
 			}),
 	);
 
@@ -174,7 +198,7 @@ describe("receive", () => {
 			const stream = yield* Effect.gen(function* () {
 				const channel = yield* MessageChannelService;
 				return yield* channel.receive();
-			}).pipe(Effect.provide(layerFor(socket)));
+			}).pipe(Effect.provide(makeChannelLayer(socket)));
 
 			const all = yield* Stream.runCollect(stream);
 			expect(all).toEqual([]);
@@ -210,7 +234,7 @@ describe("receive", () => {
 						value: 42,
 						revision: 3,
 					});
-				}).pipe(Effect.provide(layerFor(socket)));
+				}).pipe(Effect.provide(makeChannelLayer(socket)));
 			}),
 	);
 });
@@ -236,7 +260,54 @@ describe("reconnect", () => {
 					value: 42,
 					revision: 3,
 				});
-			}).pipe(Effect.provide(layerFor(socket)));
+			}).pipe(Effect.provide(makeChannelLayer(socket)));
+		}),
+	);
+
+	it.effect("reconnects when the connection goes silent", () =>
+		Effect.gen(function* () {
+			const { socket, reader } = makeFakeSocket();
+			silence.mockReturnValueOnce(
+				Effect.fail(ConnectionIdle.make({ timeout: Duration.seconds(45) })),
+			);
+
+			yield* Effect.gen(function* () {
+				yield* MessageChannelService;
+				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(1));
+				yield* TestClock.adjust("1200 millis");
+				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(2));
+			}).pipe(
+				Effect.provide(makeChannelLayer(socket)),
+				Effect.provideService(SilenceDetectorService, silenceDetector),
+			);
+		}),
+	);
+
+	it.effect("reports each decoded message to the silence detector", () =>
+		Effect.gen(function* () {
+			const { socket, pull } = makeFakeSocket();
+			pull.mockReturnValueOnce(
+				Effect.succeed(["not valid json", countSnapshot] as const),
+			);
+
+			yield* Effect.gen(function* () {
+				yield* MessageChannelService;
+				yield* waitFor(() =>
+					expect(onMessage.mock.calls).toEqual([
+						[
+							{
+								_tag: "snapshot",
+								field: { type: "replicant", namespace: "root", name: "count" },
+								value: 42,
+								revision: 3,
+							},
+						],
+					]),
+				);
+			}).pipe(
+				Effect.provide(makeChannelLayer(socket)),
+				Effect.provideService(SilenceDetectorService, silenceDetector),
+			);
 		}),
 	);
 
@@ -263,7 +334,7 @@ describe("reconnect", () => {
 				yield* Deferred.succeed(refuseAgain, undefined);
 				yield* TestClock.adjust("120 millis");
 				yield* waitFor(() => expect(reader).toHaveBeenCalledTimes(4));
-			}).pipe(Effect.provide(layerFor(socket)));
+			}).pipe(Effect.provide(makeChannelLayer(socket)));
 		}),
 	);
 });

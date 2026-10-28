@@ -40,9 +40,10 @@ export const ResyncMessage = Schema.TaggedStruct("resync", {
 	field: ReplicantFieldIdentifier,
 });
 
-export const PingMessage = Schema.TaggedStruct("ping", {
-	kind: Schema.Literals(["ping", "pong"]),
-});
+export const PingMessage = Schema.TaggedStruct("ping", {});
+export type PingMessage = typeof PingMessage.Type;
+export const PongMessage = Schema.TaggedStruct("pong", {});
+export type PongMessage = typeof PongMessage.Type;
 
 export const ClientMessage = Schema.Union([
 	SubscribeMessage,
@@ -94,6 +95,6 @@ export type SubscribeRejectedMessage = typeof SubscribeRejectedMessage.Type;
 export const ServerMessage = Schema.Union([
 	PublishMessage,
 	SubscribeRejectedMessage,
-	PingMessage,
+	PongMessage,
 ]);
 export type ServerMessage = typeof ServerMessage.Type;

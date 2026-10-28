@@ -486,7 +486,7 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 								}
 							}),
 						),
-						Match.tag("ping", () => Effect.void),
+						Match.tag("pong", () => Effect.void),
 						Match.exhaustive,
 					),
 				),
