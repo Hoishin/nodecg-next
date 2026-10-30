@@ -74,9 +74,11 @@ describe("replicant persistence", () => {
 			expect(yield* getRes.json).toBe("7");
 
 			yield* Effect.promise(() =>
-				vi.waitFor(() =>
+				vi.waitFor(async () =>
 					expect(
-						Effect.runSyncWith(context)(repository.read("show", "score")),
+						await Effect.runPromiseWith(context)(
+							repository.read("show", "score"),
+						),
 					).toBe("7"),
 				),
 			);

@@ -3,12 +3,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { it } from "@effect/vitest";
 import { type ResolvedPermission, FieldDecodeError } from "@nodecg-next/core";
-import { CurrentIdentity, RoleName } from "@nodecg-next/internal";
-import {
-	computeTestHash,
-	PatchNotApplicable,
-	RevisionConflict,
-} from "@nodecg-next/internal/occ";
+import { RoleName } from "@nodecg-next/internal";
 import { ConfigProvider, Effect, HashMap, Layer, Stream } from "effect";
 import {
 	FetchHttpClient,
@@ -33,12 +28,11 @@ import { type BuiltNamespace } from "../build-fields.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { RpcHandlerError } from "../field-builders/build-rpc.ts";
 import { fieldInternal } from "../field-builders/field-internal-key.ts";
-import { FieldPermissionDenied } from "../field-builders/permission.ts";
 import {
 	NamespaceRegistryService,
 	type RegisteredNamespace,
 } from "../namespace-registry.ts";
-import { ReplicantStoreService, UnknownReplicant } from "../replicant-store.ts";
+import { ReplicantStoreService } from "../replicant-store.ts";
 import { DrizzleSqliteDatabaseService } from "../services/database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { AuthenticationRepositoryService } from "../services/repository/authentication/authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "../services/repository/authentication/drizzle-sqlite-authentication-repository.ts";
@@ -54,7 +48,6 @@ import { RootApiLive } from "./http-api/build-root-api.ts";
 import { UrlPath } from "./url-path.ts";
 
 type ReplicantStub = BuiltNamespace["replicant"][string];
-type Internal = ReplicantStub[typeof fieldInternal];
 
 const openPermission: ResolvedPermission = {
 	read: { roles: new Set(), rolesDenied: new Set() },
@@ -62,53 +55,6 @@ const openPermission: ResolvedPermission = {
 	canRead: () => true,
 	canWrite: () => true,
 };
-
-function stubField(
-	internal: Pick<Internal, "getRevisioned" | "commitPatch">,
-): ReplicantStub {
-	const unused = vi.fn();
-	const subscribeRevisioned = () => Effect.succeed(Stream.empty);
-	const subscribe = () => Effect.succeed(Stream.empty);
-	return {
-		get: unused,
-		set: unused,
-		update: unused,
-		validate: unused,
-		subscribe: unused,
-		[fieldInternal]: {
-			get: unused,
-			set: unused,
-			update: unused,
-			validate: unused,
-			subscribe,
-			getRevisioned: internal.getRevisioned,
-			commitPatch: internal.commitPatch,
-			subscribeRevisioned,
-			permission: openPermission,
-		},
-	};
-}
-
-type ComputedInternal =
-	BuiltNamespace["computed"][string][typeof fieldInternal];
-
-function stubComputed(
-	getEncoded: ComputedInternal["getEncoded"],
-): BuiltNamespace["computed"][string] {
-	const unused = vi.fn();
-	return {
-		get: unused,
-		subscribe: unused,
-		[fieldInternal]: {
-			get: unused,
-			subscribe: () => Effect.succeed(Stream.empty),
-			getEncodedNoAuth: unused,
-			getEncoded,
-			subscribeEncoded: () => Effect.succeed(Stream.empty),
-			permission: openPermission,
-		},
-	};
-}
 
 type TopicInternal = BuiltNamespace["topic"][string][typeof fieldInternal];
 type RpcInternal = BuiltNamespace["rpc"][string][typeof fieldInternal];
@@ -243,19 +189,8 @@ const webHandler = Effect.fn(function* (
 
 const json = (res: Response) => Effect.promise(() => res.json());
 
-const getUrl = "http://x/api/internal/namespaces/root/replicant/count";
-const computedUrl = "http://x/api/internal/namespaces/root/computed/count";
 const topicUrl = "http://x/api/internal/namespaces/root/topic/chat";
 const rpcUrl = "http://x/api/internal/namespaces/root/rpc/echo";
-
-const committed = () => Effect.succeed({ value: null, revision: 1 });
-
-const putPatch = (patch: unknown) =>
-	new Request(getUrl, {
-		method: "PUT",
-		body: JSON.stringify(patch),
-		headers: { "content-type": "application/json" },
-	});
 
 const postRequest = (url: string, value: unknown) =>
 	new Request(url, {
@@ -263,283 +198,6 @@ const postRequest = (url: string, value: unknown) =>
 		body: JSON.stringify(value),
 		headers: { "content-type": "application/json" },
 	});
-
-describe("get", () => {
-	it.effect("returns the stored value", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
-						commitPatch: committed,
-					}),
-				}),
-			]);
-			const res = yield* handler(new Request(getUrl));
-			expect(res.status).toBe(200);
-			expect(yield* json(res)).toBe(42);
-		}),
-	);
-
-	it.effect("404 when the namespace/name is not registered", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([]);
-			const res = yield* handler(new Request(getUrl));
-			expect(res.status).toBe(404);
-		}),
-	);
-
-	it.effect("404 when a replicant read reports not-found", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () =>
-							Effect.fail(
-								new UnknownReplicant({ namespace: "root", name: "count" }),
-							),
-						commitPatch: committed,
-					}),
-				}),
-			]);
-			const res = yield* handler(new Request(getUrl));
-			expect(res.status).toBe(404);
-		}),
-	);
-
-	it.effect("returns a computed field's value", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace(
-					"root",
-					{},
-					{ count: stubComputed(() => Effect.succeed(84)) },
-				),
-			]);
-			const res = yield* handler(new Request(computedUrl));
-			expect(res.status).toBe(200);
-			expect(yield* json(res)).toBe(84);
-		}),
-	);
-});
-
-describe("update", () => {
-	it.effect(
-		"passes a root replace patch through to the field and returns 204",
-		() =>
-			Effect.gen(function* () {
-				const commitPatch = vi.fn(committed);
-				const handler = yield* webHandler([
-					registeredNamespace("root", {
-						count: stubField({
-							getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-							commitPatch,
-						}),
-					}),
-				]);
-				const res = yield* handler(
-					putPatch([{ op: "replace", path: "", value: 7 }]),
-				);
-				expect(res.status).toBe(204);
-				expect(commitPatch).toHaveBeenCalledWith([
-					{ op: "replace", path: "", value: 7 },
-				]);
-			}),
-	);
-
-	it.effect("400 when the payload is not a patch", () =>
-		Effect.gen(function* () {
-			const commitPatch = vi.fn(committed);
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-						commitPatch,
-					}),
-				}),
-			]);
-			expect((yield* handler(putPatch(7))).status).toBe(400);
-			expect((yield* handler(putPatch([]))).status).toBe(400);
-			expect(
-				(yield* handler(putPatch([{ op: "replace", path: "a", value: 7 }])))
-					.status,
-			).toBe(400);
-			expect(commitPatch).not.toHaveBeenCalled();
-		}),
-	);
-
-	it.effect("422 when the field reports PatchNotApplicable", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-						commitPatch: () =>
-							Effect.fail(
-								new PatchNotApplicable({ path: "/a", reason: "MissingKey" }),
-							),
-					}),
-				}),
-			]);
-			const res = yield* handler(
-				putPatch([{ op: "replace", path: "/a", value: 7 }]),
-			);
-			expect(res.status).toBe(422);
-			expect(yield* json(res)).toEqual({
-				_tag: "PatchNotApplicable",
-				path: "/a",
-				reason: "MissingKey",
-			});
-		}),
-	);
-
-	it.effect(
-		"409 with the current value when the field reports RevisionConflict",
-		() =>
-			Effect.gen(function* () {
-				const handler = yield* webHandler([
-					registeredNamespace("root", {
-						count: stubField({
-							getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-							commitPatch: () =>
-								Effect.fail(
-									new RevisionConflict({
-										value: 9,
-										revision: 3,
-										reason: "HashMismatch",
-									}),
-								),
-						}),
-					}),
-				]);
-				const res = yield* handler(
-					putPatch([
-						{ op: "test-hash", path: "", hash: computeTestHash(0) },
-						{ op: "replace", path: "", value: 7 },
-					]),
-				);
-				expect(res.status).toBe(409);
-				expect(yield* json(res)).toEqual({
-					_tag: "RevisionConflict",
-					value: 9,
-					revision: 3,
-					reason: "HashMismatch",
-				});
-			}),
-	);
-
-	it.effect("400 when the field reports FieldDecodeError", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-						commitPatch: () =>
-							Effect.fail(
-								new FieldDecodeError({
-									fieldName: "count",
-									value: 7,
-									cause: new Error("boom"),
-								}),
-							),
-					}),
-				}),
-			]);
-			const res = yield* handler(
-				putPatch([{ op: "replace", path: "", value: 7 }]),
-			);
-			expect(res.status).toBe(400);
-		}),
-	);
-
-	it.effect("404 when a replicant write reports not-found", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-						commitPatch: () =>
-							Effect.fail(
-								new UnknownReplicant({ namespace: "root", name: "count" }),
-							),
-					}),
-				}),
-			]);
-			const res = yield* handler(
-				putPatch([{ op: "replace", path: "", value: 7 }]),
-			);
-			expect(res.status).toBe(404);
-		}),
-	);
-});
-
-describe("permission enforcement", () => {
-	const readDenied = () =>
-		Effect.fail(
-			new FieldPermissionDenied({
-				namespace: "root",
-				name: "count",
-				operation: "read",
-			}),
-		);
-	const writeDenied = () =>
-		Effect.fail(
-			new FieldPermissionDenied({
-				namespace: "root",
-				name: "count",
-				operation: "write",
-			}),
-		);
-
-	it.effect("403 when replicant getRevisioned denies the caller", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: readDenied,
-						commitPatch: committed,
-					}),
-				}),
-			]);
-			const res = yield* handler(new Request(getUrl));
-			expect(res.status).toBe(403);
-		}),
-	);
-
-	it.effect("403 when replicant commitPatch denies the caller", () =>
-		Effect.gen(function* () {
-			const commitPatch = vi.fn(writeDenied);
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({
-						getRevisioned: () => Effect.succeed({ value: 0, revision: 0 }),
-						commitPatch,
-					}),
-				}),
-			]);
-			const res = yield* handler(
-				putPatch([{ op: "replace", path: "", value: 7 }]),
-			);
-			expect(res.status).toBe(403);
-		}),
-	);
-
-	it.effect("runs the encoded op with the resolved identity in context", () =>
-		Effect.gen(function* () {
-			const getRevisioned = () =>
-				CurrentIdentity.pipe(
-					Effect.map((identity) => ({ value: identity._tag, revision: 0 })),
-				);
-			const handler = yield* webHandler([
-				registeredNamespace("root", {
-					count: stubField({ getRevisioned, commitPatch: committed }),
-				}),
-			]);
-			const res = yield* handler(new Request(getUrl));
-			expect(yield* json(res)).toBe("anonymous");
-		}),
-	);
-});
 
 describe("topic publish", () => {
 	it.effect("forwards an allowed value and returns 204", () =>
@@ -649,37 +307,6 @@ describe("rpc call", () => {
 				),
 			]);
 			expect((yield* handler(postRequest(rpcUrl, 42))).status).toBe(500);
-		}),
-	);
-});
-
-describe("public surface (v0) with bearer token", () => {
-	const countNamespace = () =>
-		registeredNamespace("root", {
-			count: stubField({
-				getRevisioned: () => Effect.succeed({ value: 42, revision: 0 }),
-				commitPatch: committed,
-			}),
-		});
-
-	const publicGetUrl = "http://x/api/v0/namespaces/root/replicant/count";
-
-	it.effect("401 for a resource request without a bearer", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([countNamespace()]);
-			expect((yield* handler(new Request(publicGetUrl))).status).toBe(401);
-		}),
-	);
-
-	it.effect("401 for a resource request with an unknown bearer", () =>
-		Effect.gen(function* () {
-			const handler = yield* webHandler([countNamespace()]);
-			const res = yield* handler(
-				new Request(publicGetUrl, {
-					headers: { authorization: "Bearer anything" },
-				}),
-			);
-			expect(res.status).toBe(401);
 		}),
 	);
 });

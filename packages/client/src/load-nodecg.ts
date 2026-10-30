@@ -134,7 +134,7 @@ export async function loadNodeCG<
 		namespaces: mapValues<BuiltNamespaceLambda, NamespaceHandleLambda>(
 			(built) => adaptNamespace(runtime, built),
 		)(namespaces),
-		auth: adaptAuthClient(runtime, auth),
+		auth: adaptAuthClient(runtime, Effect.succeed(auth)),
 		dispose: runtime.dispose,
 	};
 }

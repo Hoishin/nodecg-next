@@ -1,5 +1,5 @@
 import type { Signal } from "@preact/signals-core";
-import { Effect, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { toError } from "./to-error.ts";
 
@@ -12,9 +12,9 @@ export class SetSignalError extends Schema.TaggedError<SetSignalError>()(
 }
 
 export const setSignal = <T>(signal: Signal<T>, value: T) =>
-	Effect.try({
+	Result.try({
 		try: () => {
 			signal.value = value;
 		},
-		catch: (cause) => new SetSignalError({ cause }),
+		catch: (cause) => SetSignalError.make({ cause }),
 	});

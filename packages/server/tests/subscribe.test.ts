@@ -51,7 +51,7 @@ describe("subscribe", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const registry = yield* BuiltNamespaceRegistry;
-			const built = yield* registry.lookup(show);
+			const built = yield* Effect.fromResult(registry.lookup(show));
 			const handle = yield* adaptNamespace(built);
 			const received: Array<[number, number | undefined]> = [];
 			const cancel = yield* Effect.promise(() =>
@@ -95,7 +95,7 @@ describe("subscribe", () => {
 		Effect.gen(function* () {
 			const client = yield* buildClient;
 			const registry = yield* BuiltNamespaceRegistry;
-			const built = yield* registry.lookup(show);
+			const built = yield* Effect.fromResult(registry.lookup(show));
 			const handle = yield* adaptNamespace(built);
 			const received: Array<[number, number | undefined]> = [];
 			const cancel = yield* Effect.promise(() =>

@@ -280,11 +280,10 @@ match.replicant.label.subscribe((label) => {
 
   ```ts
   const overlay = implementNamespace(overlayManifest, {
-    seedReplicant: { status: () => "Live" },
-    onLoad: (ctx) =>
-      ctx.use(commercial).replicant.isRunning.subscribe((isRunning) => {
-        ctx.replicant.status.set(isRunning ? "On break" : "Live");
-      }),
+    onLoad: async (ctx) => {
+      const { isRunning } = ctx.use(commercial).replicant;
+      await ctx.topic.status.publish(isRunning.get() ? "On break" : "Live");
+    },
   });
 
   loadNodeCG({ namespaces: { overlay, commercial } });
@@ -352,9 +351,9 @@ match.replicant.label.subscribe((label) => {
   const dice = implementNamespace(manifest, {
     seedReplicant: { lastRoll: () => 0 },
     implementRpc: {
-      roll: (max, ctx) => {
+      roll: async (max, ctx) => {
         const rolled = 1 + Math.floor(Math.random() * max);
-        ctx.replicant.lastRoll.set(rolled);
+        await ctx.replicant.lastRoll.set(rolled);
         return rolled;
       },
     },

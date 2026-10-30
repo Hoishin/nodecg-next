@@ -1,54 +1,54 @@
 import type { FieldManifest } from "@nodecg-next/core";
+import { CurrentIdentity, type Identity } from "@nodecg-next/internal";
 import { cloneJson } from "@nodecg-next/internal/utils";
-import { Effect, Stream } from "effect";
+import { Effect, Result, Stream } from "effect";
 
 import {
-	ComputedComputeError,
+	type ComputedComputeError,
 	ReplicantStoreService,
 } from "../replicant-store.ts";
-import type { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
-import { requirePermission } from "./permission.ts";
+import { checkPermission, requirePermission } from "./permission.ts";
 
 export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 	namespace: string,
 	name: string,
 	manifest: FieldManifest<Decoded>,
-	computeValue: Effect.Effect<
-		Decoded,
-		ComputedComputeError | ReplicantNotFound,
-		ReplicantStoreService
-	>,
+	computeValue: () => Result.Result<Decoded, ComputedComputeError>,
 ) {
-	const computeEncoded = Effect.fn("computeEncoded")(function* () {
-		const value = yield* computeValue;
-		const encoded = yield* manifest.encode(value);
-		return cloneJson(encoded);
-	});
-
 	const store = yield* ReplicantStoreService;
-	yield* store.initializeComputed(namespace, name, () =>
-		Effect.runSyncExit(
-			computeEncoded().pipe(
-				Effect.provideService(ReplicantStoreService, store),
-			),
+	const read = yield* store.initializeComputed(namespace, name, () =>
+		computeValue().pipe(
+			Result.flatMap((value) => manifest.encode(value)),
+			Result.map(cloneJson),
 		),
 	);
 
+	const getResult = (identity: Identity) =>
+		checkPermission(
+			manifest.permission,
+			namespace,
+			name,
+			"read",
+			identity,
+		).pipe(
+			Result.flatMap(read),
+			Result.flatMap((encoded) => manifest.decode(cloneJson(encoded))),
+		);
+
 	const get = Effect.fn("get")(function* () {
-		yield* requirePermission(manifest.permission, namespace, name, "read");
-		const encoded = yield* store.readComputed(namespace, name);
-		return yield* manifest.decode(cloneJson(encoded));
+		const identity = yield* CurrentIdentity;
+		return yield* Effect.fromResult(getResult(identity));
 	});
 
 	const getEncodedNoAuth = Effect.fn("getEncodedNoAuth")(function* () {
-		return yield* store.readComputed(namespace, name);
+		return yield* Effect.fromResult(read());
 	});
 
 	const getEncoded = Effect.fn("getEncoded")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* store.readComputed(namespace, name);
+		return yield* Effect.fromResult(read());
 	});
 
 	const subscribeEncoded = Effect.fn("subscribeEncoded")(function* () {
@@ -59,7 +59,7 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 		const stream = yield* subscribeEncoded();
 		return stream.pipe(
 			Stream.mapEffect((value) =>
-				manifest.decode(cloneJson(value)).pipe(migrationDie),
+				Effect.fromResult(manifest.decode(cloneJson(value))).pipe(migrationDie),
 			),
 		);
 	});
@@ -68,7 +68,7 @@ export const buildComputed = Effect.fn("buildComputed")(function* <Decoded>(
 		get,
 		subscribe,
 		[fieldInternal]: {
-			get,
+			getResult,
 			subscribe,
 			getEncodedNoAuth,
 			getEncoded,

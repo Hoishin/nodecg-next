@@ -1,14 +1,15 @@
 import type { WidestNamespaceFields } from "@nodecg-next/core";
+import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import { mapValues } from "@nodecg-next/internal/utils";
-import { Effect, Exit, Option, Schema, Scope, Stream } from "effect";
+import { Effect, Exit, Option, Result, Schema, Scope, Stream } from "effect";
 import type { Promisable } from "type-fest";
 
 import {
-	asServer,
 	type BuiltNamespace,
 	buildFields,
 	BuiltNamespaceRegistry,
 } from "./build-fields.ts";
+import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import type {
 	ComputedFieldEffectLambda,
 	ComputedFieldLambda,
@@ -25,6 +26,10 @@ import type {
 } from "./implement-namespace.ts";
 import { ReplicantStoreService } from "./replicant-store.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
+
+const serverIdentity = ServerIdentity.make({});
+
+const asServer = Effect.provideService(CurrentIdentity, serverIdentity);
 
 export class MissingReplicantSeed extends Schema.TaggedError<MissingReplicantSeed>()(
 	"MissingReplicantSeed",
@@ -61,7 +66,6 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	const context = yield* Effect.context<
 		TopicBrokerService | ReplicantStoreService
 	>();
-	const runSync = Effect.runSyncWith(context);
 	const runPromise = Effect.runPromiseWith(context);
 
 	const subscribeAdapter =
@@ -104,9 +108,10 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	const loaded: LoadedNamespace<S> = {
 		replicant: mapValues<ReplicantFieldEffectLambda, ReplicantFieldLambda>(
 			(field, name) => ({
-				get: () => runSync(field.get().pipe(asServer)),
-				set: (value) => runSync(field.set(value).pipe(asServer)),
-				update: (fn) => runSync(field.update(fn).pipe(asServer)),
+				get: () =>
+					Result.getOrThrow(field[fieldInternal].getResult(serverIdentity)),
+				set: (value) => runPromise(field.set(value).pipe(asServer)),
+				update: (fn) => runPromise(field.update(fn).pipe(asServer)),
 				validate: (value) => runPromise(field.validate(value)),
 				subscribe: (handler) =>
 					subscribeAdapter(
@@ -119,7 +124,8 @@ export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 		)(built.replicant),
 		computed: mapValues<ComputedFieldEffectLambda, ComputedFieldLambda>(
 			(field, name) => ({
-				get: () => runSync(field.get().pipe(asServer)),
+				get: () =>
+					Result.getOrThrow(field[fieldInternal].getResult(serverIdentity)),
 				subscribe: (handler) =>
 					subscribeAdapter(
 						() => field.subscribe().pipe(Effect.map(Stream.zipWithPrevious)),

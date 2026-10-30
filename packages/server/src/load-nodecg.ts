@@ -66,7 +66,7 @@ import {
 	ReplicantRepositoryService,
 } from "./services/repository/replicant/replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
-import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
+import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
 
 export type StorageOption =
 	| ReplicantRepository
@@ -178,9 +178,8 @@ const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 	const context = yield* Effect.context<
 		TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
 	>();
-	const useCross = <S extends WidestNamespaceFields>(
-		cross: ImplementedNamespace<S>,
-	) => Effect.runSyncWith(context)(makeCrossNamespaceHandle(cross));
+	const registry = yield* BuiltNamespaceRegistry;
+	const loaded = yield* Effect.serviceOption(LoadedNamespacesService);
 	const built = yield* buildNamespace(implemented);
 	const handle = yield* adaptNamespace(built);
 	const onLoad = implemented.impl?.onLoad;
@@ -189,7 +188,12 @@ const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 			? Effect.void
 			: Effect.gen(function* () {
 					const cleanup = yield* Effect.tryPromise({
-						try: async () => onLoad({ ...handle, use: useCross }),
+						try: async () =>
+							onLoad({
+								...handle,
+								use: (cross) =>
+									makeCrossNamespaceHandle(context, registry, loaded, cross),
+							}),
 						catch: (error) =>
 							OnLoadError.make({
 								namespace: implemented.manifest.namespace,

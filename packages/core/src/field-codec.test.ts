@@ -1,144 +1,168 @@
-import { it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
-import { describe, expect } from "vitest";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { Effect, Result, Schema, SchemaGetter } from "effect";
+import { assert, describe, expect, test } from "vitest";
 import { z } from "zod";
 
 import { makeCodec } from "./field-codec.ts";
 
 describe("makeCodec", () => {
 	describe("Effect schema", () => {
-		it.effect("encodes and decodes with the schema", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("count", Schema.FiniteFromString);
+		test("encodes and decodes with the schema", () => {
+			const codec = makeCodec("count", Schema.FiniteFromString);
 
-				const wire = yield* codec.encode(1);
-				expect(wire).toBe("1");
+			expect(codec.encode(1)).toStrictEqual(Result.succeed("1"));
+			expect(codec.decode("2")).toStrictEqual(Result.succeed(2));
+		});
 
-				const count = yield* codec.decode("2");
-				expect(count).toBe(2);
-			}),
-		);
+		test("fails to decode a value the schema refuses", () => {
+			const codec = makeCodec("count", Schema.FiniteFromString);
 
-		it.effect("fails to decode a value the schema refuses", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("count", Schema.FiniteFromString);
+			const decoded = codec.decode("nope");
 
-				const error = yield* Effect.flip(codec.decode("nope"));
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure.message).toMatchInlineSnapshot(
+				`"Failed to decode replicant "count": Expected a finite number"`,
+			);
+		});
 
-				expect(error.message).toMatchInlineSnapshot(
-					`"Failed to decode replicant "count": Expected a finite number"`,
-				);
-			}),
-		);
+		test("fails to decode with an asynchronous schema", () => {
+			const schema = Schema.String.pipe(
+				Schema.decode({
+					decode: SchemaGetter.checkEffect(() =>
+						Effect.promise(async () => true),
+					),
+					encode: SchemaGetter.passthrough(),
+				}),
+			);
+			const codec = makeCodec("label", schema);
 
-		it.effect("mutableDecode shares nothing with the input", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("score", Schema.Struct({ data: Schema.Json }));
-				const input = { data: { tags: ["a"] } };
+			const decoded = codec.decode("a");
 
-				const score = yield* codec.mutableDecode(input);
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure.message).toBe(
+				'Failed to decode replicant "label": The schema threw instead of returning issues',
+			);
+		});
 
-				expect(score).toStrictEqual(input);
-				expect(score.data).not.toBe(input.data);
-			}),
-		);
+		test("mutableDecode shares nothing with the input", () => {
+			const codec = makeCodec("score", Schema.Struct({ data: Schema.Json }));
+			const input = { data: { tags: ["a"] } };
+
+			const score = codec.mutableDecode(input);
+
+			assert(Result.isSuccess(score));
+			expect(score.success).toStrictEqual(input);
+			expect(score.success.data).not.toBe(input.data);
+		});
 	});
 
 	describe("Standard Schema", () => {
-		it.effect("encodes and decodes with the schema", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("title", z.string().trim());
+		test("encodes and decodes with the schema", () => {
+			const codec = makeCodec("title", z.string().trim());
 
-				const wire = yield* codec.encode(" final ");
-				expect(wire).toBe("final");
+			expect(codec.encode(" final ")).toStrictEqual(Result.succeed("final"));
+			expect(codec.decode(" semi ")).toStrictEqual(Result.succeed("semi"));
+		});
 
-				const title = yield* codec.decode(" semi ");
-				expect(title).toBe("semi");
-			}),
-		);
+		test("fails to encode a value the schema refuses", () => {
+			const codec = makeCodec("round", z.number().min(1));
 
-		it.effect("fails to encode a value the schema refuses", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("round", z.number().min(1));
+			const encoded = codec.encode(0);
 
-				const error = yield* Effect.flip(codec.encode(0));
+			assert(Result.isFailure(encoded));
+			expect(encoded.failure.message).toBe(
+				'Failed to encode replicant "round": Too small: expected number to be >=1',
+			);
+		});
 
-				expect(error.message).toBe(
-					'Failed to encode replicant "round": Too small: expected number to be >=1',
-				);
-			}),
-		);
+		test("encodes a JSON value with unknown schema", () => {
+			const codec = makeCodec("anything", z.unknown());
 
-		it.effect("encodes a JSON value with unknown schema", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("anything", z.unknown());
+			expect(codec.encode({ left: 1, tags: ["a"] })).toStrictEqual(
+				Result.succeed({ left: 1, tags: ["a"] }),
+			);
+		});
 
-				const wire = yield* codec.encode({ left: 1, tags: ["a"] });
+		test("fails to encode non-JSON values with unknown schema", () => {
+			const codec = makeCodec("anything", z.unknown());
 
-				expect(wire).toEqual({ left: 1, tags: ["a"] });
-			}),
-		);
+			const encoded = codec.encode({ left: 1n });
 
-		it.effect("fails to encode non-JSON values with unknown schema", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("anything", z.unknown());
+			assert(Result.isFailure(encoded));
+			expect(encoded.failure.message).toBe(
+				'Failed to encode replicant "anything": Expected JSON value',
+			);
+		});
 
-				const error = yield* Effect.flip(codec.encode({ left: 1n }));
+		test("fails to decode a value the schema refuses", () => {
+			const codec = makeCodec("score", z.object({ left: z.number() }));
 
-				expect(error.message).toBe(
-					'Failed to encode replicant "anything": Expected JSON value',
-				);
-			}),
-		);
+			const decoded = codec.decode({ left: "x" });
 
-		it.effect("fails to decode a value the schema refuses", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("score", z.object({ left: z.number() }));
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure.message).toBe(
+				'Failed to decode replicant "score": left: Invalid input: expected number, received string',
+			);
+		});
 
-				const error = yield* Effect.flip(codec.decode({ left: "x" }));
+		test("fails to decode with an asynchronous schema", () => {
+			const schema = z.string().refine(async (text) => text.length > 0);
+			const codec = makeCodec("label", schema);
 
-				expect(error.message).toBe(
-					'Failed to decode replicant "score": left: Invalid input: expected number, received string',
-				);
-			}),
-		);
+			const decoded = codec.decode("a");
 
-		it.effect("fails to decode with an asynchronous schema", () =>
-			Effect.gen(function* () {
-				const schema = z.string().refine(async (text) => text.length > 0);
-				const codec = makeCodec("label", schema);
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure.message).toBe(
+				'Failed to decode replicant "label": The schema validated asynchronously',
+			);
+		});
 
-				const error = yield* Effect.flip(codec.decode("a"));
+		test("fails to encode with an asynchronous schema", () => {
+			const schema = z.string().refine(async (text) => text.length > 0);
+			const codec = makeCodec("label", schema);
 
-				expect(error.message).toBe(
-					'Failed to decode replicant "label": The schema validated asynchronously',
-				);
-			}),
-		);
+			const encoded = codec.encode("a");
 
-		it.effect("fails to encode with an asynchronous schema", () =>
-			Effect.gen(function* () {
-				const schema = z.string().refine(async (text) => text.length > 0);
-				const codec = makeCodec("label", schema);
+			assert(Result.isFailure(encoded));
+			expect(encoded.failure.message).toBe(
+				'Failed to encode replicant "label": The schema validated asynchronously',
+			);
+		});
 
-				const error = yield* Effect.flip(codec.encode("a"));
+		test("fails when the schema throws", () => {
+			const schema: StandardSchemaV1<unknown, string> = {
+				"~standard": {
+					version: 1,
+					vendor: "test",
+					validate: () => {
+						throw new Error("boom");
+					},
+				},
+			};
+			const codec = makeCodec("label", schema);
 
-				expect(error.message).toBe(
-					'Failed to encode replicant "label": The schema validated asynchronously',
-				);
-			}),
-		);
+			const encoded = codec.encode("a");
+			const decoded = codec.decode("a");
 
-		it.effect("mutableDecode shares nothing with the input", () =>
-			Effect.gen(function* () {
-				const codec = makeCodec("score", z.object({ data: z.unknown() }));
-				const input = { data: { tags: ["a"] } };
+			assert(Result.isFailure(encoded));
+			expect(encoded.failure.message).toBe(
+				'Failed to encode replicant "label": The schema threw instead of returning issues',
+			);
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure.message).toBe(
+				'Failed to decode replicant "label": The schema threw instead of returning issues',
+			);
+		});
 
-				const score = yield* codec.mutableDecode(input);
+		test("mutableDecode shares nothing with the input", () => {
+			const codec = makeCodec("score", z.object({ data: z.unknown() }));
+			const input = { data: { tags: ["a"] } };
 
-				expect(score).toStrictEqual(input);
-				expect(score.data).not.toBe(input.data);
-			}),
-		);
+			const score = codec.mutableDecode(input);
+
+			assert(Result.isSuccess(score));
+			expect(score.success).toStrictEqual(input);
+			expect(score.success.data).not.toBe(input.data);
+		});
 	});
 });

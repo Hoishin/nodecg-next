@@ -75,8 +75,8 @@ export type SubscribeTopic<out Decoded> = (
 
 export type ReplicantField<in out Decoded> = {
 	readonly get: () => Decoded;
-	readonly set: (value: Decoded) => void;
-	readonly update: (updater: Updater<Decoded>) => void;
+	readonly set: (value: Decoded) => Promise<void>;
+	readonly update: (updater: Updater<Decoded>) => Promise<void>;
 	readonly validate: (value: Decoded) => Promise<Schema.Json>;
 	readonly subscribe: Subscribe<Decoded>;
 };
@@ -130,8 +130,8 @@ export type OnLoad<S extends WidestNamespaceFields> = (
 
 export type RpcReplicantAccessor<in out Decoded> = {
 	readonly get: () => Decoded;
-	readonly set: (value: Decoded) => void;
-	readonly update: (updater: Updater<Decoded>) => void;
+	readonly set: (value: Decoded) => Promise<void>;
+	readonly update: (updater: Updater<Decoded>) => Promise<void>;
 };
 
 export type RpcComputedAccessor<out Decoded> = {

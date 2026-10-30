@@ -30,7 +30,7 @@ export const buildRpc = Effect.fn("buildRpc")(
 				Effect.tryPromise({
 					try: async () => handler(request, ctx),
 					catch: (error) =>
-						new RpcHandlerError({ namespace, name, cause: toError(error) }),
+						RpcHandlerError.make({ namespace, name, cause: toError(error) }),
 				});
 
 			const call = Effect.fn("call")(function* (request: Request) {
@@ -42,9 +42,11 @@ export const buildRpc = Effect.fn("buildRpc")(
 				payload: Schema.Json,
 			) {
 				yield* requirePermission(manifest.permission, namespace, name, "write");
-				const request = yield* manifest.request.decode(payload);
+				const request = yield* Effect.fromResult(
+					manifest.request.decode(payload),
+				);
 				const response = yield* runHandler(request);
-				return yield* manifest.response.encode(response);
+				return yield* Effect.fromResult(manifest.response.encode(response));
 			});
 
 			return {

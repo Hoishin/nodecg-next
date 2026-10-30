@@ -1172,7 +1172,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 	it("calls onError when the subscribe is rejected after the first value", async () => {
 		const { stub: transportStub } = createTransportStub();
 		const { stub: channelStub } = createMessageChannelStub();
-		const queue = Effect.runSync(Queue.unbounded<ServerMessage>());
+		const queue = await Effect.runPromise(Queue.unbounded<ServerMessage>());
 		channelStub.receive.mockReturnValue(
 			Effect.succeed(Stream.fromQueue(queue)),
 		);
@@ -1223,7 +1223,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 	it("a replicant subscriber gets the old value", async () => {
 		const { stub: channelStub } = createMessageChannelStub();
-		const queue = Effect.runSync(Queue.unbounded<ServerMessage>());
+		const queue = await Effect.runPromise(Queue.unbounded<ServerMessage>());
 		channelStub.receive.mockReturnValue(
 			Effect.succeed(Stream.fromQueue(queue)),
 		);
@@ -1270,7 +1270,7 @@ describe("loadNamespace (Promise wrapper)", () => {
 
 	it("a computed subscriber gets the old value", async () => {
 		const { stub: channelStub } = createMessageChannelStub();
-		const queue = Effect.runSync(Queue.unbounded<ServerMessage>());
+		const queue = await Effect.runPromise(Queue.unbounded<ServerMessage>());
 		channelStub.receive.mockReturnValue(
 			Effect.succeed(Stream.fromQueue(queue)),
 		);

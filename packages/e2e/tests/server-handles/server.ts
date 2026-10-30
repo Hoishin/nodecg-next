@@ -9,8 +9,8 @@ const nodecg = await loadNodeCG({
 });
 
 const { mirrorSource, mirror } = nodecg.namespaces.fixture.replicant;
-await mirrorSource.subscribe((value) => {
-	mirror.set(value);
+await mirrorSource.subscribe(async (value) => {
+	await mirror.set(value);
 });
 
 nodecg.start();

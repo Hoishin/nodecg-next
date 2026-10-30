@@ -9,6 +9,7 @@ import {
 	Exit,
 	Layer,
 	Option,
+	Result,
 	Schema,
 	Scope,
 	Stream,
@@ -17,6 +18,7 @@ import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import {
 	ComputedComputeError,
+	type ComputedResult,
 	ReplicantStoreService,
 	type ReplicantFrame,
 	ReplicantLoadError,
@@ -51,35 +53,22 @@ const storeIn = (scope: Scope.Scope) =>
 		Scope.provide(scope),
 	);
 
-describe("readReplicant", () => {
-	test(
-		"fails for an unregistered replicant",
-		Effect.gen(function* () {
-			const store = yield* ReplicantStoreService;
-			const error = yield* store
-				.readReplicant("ns", "missing")
-				.pipe(Effect.flip);
-			expect(error._tag).toBe("UnknownReplicant");
-		}),
-	);
-});
-
 describe("commit", () => {
 	test(
 		"commits a whole value, read back with the revision bumped",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: 1,
-				revision: 0,
-			});
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				1,
+				true,
+			);
+			expect(readA()).toEqual({ value: 1, revision: 0 });
 			const committed = yield* store.commit("ns", "a", () => Effect.succeed(2));
 			expect(committed).toEqual({ value: 2, revision: 1 });
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: 2,
-				revision: 1,
-			});
+			expect(readA()).toEqual({ value: 2, revision: 1 });
 		}),
 	);
 
@@ -87,7 +76,7 @@ describe("commit", () => {
 		"a value-equal commit does not bump the revision",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
@@ -95,12 +84,12 @@ describe("commit", () => {
 				true,
 			);
 			yield* store.commit("ns", "a", () => Effect.succeed({ x: 2 }));
-			const before = yield* store.readReplicant("ns", "a");
+			const before = readA();
 			const committed = yield* store.commit("ns", "a", () =>
 				Effect.succeed({ x: 2 }),
 			);
 			expect(committed).toEqual(before);
-			expect(yield* store.readReplicant("ns", "a")).toEqual(before);
+			expect(readA()).toEqual(before);
 		}),
 	);
 
@@ -108,7 +97,7 @@ describe("commit", () => {
 		"a commit equal in content but different in key order does not bump the revision",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
@@ -119,10 +108,7 @@ describe("commit", () => {
 				Effect.succeed({ y: 2, x: 1 }),
 			);
 			expect(committed).toEqual({ value: { x: 1, y: 2 }, revision: 0 });
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: { x: 1, y: 2 },
-				revision: 0,
-			});
+			expect(readA()).toEqual({ value: { x: 1, y: 2 }, revision: 0 });
 		}),
 	);
 
@@ -130,24 +116,17 @@ describe("commit", () => {
 		"a value-equal commit does not re-evaluate dependents",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
 				{ x: 1 },
 				true,
 			);
-			const context = yield* Effect.context();
 			let evaluations = 0;
 			yield* store.initializeComputed("ns", "c", () => {
 				evaluations += 1;
-				return Effect.runSyncWith(context)(
-					store.readReplicant("ns", "a").pipe(
-						Effect.map((r) => r.value),
-						Effect.orDie,
-						Effect.exit,
-					),
-				);
+				return Result.succeed(readA().value);
 			});
 			yield* store.subscribeComputed("ns", "c").pipe(Effect.asVoid);
 			expect(evaluations).toBe(1);
@@ -162,15 +141,18 @@ describe("commit", () => {
 		"produces the next value from the current one and bumps the revision",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				1,
+				true,
+			);
 			const committed = yield* store.commit("ns", "a", ({ value }) =>
 				Effect.succeed(typeof value === "number" ? value + 1 : 0),
 			);
 			expect(committed).toEqual({ value: 2, revision: 1 });
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: 2,
-				revision: 1,
-			});
+			expect(readA()).toEqual({ value: 2, revision: 1 });
 		}),
 	);
 
@@ -193,22 +175,24 @@ describe("commit", () => {
 	);
 
 	test(
-		"an updater may synchronously write another replicant mid-produce",
+		"an updater may write another replicant mid-produce",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			const context = yield* Effect.context();
 			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
-			yield* store.initializeReplicant("ns", "b", Effect.succeed, 1, true);
+			const readB = yield* store.initializeReplicant(
+				"ns",
+				"b",
+				Effect.succeed,
+				1,
+				true,
+			);
 			const committed = yield* store.commit("ns", "a", ({ value }) =>
-				Effect.sync(() => {
-					Effect.runSyncWith(context)(
-						store.commit("ns", "b", () => Effect.succeed(5)),
-					);
-					return typeof value === "number" ? value + 1 : 0;
-				}),
+				store
+					.commit("ns", "b", () => Effect.succeed(5))
+					.pipe(Effect.as(typeof value === "number" ? value + 1 : 0)),
 			);
 			expect(committed.value).toBe(2);
-			expect((yield* store.readReplicant("ns", "b")).value).toBe(5);
+			expect(readB().value).toBe(5);
 		}),
 	);
 
@@ -216,21 +200,23 @@ describe("commit", () => {
 		"a single attempt fails CommitContended when a concurrent commit lands between produce and commit",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			const context = yield* Effect.context();
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				1,
+				true,
+			);
 			const error = yield* store
 				.commit("ns", "a", ({ value }) =>
-					Effect.sync(() => {
-						Effect.runSyncWith(context)(
-							store.commit("ns", "a", () => Effect.succeed(100)),
-						);
-						return typeof value === "number" ? value + 1 : 0;
-					}),
+					store
+						.commit("ns", "a", () => Effect.succeed(100))
+						.pipe(Effect.as(typeof value === "number" ? value + 1 : 0)),
 				)
 				.pipe(Effect.flip);
 			expect(error._tag).toBe("CommitContended");
 			// The concurrent write landed, the losing attempt did not overwrite it.
-			expect((yield* store.readReplicant("ns", "a")).value).toBe(100);
+			expect(readA().value).toBe(100);
 		}),
 	);
 
@@ -253,7 +239,7 @@ describe("commitPatch", () => {
 		"applies a field-level patch and bumps the revision",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
@@ -267,10 +253,7 @@ describe("commitPatch", () => {
 				noValidate,
 			);
 			expect(committed).toEqual({ value: { a: 5, b: 2 }, revision: 1 });
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: { a: 5, b: 2 },
-				revision: 1,
-			});
+			expect(readA()).toEqual({ value: { a: 5, b: 2 }, revision: 1 });
 		}),
 	);
 
@@ -278,7 +261,7 @@ describe("commitPatch", () => {
 		"a malformed op fails PatchNotApplicable and leaves the value untouched",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
@@ -296,10 +279,7 @@ describe("commitPatch", () => {
 			assert(error._tag === "PatchNotApplicable");
 			expect(error.path).toBe("/list/notAnIndex");
 			expect(error.reason).toBe("InvalidIndex");
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: { list: [1] },
-				revision: 0,
-			});
+			expect(readA()).toEqual({ value: { list: [1] }, revision: 0 });
 		}),
 	);
 
@@ -333,7 +313,7 @@ describe("commitPatch", () => {
 		"a move whose destination drifted out of range fails RevisionConflict",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
@@ -353,10 +333,7 @@ describe("commitPatch", () => {
 				.pipe(Effect.flip);
 			assert(error._tag === "RevisionConflict");
 			expect(error.reason).toBe("IndexOutOfBounds");
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: ["a", "b", "c"],
-				revision: 0,
-			});
+			expect(readA()).toEqual({ value: ["a", "b", "c"], revision: 0 });
 		}),
 	);
 
@@ -433,7 +410,7 @@ describe("commitPatch", () => {
 		"a validate failure propagates and nothing is written",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant(
+			const readA = yield* store.initializeReplicant(
 				"ns",
 				"a",
 				Effect.succeed,
@@ -446,10 +423,7 @@ describe("commitPatch", () => {
 				)
 				.pipe(Effect.flip);
 			expect(error).toEqual(Invalid.make());
-			expect(yield* store.readReplicant("ns", "a")).toEqual({
-				value: { a: 1 },
-				revision: 0,
-			});
+			expect(readA()).toEqual({ value: { a: 1 }, revision: 0 });
 		}),
 	);
 
@@ -731,7 +705,13 @@ describe("persistence", () => {
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
 			const store = yield* storeIn(scope);
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 0, true);
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				0,
+				true,
+			);
 			repository.write.mockClear();
 			repository.write.mockReturnValue(
 				BackendError.make({ cause: new Error("disk full") }),
@@ -740,7 +720,7 @@ describe("persistence", () => {
 			yield* store.commit("ns", "a", () => Effect.succeed(1));
 
 			yield* waitFor(() => expect(repository.write).toHaveBeenCalledTimes(1));
-			expect((yield* store.readReplicant("ns", "a")).value).toBe(1);
+			expect(readA().value).toBe(1);
 		}),
 	);
 });
@@ -751,11 +731,17 @@ describe("initializeReplicant", () => {
 		Effect.gen(function* () {
 			const scope = yield* Scope.make();
 			const store = yield* storeIn(scope);
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 0, true);
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				0,
+				true,
+			);
 
 			expect(repository.read).toHaveBeenCalledWith("ns", "a");
 			expect(repository.write).toHaveBeenCalledWith("ns", "a", 0);
-			expect((yield* store.readReplicant("ns", "a")).value).toBe(0);
+			expect(readA().value).toBe(0);
 		}),
 	);
 
@@ -765,9 +751,15 @@ describe("initializeReplicant", () => {
 			const scope = yield* Scope.make();
 			repository.read.mockReturnValue(Effect.succeed(42));
 			const store = yield* storeIn(scope);
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 0, true);
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				0,
+				true,
+			);
 
-			expect((yield* store.readReplicant("ns", "a")).value).toBe(42);
+			expect(readA().value).toBe(42);
 			expect(repository.write).not.toHaveBeenCalled();
 		}),
 	);
@@ -778,9 +770,15 @@ describe("initializeReplicant", () => {
 			const scope = yield* Scope.make();
 			repository.read.mockReturnValue(Effect.succeed(42));
 			const store = yield* storeIn(scope);
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 0, false);
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				0,
+				false,
+			);
 
-			expect((yield* store.readReplicant("ns", "a")).value).toBe(0);
+			expect(readA().value).toBe(0);
 			expect(repository.read).not.toHaveBeenCalled();
 			expect(repository.write).not.toHaveBeenCalled();
 		}),
@@ -806,9 +804,10 @@ describe("initializeReplicant", () => {
 			expect(error).toEqual(
 				ReplicantLoadError.make({ namespace: "ns", name: "a", cause: invalid }),
 			);
-			expect(
-				yield* store.readReplicant("ns", "a").pipe(Effect.flip),
-			).toMatchObject({ _tag: "UnknownReplicant" });
+			const commitError = yield* store
+				.commit("ns", "a", () => Effect.succeed(1))
+				.pipe(Effect.flip);
+			expect(commitError).toMatchObject({ _tag: "UnknownReplicant" });
 			expect(repository.write).not.toHaveBeenCalled();
 		}),
 	);
@@ -865,21 +864,12 @@ describe("initializeReplicant", () => {
 
 describe("computed", () => {
 	test(
-		"readComputed fails for an unregistered computed",
-		Effect.gen(function* () {
-			const store = yield* ReplicantStoreService;
-			const exit = yield* store.readComputed("ns", "missing").pipe(Effect.exit);
-			assert(Exit.isFailure(exit));
-		}),
-	);
-
-	test(
 		"dies when a computed is initialized twice",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeComputed("ns", "c", () => Exit.succeed("first"));
+			yield* store.initializeComputed("ns", "c", () => Result.succeed("first"));
 			const exit = yield* store
-				.initializeComputed("ns", "c", () => Exit.succeed("second"))
+				.initializeComputed("ns", "c", () => Result.succeed("second"))
 				.pipe(Effect.exit);
 			assert(Exit.isFailure(exit));
 			expect(Cause.pretty(exit.cause)).toContain("already registered");
@@ -891,27 +881,29 @@ describe("computed", () => {
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
 			let evaluations = 0;
-			yield* store.initializeComputed("ns", "c", () => {
+			const readC = yield* store.initializeComputed("ns", "c", () => {
 				evaluations += 1;
-				return Exit.succeed(1);
+				return Result.succeed(1);
 			});
 			expect(evaluations).toBe(0);
-			yield* store.readComputed("ns", "c");
+			readC();
 			expect(evaluations).toBe(1);
 		}),
 	);
 
 	test(
-		"a self-reading computed surfaces the read failure as a defect",
+		"a self-reading computed fails to compute",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeComputed("ns", "c", () =>
-				Effect.runSyncExit(store.readComputed("ns", "c").pipe(Effect.orDie)),
+			const readC: () => ComputedResult = yield* store.initializeComputed(
+				"ns",
+				"c",
+				() => readC(),
 			);
-			const exit = yield* store.readComputed("ns", "c").pipe(Effect.exit);
-			assert(Exit.isFailure(exit));
-			expect(Cause.pretty(exit.cause)).toContain(
-				'Reading value for "c" in "ns" failed',
+			const result = readC();
+			assert(Result.isFailure(result));
+			expect(result.failure.message).toBe(
+				'Computing computed field "c" in "ns" failed: Cycle detected',
 			);
 		}),
 	);
@@ -922,19 +914,19 @@ describe("subscribeComputed", () => {
 		"seeds immediately and dedupes on the encoded key",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 12, true);
-			const context = yield* Effect.context();
-			yield* store.initializeComputed("ns", "tens", () =>
-				Effect.runSyncWith(context)(
-					Effect.gen(function* () {
-						const { value } = yield* store.readReplicant("ns", "a");
-						const number = yield* Schema.decodeUnknownEffect(Schema.Finite)(
-							value,
-						);
-						return { tens: Math.floor(number / 10) };
-					}).pipe(Effect.orDie, Effect.exit),
-				),
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				12,
+				true,
 			);
+			yield* store.initializeComputed("ns", "tens", () => {
+				const { value } = readA();
+				return Result.succeed({
+					tens: typeof value === "number" ? Math.floor(value / 10) : 0,
+				});
+			});
 			const stream = yield* store.subscribeComputed("ns", "tens");
 			const received: Schema.Json[] = [];
 			yield* Stream.runForEach(stream, (value) =>
@@ -954,25 +946,26 @@ describe("subscribeComputed", () => {
 		"a failing evaluation is skipped and the stream continues",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
-			const context = yield* Effect.context();
-			yield* store.initializeComputed("ns", "c", () =>
-				Effect.runSyncWith(context)(
-					Effect.gen(function* () {
-						const { value } = yield* store
-							.readReplicant("ns", "a")
-							.pipe(Effect.orDie);
-						if (value === 2) {
-							return yield* ComputedComputeError.make({
-								namespace: "ns",
-								name: "c",
-								cause: new Error("boom"),
-							});
-						}
-						return value;
-					}).pipe(Effect.exit),
-				),
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				1,
+				true,
 			);
+			yield* store.initializeComputed("ns", "c", () => {
+				const { value } = readA();
+				if (value === 2) {
+					return Result.fail(
+						ComputedComputeError.make({
+							namespace: "ns",
+							name: "c",
+							cause: new Error("boom"),
+						}),
+					);
+				}
+				return Result.succeed(value);
+			});
 			const stream = yield* store.subscribeComputed("ns", "c");
 			const received: Schema.Json[] = [];
 			yield* Stream.runForEach(stream, (value) =>
@@ -990,25 +983,26 @@ describe("subscribeComputed", () => {
 		"recovering to the value from before a failure is no change",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
-			const context = yield* Effect.context();
-			yield* store.initializeComputed("ns", "c", () =>
-				Effect.runSyncWith(context)(
-					Effect.gen(function* () {
-						const { value } = yield* store
-							.readReplicant("ns", "a")
-							.pipe(Effect.orDie);
-						if (value === 2) {
-							return yield* ComputedComputeError.make({
-								namespace: "ns",
-								name: "c",
-								cause: new Error("boom"),
-							});
-						}
-						return { value };
-					}).pipe(Effect.exit),
-				),
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				1,
+				true,
 			);
+			yield* store.initializeComputed("ns", "c", () => {
+				const { value } = readA();
+				if (value === 2) {
+					return Result.fail(
+						ComputedComputeError.make({
+							namespace: "ns",
+							name: "c",
+							cause: new Error("boom"),
+						}),
+					);
+				}
+				return Result.succeed({ value });
+			});
 			const stream = yield* store.subscribeComputed("ns", "c");
 			const received: Schema.Json[] = [];
 			yield* Stream.runForEach(stream, (value) =>
@@ -1030,25 +1024,26 @@ describe("subscribeComputed", () => {
 		"fails the subscribe when the current value cannot be produced",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 2, true);
-			const context = yield* Effect.context();
-			yield* store.initializeComputed("ns", "c", () =>
-				Effect.runSyncWith(context)(
-					Effect.gen(function* () {
-						const { value } = yield* store
-							.readReplicant("ns", "a")
-							.pipe(Effect.orDie);
-						if (value === 2) {
-							return yield* ComputedComputeError.make({
-								namespace: "ns",
-								name: "c",
-								cause: new Error("boom"),
-							});
-						}
-						return value;
-					}).pipe(Effect.exit),
-				),
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				2,
+				true,
 			);
+			yield* store.initializeComputed("ns", "c", () => {
+				const { value } = readA();
+				if (value === 2) {
+					return Result.fail(
+						ComputedComputeError.make({
+							namespace: "ns",
+							name: "c",
+							cause: new Error("boom"),
+						}),
+					);
+				}
+				return Result.succeed(value);
+			});
 			const exit = yield* Effect.scoped(
 				store.subscribeComputed("ns", "c"),
 			).pipe(Effect.exit);
@@ -1061,18 +1056,17 @@ describe("subscribeComputed", () => {
 		"closing the subscription scope disarms the computed",
 		Effect.gen(function* () {
 			const store = yield* ReplicantStoreService;
-			yield* store.initializeReplicant("ns", "a", Effect.succeed, 1, true);
-			const context = yield* Effect.context();
+			const readA = yield* store.initializeReplicant(
+				"ns",
+				"a",
+				Effect.succeed,
+				1,
+				true,
+			);
 			let evaluations = 0;
 			yield* store.initializeComputed("ns", "c", () => {
 				evaluations += 1;
-				return Effect.runSyncWith(context)(
-					store.readReplicant("ns", "a").pipe(
-						Effect.map((r) => r.value),
-						Effect.orDie,
-						Effect.exit,
-					),
-				);
+				return Result.succeed(readA().value);
 			});
 			yield* Effect.scoped(store.subscribeComputed("ns", "c")).pipe(
 				Effect.asVoid,

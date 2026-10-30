@@ -5,7 +5,7 @@ import {
 	ServerIdentity,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Option, Schema, Stream } from "effect";
+import { Effect, Layer, Option, Result, Schema, Stream } from "effect";
 import { assert, describe, expect, vi } from "vitest";
 
 import {
@@ -13,7 +13,6 @@ import {
 	ReplicantStoreService,
 } from "../replicant-store.ts";
 import { InMemoryReplicantRepository } from "../services/repository/replicant/in-memory-replicant-repository.ts";
-import { ReplicantNotFound } from "../services/repository/replicant/replicant-repository.ts";
 import { buildComputed } from "./build-computed.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 
@@ -54,27 +53,21 @@ const manifest = defineNamespace("ns", {
 	},
 });
 
-const doubledCount = Effect.gen(function* () {
-	const store = yield* ReplicantStoreService;
-	const encoded = yield* store.readReplicant("ns", "count").pipe(
-		Effect.map((r) => r.value),
-		Effect.catchTag(
-			"UnknownReplicant",
-			() => new ReplicantNotFound({ namespace: "ns", name: "count" }),
-		),
-	);
+const doubleCount = (encoded: Schema.Json) => {
 	const count = Number(encoded);
 	if (Number.isNaN(count)) {
-		return yield* new ComputedComputeError({
-			namespace: "ns",
-			name: "doubled",
-			cause: new Error(`not a number: ${JSON.stringify(encoded)}`),
-		});
+		return Result.fail(
+			ComputedComputeError.make({
+				namespace: "ns",
+				name: "doubled",
+				cause: new Error(`not a number: ${JSON.stringify(encoded)}`),
+			}),
+		);
 	}
-	return count * 2;
-});
+	return Result.succeed(count * 2);
+};
 
-const initCount = (value: string) =>
+const seedCount = (value: string) =>
 	Effect.flatMap(ReplicantStoreService, (store) =>
 		store.initializeReplicant("ns", "count", Effect.succeed, value, true),
 	);
@@ -84,12 +77,16 @@ const setCount = (value: string) =>
 		store.commit("ns", "count", () => Effect.succeed(value)),
 	);
 
-const build = buildComputed(
-	"ns",
-	"doubled",
-	manifest.computed.doubled,
-	doubledCount,
-);
+const buildDoubled = (value: string) =>
+	Effect.gen(function* () {
+		const readCount = yield* seedCount(value);
+		return yield* buildComputed(
+			"ns",
+			"doubled",
+			manifest.computed.doubled,
+			() => doubleCount(readCount().value),
+		);
+	});
 
 const waitFor = (assertion: () => void) =>
 	Effect.promise(() => vi.waitFor(assertion));
@@ -98,8 +95,7 @@ describe("get", () => {
 	test(
 		"returns the computed value",
 		Effect.gen(function* () {
-			yield* initCount("3");
-			const field = yield* build;
+			const field = yield* buildDoubled("3");
 			expect(yield* field.get()).toBe(6);
 		}),
 	);
@@ -107,17 +103,18 @@ describe("get", () => {
 	test(
 		"propagates a compute failure",
 		Effect.gen(function* () {
-			const field = yield* build;
+			const field = yield* buildDoubled("boom");
 			const error = yield* field.get().pipe(Effect.flip);
-			expect(error._tag).toBe("ReplicantNotFound");
+			expect(error.message).toBe(
+				'Computing computed field "doubled" in "ns" failed: not a number: "boom"',
+			);
 		}),
 	);
 
 	test(
 		"fails FieldPermissionDenied for a denied caller",
 		Effect.gen(function* () {
-			yield* initCount("3");
-			const field = yield* build;
+			const field = yield* buildDoubled("3");
 			const error = yield* field
 				.get()
 				.pipe(Effect.provide(anonymousIdentity), Effect.flip);
@@ -132,7 +129,7 @@ describe("get", () => {
 				"ns",
 				"doc",
 				manifest.computed.doc,
-				Effect.succeed({ count: 1, data: { tags: ["a"] } }),
+				() => Result.succeed({ count: 1, data: { tags: ["a"] } }),
 			);
 
 			const first = yield* field.get();
@@ -150,7 +147,7 @@ describe("get", () => {
 				"ns",
 				"doc",
 				manifest.computed.doc,
-				Effect.succeed({ count: 1, data: { tags } }),
+				() => Result.succeed({ count: 1, data: { tags } }),
 			);
 
 			yield* field.get();
@@ -166,12 +163,12 @@ describe("getEncoded", () => {
 	test(
 		"encodes the computed value for an allowed caller",
 		Effect.gen(function* () {
-			yield* initCount("3");
+			const readCount = yield* seedCount("3");
 			const field = yield* buildComputed(
 				"ns",
 				"open",
 				manifest.computed.open,
-				doubledCount,
+				() => doubleCount(readCount().value),
 			);
 			expect(
 				yield* field[fieldInternal]
@@ -184,8 +181,7 @@ describe("getEncoded", () => {
 	test(
 		"fails FieldPermissionDenied for a denied caller",
 		Effect.gen(function* () {
-			yield* initCount("3");
-			const field = yield* build;
+			const field = yield* buildDoubled("3");
 			const error = yield* field[fieldInternal]
 				.getEncoded()
 				.pipe(Effect.provide(anonymousIdentity), Effect.flip);
@@ -200,7 +196,7 @@ describe("getEncoded", () => {
 				"ns",
 				"positive",
 				manifest.computed.positive,
-				Effect.succeed(-1),
+				() => Result.succeed(-1),
 			);
 			const error = yield* field[fieldInternal]
 				.getEncodedNoAuth()
@@ -214,8 +210,7 @@ describe("subscribe", () => {
 	test(
 		"seeds with the current value, recomputes on a source change, and dedupes",
 		Effect.gen(function* () {
-			yield* initCount("3");
-			const field = yield* build;
+			const field = yield* buildDoubled("3");
 
 			const received: number[] = [];
 			yield* field.subscribe().pipe(
@@ -239,8 +234,7 @@ describe("subscribe", () => {
 	test(
 		"logs and skips a compute failure without ending the stream",
 		Effect.gen(function* () {
-			yield* initCount("3");
-			const field = yield* build;
+			const field = yield* buildDoubled("3");
 
 			const received: number[] = [];
 			yield* field.subscribe().pipe(
@@ -262,8 +256,7 @@ describe("subscribe", () => {
 	test(
 		"fails when the seed cannot be computed",
 		Effect.gen(function* () {
-			yield* initCount("boom");
-			const field = yield* build;
+			const field = yield* buildDoubled("boom");
 			const error = yield* field.subscribe().pipe(Effect.flip);
 			expect(error._tag).toBe("ComputedComputeError");
 		}),
@@ -276,7 +269,7 @@ describe("subscribe", () => {
 				"ns",
 				"doc",
 				manifest.computed.doc,
-				Effect.succeed({ count: 1, data: { tags: ["a"] } }),
+				() => Result.succeed({ count: 1, data: { tags: ["a"] } }),
 			);
 
 			const first = yield* field

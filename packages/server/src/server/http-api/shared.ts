@@ -16,7 +16,6 @@ export const getReplicant = (namespace: string, name: string) =>
 			Effect.map((revisioned) => revisioned.value),
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-				UnknownReplicant: () => new HttpApiError.NotFound(),
 			}),
 		);
 	});
@@ -59,8 +58,6 @@ export const getComputed = (namespace: string, name: string) =>
 		return yield* field.getEncoded().pipe(
 			Effect.catchTags({
 				FieldPermissionDenied: () => new HttpApiError.Forbidden(),
-				ComputedNotFound: () => new HttpApiError.NotFound(),
-				ReplicantNotFound: () => new HttpApiError.NotFound(),
 				ComputedComputeError: () => new HttpApiError.InternalServerError(),
 				FieldEncodeError: () => new HttpApiError.InternalServerError(),
 			}),

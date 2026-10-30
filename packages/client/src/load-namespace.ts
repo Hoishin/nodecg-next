@@ -161,13 +161,17 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	const cell = yield* cells.replicant(namespace, name, manifest);
 
 	const fetchEncoded = () => transport.getReplicant(namespace, name);
+	const fetchDecoded = Effect.fn(function* () {
+		const encoded = yield* fetchEncoded();
+		return yield* Effect.fromResult(manifest.decode(encoded));
+	});
 
 	const get = Effect.fn("get")(function* () {
 		return yield* Loadable.$match(cell.peek(), {
 			Ready: ({ value }) => Effect.succeed(value.decoded),
 			Failure: ({ error }) => Effect.fail(error),
-			Cold: () => fetchEncoded().pipe(Effect.flatMap(manifest.decode)),
-			Pending: () => fetchEncoded().pipe(Effect.flatMap(manifest.decode)),
+			Cold: fetchDecoded,
+			Pending: fetchDecoded,
 		});
 	});
 
@@ -181,7 +185,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
-		const encoded = yield* manifest.encode(value);
+		const encoded = yield* Effect.fromResult(manifest.encode(value));
 		yield* transport
 			.updateReplicant(namespace, name, [
 				{ op: "replace", path: "", value: encoded },
@@ -196,7 +200,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 		updater: Updater<Decoded>,
 		base: Schema.Json,
 	) {
-		const current = yield* manifest.mutableDecode(base);
+		const current = yield* Effect.fromResult(manifest.mutableDecode(base));
 		const next = yield* Effect.try({
 			try: () => {
 				const result = updater(current);
@@ -208,7 +212,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 			catch: (error) =>
 				new FieldSetError({ namespace, name, cause: toError(error) }),
 		});
-		const encoded = yield* manifest.encode(next);
+		const encoded = yield* Effect.fromResult(manifest.encode(next));
 		const patch = yield* Effect.fromResult(diffSignedPatch(base, encoded)).pipe(
 			Effect.mapError(
 				(failure) =>
@@ -246,7 +250,7 @@ const implementReplicant = Effect.fn("implementReplicant")(function* <Decoded>(
 					return yield* new ReplicantWriteConflict<Decoded>({
 						namespace,
 						name,
-						current: yield* manifest.decode(conflict.value),
+						current: yield* Effect.fromResult(manifest.decode(conflict.value)),
 						revision: conflict.revision,
 					});
 				}),
@@ -282,10 +286,10 @@ const implementComputed = Effect.fn("implementComputed")(function* <Decoded>(
 	const cells = yield* FieldCellsService;
 	const cell = cells.computed(namespace, name, manifest);
 
-	const fetchCurrent = () =>
-		transport
-			.getComputed(namespace, name)
-			.pipe(Effect.flatMap(manifest.decode));
+	const fetchCurrent = Effect.fn(function* () {
+		const encoded = yield* transport.getComputed(namespace, name);
+		return yield* Effect.fromResult(manifest.decode(encoded));
+	});
 
 	const get = Effect.fn("get")(function* () {
 		return yield* Loadable.$match(cell.peek(), {
@@ -323,7 +327,7 @@ const implementTopic = Effect.fn("implementTopic")(function* <Decoded>(
 	const cell = cells.topic(namespace, name, manifest);
 
 	const publish = Effect.fn("publish")(function* (value: Decoded) {
-		const encoded = yield* manifest.encode(value);
+		const encoded = yield* Effect.fromResult(manifest.encode(value));
 		yield* transport.publishTopic(namespace, name, encoded);
 	});
 
@@ -351,9 +355,9 @@ const implementRpc = Effect.fn("implementRpc")(function* <Request, Response>(
 	const transport = yield* FieldTransportService;
 
 	const call = Effect.fn("call")(function* (request: Request) {
-		const encoded = yield* manifest.request.encode(request);
+		const encoded = yield* Effect.fromResult(manifest.request.encode(request));
 		const response = yield* transport.callRpc(namespace, name, encoded);
-		return yield* manifest.response.decode(response);
+		return yield* Effect.fromResult(manifest.response.decode(response));
 	});
 
 	return { call };

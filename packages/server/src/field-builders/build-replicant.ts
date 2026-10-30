@@ -1,8 +1,13 @@
 import type { ReplicantFieldManifest } from "@nodecg-next/core";
-import type { Updater } from "@nodecg-next/internal";
+import {
+	CurrentIdentity,
+	type Identity,
+	type Updater,
+} from "@nodecg-next/internal";
 import type { Patch } from "@nodecg-next/internal/occ";
 import { cloneJson, toError } from "@nodecg-next/internal/utils";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Result, Schema, Stream } from "effect";
+import type { WritableDeep } from "type-fest";
 
 import {
 	CommitContended,
@@ -11,7 +16,7 @@ import {
 } from "../replicant-store.ts";
 import { fieldInternal } from "./field-internal-key.ts";
 import { migrationDie } from "./migration-die.ts";
-import { requirePermission } from "./permission.ts";
+import { checkPermission, requirePermission } from "./permission.ts";
 
 export class ReplicantUpdateFnError extends Schema.TaggedError<ReplicantUpdateFnError>()(
 	"ReplicantUpdateFnError",
@@ -31,12 +36,16 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	initialValue: Decoded,
 ) {
 	const store = yield* ReplicantStoreService;
+	const decode = (value: Schema.Json) =>
+		Effect.fromResult(manifest.decode(value));
+	const encode = (value: Decoded | WritableDeep<Decoded>) =>
+		Effect.fromResult(manifest.encode(value));
 
-	yield* store.initializeReplicant(
+	const read = yield* store.initializeReplicant(
 		namespace,
 		name,
-		manifest.decode,
-		yield* manifest.encode(initialValue),
+		decode,
+		yield* encode(initialValue),
 		manifest.persistent,
 	);
 
@@ -61,21 +70,31 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		produce: (current: RevisionedValue) => Effect.Effect<Schema.Json, E>,
 	) => retryContention(store.commit(namespace, name, produce));
 
+	const getResult = (identity: Identity) =>
+		checkPermission(
+			manifest.permission,
+			namespace,
+			name,
+			"read",
+			identity,
+		).pipe(
+			Result.map(read),
+			Result.flatMap(({ value }) => manifest.decode(cloneJson(value))),
+		);
+
 	const get = Effect.fn("get")(function* () {
-		yield* requirePermission(manifest.permission, namespace, name, "read");
-		const store = yield* ReplicantStoreService;
-		const { value } = yield* store.readReplicant(namespace, name);
-		return yield* manifest.decode(cloneJson(value)).pipe(migrationDie);
+		const identity = yield* CurrentIdentity;
+		return yield* Effect.fromResult(getResult(identity));
 	});
 
 	const getRevisioned = Effect.fn("getRevisioned")(function* () {
 		yield* requirePermission(manifest.permission, namespace, name, "read");
-		return yield* store.readReplicant(namespace, name);
+		return read();
 	});
 
 	const set = Effect.fn("set")(function* (value: Decoded) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
-		const encoded = yield* manifest.encode(value);
+		const encoded = yield* encode(value);
 		yield* commit(() => Effect.succeed(cloneJson(encoded)));
 	});
 
@@ -83,7 +102,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 	const commitPatch = Effect.fn("commitPatch")(function* (patch: Patch) {
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		return yield* retryContention(
-			store.commitPatch(namespace, name, patch, manifest.decode),
+			store.commitPatch(namespace, name, patch, decode),
 		);
 	});
 
@@ -91,9 +110,9 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		yield* requirePermission(manifest.permission, namespace, name, "write");
 		yield* commit((stored) =>
 			Effect.gen(function* () {
-				const current = yield* manifest
-					.mutableDecode(stored.value)
-					.pipe(migrationDie);
+				const current = yield* Effect.fromResult(
+					manifest.mutableDecode(stored.value),
+				).pipe(migrationDie);
 				const next = yield* Effect.try({
 					try: () => {
 						const result = updater(current);
@@ -103,13 +122,13 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 						return result;
 					},
 					catch: (error) =>
-						new ReplicantUpdateFnError({
+						ReplicantUpdateFnError.make({
 							namespace,
 							name,
 							cause: toError(error),
 						}),
 				});
-				const encoded = yield* manifest.encode(next);
+				const encoded = yield* encode(next);
 				return cloneJson(encoded);
 			}),
 		);
@@ -123,7 +142,7 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		const stream = yield* store.subscribeReplicant(namespace, name);
 		return stream.pipe(
 			Stream.mapEffect((frame) =>
-				manifest.decode(cloneJson(frame.value)).pipe(migrationDie),
+				decode(cloneJson(frame.value)).pipe(migrationDie),
 			),
 		);
 	});
@@ -132,13 +151,13 @@ export const buildReplicant = Effect.fn("buildReplicant")(function* <Decoded>(
 		get,
 		set,
 		update,
-		validate: manifest.encode,
+		validate: encode,
 		subscribe,
 		[fieldInternal]: {
-			get,
+			getResult,
 			set,
 			update,
-			validate: manifest.encode,
+			validate: encode,
 			subscribe,
 			getRevisioned,
 			commitPatch,

@@ -286,8 +286,8 @@ describe("rpc ctx", () => {
 			const broker = yield* TopicBrokerService;
 			const publish = vi.spyOn(broker, "publish");
 			const built = yield* load(async (request, ctx) => {
-				ctx.replicant.count.set(ctx.replicant.count.get() + request);
-				ctx.replicant.count.update((count) => count + 1);
+				await ctx.replicant.count.set(ctx.replicant.count.get() + request);
+				await ctx.replicant.count.update((count) => count + 1);
 				await ctx.topic.cheer.publish("bumped");
 				return ctx.computed.doubled.get();
 			});
@@ -335,8 +335,8 @@ describe("rpc ctx runs as the server identity", () => {
 		implementNamespace(manifest, {
 			seedReplicant: { hidden: () => 3 },
 			implementRpc: {
-				writeHidden: (value, ctx) => {
-					ctx.replicant.hidden.set(value);
+				writeHidden: async (value, ctx) => {
+					await ctx.replicant.hidden.set(value);
 					return null;
 				},
 				readHidden: (_, ctx) => ctx.replicant.hidden.get(),
@@ -476,13 +476,15 @@ describe("cross-namespace rpc via ctx.use", () => {
 		{
 			seedReplicant: { total: () => 0 },
 			implementRpc: {
-				award: (points, ctx) => {
+				award: async (points, ctx) => {
 					const multiplier = ctx.use(settings).replicant.multiplier.get();
-					ctx.replicant.total.update((total) => total + points * multiplier);
+					await ctx.replicant.total.update(
+						(total) => total + points * multiplier,
+					);
 					return ctx.replicant.total.get();
 				},
-				reset: (_, ctx) => {
-					ctx.use(settings).replicant.multiplier.set(1);
+				reset: async (_, ctx) => {
+					await ctx.use(settings).replicant.multiplier.set(1);
 					return null;
 				},
 			},

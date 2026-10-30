@@ -92,4 +92,26 @@ describe("bearer token", () => {
 			expect(newTokenRes.status).toBe(200);
 		}),
 	);
+
+	test(
+		"401 for a resource request without a bearer",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+
+			const res = yield* client.get(countUrl);
+			expect(res.status).toBe(401);
+		}),
+	);
+
+	test(
+		"401 for a resource request with an unknown bearer",
+		Effect.gen(function* () {
+			const client = yield* buildClient;
+
+			const res = yield* client.get(countUrl, {
+				headers: { authorization: "Bearer anything" },
+			});
+			expect(res.status).toBe(401);
+		}),
+	);
 });

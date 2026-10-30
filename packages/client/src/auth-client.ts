@@ -5,7 +5,7 @@ import {
 	type LoginProvider,
 	UserId,
 } from "@nodecg-next/internal";
-import { Effect, ManagedRuntime, Schema } from "effect";
+import { Context, Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { FetchHttpClient, Url, UrlParams } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
 
@@ -81,26 +81,47 @@ export const makeAuthClient = Effect.fn("makeAuthClient")(function* (
 	return { providers, me, logout, listUsers, grantRole, revokeRole };
 });
 
+class AuthClientService extends Context.Service<AuthClientService>()(
+	"AuthClient",
+	{ make: makeAuthClient },
+) {
+	static readonly layer = (baseUrl?: string) =>
+		Layer.effect(this, this.make(baseUrl));
+}
+
 export const adaptAuthClient = <R, E>(
 	runtime: ManagedRuntime.ManagedRuntime<R, E>,
-	client: Effect.Success<ReturnType<typeof makeAuthClient>>,
+	client: Effect.Effect<
+		Effect.Success<ReturnType<typeof makeAuthClient>>,
+		never,
+		R
+	>,
 ) => ({
-	providers: () => runtime.runPromise(client.providers()),
-	me: () => runtime.runPromise(client.me()),
-	logout: () => runtime.runPromise(client.logout()),
-	listUsers: () => runtime.runPromise(client.listUsers()),
+	providers: () =>
+		runtime.runPromise(client.pipe(Effect.flatMap((auth) => auth.providers()))),
+	me: () =>
+		runtime.runPromise(client.pipe(Effect.flatMap((auth) => auth.me()))),
+	logout: () =>
+		runtime.runPromise(client.pipe(Effect.flatMap((auth) => auth.logout()))),
+	listUsers: () =>
+		runtime.runPromise(client.pipe(Effect.flatMap((auth) => auth.listUsers()))),
 	grantRole: (assignment: RoleAssignment) =>
-		runtime.runPromise(client.grantRole(assignment)),
+		runtime.runPromise(
+			client.pipe(Effect.flatMap((auth) => auth.grantRole(assignment))),
+		),
 	revokeRole: (assignment: RoleAssignment) =>
-		runtime.runPromise(client.revokeRole(assignment)),
+		runtime.runPromise(
+			client.pipe(Effect.flatMap((auth) => auth.revokeRole(assignment))),
+		),
 });
 
 export function loadAuthClient(baseUrl?: string) {
-	const runtime = ManagedRuntime.make(FetchHttpClient.layer);
-	const client = runtime.runSync(makeAuthClient(baseUrl));
+	const runtime = ManagedRuntime.make(
+		AuthClientService.layer(baseUrl).pipe(Layer.provide(FetchHttpClient.layer)),
+	);
 
 	return {
-		...adaptAuthClient(runtime, client),
+		...adaptAuthClient(runtime, AuthClientService),
 		dispose: () => void runtime.dispose(),
 	};
 }

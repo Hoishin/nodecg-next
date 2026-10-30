@@ -47,8 +47,8 @@ const namespace = implementExtendedNamespace(
 			total: (ctx) => ctx.replicant.score.get() + ctx.replicant.bonus.get(),
 		},
 		implementRpc: {
-			addBonus: (points, ctx) => {
-				ctx.replicant.bonus.update((bonus) => bonus + points);
+			addBonus: async (points, ctx) => {
+				await ctx.replicant.bonus.update((bonus) => bonus + points);
 				return ctx.computed.total.get();
 			},
 		},

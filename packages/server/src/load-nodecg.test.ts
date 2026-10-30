@@ -58,8 +58,8 @@ const counter = implementNamespace(
 	{
 		seedReplicant: { count: () => 1 },
 		implementRpc: {
-			bump: (by, ctx) => {
-				ctx.replicant.count.update((count) => count + by);
+			bump: async (by, ctx) => {
+				await ctx.replicant.count.update((count) => count + by);
 				return ctx.replicant.count.get();
 			},
 		},
@@ -83,7 +83,7 @@ describe("namespaces", () => {
 
 			const handle = namespaces.counter;
 			expect(handle.replicant.count.get()).toBe(1);
-			handle.replicant.count.set(5);
+			yield* Effect.promise(() => handle.replicant.count.set(5));
 			expect(handle.replicant.count.get()).toBe(5);
 			expect(yield* Effect.promise(() => handle.rpc.bump(2))).toBe(7);
 		}),
@@ -211,8 +211,8 @@ describe("onLoad", () => {
 				}),
 				{
 					seedReplicant: { viewers: () => 0 },
-					onLoad: (ctx) => {
-						ctx.replicant.viewers.set(
+					onLoad: async (ctx) => {
+						await ctx.replicant.viewers.set(
 							ctx.use(settings).replicant.multiplier.get() * 100,
 						);
 					},
@@ -379,8 +379,10 @@ describe("children", () => {
 				{
 					seedReplicant: { files: () => 0 },
 					children: { sponsors },
-					onLoad: (ctx) => {
-						ctx.replicant.files.set(ctx.use(assets).replicant.files.get());
+					onLoad: async (ctx) => {
+						await ctx.replicant.files.set(
+							ctx.use(assets).replicant.files.get(),
+						);
 					},
 				},
 			);
@@ -518,7 +520,7 @@ describe("loadNodeCG", () => {
 		} satisfies ReplicantRepository;
 
 		const nodecg = await loadNodeCG({ namespaces: { settings }, storage });
-		nodecg.namespaces.settings.replicant.multiplier.set(9);
+		await nodecg.namespaces.settings.replicant.multiplier.set(9);
 
 		await vi.waitFor(() =>
 			expect(storage.write).toHaveBeenCalledWith("settings", "multiplier", "9"),

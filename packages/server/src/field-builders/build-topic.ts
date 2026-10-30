@@ -16,7 +16,7 @@ export const buildTopic = Effect.fn("buildTopic")(
 				const broker = yield* TopicBrokerService;
 				// TODO: topic is only published from server. It doesn't make sense we have publish side permission config
 				yield* requirePermission(manifest.permission, namespace, name, "write");
-				const encoded = yield* manifest.encode(value);
+				const encoded = yield* Effect.fromResult(manifest.encode(value));
 				yield* broker.publish(namespace, name, encoded);
 			});
 
@@ -36,7 +36,7 @@ export const buildTopic = Effect.fn("buildTopic")(
 				const stream = yield* subscribeEncoded();
 				return stream.pipe(
 					Stream.mapEffect((value) =>
-						manifest.decode(value).pipe(Effect.orDie),
+						Effect.fromResult(manifest.decode(value)).pipe(Effect.orDie),
 					),
 				);
 			});
@@ -46,7 +46,7 @@ export const buildTopic = Effect.fn("buildTopic")(
 			) {
 				const broker = yield* TopicBrokerService;
 				yield* requirePermission(manifest.permission, namespace, name, "write");
-				yield* manifest.decode(value); // Only for validation
+				yield* Effect.fromResult(manifest.decode(value)); // Only for validation
 				return yield* broker.publish(namespace, name, value);
 			});
 

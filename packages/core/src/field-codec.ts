@@ -1,7 +1,7 @@
 import { cloneJson, findInheritedKey } from "@nodecg-next/internal/utils";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { getDotPath } from "@standard-schema/utils";
-import { Effect, Option, Result, Schema } from "effect";
+import { Option, Result, Schema } from "effect";
 import type { WritableDeep } from "type-fest";
 
 const decodeJson = Schema.decodeUnknownResult(Schema.Json);
@@ -28,25 +28,41 @@ export class FieldDecodeError extends Schema.TaggedError<FieldDecodeError>()(
 	override readonly message = `Failed to decode replicant "${this.fieldName}": ${this.cause.message}`;
 }
 
+class SchemaDefect extends Schema.TaggedError<SchemaDefect>()("SchemaDefect", {
+	cause: Schema.Defect(),
+}) {
+	override readonly message = "The schema threw instead of returning issues";
+}
+
 const makeEffectCodec = <D>(
 	name: string,
 	schema: Schema.Codec<D, Schema.Json>,
-) => ({
-	encode: Effect.fn("encode")(function* (value: D) {
-		return yield* Schema.encodeEffect(schema)(value).pipe(
-			Effect.catchTag("SchemaError", (error) =>
-				FieldEncodeError.make({ fieldName: name, value, cause: error }),
+) => {
+	const encodeSchema = Schema.encodeResult(schema);
+	const decodeSchema = Schema.decodeResult(schema);
+	return {
+		encode: (value: D) =>
+			Result.try({
+				try: () => encodeSchema(value),
+				catch: (cause) => SchemaDefect.make({ cause }),
+			}).pipe(
+				Result.flatMap((encoded) => encoded),
+				Result.mapError((cause) =>
+					FieldEncodeError.make({ fieldName: name, value, cause }),
+				),
 			),
-		);
-	}),
-	decode: Effect.fn("decode")(function* (value: Schema.Json) {
-		return yield* Schema.decodeEffect(schema)(value).pipe(
-			Effect.catchTag("SchemaError", (error) =>
-				FieldDecodeError.make({ fieldName: name, value, cause: error }),
+		decode: (value: Schema.Json) =>
+			Result.try({
+				try: () => decodeSchema(value),
+				catch: (cause) => SchemaDefect.make({ cause }),
+			}).pipe(
+				Result.flatMap((decoded) => decoded),
+				Result.mapError((cause) =>
+					FieldDecodeError.make({ fieldName: name, value, cause }),
+				),
 			),
-		);
-	}),
-});
+	};
+};
 
 class SchemaIssues extends Schema.TaggedError<SchemaIssues>()("SchemaIssues", {
 	issues: Schema.Array(Schema.String),
@@ -56,8 +72,15 @@ class SchemaIssues extends Schema.TaggedError<SchemaIssues>()("SchemaIssues", {
 
 const standardSchemaValidator =
 	<D>(schema: StandardSchemaV1<unknown, D>) =>
-	(value: unknown) => {
-		const result = schema["~standard"].validate(value);
+	(value: unknown): Result.Result<D, SchemaIssues | SchemaDefect> => {
+		const validation = Result.try({
+			try: () => schema["~standard"].validate(value),
+			catch: (cause) => SchemaDefect.make({ cause }),
+		});
+		if (Result.isFailure(validation)) {
+			return Result.fail(validation.failure);
+		}
+		const result = validation.success;
 		if (result instanceof Promise) {
 			return Result.fail(
 				SchemaIssues.make({ issues: ["The schema validated asynchronously"] }),
@@ -82,39 +105,30 @@ const makeStandardCodec = <D>(
 ) => {
 	const validate = standardSchemaValidator(schema);
 	return {
-		encode: Effect.fn("encode")(function* (value: D) {
-			const wire = validate(value).pipe(Result.flatMap(decodeJson));
-			if (Result.isFailure(wire)) {
-				return yield* FieldEncodeError.make({
-					fieldName: name,
-					value,
-					cause: wire.failure,
-				});
-			}
-			return wire.success;
-		}),
-		decode: Effect.fn("decode")(function* (value: Schema.Json) {
-			const validation = validate(value);
-			if (Result.isFailure(validation)) {
-				return yield* FieldDecodeError.make({
-					fieldName: name,
-					value,
-					cause: validation.failure,
-				});
-			}
-			return validation.success;
-		}),
+		encode: (value: D) =>
+			validate(value).pipe(
+				Result.flatMap(decodeJson),
+				Result.mapError((cause) =>
+					FieldEncodeError.make({ fieldName: name, value, cause }),
+				),
+			),
+		decode: (value: Schema.Json) =>
+			validate(value).pipe(
+				Result.mapError((cause) =>
+					FieldDecodeError.make({ fieldName: name, value, cause }),
+				),
+			),
 	};
 };
 
 export interface FieldCodec<D> {
 	readonly encode: (
 		value: D | WritableDeep<D>,
-	) => Effect.Effect<Schema.Json, FieldEncodeError>;
-	readonly decode: (value: Schema.Json) => Effect.Effect<D, FieldDecodeError>;
+	) => Result.Result<Schema.Json, FieldEncodeError>;
+	readonly decode: (value: Schema.Json) => Result.Result<D, FieldDecodeError>;
 	readonly mutableDecode: (
 		value: Schema.Json,
-	) => Effect.Effect<WritableDeep<D>, FieldDecodeError>;
+	) => Result.Result<WritableDeep<D>, FieldDecodeError>;
 }
 
 export function makeCodec<D>(
@@ -124,40 +138,46 @@ export function makeCodec<D>(
 	const codec = Schema.isSchema(schema)
 		? makeEffectCodec(name, schema)
 		: makeStandardCodec(name, schema);
-	const decode = Effect.fn("decode")(function* (value: Schema.Json) {
+	const decode = (value: Schema.Json) => {
 		const inheritedKey = findInheritedKey(value);
 		if (Option.isSome(inheritedKey)) {
-			return yield* FieldDecodeError.make({
-				fieldName: name,
-				value,
-				cause: new Error(
-					`Object key "${inheritedKey.value}" is a name every object inherits`,
-				),
-			});
-		}
-		return yield* codec.decode(value);
-	});
-	return {
-		encode: Effect.fn("encode")(function* (value: D | WritableDeep<D>) {
-			// Asserting mutable object as immutable is safe in this context
-			const encoded = yield* codec.encode(value as D);
-			const inheritedKey = findInheritedKey(encoded);
-			if (Option.isSome(inheritedKey)) {
-				return yield* FieldEncodeError.make({
+			return Result.fail(
+				FieldDecodeError.make({
 					fieldName: name,
 					value,
 					cause: new Error(
 						`Object key "${inheritedKey.value}" is a name every object inherits`,
 					),
-				});
-			}
-			return encoded;
-		}),
+				}),
+			);
+		}
+		return codec.decode(value);
+	};
+	return {
+		encode: (value: D | WritableDeep<D>) =>
+			// Asserting mutable object as immutable is safe in this context
+			codec.encode(value as D).pipe(
+				Result.flatMap((encoded) => {
+					const inheritedKey = findInheritedKey(encoded);
+					if (Option.isSome(inheritedKey)) {
+						return Result.fail(
+							FieldEncodeError.make({
+								fieldName: name,
+								value,
+								cause: new Error(
+									`Object key "${inheritedKey.value}" is a name every object inherits`,
+								),
+							}),
+						);
+					}
+					return Result.succeed(encoded);
+				}),
+			),
 		decode,
-		mutableDecode: Effect.fn("mutableDecode")(function* (value: Schema.Json) {
+		mutableDecode: (value: Schema.Json) =>
 			// Decode a copy because a schema may hand back parts of its input, so the result is safe to assert as mutable
-			const decoded = yield* decode(cloneJson(value));
-			return decoded as WritableDeep<D>;
-		}),
+			decode(cloneJson(value)).pipe(
+				Result.map((decoded) => decoded as WritableDeep<D>),
+			),
 	};
 }

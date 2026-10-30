@@ -11,7 +11,7 @@ export const counter = implementNamespace(counterManifest, {
 		roll: async (max, ctx) => {
 			const rolled = 1 + Math.floor(Math.random() * Math.max(1, max));
 			console.log(`[counter] rpc roll(${max}) -> ${rolled}`);
-			ctx.replicant.count.set(rolled);
+			await ctx.replicant.count.set(rolled);
 			await ctx.topic.cheer.publish(`rolled a ${rolled}`);
 			return rolled;
 		},

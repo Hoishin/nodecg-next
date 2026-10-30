@@ -1,7 +1,6 @@
-import { it } from "@effect/vitest";
 import { manifestChildrenKey } from "@nodecg-next/internal";
-import { Effect, Schema } from "effect";
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { Result, Schema } from "effect";
+import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 
 import { defineNamespace, extendNamespace } from "./define-namespace.ts";
@@ -11,106 +10,105 @@ const decodeJsonText = Schema.decodeSync(Schema.fromJsonString(Schema.Json));
 
 describe("defineNamespace", () => {
 	describe("runtime", () => {
-		it.effect(
-			"replicant, computed and topic fields encode/decode round-trip",
-			() =>
-				Effect.gen(function* () {
-					const manifest = defineNamespace("match", {
-						replicant: {
-							score: {
-								schema: Schema.Struct({ left: Schema.FiniteFromString }),
-							},
-						},
-						computed: { title: { schema: z.string().trim() } },
-						topic: { count: { schema: Schema.BigIntFromString } },
-					});
+		test("replicant, computed and topic fields encode/decode round-trip", () => {
+			const manifest = defineNamespace("match", {
+				replicant: {
+					score: {
+						schema: Schema.Struct({ left: Schema.FiniteFromString }),
+					},
+				},
+				computed: { title: { schema: z.string().trim() } },
+				topic: { count: { schema: Schema.BigIntFromString } },
+			});
 
-					const scoreWire = yield* manifest.replicant.score.encode({ left: 1 });
-					expect(scoreWire).toEqual({ left: "1" });
-					const score = yield* manifest.replicant.score.decode({ left: "2" });
-					expect(score).toEqual({ left: 2 });
+			expect(manifest.replicant.score.encode({ left: 1 })).toStrictEqual(
+				Result.succeed({ left: "1" }),
+			);
+			expect(manifest.replicant.score.decode({ left: "2" })).toStrictEqual(
+				Result.succeed({ left: 2 }),
+			);
 
-					const titleWire = yield* manifest.computed.title.encode(" final ");
-					expect(titleWire).toBe("final");
-					const title = yield* manifest.computed.title.decode(" semi ");
-					expect(title).toBe("semi");
+			expect(manifest.computed.title.encode(" final ")).toStrictEqual(
+				Result.succeed("final"),
+			);
+			expect(manifest.computed.title.decode(" semi ")).toStrictEqual(
+				Result.succeed("semi"),
+			);
 
-					const countWire = yield* manifest.topic.count.encode(3n);
-					expect(countWire).toBe("3");
-					const count = yield* manifest.topic.count.decode("4");
-					expect(count).toBe(4n);
-				}),
-		);
+			expect(manifest.topic.count.encode(3n)).toStrictEqual(
+				Result.succeed("3"),
+			);
+			expect(manifest.topic.count.decode("4")).toStrictEqual(
+				Result.succeed(4n),
+			);
+		});
 
 		test("decode surfaces FieldDecodeError on bad wire input", () => {
 			const manifest = defineNamespace("match", {
 				replicant: { count: { schema: Schema.Finite } },
 			});
 
-			const error = Effect.runSync(
-				Effect.flip(manifest.replicant.count.decode("nope")),
-			);
-			expect(error).toBeInstanceOf(FieldDecodeError);
+			const decoded = manifest.replicant.count.decode("nope");
+
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure).toBeInstanceOf(FieldDecodeError);
 		});
 
-		it.effect(
-			"encode and decode refuse an object key every object inherits",
-			() =>
-				Effect.gen(function* () {
-					const manifest = defineNamespace("match", {
-						replicant: {
-							scores: {
-								schema: Schema.Record(Schema.String, Schema.FiniteFromString),
-							},
+		test("encode and decode refuse an object key every object inherits", () => {
+			const manifest = defineNamespace("match", {
+				replicant: {
+					scores: {
+						schema: Schema.Record(Schema.String, Schema.FiniteFromString),
+					},
+				},
+			});
+
+			const encoded = manifest.replicant.scores.encode({
+				home: 1,
+				toString: 2,
+			});
+			assert(Result.isFailure(encoded));
+			expect(encoded.failure).toBeInstanceOf(FieldEncodeError);
+			expect(encoded.failure.message).toBe(
+				'Failed to encode replicant "scores": Object key "toString" is a name every object inherits',
+			);
+
+			const decoded = manifest.replicant.scores.decode(
+				decodeJsonText('{"home":"1","__proto__":"2"}'),
+			);
+			assert(Result.isFailure(decoded));
+			expect(decoded.failure).toBeInstanceOf(FieldDecodeError);
+			expect(decoded.failure.message).toBe(
+				'Failed to decode replicant "scores": Object key "__proto__" is a name every object inherits',
+			);
+		});
+
+		test("rpc request and response encode/decode round-trip independently", () => {
+			const manifest = defineNamespace("match", {
+				rpc: {
+					setScore: {
+						schema: {
+							request: Schema.FiniteFromString,
+							response: z.string().trim(),
 						},
-					});
+					},
+				},
+			});
 
-					const encodeError = yield* manifest.replicant.scores
-						.encode({ home: 1, toString: 2 })
-						.pipe(Effect.flip);
-					expect(encodeError).toBeInstanceOf(FieldEncodeError);
-					expect(encodeError.message).toBe(
-						'Failed to encode replicant "scores": Object key "toString" is a name every object inherits',
-					);
+			expect(manifest.rpc.setScore.request.encode(1)).toStrictEqual(
+				Result.succeed("1"),
+			);
+			expect(manifest.rpc.setScore.request.decode("2")).toStrictEqual(
+				Result.succeed(2),
+			);
 
-					const decodeError = yield* manifest.replicant.scores
-						.decode(decodeJsonText('{"home":"1","__proto__":"2"}'))
-						.pipe(Effect.flip);
-					expect(decodeError).toBeInstanceOf(FieldDecodeError);
-					expect(decodeError.message).toBe(
-						'Failed to decode replicant "scores": Object key "__proto__" is a name every object inherits',
-					);
-				}),
-		);
-
-		it.effect(
-			"rpc request and response encode/decode round-trip independently",
-			() =>
-				Effect.gen(function* () {
-					const manifest = defineNamespace("match", {
-						rpc: {
-							setScore: {
-								schema: {
-									request: Schema.FiniteFromString,
-									response: z.string().trim(),
-								},
-							},
-						},
-					});
-
-					const requestWire = yield* manifest.rpc.setScore.request.encode(1);
-					expect(requestWire).toBe("1");
-					const request = yield* manifest.rpc.setScore.request.decode("2");
-					expect(request).toBe(2);
-
-					const responseWire =
-						yield* manifest.rpc.setScore.response.encode(" done ");
-					expect(responseWire).toBe("done");
-					const response =
-						yield* manifest.rpc.setScore.response.decode(" kept ");
-					expect(response).toBe("kept");
-				}),
-		);
+			expect(manifest.rpc.setScore.response.encode(" done ")).toStrictEqual(
+				Result.succeed("done"),
+			);
+			expect(manifest.rpc.setScore.response.decode(" kept ")).toStrictEqual(
+				Result.succeed("kept"),
+			);
+		});
 	});
 
 	describe("permission resolution", () => {
@@ -534,7 +532,7 @@ describe("defineNamespace", () => {
 				.parameter(0)
 				.toEqualTypeOf<string>();
 			expectTypeOf(manifest.computed.winning.decode).returns.toEqualTypeOf<
-				Effect.Effect<"left" | "right" | null, FieldDecodeError>
+				Result.Result<"left" | "right" | null, FieldDecodeError>
 			>();
 			expectTypeOf(manifest.topic.start.encode)
 				.parameter(0)
@@ -543,7 +541,7 @@ describe("defineNamespace", () => {
 				.parameter(0)
 				.toEqualTypeOf<{ readonly home: number } | { home: number }>();
 			expectTypeOf(manifest.rpc.setScore.response.decode).returns.toEqualTypeOf<
-				Effect.Effect<boolean, FieldDecodeError>
+				Result.Result<boolean, FieldDecodeError>
 			>();
 		});
 
@@ -554,7 +552,7 @@ describe("defineNamespace", () => {
 
 			expectTypeOf(manifest.namespace).toEqualTypeOf<string>();
 			expectTypeOf(manifest.replicant.count.encode).returns.toEqualTypeOf<
-				Effect.Effect<Schema.Json, FieldEncodeError>
+				Result.Result<Schema.Json, FieldEncodeError>
 			>();
 			expectTypeOf(manifest.replicant.count.decode)
 				.parameter(0)
@@ -633,7 +631,7 @@ describe("defineNamespace", () => {
 			});
 
 			expectTypeOf(manifest.replicant.score.decode).returns.toEqualTypeOf<
-				Effect.Effect<Score, FieldDecodeError>
+				Result.Result<Score, FieldDecodeError>
 			>();
 		});
 
@@ -645,7 +643,7 @@ describe("defineNamespace", () => {
 			});
 
 			expectTypeOf(manifest.replicant.length.decode).returns.toEqualTypeOf<
-				Effect.Effect<number, FieldDecodeError>
+				Result.Result<number, FieldDecodeError>
 			>();
 		});
 
@@ -660,16 +658,16 @@ describe("defineNamespace", () => {
 			});
 
 			expectTypeOf(manifest.replicant.anything.decode).returns.toEqualTypeOf<
-				Effect.Effect<unknown, FieldDecodeError>
+				Result.Result<unknown, FieldDecodeError>
 			>();
 			expectTypeOf(manifest.replicant.raw.decode).returns.toEqualTypeOf<
-				Effect.Effect<any, FieldDecodeError>
+				Result.Result<any, FieldDecodeError>
 			>();
 			expectTypeOf(manifest.replicant.nothing.decode).returns.toEqualTypeOf<
-				Effect.Effect<never, FieldDecodeError>
+				Result.Result<never, FieldDecodeError>
 			>();
 			expectTypeOf(manifest.replicant.nested.decode).returns.toEqualTypeOf<
-				Effect.Effect<{ data: unknown; raw: any }, FieldDecodeError>
+				Result.Result<{ data: unknown; raw: any }, FieldDecodeError>
 			>();
 		});
 
@@ -858,29 +856,28 @@ describe("extendNamespace", () => {
 			expect(extended.replicant.secret.persistent).toBe(true);
 		});
 
-		it.effect("adds a new field with a schema, keeping existing fields", () =>
-			Effect.gen(function* () {
-				const extended = extendNamespace(base, {
-					replicant: {
-						pinned: {
-							schema: z.string().trim(),
-							permission: { write: { allow: ["judge"] } },
-						},
+		test("adds a new field beside the existing ones", () => {
+			const extended = extendNamespace(base, {
+				replicant: {
+					pinned: {
+						schema: z.string().trim(),
+						permission: { write: { allow: ["judge"] } },
 					},
-				});
+				},
+			});
 
-				const wire = yield* extended.replicant.pinned.encode(" hi ");
-				expect(wire).toBe("hi");
-				expect(extended.replicant.pinned.permission.write).toEqual({
-					roles: new Set(["judge"]),
-					rolesDenied: new Set(),
-				});
-				expect(extended.replicant.score.permission.read).toEqual({
-					roles: new Set(["judge", "viewer"]),
-					rolesDenied: new Set(),
-				});
-			}),
-		);
+			expect(extended.replicant.pinned.encode(" hi ")).toStrictEqual(
+				Result.succeed("hi"),
+			);
+			expect(extended.replicant.pinned.permission.write).toEqual({
+				roles: new Set(["judge"]),
+				rolesDenied: new Set(),
+			});
+			expect(extended.replicant.score.permission.read).toEqual({
+				roles: new Set(["judge", "viewer"]),
+				rolesDenied: new Set(),
+			});
+		});
 
 		test("role-level grant retroactively adds to existing lists, including pinned", () => {
 			const extended = extendNamespace(base, {
@@ -940,53 +937,57 @@ describe("extendNamespace", () => {
 			});
 		});
 
-		it.effect("adds fields across computed and topic groups", () =>
-			Effect.gen(function* () {
-				const extended = extendNamespace(base, {
-					computed: { ratio: { schema: Schema.Finite } },
-					topic: { ping: { schema: Schema.String } },
-				});
+		test("adds fields across computed and topic groups", () => {
+			const extended = extendNamespace(base, {
+				computed: { ratio: { schema: Schema.Finite } },
+				topic: { ping: { schema: Schema.String } },
+			});
 
-				expect(yield* extended.computed.ratio.encode(0.5)).toBe(0.5);
-				expect(yield* extended.topic.ping.encode("x")).toBe("x");
-				expect(extended.computed.ratio.permission.read).toEqual({
-					roles: new Set(["judge", "viewer"]),
-					rolesDenied: new Set(),
-				});
-				expect(extended.topic.ping.permission.read).toEqual({
-					roles: new Set(),
-					rolesDenied: new Set(),
-				});
-			}),
-		);
+			expect(extended.computed.ratio.encode(0.5)).toStrictEqual(
+				Result.succeed(0.5),
+			);
+			expect(extended.topic.ping.encode("x")).toStrictEqual(
+				Result.succeed("x"),
+			);
+			expect(extended.computed.ratio.permission.read).toEqual({
+				roles: new Set(["judge", "viewer"]),
+				rolesDenied: new Set(),
+			});
+			expect(extended.topic.ping.permission.read).toEqual({
+				roles: new Set(),
+				rolesDenied: new Set(),
+			});
+		});
 
-		it.effect("adds an rpc field with request/response and permission", () =>
-			Effect.gen(function* () {
-				const extended = extendNamespace(base, {
-					roles: { operator: { permission: ["rpc-call"] } },
-					rpc: {
-						restart: {
-							schema: {
-								request: Schema.String,
-								response: Schema.Boolean,
-							},
-							permission: { write: { allow: ["operator"] } },
+		test("adds an rpc field with request/response and permission", () => {
+			const extended = extendNamespace(base, {
+				roles: { operator: { permission: ["rpc-call"] } },
+				rpc: {
+					restart: {
+						schema: {
+							request: Schema.String,
+							response: Schema.Boolean,
 						},
+						permission: { write: { allow: ["operator"] } },
 					},
-				});
+				},
+			});
 
-				expect(yield* extended.rpc.restart.request.encode("go")).toBe("go");
-				expect(yield* extended.rpc.restart.response.decode(true)).toBe(true);
-				expect(extended.rpc.restart.permission.write).toEqual({
-					roles: new Set(["operator"]),
-					rolesDenied: new Set(),
-				});
-				expect(extended.rpc.restart.permission.read).toEqual({
-					roles: new Set(),
-					rolesDenied: new Set(),
-				});
-			}),
-		);
+			expect(extended.rpc.restart.request.encode("go")).toStrictEqual(
+				Result.succeed("go"),
+			);
+			expect(extended.rpc.restart.response.decode(true)).toStrictEqual(
+				Result.succeed(true),
+			);
+			expect(extended.rpc.restart.permission.write).toEqual({
+				roles: new Set(["operator"]),
+				rolesDenied: new Set(),
+			});
+			expect(extended.rpc.restart.permission.read).toEqual({
+				roles: new Set(),
+				rolesDenied: new Set(),
+			});
+		});
 
 		test("re-lists a role to re-bake rpc write, and grants retroactively", () => {
 			const rpcBase = defineNamespace("match", {
@@ -1239,7 +1240,7 @@ describe("extendNamespace", () => {
 				.parameter(0)
 				.toEqualTypeOf<{ readonly home: number } | { home: number }>();
 			expectTypeOf(extended.rpc.setScore.response.decode).returns.toEqualTypeOf<
-				Effect.Effect<boolean, FieldDecodeError>
+				Result.Result<boolean, FieldDecodeError>
 			>();
 		});
 	});

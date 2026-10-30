@@ -1,6 +1,6 @@
 import type { ResolvedPermission } from "@nodecg-next/core";
-import { CurrentIdentity } from "@nodecg-next/internal";
-import { Effect, Schema } from "effect";
+import { CurrentIdentity, type Identity } from "@nodecg-next/internal";
+import { Effect, Match, Result, Schema } from "effect";
 
 export class FieldPermissionDenied extends Schema.TaggedError<FieldPermissionDenied>()(
 	"FieldPermissionDenied",
@@ -13,6 +13,26 @@ export class FieldPermissionDenied extends Schema.TaggedError<FieldPermissionDen
 	override readonly message = `Permission denied to ${this.operation} "${this.name}" in "${this.namespace}"`;
 }
 
+export const checkPermission = (
+	permission: ResolvedPermission,
+	namespace: string,
+	name: string,
+	operation: "read" | "write",
+	identity: Identity,
+): Result.Result<void, FieldPermissionDenied> => {
+	const allowed = Match.value(operation).pipe(
+		Match.when("read", () => permission.canRead(identity)),
+		Match.when("write", () => permission.canWrite(identity)),
+		Match.exhaustive,
+	);
+	if (!allowed) {
+		return Result.fail(
+			FieldPermissionDenied.make({ namespace, name, operation }),
+		);
+	}
+	return Result.void;
+};
+
 export const requirePermission = (
 	permission: ResolvedPermission,
 	namespace: string,
@@ -21,11 +41,7 @@ export const requirePermission = (
 ) =>
 	Effect.gen(function* () {
 		const identity = yield* CurrentIdentity;
-		const allowed =
-			operation === "read"
-				? permission.canRead(identity)
-				: permission.canWrite(identity);
-		if (!allowed) {
-			return yield* new FieldPermissionDenied({ namespace, name, operation });
-		}
+		return yield* Effect.fromResult(
+			checkPermission(permission, namespace, name, operation, identity),
+		);
 	});

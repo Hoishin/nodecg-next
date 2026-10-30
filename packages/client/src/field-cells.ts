@@ -1,4 +1,4 @@
-import type { FieldManifest } from "@nodecg-next/core";
+import type { FieldDecodeError, FieldManifest } from "@nodecg-next/core";
 import {
 	ClientMessage,
 	type ComputedFieldIdentifier,
@@ -90,7 +90,7 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 				readonly reject: (
 					reason: "forbidden" | "not-found" | "unavailable",
 					message: string | undefined,
-				) => Effect.Effect<void, SetSignalError>;
+				) => Result.Result<void, SetSignalError>;
 			}
 
 			type ReplicantPublish = ReplicantSnapshotMessage | ReplicantDeltaMessage;
@@ -128,6 +128,18 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 					Match.exhaustive,
 				);
 
+			const makeDecodeFailure = (
+				field: FieldIdentifier,
+				error: FieldDecodeError,
+			) =>
+				Loadable.Failure({
+					error: FieldUnavailable.make({
+						namespace: field.namespace,
+						name: field.name,
+						detail: `published value did not decode: ${error.message}`,
+					}),
+				});
+
 			const makeCell = <V extends ReadyLoadableValue<unknown>>(
 				field: FieldIdentifier,
 			) => {
@@ -152,7 +164,7 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 				): CellHandlers<unknown>["reject"] =>
 				(reason, message) =>
 					isCold(cell.peek())
-						? Effect.void
+						? Result.void
 						: setSignal(
 								cell,
 								Loadable.Failure({
@@ -184,11 +196,10 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 					yield* Queue.offer(outbound, ResyncMessage.make({ field }));
 				});
 
-				const decodeIntoCell = (encoded: Schema.Json, revision: number) =>
-					manifest.decode(encoded).pipe(
-						Effect.flatMap((decoded) =>
-							setSignal(
-								cell,
+				const decodeIntoCell = (encoded: Schema.Json, revision: number) => {
+					const loadable = manifest.decode(encoded).pipe(
+						Result.match({
+							onSuccess: (decoded) =>
 								Loadable.Ready({
 									value: ReadyLoadableValue.Replicant({
 										decoded,
@@ -196,21 +207,11 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 										revision,
 									}),
 								}),
-							),
-						),
-						Effect.catchTag("FieldDecodeError", (error) =>
-							setSignal(
-								cell,
-								Loadable.Failure({
-									error: new FieldUnavailable({
-										namespace,
-										name,
-										detail: `published value did not decode: ${error.message}`,
-									}),
-								}),
-							),
-						),
+							onFailure: (error) => makeDecodeFailure(field, error),
+						}),
 					);
+					return setSignal(cell, loadable);
+				};
 
 				const applyDeltaToCell = (delta: ReplicantDeltaMessage) =>
 					Loadable.$match(cell.peek(), {
@@ -239,7 +240,9 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 									);
 									return yield* requestResync;
 								}
-								yield* decodeIntoCell(applied.success, delta.revision);
+								yield* Effect.fromResult(
+									decodeIntoCell(applied.success, delta.revision),
+								);
 							}),
 					});
 
@@ -253,7 +256,9 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 								Match.tag("snapshot", (snapshot) =>
 									Effect.gen(function* () {
 										yield* Ref.set(resyncing, false);
-										yield* decodeIntoCell(snapshot.value, snapshot.revision);
+										yield* Effect.fromResult(
+											decodeIntoCell(snapshot.value, snapshot.revision),
+										);
 									}),
 								),
 								Match.tag("delta", applyDeltaToCell),
@@ -284,28 +289,16 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 							if (isCold(cell.peek())) {
 								return;
 							}
-							yield* manifest.decode(published.value).pipe(
-								Effect.flatMap((decoded) =>
-									setSignal(
-										cell,
+							const loadable = manifest.decode(published.value).pipe(
+								Result.match({
+									onSuccess: (decoded) =>
 										Loadable.Ready({
 											value: ReadyLoadableValue.Computed({ decoded }),
 										}),
-									),
-								),
-								Effect.catchTag("FieldDecodeError", (error) =>
-									setSignal(
-										cell,
-										Loadable.Failure({
-											error: new FieldUnavailable({
-												namespace,
-												name,
-												detail: `published value did not decode: ${error.message}`,
-											}),
-										}),
-									),
-								),
+									onFailure: (error) => makeDecodeFailure(field, error),
+								}),
 							);
+							yield* Effect.fromResult(setSignal(cell, loadable));
 						}),
 					reject: makeReject(cell, field),
 				});
@@ -327,28 +320,16 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 							if (isCold(cell.peek())) {
 								return;
 							}
-							yield* manifest.decode(published.value).pipe(
-								Effect.flatMap((decoded) =>
-									setSignal(
-										cell,
+							const loadable = manifest.decode(published.value).pipe(
+								Result.match({
+									onSuccess: (decoded) =>
 										Loadable.Ready({
 											value: ReadyLoadableValue.Topic({ decoded }),
 										}),
-									),
-								),
-								Effect.catchTag("FieldDecodeError", (error) =>
-									setSignal(
-										cell,
-										Loadable.Failure({
-											error: new FieldUnavailable({
-												namespace,
-												name,
-												detail: `published value did not decode: ${error.message}`,
-											}),
-										}),
-									),
-								),
+									onFailure: (error) => makeDecodeFailure(field, error),
+								}),
 							);
+							yield* Effect.fromResult(setSignal(cell, loadable));
 						}),
 					reject: makeReject(cell, field),
 				});
@@ -473,16 +454,16 @@ export class FieldCellsService extends Context.Service<FieldCellsService>()(
 									Match.exhaustive,
 								);
 								if (Option.isSome(handler)) {
-									yield* handler.value
-										.reject(rejected.reason, rejected.message)
-										.pipe(
-											Effect.catchTag("SetSignalError", (error) =>
-												Effect.logError(
-													`A watcher of "${rejected.field.namespace}/${rejected.field.name}" threw:`,
-													error,
-												),
-											),
+									const rejection = handler.value.reject(
+										rejected.reason,
+										rejected.message,
+									);
+									if (Result.isFailure(rejection)) {
+										yield* Effect.logError(
+											`A watcher of "${rejected.field.namespace}/${rejected.field.name}" threw:`,
+											rejection.failure,
 										);
+									}
 								}
 							}),
 						),

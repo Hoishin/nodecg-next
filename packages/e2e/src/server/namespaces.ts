@@ -33,8 +33,8 @@ export const fixture = implementNamespace(fixtureManifest, {
 	},
 	implementRpc: {
 		echo: (request: string) => request.toUpperCase(),
-		bump: (request: number, ctx) => {
-			ctx.replicant.count.update((count) => count + request);
+		bump: async (request: number, ctx) => {
+			await ctx.replicant.count.update((count) => count + request);
 			return ctx.replicant.count.get();
 		},
 	},
@@ -90,8 +90,8 @@ export const cross = implementNamespace(crossManifest, {
 			ctx.replicant.factor.get() * ctx.use(extended).replicant.score.get(),
 	},
 	implementRpc: {
-		addScore: (points, ctx) => {
-			ctx.use(extended).replicant.score.update((score) => score + points);
+		addScore: async (points, ctx) => {
+			await ctx.use(extended).replicant.score.update((score) => score + points);
 			return ctx.use(extended).replicant.score.get();
 		},
 	},

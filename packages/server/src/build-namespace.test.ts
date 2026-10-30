@@ -7,8 +7,12 @@ import { z } from "zod";
 
 import { BuiltNamespaceRegistry } from "./build-fields.ts";
 import { adaptNamespace, buildNamespace } from "./build-namespace.ts";
+import { fieldInternal } from "./field-builders/field-internal-key.ts";
 import { implementNamespace } from "./implement-namespace.ts";
-import { ReplicantStoreService } from "./replicant-store.ts";
+import {
+	ComputedComputeError,
+	ReplicantStoreService,
+} from "./replicant-store.ts";
 import { InMemoryReplicantRepository } from "./services/repository/replicant/in-memory-replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
@@ -37,13 +41,14 @@ describe("seeding", () => {
 	test(
 		"encodes the seed and seeds the store",
 		Effect.gen(function* () {
-			const store = yield* ReplicantStoreService;
-			yield* buildNamespace(
+			const built = yield* buildNamespace(
 				implementNamespace(countManifest, {
 					seedReplicant: { count: () => 42 },
 				}),
 			);
-			expect((yield* store.readReplicant("ns", "count")).value).toEqual("42");
+			const { value } =
+				yield* built.replicant.count[fieldInternal].getRevisioned();
+			expect(value).toEqual("42");
 		}),
 	);
 
@@ -112,11 +117,13 @@ describe("adaptNamespace", () => {
 			const handle = yield* adaptNamespace(built);
 
 			expect(handle.replicant.count.get()).toBe(1);
-			handle.replicant.count.set(2);
+			yield* Effect.promise(() => handle.replicant.count.set(2));
 			expect(handle.replicant.count.get()).toBe(2);
-			handle.replicant.count.update((count) => count + 1);
+			yield* Effect.promise(() =>
+				handle.replicant.count.update((count) => count + 1),
+			);
 			expect(handle.replicant.count.get()).toBe(3);
-			handle.replicant.title.set(" final ");
+			yield* Effect.promise(() => handle.replicant.title.set(" final "));
 			expect(handle.replicant.title.get()).toBe("final");
 			expect(
 				yield* Effect.promise(() => handle.replicant.count.validate(9)),
@@ -136,9 +143,66 @@ describe("adaptNamespace", () => {
 			yield* Effect.promise(() =>
 				vi.waitFor(() => expect(received).toEqual([3])),
 			);
-			handle.replicant.count.set(8);
+			yield* Effect.promise(() => handle.replicant.count.set(8));
 			yield* Effect.promise(() =>
 				vi.waitFor(() => expect(received).toEqual([3, 8])),
+			);
+		}),
+	);
+
+	test(
+		"a subscription handler awaits a write to another replicant",
+		Effect.gen(function* () {
+			const built = yield* buildNamespace(
+				implementNamespace(manifest, {
+					seedReplicant: { count: () => 1, title: () => "semi" },
+					implementComputed: {
+						doubled: (ctx) => ctx.replicant.count.get() * 2,
+					},
+					implementRpc: { echo: (request) => request * 10 },
+				}),
+			);
+			const handle = yield* adaptNamespace(built);
+
+			const titles: string[] = [];
+			const cancel = yield* Effect.promise(() =>
+				handle.replicant.count.subscribe(async (count) => {
+					await handle.replicant.title.set(`count ${count}`);
+					titles.push(handle.replicant.title.get());
+				}),
+			);
+			onTestFinished(() => cancel());
+
+			yield* Effect.promise(() => handle.replicant.count.set(2));
+
+			yield* Effect.promise(() =>
+				vi.waitFor(() => expect(titles).toEqual(["count 1", "count 2"])),
+			);
+		}),
+	);
+
+	test(
+		"a failing get throws the field's error",
+		Effect.gen(function* () {
+			const built = yield* buildNamespace(
+				implementNamespace(manifest, {
+					seedReplicant: { count: () => 1, title: () => "semi" },
+					implementComputed: {
+						doubled: () => {
+							throw new Error("boom");
+						},
+					},
+					implementRpc: { echo: (request) => request * 10 },
+				}),
+			);
+			const handle = yield* adaptNamespace(built);
+
+			expect(() => handle.computed.doubled.get()).toThrow(
+				ComputedComputeError.make({
+					namespace: "ns",
+					name: "doubled",
+					cause: new Error("boom"),
+				}),
 			);
 		}),
 	);
