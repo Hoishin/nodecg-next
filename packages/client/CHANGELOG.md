@@ -1,5 +1,11 @@
 # @nodecg-next/client
 
+## 0.1.5
+
+### Patch Changes
+
+- the client reconnects a WebSocket that went silent ([`7c47ce8`](https://github.com/Hoishin/nodecg-next/commit/7c47ce8bf531659ca5cd4667302b04123267ff2c))
+
 ## 0.1.4
 
 ### Patch Changes
