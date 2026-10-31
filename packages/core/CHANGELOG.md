@@ -1,5 +1,11 @@
 # @nodecg-next/core
 
+## 0.1.6
+
+### Patch Changes
+
+- update effect to 4.1 ([`5beb598`](https://github.com/Hoishin/nodecg-next/commit/5beb598f26f36693180966b0a453f4a31da50553))
+
 ## 0.1.5
 
 ### Patch Changes
