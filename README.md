@@ -1,457 +1,90 @@
 # NodeCG
 
-Experimental new version of NodeCG in active development from scratch
+[![NodeCG](https://raw.githubusercontent.com/nodecg/nodecg/main/media/splash.png)](https://nodecg.dev/)
 
-## API
+[![Discord](https://img.shields.io/discord/754749209722486814)](https://discord.gg/nsXXDFGBEt)
+[![Build Status](https://github.com/hoishin/nodecg/workflows/CI/badge.svg)](https://github.com/hoishin/nodecg/actions?query=workflow%3ACI)
+[![Coverage Status](https://codecov.io/gh/nodecg/nodecg/branch/main/graph/badge.svg)](https://codecov.io/gh/nodecg/nodecg)
+[![Docker Build Status](https://ghcr-badge.egpl.dev/nodecg/nodecg/latest_tag)](https://ghcr.io/nodecg/nodecg)
 
-### Philosophy
+NodeCG is a broadcast graphics framework and application. It enables you to write complex, dynamic broadcast graphics using the web platform. NodeCG has no graphics or drawing primitives of its own. Instead, NodeCG provides a structure for your code and an API to facilitate moving data between the dashboard, the server, and your graphics. It makes few assumptions about how to best code a graphic, and gives you freedom to use whatever libraries, frameworks, tools, and methodologies you want. As such, NodeCG graphics can be rendered in any environment that can render HTML, including:
 
-- Modular and extensible
-- Decoupled client-side that supports both browsers and servers
-- Simple and intuitive APIs without pitfalls
-- Immutable data structures and updates
-- TypeScript first and complete type safety
+- [OBS Studio](https://obsproject.com/)
+- [vMix](http://www.vmix.com/)
+- [XSplit](https://www.xsplit.com/)
+- [CasparCG](https://github.com/CasparCG/server/releases) (v2.2.0+)
 
-### Draft
+> Don't see your preferred streaming software on this list? NodeCG graphics require a modern browser engine. If your streaming software's implementation of browser source uses a recent-ish browser engine, chances are that NodeCG graphics will work in it. You can check what version your streaming software uses for its browser sources by opening [whatversion.net/chrome](https://www.whatversion.net/browser/) as a browser source.
 
-```ts
-const roles = defineRoles({
-  judge: {
-    description: "Judge standing next to the players",
-    permission: ["all"], // Or "replicant-read" | "replicant-write" | "computed-read" | "topic-subscribe" | "topic-publish"
-  },
-  monitor: {
-    permission: ["replicant-read", "computed-read", "topic-subscribe"],
-  },
-  viewer: {
-    permission: ["replicant-read", "computed-read"],
-  },
+Have questions about NodeCG, or just want to say 'hi'? [Join our Discord server](https://discord.gg/nsXXDFGBEt)!
 
-  // Reserved role for all users by default
-  everyone: {
-    permission: ["replicant-read", "computed-read"],
-  },
-}); // Automatically adds "everyone" which means all users, no permissions
+## Documentation & API Reference
 
-const match = defineNamespace("match", {
-  replicant: {
-    score: {
-      schema: Schema.Struct({ left: Schema.Number, right: Schema.Number }),
-      permission: {
-        read: {
-          deny: [roles.viewer],
-        },
-      },
-    },
-    label: {
-      schema: Schema.NonEmptyTrimmedString,
-      permission: {
-        write: {
-          allow: [roles.monitor],
-        },
-      },
-    },
-  },
-
-  computed: {
-    winning: {
-      schema: Schema.OptionFromNullOr(Schema.Literal("left", "right")),
-      permission: {
-        read: {
-          deny: [roles.judge],
-        },
-      },
-    },
-  },
-
-  // Not yet
-  data: {
-    upcoming: {
-      schema: Schema.Array(Schema.Struct({ id: Schema.UUID /* ... */ })),
-    },
-  },
-  topic: {
-    start: {
-      schema: Schema.Boolean,
-      permission: {
-        subscribe: {
-          deny: [roles.viewer],
-        },
-      },
-    },
-  },
-});
-
-// Server-side
-const match = implementNamespace(match, {
-  seedReplicant: {
-    score: () => ({ left: 0, right: 0 }),
-    label: () => "Match 1",
-  },
-  implementComputed: {
-    winning: (sources) => {
-      const leftAdvantage = sources.score.left - sources.score.right;
-      return leftAdvantage > 0 ? "left" : leftAdvantage < 0 ? "right" : null;
-    },
-  },
-});
-
-loadNodeCG({ namespaces: { match } });
-
-// Client-side
-const match = loadNamespace(match);
-
-match.replicant.label.subscribe((label) => {
-  dom.innerText = label;
-});
-```
-
-### Shared Replicant
-
-- ✅ Replicant is declarative: defined in one place with name and schema
-
-  ```ts
-  const manifest = defineNamespace("match", {
-    replicant: { counter: { schema }, games: { schema } },
-  });
-  ```
-
-- ✅ Replicant is platform agnostic: loaded with a dedicated server or client API
-
-  ```ts
-  // Server-side
-  import { implementNamespace, loadNodeCG } from "@nodecg/server";
-
-  const match = implementNamespace(manifest, {
-    seedReplicant: { counter: () => 0, games: () => [] },
-  });
-  const nodecg = await loadNodeCG({ namespaces: { match } });
-
-  console.log(nodecg.namespaces.match.replicant.counter.get());
-
-  // Client-side
-  import { loadNamespace } from "@nodecg/client";
-
-  const ns = await loadNamespace(manifest);
-  console.log(await ns.replicant.counter.get()); // asynchronous over the network
-  ```
-
-- ✅ Replicant is immutable: read-only value, set or updated by returning a new value from the updater
-
-  ```ts
-  console.log(await ns.replicant.counter.get()); // Returns read-only value
-
-  await ns.replicant.counter.set(1);
-
-  await ns.replicant.counter.update((value) => value + 1);
-  ```
-
-- ✅ Replicant is reactive: subscribe to listen to changes
-
-  ```ts
-  const unsubscribe = await ns.replicant.counter.subscribe((newValue) => {
-    console.log("Counter updated:", newValue);
-  });
-
-  // later, when you want to stop listening
-  unsubscribe();
-  ```
-
-- 🚧 Replicant supports transactions: batch multiple updates for consistency
-
-  ```ts
-  await ns.transaction(() => {
-    ns.replicant.counter.update((value) => value + 1);
-    ns.replicant.games.update((value) => [...value, "New Game"]);
-  });
-  ```
-
-- 🚧 Replicant supports migrations: when a schema changes, migrate without data loss
-
-  ```ts
-  const newManifest = defineNamespace("match", {
-    replicant: {
-      counter: { schema },
-      games: {
-        schema,
-        migration: [
-          {
-            oldSchema,
-            migrate: (oldValue) => oldValue.map((game) => /* ... */ game),
-          },
-        ],
-      },
-    },
-  });
-  ```
-
-- ✅ Replicant supports access control: roles declare default capabilities; per-field `allow`/`deny` refine them
-
-  ```ts
-  const manifest = defineNamespace("match", {
-    roles: {
-      judge: { permission: ["replicant-read", "replicant-write"] },
-      viewer: { permission: ["replicant-read"] },
-    },
-    replicant: {
-      counter: { schema, permission: { read: { deny: ["viewer"] } } },
-      games: { schema, permission: { write: { allow: [] } } }, // server-owned
-    },
-  });
-  ```
-
-- ✅ Replicant supports computed values derived from other replicants or computed fields: the manifest declares the schema, the compute function is provided on the server at load
-
-  ```ts
-  // Manifest: declare schema only
-  const manifest = defineNamespace("match", {
-    replicant: { counter: { schema }, games: { schema } },
-    computed: { firstGameId: { schema }, summary: { schema } },
-  });
-
-  // Server: provide the compute functions
-  const match = implementNamespace(manifest, {
-    seedReplicant: { counter: () => 0, games: () => [] },
-    implementComputed: {
-      firstGameId: (ctx) => ctx.replicant.games.get()[0]?.id ?? null,
-      summary: (ctx) => `first: ${ctx.computed.firstGameId.get()}`,
-    },
-  });
-  loadNodeCG({ namespaces: { match } });
-
-  // Client: read-only
-  const ns = await loadNamespace(manifest);
-  await ns.computed.firstGameId.subscribe((firstGameId) => {
-    console.log("First game updated:", firstGameId);
-  });
-  ```
-
-- ✅ Clients can derive values locally over live fields: recomputed in the browser on every server push with no round-trip
-
-  ```ts
-  import { derive, loadNamespace } from "@nodecg/client";
-
-  const match = await loadNamespace(manifest);
-  const leader = derive((get) =>
-    get(match.replicant.scoreLeft) > get(match.replicant.scoreRight)
-      ? "left"
-      : "right",
-  );
-  leader.subscribe((value) => console.log("leader:", value));
-  ```
-
-- ✅ Replicant is grouped into namespaces to avoid name conflicts and scope permissions
-
-  ```ts
-  const commercialManifest = defineNamespace("commercial", {
-    roles: { producer: { permission: ["replicant-read", "replicant-write"] } },
-    replicant: {
-      isRunning: { schema, permission: { write: { allow: ["producer"] } } },
-      remainingTime: { schema },
-    },
-  });
-  ```
-
-- ✅ Namespaces can be extended: add fields and roles or override permissions
-
-  ```ts
-  // Library
-  const base = implementNamespace(baseManifest, {
-    seedReplicant: { score: () => 0 },
-  });
-
-  // Application
-  const extendedManifest = extendNamespace(baseManifest, {
-    replicant: { round: { schema } },
-    computed: { total: { schema } }, // may read original + newly-added replicants
-  });
-
-  const extended = implementExtendedNamespace(extendedManifest, base, {
-    seedReplicant: { round: () => 0 },
-    implementComputed: {
-      total: (ctx) => ctx.replicant.score.get() + ctx.replicant.round.get(),
-    },
-  });
-
-  loadNodeCG({ namespaces: { extended } });
-  ```
-
-- ✅ A namespace can run server-side logic when it loads, and can read other loaded namespaces inside
-
-  ```ts
-  const overlay = implementNamespace(overlayManifest, {
-    onLoad: async (ctx) => {
-      const { isRunning } = ctx.use(commercial).replicant;
-      await ctx.topic.status.publish(isRunning.get() ? "On break" : "Live");
-    },
-  });
-
-  loadNodeCG({ namespaces: { overlay, commercial } });
-  ```
-
-- ✅ Replicant in client-side is synchronized on reconnect
-
-- 🚧 Admin dashboard (view, clear, export, import, freeze)
-- 🚧 boolean option for persistence
-- 🚧 Hooks: `beforeUpdate`, `afterUpdate`
-- 🚧 Revision number
-- 🚧 Conflict resolution with custom logic
-- 🚧 Subscription update frequency control
-- 🚧 Replicant update audit log (user, timestamp, label)
-- 🚧 List of subscribers with user, session, connection
-- 🚧 Built-in stopwatch/timer logic, scheduled updates
-- 🚧 Soft-delete removed replicant definitions
-- 🚧 External webhook registration for replicant updates
-- 🚧 Cross instance replicant sharing
-
-#### Replicant Schema
-
-- ✅ Effect Schema
-- ✅ Standard Schema v1 (Zod, Valibot, etc)
-- ✅ JSON Schema
-
-### Messaging
-
-- ✅ Topics fan out message with no reply
-
-  ```ts
-  const manifest = defineNamespace("chat", {
-    topic: {
-      message: {
-        schema: Schema.String,
-        permission: {
-          read: { everyone: "allow" },
-          write: { everyone: "allow" },
-        },
-      },
-    },
-  });
-
-  const ns = await loadNamespace(manifest);
-  await ns.topic.message.publish("Hello, world!");
-  const cancel = await ns.topic.message.subscribe((message) => {
-    console.log("Received:", message);
-  });
-  ```
-
-- ✅ RPC is a 1:1 addressed call with a reply
-
-  ```ts
-  const manifest = defineNamespace("dice", {
-    replicant: { lastRoll: { schema: Schema.Number } },
-    rpc: {
-      roll: {
-        schema: { request: Schema.Number, response: Schema.Number },
-        permission: { write: { everyone: "allow" } },
-      },
-    },
-  });
-
-  // Server: provide the handler. `ctx` reads and writes replicants and publishes topics
-  const dice = implementNamespace(manifest, {
-    seedReplicant: { lastRoll: () => 0 },
-    implementRpc: {
-      roll: async (max, ctx) => {
-        const rolled = 1 + Math.floor(Math.random() * max);
-        await ctx.replicant.lastRoll.set(rolled);
-        return rolled;
-      },
-    },
-  });
-  loadNodeCG({ namespaces: { dice } });
-
-  // Client: call and await the reply
-  const ns = await loadNamespace(manifest);
-  const rolled = await ns.rpc.roll.call(6);
-  ```
-
-- 🚧 Per-RPC typed error schema (`{ request, response, error }`)
-
-### 🚧 Data
-
-For datasets too large to keep in memory. Unlike Replicant, which is mirrored in memory and read synchronously, Data is read and written asynchronously, straight from the store, and never kept in-memory permanently.
-
-### Data Persistence
-
-- ✅ Data persistence is abstracted and can be implemented for any storage backend
-- ✅ Default data persistence is SQLite for system data, and JSON files for Replicant
-
-### Authentication
-
-- ✅ User login via pluggable OAuth/OIDC providers with session cookies
-- ✅ External integrations authenticate with API keys
-- 🚧 OAuth client-credentials token exchange for integrations
-
-### Authorization
-
-- ✅ Per-field permission enforcement at every transport from the baked role/principal rules
-- ✅ Role reporting: `me()` returns the caller's held roles per namespace. Per-field access is evaluated client-side from the shared manifest's baked rules
-- ✅ Role assignment: admins grant and revoke roles, and export or import every assignment as one document
-
-### ✅ Frontend serving
-
-- Each namespace serves its own frontend files from the same origin under `/frontend/namespaces/{ns}/`
-  - built static directory in production
-  - optionally Vite dev server (HMR) for development
-
-### ✅ Server configuration
-
-The server reads its settings from environment variables.
-
-| Variable                        | Default                   | Sets                                                                          |
-| ------------------------------- | ------------------------- | ----------------------------------------------------------------------------- |
-| `NODECG_PORT`                   | `3000`                    | the port to listen on                                                         |
-| `NODECG_BASE_URL`               | `http://localhost:{port}` | the public URL of the server                                                  |
-| `NODECG_DATA_DIR`               | `data`                    | the folder persisted data is written to                                       |
-| `NODECG_DEV`                    | `false`                   | development mode                                                              |
-| `NODECG_REQUIRE_AUTH`           | `false`                   | refuse anonymous requests                                                     |
-| `NODECG_SESSION_TTL`            | `7 days`                  | how long a login session lasts                                                |
-| `NODECG_SESSION_RENEW_INTERVAL` | `1 day`                   | how often a session in use is renewed                                         |
-| `NODECG_LOGIN_ATTEMPT_TTL`      | `10 minutes`              | how long a started login stays valid                                          |
-| `NODECG_SUPERADMINS`            | none                      | superadmins, as comma-separated `provider:subject` pairs                      |
-| `NODECG_SUPERADMIN_CLAIM_TOKEN` | none                      | a secret of 16 characters or more that lets a logged-in user claim superadmin |
-
-### 🚧 Asset storage
-
-- Operator-managed media (images/videos/audio): upload/list/delete with a reactive metadata index that graphics subscribe to
-
-### 🚧 Outdated Client Detection
+Full docs and API reference are available at https://nodecg.dev
 
 ## Development
 
-- Install: `pnpm install`
-- Type check: `pnpm type-check`
-- Effect diagnostics: `pnpm effect-check`
-- Test: `pnpm vitest`
-- Lint: `pnpm oxlint`
-- Format: `pnpm oxfmt`
+To contribute to NodeCG development:
 
-#### Effect diagnostics in VS Code
+```bash
+# Clone the repository
+git clone https://github.com/nodecg/nodecg.git
+cd nodecg
 
-1. Get the path to binary for the Effect LSP
-   ```sh
-   dirname $(pnpm exec effect-tsgo get-exe-path)
-   ```
-1. Configure VS Code to use the LSP
-   ```jsonc
-   {
-     "js/ts.experimental.useTsgo": true,
-     "js/ts.tsdk.path": "<relative path to LSP folder>",
-   }
-   ```
+# Install dependencies
+npm install
 
-### Architecture
+# Run auto-rebuild + type-check on file changes
+npm run dev
 
-NodeCG is a full-stack framework where there are server-side code, client-side code, and small runtime code and types used in both environment. In order to have clear separation, this repository uses monorepo with pnpm.
+# Build all workspace packages
+npm run build
 
-- Server-side package: vitest runs on Node.js environment. Can use APIs from `node:*` imports. Cannot use browser APIs (window, document, etc)
-- Client-side package: vitest runs browser mode and runs tests in real browsers. Can use browser APIs, but cannot use `node:*` imports.
-- Package for both: vitest runs both on Node.js environment and browser mode. Cannot import `node:*` and cannot use browser APIs.
+# Run tests
+npx vitest run
 
-The codebase uses Effect for type-safety, error-safety, and dependency injection.
+# Start NodeCG
+npm start
+```
 
-- Entire codebase runs as Effect, except user-facing functions that provides both Effect-based interface and non-Effect interface. The boundary is at the very edge to keep the advantages of Effect.
+For more details on contributing to NodeCG core, see [the contributor guide on the official docs site](https://nodecg.dev/docs/working-on-nodecg-core)
 
-## License
+## Goals
 
-MIT License
+The NodeCG project exists to accomplish the following goals:
+
+- Make broadcast graphics (also known as "character generation" or "CG") more accessible.
+- Remain as close to the web platform as possible.
+- Support broadcasts of any size and ambition.
+
+Let's unpack what these statements mean:
+
+### > Make broadcast graphics (also known as "character generation" or "CG") more accessible
+
+Historically, broadcast graphics have been expensive. They either required expensive hardware, expensive software, or both. NodeCG was originally created to provide real-time broadcast graphics for Tip of the Hats, which is an all-volunteer charity fundraiser that had a budget of \$0 for its first several years.
+
+Now, it is possible to create an ambitious broadcast using entirely free software and consumer hardware. The NodeCG project embraces this democratization of broadcast technology.
+
+### > Remain as close to the web platform as possible
+
+NodeCG graphics are just webpages. There is absolutely nothing special or unique about them. This is their greatest strength.
+
+By building on the web platform, and not building too many abstractions on top of it, people developing broadcast graphics with NodeCG have access to the raw potential of the web. New APIs and capabilities are continually being added to the web platform, and NodeCG developers should have access to the entirety of what the web can offer.
+
+### > Support broadcasts of any size and ambition
+
+NodeCG's roots are in small broadcasts with no budget. More recently, NodeCG has begun seeing use in increasingly elaborate productions. We believe that one set of tools can and should be able to scale up from the smallest show all the way to the biggest fathomable show. Whether you're using OBS for everything, or a hardware switcher with a traditional key/fill workflow, NodeCG can be a part of any broadcast graphics system.
+
+## Maintainers
+
+- [Matt "Bluee" McNamara](https://mattmcn.com/)
+- [Keiichiro "Hoishin" Amemiya](https://twitter.com/hoishinxii)
+
+## Designers
+
+- [Chris Hanel](http://www.chrishanel.com)
+
+## Acknowledgements
+
+- [Atmo](https://github.com/atmosfar), original dashboard concept and code, the inspiration for toth-overlay
+- [Alex "Lange" Van Camp](https://github.com/alvancamp), designer & developer of [toth-overlay](https://github.com/TipoftheHats/toth-overlay), the base on which NodeCG was built
