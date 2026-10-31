@@ -5,7 +5,7 @@ export default defineConfig({
 	base: "./",
 	plugins: [react()],
 	build: {
-		rollupOptions: {
+		rolldownOptions: {
 			input: {
 				index: "index.html",
 				dashboard: "dashboard.html",

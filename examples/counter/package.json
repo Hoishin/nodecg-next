@@ -1,7 +1,6 @@
 {
 	"name": "@nodecg/example-counter",
 	"private": true,
-	"license": "MIT",
 	"type": "module",
 	"scripts": {
 		"build": "vite build",

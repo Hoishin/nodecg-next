@@ -1,7 +1,6 @@
 {
 	"name": "@nodecg/example-social-login",
 	"private": true,
-	"license": "MIT",
 	"type": "module",
 	"scripts": {
 		"build": "vite build",

@@ -151,6 +151,81 @@ importers:
         specifier: 'catalog:'
         version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
 
+  examples/nested-namespaces:
+    dependencies:
+      '@nodecg-next/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@nodecg-next/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nodecg-next/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      '@nodecg/example-plugin-ticker':
+        specifier: workspace:*
+        version: link:../plugin-ticker
+      '@nodecg/example-plugin-time':
+        specifier: workspace:*
+        version: link:../plugin-time
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.6
+      react:
+        specifier: 'catalog:'
+        version: 19.2.7
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.0.3(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0))
+      vite:
+        specifier: 'catalog:'
+        version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
+
+  examples/plugin-ticker:
+    dependencies:
+      '@nodecg-next/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nodecg-next/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.6
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+
+  examples/plugin-time:
+    dependencies:
+      '@nodecg-next/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nodecg-next/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.6
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+
   examples/social-login:
     dependencies:
       '@nodecg-next/browser':
