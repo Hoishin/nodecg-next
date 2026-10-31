@@ -23,6 +23,7 @@ export {
 	isSuperadmin,
 	type Access,
 	type Grant,
+	type NamespaceRole,
 	type RoleArg,
 	type RoleCapability,
 	type ResolvedPermission,

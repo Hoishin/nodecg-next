@@ -1,10 +1,20 @@
-import { manifestChildrenKey } from "@nodecg-next/internal";
+import {
+	manifestChildrenKey,
+	manifestRolesKey,
+	RoleName,
+} from "@nodecg-next/internal";
 import { Result, Schema } from "effect";
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 
-import { defineNamespace, extendNamespace } from "./define-namespace.ts";
+import {
+	defineNamespace,
+	type EmptyNamespaceFields,
+	extendNamespace,
+	type NamespaceManifest,
+} from "./define-namespace.ts";
 import { FieldDecodeError, FieldEncodeError } from "./field-codec.ts";
+import type { NamespaceRole } from "./role.ts";
 
 const decodeJsonText = Schema.decodeSync(Schema.fromJsonString(Schema.Json));
 
@@ -550,7 +560,7 @@ describe("defineNamespace", () => {
 				replicant: { count: { schema: Schema.Finite } },
 			});
 
-			expectTypeOf(manifest.namespace).toEqualTypeOf<string>();
+			expectTypeOf(manifest.namespace).toEqualTypeOf<"match">();
 			expectTypeOf(manifest.replicant.count.encode).returns.toEqualTypeOf<
 				Result.Result<Schema.Json, FieldEncodeError>
 			>();
@@ -776,6 +786,70 @@ describe("defineNamespace", () => {
 		const show = defineNamespace("show", { children: { assets } });
 
 		expect(show[manifestChildrenKey]).toStrictEqual({ assets });
+	});
+
+	describe("role links", () => {
+		const assets = defineNamespace("show-assets", {
+			roles: { uploader: { permission: ["rpc-call"] } },
+		});
+
+		test("exposes each declared role as a reference", () => {
+			expect(assets.roles).toStrictEqual({
+				uploader: { namespace: "show-assets", name: "uploader" },
+			});
+			expectTypeOf(assets.roles.uploader).toEqualTypeOf<
+				NamespaceRole<"show-assets", "uploader">
+			>();
+		});
+
+		test("links a role to the child roles it lists", () => {
+			const show = defineNamespace("show", {
+				roles: {
+					operator: { permission: [], linkedRoles: [assets.roles.uploader] },
+				},
+				children: { assets },
+			});
+
+			expect(
+				show[manifestRolesKey].roles.get(RoleName("operator"))?.linkedRoles,
+			).toStrictEqual([{ namespace: "show-assets", name: "uploader" }]);
+		});
+
+		test("rejects a role of a namespace that is not a child", () => {
+			const media = defineNamespace("show-media", {
+				roles: { player: { permission: ["rpc-call"] } },
+			});
+
+			expect(() =>
+				defineNamespace("show", {
+					roles: {
+						operator: {
+							permission: [],
+							// @ts-expect-error "show-media" is not a declared child
+							linkedRoles: [media.roles.player],
+						},
+					},
+					children: { assets },
+				}),
+			).toThrow(/Role "operator" cannot link to "player" of "show-media"/);
+		});
+
+		test("rejects a role the child does not declare", () => {
+			const widened: NamespaceManifest<string, EmptyNamespaceFields, string> =
+				assets;
+
+			expect(() =>
+				defineNamespace("show", {
+					roles: {
+						operator: {
+							permission: [],
+							linkedRoles: [{ namespace: "show-assets", name: "server" }],
+						},
+					},
+					children: { assets: widened },
+				}),
+			).toThrow(/Role "operator" cannot link to "server" of "show-assets"/);
+		});
 	});
 });
 
@@ -1261,6 +1335,98 @@ describe("extendNamespace", () => {
 				// @ts-expect-error "assets" is already a child of "show"
 				children: { assets },
 			});
+		});
+	});
+
+	describe("role links", () => {
+		const assets = defineNamespace("show-assets", {
+			roles: { uploader: { permission: ["rpc-call"] } },
+		});
+		const media = defineNamespace("show-media", {
+			roles: { player: { permission: ["rpc-call"] } },
+		});
+		const show = defineNamespace("show", {
+			roles: {
+				operator: { permission: [], linkedRoles: [assets.roles.uploader] },
+			},
+			children: { assets },
+		});
+
+		test("exposes added roles beside the precedent's", () => {
+			const extended = extendNamespace(show, {
+				roles: { director: { permission: [] } },
+			});
+
+			expect(extended.roles).toStrictEqual({
+				operator: { namespace: "show", name: "operator" },
+				director: { namespace: "show", name: "director" },
+			});
+			expectTypeOf(extended.roles).toEqualTypeOf<
+				Readonly<
+					Record<
+						"operator" | "director",
+						NamespaceRole<"show", "operator" | "director">
+					>
+				>
+			>();
+		});
+
+		test("adds links beside the precedent's", () => {
+			const extended = extendNamespace(show, {
+				roles: {
+					director: {
+						permission: [],
+						linkedRoles: [assets.roles.uploader, media.roles.player],
+					},
+				},
+				children: { media },
+			});
+
+			const { roles } = extended[manifestRolesKey];
+			expect(roles.get(RoleName("operator"))?.linkedRoles).toStrictEqual([
+				{ namespace: "show-assets", name: "uploader" },
+			]);
+			expect(roles.get(RoleName("director"))?.linkedRoles).toStrictEqual([
+				{ namespace: "show-assets", name: "uploader" },
+				{ namespace: "show-media", name: "player" },
+			]);
+		});
+
+		test("keeps the links of a role re-declared without any", () => {
+			const extended = extendNamespace(show, {
+				roles: { operator: { permission: ["rpc-call"] } },
+			});
+
+			expect(
+				extended[manifestRolesKey].roles.get(RoleName("operator"))?.linkedRoles,
+			).toStrictEqual([{ namespace: "show-assets", name: "uploader" }]);
+		});
+
+		test("replaces the links of a role re-declared with its own", () => {
+			const extended = extendNamespace(show, {
+				roles: {
+					operator: { permission: [], linkedRoles: [media.roles.player] },
+				},
+				children: { media },
+			});
+
+			expect(
+				extended[manifestRolesKey].roles.get(RoleName("operator"))?.linkedRoles,
+			).toStrictEqual([{ namespace: "show-media", name: "player" }]);
+		});
+
+		test("rejects a role of a namespace that is not a child", () => {
+			expect(() =>
+				extendNamespace(show, {
+					roles: {
+						director: {
+							permission: [],
+							// @ts-expect-error "show-media" is not a declared child
+							linkedRoles: [media.roles.player],
+						},
+					},
+				}),
+			).toThrow(/Role "director" cannot link to "player" of "show-media"/);
 		});
 	});
 });

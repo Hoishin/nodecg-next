@@ -426,7 +426,7 @@ interface RpcFieldPromiseLambda extends HKT.TypeLambda {
 }
 
 const buildNamespace = <S extends WidestNamespaceFields>(
-	manifest: NamespaceManifest<S>,
+	manifest: NamespaceManifest<string, S, string>,
 ) =>
 	Layer.build(FieldCellsService.layer).pipe(
 		Effect.flatMap((context) =>
@@ -462,7 +462,7 @@ const buildNamespace = <S extends WidestNamespaceFields>(
 
 export const loadNamespaceEffect = Effect.fn("loadNamespaceEffect")(function* <
 	S extends WidestNamespaceFields = EmptyNamespaceFields,
->(manifest: NamespaceManifest<S>) {
+>(manifest: NamespaceManifest<string, S, string>) {
 	return yield* buildNamespace(manifest).pipe(
 		Effect.map(({ fields, computedFields, topicFields, rpcFields }) => ({
 			namespace: manifest.namespace,
@@ -612,7 +612,7 @@ export interface LoadedNamespace<
 export async function loadNamespace<
 	S extends WidestNamespaceFields = EmptyNamespaceFields,
 >(
-	manifest: NamespaceManifest<S>,
+	manifest: NamespaceManifest<string, S, string>,
 	options?: {
 		baseUrl?: string;
 		fieldTransport?:

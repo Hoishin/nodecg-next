@@ -16,6 +16,7 @@ import {
 	ServiceAccountAuthenticationMiddlewareLive,
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
+import { RoleLinks } from "../auth/role-links.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { NamespaceRegistryService } from "../namespace-registry.ts";
 import { ReplicantStoreService } from "../replicant-store.ts";
@@ -34,6 +35,7 @@ import { UrlPath } from "./url-path.ts";
 import { websocketRoute } from "./websocket.ts";
 
 const handler = () => {
+	const noRoleLinks = Layer.succeed(RoleLinks, HashMap.empty());
 	const repositories = Layer.mergeAll(
 		DrizzleSqliteLoginAttemptRepository,
 		DrizzleSqliteAuthenticationRepository,
@@ -53,6 +55,7 @@ const handler = () => {
 					FetchHttpClient.layer,
 					repositories,
 					ConfiguredSuperadmins.layer,
+					noRoleLinks,
 				).pipe(Layer.provideMerge(NodeCrypto.layer)),
 			),
 			Layer.provide(UserAuthenticationMiddlewareLive),
@@ -69,6 +72,7 @@ const handler = () => {
 				),
 			),
 			Layer.provide(ConfiguredSuperadmins.layer),
+			Layer.provide(noRoleLinks),
 			Layer.provide(
 				Layer.succeed(
 					AuthProviderRegistry,

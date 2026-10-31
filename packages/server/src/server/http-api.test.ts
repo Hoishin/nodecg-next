@@ -24,6 +24,7 @@ import {
 	ServiceAccountAuthenticationMiddlewareLive,
 	SuperadminMiddlewareLive,
 } from "../auth/middleware.ts";
+import { RoleLinks } from "../auth/role-links.ts";
 import { type BuiltNamespace } from "../build-fields.ts";
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
 import { RpcHandlerError } from "../field-builders/build-rpc.ts";
@@ -114,6 +115,7 @@ const webHandler = Effect.fn(function* (
 		loggedIn?: ReadonlyArray<string>;
 	},
 ) {
+	const noRoleLinks = Layer.succeed(RoleLinks, HashMap.empty());
 	const repositories = Layer.mergeAll(
 		DrizzleSqliteLoginAttemptRepository,
 		DrizzleSqliteAuthenticationRepository,
@@ -144,6 +146,7 @@ const webHandler = Effect.fn(function* (
 					FetchHttpClient.layer,
 					repositories,
 					ConfiguredSuperadmins.layer,
+					noRoleLinks,
 				).pipe(Layer.provideMerge(NodeCrypto.layer)),
 			),
 			Layer.provide(middleware),
@@ -153,6 +156,7 @@ const webHandler = Effect.fn(function* (
 			Layer.provide(loggedIn),
 			Layer.provide(repositories),
 			Layer.provide(ConfiguredSuperadmins.layer),
+			Layer.provide(noRoleLinks),
 			Layer.provide(InMemoryReplicantRepository),
 			Layer.provide(
 				ReplicantStoreService.layer.pipe(

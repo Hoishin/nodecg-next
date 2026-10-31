@@ -45,7 +45,11 @@ export type LoadNodeCGOptions<
 > = {
 	readonly baseUrl?: string;
 	readonly namespaces: {
-		readonly [K in keyof Shapes & string]: NamespaceManifest<Shapes[K]>;
+		readonly [K in keyof Shapes & string]: NamespaceManifest<
+			string,
+			Shapes[K],
+			string
+		>;
 	};
 };
 
@@ -56,7 +60,7 @@ type NamespaceHandle<S extends WidestNamespaceFields> = Omit<
 
 interface ManifestLambda extends HKT.TypeLambda {
 	readonly Target: EmptyNamespaceFields;
-	readonly type: NamespaceManifest<this["Target"]>;
+	readonly type: NamespaceManifest<string, this["Target"], string>;
 }
 
 interface BuiltNamespaceLambda extends HKT.TypeLambda {
@@ -73,7 +77,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 	Shapes extends Record<string, WidestNamespaceFields>,
 >(options: LoadNodeCGOptions<Shapes>) {
 	const widened: Readonly<
-		Record<string, NamespaceManifest<EmptyNamespaceFields>>
+		Record<string, NamespaceManifest<string, EmptyNamespaceFields, string>>
 	> = options.namespaces;
 
 	const loaded = new Set<string>();

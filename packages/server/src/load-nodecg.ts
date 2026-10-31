@@ -38,6 +38,7 @@ import {
 	type AuthProvider,
 	AuthProviderRegistry,
 } from "./auth/auth-provider.ts";
+import { normalizeRoleLinks, RoleLinks } from "./auth/role-links.ts";
 import {
 	BuiltNamespaceRegistry,
 	LoadedNamespacesService,
@@ -115,8 +116,8 @@ export class UnimplementedChild extends Schema.TaggedError<UnimplementedChild>()
 	override readonly message = `Child "${this.child}" of namespace "${this.namespace}" is not implemented with its declared manifest`;
 }
 
-// Make sure children implementations match manifests by name
-const checkChildren = Effect.fn("checkChildren")(function* ({
+// Catch a child implemented for another manifest of the same shape
+const checkChildren = Effect.fn(function* ({
 	manifest,
 	impl,
 }: WidenedImplementedNamespace) {
@@ -236,16 +237,14 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 	const namespaces = new Set(
 		Record.values<string, WidenedImplementedNamespace>(options.namespaces),
 	);
-	const childrenNamespaces = new Set<
-		ImplementedNamespace<EmptyNamespaceFields>
-	>();
+	const childNamespaces = new Set<ImplementedNamespace<EmptyNamespaceFields>>();
 	const walkChildren = (
 		children: ImplementedChildren<WidestChildManifests> | undefined,
 	) => {
 		for (const child of Object.values(children ?? {})) {
 			if (!namespaces.has(child)) {
 				namespaces.add(child);
-				childrenNamespaces.add(child);
+				childNamespaces.add(child);
 			}
 			walkChildren(child.impl?.children);
 		}
@@ -256,11 +255,15 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 
 	yield* Effect.forEach(namespaces, checkChildren, { discard: true });
 
+	const roleLinks = normalizeRoleLinks(
+		[...namespaces].map(({ manifest }) => manifest),
+	);
+
 	// Check duplicate namespace names
 	const loaded = new Set<string>();
 	for (const { manifest } of [
 		...Record.values<string, WidenedImplementedNamespace>(options.namespaces),
-		...childrenNamespaces,
+		...childNamespaces,
 	]) {
 		if (loaded.has(manifest.namespace)) {
 			return yield* Effect.die(
@@ -290,12 +293,15 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			PreparedNamespaceLambda
 		>()(prepareNamespace)<Shapes>(options.namespaces);
 
-		const preparedChildren = yield* Effect.forEach(
-			childrenNamespaces,
+		const preparedChildNamespaces = yield* Effect.forEach(
+			childNamespaces,
 			(child) => prepareNamespace(child),
 		);
-		const preparedAll = [...preparedChildren, ...Record.values(prepared)];
-		const registered = preparedAll.map(({ registered }) => registered);
+		const preparedNamespaces = [
+			...preparedChildNamespaces,
+			...Record.values(prepared),
+		];
+		const registered = preparedNamespaces.map(({ registered }) => registered);
 
 		yield* Effect.forEach(
 			registered,
@@ -303,7 +309,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 			{ concurrency: "unbounded", discard: true },
 		);
 
-		yield* Effect.forEach(preparedAll, ({ runOnLoad }) => runOnLoad, {
+		yield* Effect.forEach(preparedNamespaces, ({ runOnLoad }) => runOnLoad, {
 			discard: true,
 		});
 
@@ -317,6 +323,7 @@ export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
 		});
 		const ServerLive = HttpRouter.serve(routes).pipe(
 			Layer.provide(NamespaceRegistryService.layer(registered)),
+			Layer.provide(Layer.succeed(RoleLinks, roleLinks)),
 			Layer.provide(Layer.succeed(ReplicantStoreService, store)),
 			Layer.provide(
 				Layer.succeed(

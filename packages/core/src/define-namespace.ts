@@ -4,6 +4,7 @@ import {
 	manifestChildrenKey,
 	manifestRolesKey,
 	PRINCIPAL,
+	Role,
 	RoleName,
 	UndeniablePrincipalNameSchema,
 	type DeclarablePrincipalName,
@@ -25,7 +26,7 @@ import {
 	type UnsafeNameKeys,
 } from "@nodecg-next/internal/utils";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { type HKT, Option, Schema } from "effect";
+import { type HKT, Option, Record, Schema } from "effect";
 
 import { makeCodec, type FieldCodec } from "./field-codec.ts";
 import {
@@ -35,7 +36,9 @@ import {
 	topicPermission,
 	type Access,
 	type Grant,
+	type NamespaceRole,
 	type PermissionArg,
+	type PrincipalManifest,
 	type PrincipalsArg,
 	type PermissionRuleArg,
 	type ReadOnlyPermissionArg,
@@ -85,14 +88,19 @@ export type EmptyNamespaceFields = {
 
 export type WidestChildManifests = Record<
 	string,
-	NamespaceManifest<EmptyNamespaceFields>
+	NamespaceManifest<string, EmptyNamespaceFields, string>
 >;
 
 export interface NamespaceManifest<
+	Namespace extends string,
 	S extends WidestNamespaceFields,
+	RoleNames extends string,
 	Children extends WidestChildManifests = WidestChildManifests,
 > {
-	readonly namespace: string;
+	readonly namespace: Namespace;
+	readonly roles: Readonly<
+		Record<RoleNames, NamespaceRole<Namespace, RoleNames>>
+	>;
 	readonly [manifestRolesKey]: RoleRegistry;
 	readonly [manifestChildrenKey]: Children;
 
@@ -245,7 +253,7 @@ function implementCodec(name: string, schema: WidestFieldSchema) {
 
 interface RoleRegistry {
 	readonly roles: Map<RoleName, RoleManifest>;
-	readonly principals: Map<Principal, RoleManifest>;
+	readonly principals: Map<Principal, PrincipalManifest>;
 }
 
 interface DeclaredTokens {
@@ -403,8 +411,13 @@ const isUndeniablePrincipalName = Schema.is(UndeniablePrincipalNameSchema);
 
 const declareRoles = (
 	precedent: RoleRegistry,
-	named: Readonly<Record<string, RoleArg | undefined>> | undefined,
+	named:
+		| Readonly<
+				Record<string, RoleArg<NamespaceRole<string, string>> | undefined>
+		  >
+		| undefined,
 	overrides: PrincipalsArg | undefined,
+	children: WidestChildManifests,
 ): {
 	registry: RoleRegistry;
 	declared: DeclaredTokens;
@@ -448,10 +461,26 @@ const declareRoles = (
 			);
 		}
 		const roleName = RoleName(key);
+		const existing = roles.get(roleName);
+		const linkedRoles = arg.linkedRoles?.map(({ namespace, name }) => {
+			if (
+				!Object.values(children).some(
+					(child) =>
+						child.namespace === namespace &&
+						child[manifestRolesKey].roles.has(RoleName(name)),
+				)
+			) {
+				throw new Error(
+					`Role "${key}" cannot link to "${name}" of "${namespace}": no child declares it`,
+				);
+			}
+			return Role.make({ namespace, name: RoleName(name) });
+		});
 		roles.set(roleName, {
 			name: roleName,
-			description: arg.description ?? roles.get(roleName)?.description,
+			description: arg.description ?? existing?.description,
 			capabilities: new Set(arg.permission),
+			linkedRoles: linkedRoles ?? existing?.linkedRoles ?? [],
 		});
 		declaredRoles.add(roleName);
 	}
@@ -461,6 +490,11 @@ const declareRoles = (
 		declared: { roles: declaredRoles, principals: declaredPrincipals },
 	};
 };
+
+// Infer roles of child manifest type
+type ChildRole<Children extends WidestChildManifests> = {
+	[K in keyof Children]: Children[K]["roles"][keyof Children[K]["roles"]];
+}[keyof Children];
 
 export function defineNamespace<
 	const Namespace extends string,
@@ -476,7 +510,7 @@ export function defineNamespace<
 >(
 	namespace: FileSafeName<Namespace>,
 	defineOption: {
-		roles?: Record<DeclaredRoleName, RoleArg> & {
+		roles?: Record<DeclaredRoleName, RoleArg<ChildRole<NoInfer<Children>>>> & {
 			[K in UndeclarableRoleName]?: never;
 		};
 		principals?: PrincipalsArg;
@@ -492,12 +526,14 @@ export function defineNamespace<
 		children?: Children;
 	},
 ): NamespaceManifest<
+	FileSafeName<Namespace>,
 	{
 		replicant: { [K in keyof Replicant]: FieldDecoded<Replicant[K]> };
 		computed: { [K in keyof Computed]: FieldDecoded<Computed[K]> };
 		topic: { [K in keyof Topic]: FieldDecoded<Topic[K]> };
 		rpc: AddedRpcDecoded<Rpc>;
 	},
+	DeclaredRoleName,
 	Children
 > {
 	if (!isFileSafeName(namespace)) {
@@ -507,10 +543,13 @@ export function defineNamespace<
 	}
 	validateReplicantNames(namespace, defineOption.replicant, []);
 
+	const children = defineOption.children ?? ({} as Children);
+
 	const { registry, declared } = declareRoles(
 		{ roles: new Map(), principals: new Map() },
 		defineOption.roles,
 		defineOption.principals,
+		children,
 	);
 
 	const namedRoles = new Set(registry.roles.keys());
@@ -519,8 +558,6 @@ export function defineNamespace<
 	validatePermissionTokens("computed", defineOption.computed, registry.roles);
 	validatePermissionTokens("topic", defineOption.topic, registry.roles);
 	validatePermissionTokens("rpc", defineOption.rpc, registry.roles);
-
-	const children = defineOption.children ?? ({} as Children);
 
 	const resolve = (
 		capability: RoleCapability,
@@ -586,6 +623,11 @@ export function defineNamespace<
 
 	return {
 		namespace,
+		roles: Record.map(
+			// roles is undefined only when DeclaredRoleName is never
+			defineOption.roles ?? ({} as Record<DeclaredRoleName, unknown>),
+			(_, name) => ({ namespace, name }),
+		),
 		replicant,
 		computed,
 		topic,
@@ -635,10 +677,12 @@ type AddedRpcDecoded<In> = {
 };
 
 export function extendNamespace<
+	const PNamespace extends string,
 	PReplicant extends Record<string, unknown>,
 	PComputed extends Record<string, unknown>,
 	PTopic extends Record<string, unknown>,
 	PRpc extends WidestRpcFields,
+	PRoleNames extends string,
 	PChildren extends WidestChildManifests,
 	const EReplicant extends Record<
 		string,
@@ -656,20 +700,26 @@ export function extendNamespace<
 		string,
 		ExtendRpcFieldOption<WriteOnlyPermissionArg<string>>
 	> = {},
+	const ERoleName extends string = never,
 	EChildren extends WidestChildManifests = {},
 >(
 	manifest: NamespaceManifest<
+		PNamespace,
 		{
 			replicant: PReplicant;
 			computed: PComputed;
 			topic: PTopic;
 			rpc: PRpc;
 		},
+		PRoleNames,
 		PChildren
 	>,
 	extendOptionOrFn:
 		| {
-				readonly roles?: Record<string, RoleArg>;
+				readonly roles?: Record<
+					ERoleName,
+					RoleArg<ChildRole<NoInfer<PChildren & EChildren>>>
+				>;
 				readonly principals?: PrincipalsArg;
 				readonly replicant?: EReplicant &
 					UnsafeNameKeys<EReplicant> &
@@ -682,16 +732,21 @@ export function extendNamespace<
 		  }
 		| ((
 				precedent: NamespaceManifest<
+					PNamespace,
 					{
 						replicant: PReplicant;
 						computed: PComputed;
 						topic: PTopic;
 						rpc: PRpc;
 					},
+					PRoleNames,
 					PChildren
 				>,
 		  ) => {
-				readonly roles?: Record<string, RoleArg>;
+				readonly roles?: Record<
+					ERoleName,
+					RoleArg<ChildRole<NoInfer<PChildren & EChildren>>>
+				>;
 				readonly principals?: PrincipalsArg;
 				readonly replicant?: EReplicant &
 					UnsafeNameKeys<EReplicant> &
@@ -703,12 +758,14 @@ export function extendNamespace<
 					RedeclaredKeys<EChildren, keyof PChildren>;
 		  }),
 ): NamespaceManifest<
+	PNamespace,
 	{
 		replicant: Override<PReplicant, AddedDecoded<EReplicant>>;
 		computed: Override<PComputed, AddedDecoded<EComputed>>;
 		topic: Override<PTopic, AddedDecoded<ETopic>>;
 		rpc: Override<PRpc, AddedRpcDecoded<ERpc>>;
 	},
+	PRoleNames | ERoleName,
 	Override<PChildren, EChildren>
 > {
 	type Extended = {
@@ -717,6 +774,11 @@ export function extendNamespace<
 		topic: Override<PTopic, AddedDecoded<ETopic>>;
 		rpc: Override<PRpc, AddedRpcDecoded<ERpc>>;
 	};
+	type ExtendedManifest = NamespaceManifest<
+		PNamespace,
+		Extended,
+		PRoleNames | ERoleName
+	>;
 
 	const extendOption =
 		typeof extendOptionOrFn === "function"
@@ -729,10 +791,16 @@ export function extendNamespace<
 		Object.keys(manifest.replicant),
 	);
 
+	const children = mergeRecords<Override<PChildren, EChildren>>(
+		manifest[manifestChildrenKey],
+		extendOption.children,
+	);
+
 	const { registry, declared } = declareRoles(
 		manifest[manifestRolesKey],
 		extendOption.roles,
 		extendOption.principals,
+		children,
 	);
 
 	const namedRoles = new Set(registry.roles.keys());
@@ -741,11 +809,6 @@ export function extendNamespace<
 	validatePermissionTokens("computed", extendOption.computed, registry.roles);
 	validatePermissionTokens("topic", extendOption.topic, registry.roles);
 	validatePermissionTokens("rpc", extendOption.rpc, registry.roles);
-
-	const children = mergeRecords<Override<PChildren, EChildren>>(
-		manifest[manifestChildrenKey],
-		extendOption.children,
-	);
 
 	const resolve = (
 		capability: RoleCapability,
@@ -799,7 +862,7 @@ export function extendNamespace<
 		),
 		persistent: option.persistent ?? true,
 	}));
-	const replicant = mergeRecords<NamespaceManifest<Extended>["replicant"]>(
+	const replicant = mergeRecords<ExtendedManifest["replicant"]>(
 		replicantRemap,
 		replicantAdded,
 	);
@@ -835,7 +898,7 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const computed = mergeRecords<NamespaceManifest<Extended>["computed"]>(
+	const computed = mergeRecords<ExtendedManifest["computed"]>(
 		computedRemap,
 		computedAdded,
 	);
@@ -877,10 +940,7 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const topic = mergeRecords<NamespaceManifest<Extended>["topic"]>(
-		topicRemap,
-		topicAdded,
-	);
+	const topic = mergeRecords<ExtendedManifest["topic"]>(topicRemap, topicAdded);
 
 	const rpcRemap = mapValues<RpcFieldManifestLambda, RpcFieldManifestLambda>(
 		(field, name) => {
@@ -914,13 +974,18 @@ export function extendNamespace<
 			namedRoles,
 		),
 	}));
-	const rpc = mergeRecords<NamespaceManifest<Extended>["rpc"]>(
-		rpcRemap,
-		rpcAdded,
-	);
+	const rpc = mergeRecords<ExtendedManifest["rpc"]>(rpcRemap, rpcAdded);
 
 	return {
 		namespace: manifest.namespace,
+		roles: {
+			...manifest.roles,
+			...Record.map(
+				// roles is undefined only when ERoleName is never
+				extendOption.roles ?? ({} as Record<ERoleName, unknown>),
+				(_, name) => ({ namespace: manifest.namespace, name }),
+			),
+		},
 		[manifestRolesKey]: registry,
 		[manifestChildrenKey]: children,
 		replicant: replicant,

@@ -19,6 +19,7 @@ import {
 	resolveServiceAccountCaller,
 	resolveSessionCaller,
 } from "./identity.ts";
+import { RoleLinks } from "./role-links.ts";
 import { renewSession, setSessionCookie } from "./session.ts";
 
 export const UserAuthenticationMiddlewareLive = Layer.effect(
@@ -28,7 +29,10 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 		const baseUrl = yield* config.baseUrl;
 		const sessionTtl = yield* config.sessionTtl;
 		const context = yield* Effect.context<
-			SessionRepositoryService | ConfiguredSuperadmins | Crypto.Crypto
+			| SessionRepositoryService
+			| ConfiguredSuperadmins
+			| RoleLinks
+			| Crypto.Crypto
 		>();
 
 		return {
@@ -114,7 +118,7 @@ export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 	ServiceAccountAuthenticationMiddleware,
 	Effect.gen(function* () {
 		const context = yield* Effect.context<
-			ServiceAccountRepositoryService | Crypto.Crypto
+			ServiceAccountRepositoryService | RoleLinks | Crypto.Crypto
 		>();
 
 		return {

@@ -212,7 +212,7 @@ export type RequiredOptions<S extends WidestNamespaceFields> = ([
 
 export type ImplementedChildren<Children extends WidestChildManifests> = {
 	readonly [K in keyof Children]: ImplementedNamespace<
-		Children[K] extends NamespaceManifest<infer S> ? S : never
+		Children[K] extends NamespaceManifest<string, infer S, string> ? S : never
 	>;
 };
 
@@ -220,7 +220,7 @@ export interface ImplementedNamespace<
 	in out S extends WidestNamespaceFields,
 	out Children extends WidestChildManifests = WidestChildManifests,
 > {
-	readonly manifest: NamespaceManifest<S, Children>;
+	readonly manifest: NamespaceManifest<string, S, string, Children>;
 	readonly impl:
 		| (NamespaceOptions<S> & {
 				readonly frontend?: FrontendConfig;
@@ -230,7 +230,7 @@ export interface ImplementedNamespace<
 }
 
 export interface WidenedImplementedNamespace {
-	readonly manifest: NamespaceManifest<EmptyNamespaceFields>;
+	readonly manifest: NamespaceManifest<string, EmptyNamespaceFields, string>;
 	readonly impl:
 		| (Omit<NamespaceOptions<EmptyNamespaceFields>, "onLoad"> & {
 				readonly onLoad?: (
@@ -246,7 +246,7 @@ export function implementNamespace<
 	S extends WidestNamespaceFields = EmptyNamespaceFields,
 	Children extends WidestChildManifests = {},
 >(
-	manifest: NamespaceManifest<S, Children>,
+	manifest: NamespaceManifest<string, S, string, Children>,
 	...rest: [
 		| keyof S["replicant"]
 		| keyof S["computed"]
@@ -334,7 +334,7 @@ export function implementExtendedNamespace<
 	Children extends WidestChildManifests,
 	const Base extends ImplementedNamespace<any>,
 >(
-	manifest: NamespaceManifest<S, Children>,
+	manifest: NamespaceManifest<string, S, string, Children>,
 	implemented: Base,
 	additional: ExtensionSupplement<
 		S,

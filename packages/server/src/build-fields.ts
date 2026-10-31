@@ -205,7 +205,10 @@ export const makeCrossNamespaceHandle = <S extends WidestNamespaceFields>(
 
 export const buildFields = Effect.fn("buildFields")(function* <
 	S extends WidestNamespaceFields,
->(manifest: NamespaceManifest<S>, options?: NamespaceOptions<S>) {
+>(
+	manifest: NamespaceManifest<string, S, string>,
+	options?: NamespaceOptions<S>,
+) {
 	const seedReplicantFns = options?.seedReplicant;
 	const computeFns = options?.implementComputed;
 	const rpcHandlers = options?.implementRpc;

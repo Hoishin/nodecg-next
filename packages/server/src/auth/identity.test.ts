@@ -3,19 +3,28 @@ import {
 	Authentication,
 	Role,
 	RoleNameSchema,
+	ServiceAccountId,
 	User,
 	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, Layer, Option } from "effect";
-import { afterEach, describe, expect, vi } from "vitest";
+import { Effect, HashMap, HashSet, Layer, Option } from "effect";
+import { afterEach, assert, describe, expect, vi } from "vitest";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
+import {
+	type ServiceAccountRepository,
+	ServiceAccountRepositoryService,
+} from "../services/repository/service-account/service-account-repository.ts";
 import {
 	type SessionRepository,
 	SessionRepositoryService,
 } from "../services/repository/session/session-repository.ts";
-import { resolveSessionCaller } from "./identity.ts";
+import {
+	resolveServiceAccountCaller,
+	resolveSessionCaller,
+} from "./identity.ts";
+import { RoleLinks } from "./role-links.ts";
 import { hashSessionToken } from "./session.ts";
 
 const alice = Authentication.make({ issuer: "dev", subject: "alice" });
@@ -28,6 +37,10 @@ const viewer = Role.make({
 	namespace: "show",
 	name: RoleNameSchema.make("viewer"),
 });
+const uploader = Role.make({
+	namespace: "show-assets",
+	name: RoleNameSchema.make("uploader"),
+});
 
 const aliceUser = {
 	id: UserId.make("alice-user"),
@@ -38,9 +51,13 @@ const aliceUser = {
 };
 
 const resolve = vi.fn<SessionRepository["resolve"]>(() => Effect.succeedNone);
+const resolveByKeyHash = vi.fn<ServiceAccountRepository["resolveByKeyHash"]>(
+	() => Effect.succeedNone,
+);
 
 afterEach(() => {
 	resolve.mockReset();
+	resolveByKeyHash.mockReset();
 });
 
 const test = testLayer(
@@ -48,7 +65,14 @@ const test = testLayer(
 		Layer.mock(SessionRepositoryService)({ resolve }),
 		Layer.succeed(ConfiguredSuperadmins, [root, aliceSecondAuthentication]),
 		NodeCrypto.layer,
+		Layer.mock(ServiceAccountRepositoryService)({ resolveByKeyHash }),
+		Layer.succeed(RoleLinks, HashMap.empty()),
 	),
+);
+
+const linkViewerToUploader = Effect.provideService(
+	RoleLinks,
+	HashMap.make([viewer, HashSet.make(uploader)]),
 );
 
 describe("resolveSessionCaller", () => {
@@ -105,6 +129,21 @@ describe("resolveSessionCaller", () => {
 	);
 
 	test(
+		"adds linked roles",
+		Effect.gen(function* () {
+			resolve.mockReturnValueOnce(
+				Effect.succeedSome({ authentication: alice, user: aliceUser }),
+			);
+
+			const caller =
+				yield* resolveSessionCaller("token").pipe(linkViewerToUploader);
+
+			assert(Option.isSome(caller));
+			assert.sameDeepMembers([...caller.value.roles], [viewer, uploader]);
+		}),
+	);
+
+	test(
 		"looks the session up by the token's hash",
 		Effect.gen(function* () {
 			yield* resolveSessionCaller("token");
@@ -120,6 +159,28 @@ describe("resolveSessionCaller", () => {
 			const caller = yield* resolveSessionCaller("token");
 
 			expect(caller).toStrictEqual(Option.none());
+		}),
+	);
+});
+
+describe("resolveServiceAccountCaller", () => {
+	test(
+		"adds linked roles",
+		Effect.gen(function* () {
+			resolveByKeyHash.mockReturnValueOnce(
+				Effect.succeedSome({
+					id: ServiceAccountId.make("00000000-0000-4000-8000-000000000001"),
+					displayName: "Encoder",
+					roles: [viewer],
+					globalRoles: [],
+				}),
+			);
+
+			const caller =
+				yield* resolveServiceAccountCaller("key").pipe(linkViewerToUploader);
+
+			assert(Option.isSome(caller));
+			assert.sameDeepMembers([...caller.value.roles], [viewer, uploader]);
 		}),
 	);
 });

@@ -4,6 +4,7 @@ import {
 	type DeclarablePrincipalName,
 	type Identity,
 	type Principal,
+	type Role,
 	type RoleName,
 } from "@nodecg-next/internal";
 import { Match } from "effect";
@@ -25,9 +26,15 @@ export interface PrincipalArg {
 	readonly permission: ReadonlyArray<RoleCapability>;
 }
 
-export interface RoleArg {
+export interface NamespaceRole<Namespace extends string, Name extends string> {
+	readonly namespace: Namespace;
+	readonly name: Name;
+}
+
+export interface RoleArg<Child extends NamespaceRole<string, string>> {
 	readonly description?: string;
 	readonly permission: ReadonlyArray<RoleCapability>;
+	readonly linkedRoles?: ReadonlyArray<Child>;
 }
 
 export type PrincipalsArg = {
@@ -54,8 +61,14 @@ export interface WriteOnlyPermissionArg<InputRole extends string> {
 }
 
 export interface RoleManifest {
-	readonly name: RoleName | Principal;
+	readonly name: RoleName;
 	readonly description?: string;
+	readonly capabilities: ReadonlySet<RoleCapability>;
+	readonly linkedRoles: ReadonlyArray<Role>;
+}
+
+export interface PrincipalManifest {
+	readonly name: Principal;
 	readonly capabilities: ReadonlySet<RoleCapability>;
 }
 
