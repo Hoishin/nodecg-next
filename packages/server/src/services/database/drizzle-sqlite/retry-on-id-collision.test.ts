@@ -3,7 +3,8 @@ import * as NodePath from "@effect/platform-node/NodePath";
 import { testLayer } from "@nodecg-next/test-utils";
 import { sql } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Crypto, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { Reactivity } from "effect/reactivity";
 import { afterEach, describe, expect, vi } from "vitest";
 
@@ -11,35 +12,29 @@ import { DrizzleSqliteDatabaseService } from "./drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "./retry-on-id-collision.ts";
 import { AccountId, accounts } from "./tables.ts";
 
-const randomBytes = vi.fn((size: number) =>
-	crypto.getRandomValues(new Uint8Array(size)),
-);
+const nextId = vi.fn((): string => SecureRandom.uuidV4Unsafe());
 
 afterEach(() => {
-	randomBytes.mockReset();
+	nextId.mockReset();
 });
 
 const test = testLayer(
-	Layer.mergeAll(
-		Layer.effect(
-			DrizzleSqliteDatabaseService,
-			DrizzleSqliteDatabaseService.make(":memory:"),
-		).pipe(
-			Layer.provide(
-				Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
-			),
+	Layer.effect(
+		DrizzleSqliteDatabaseService,
+		DrizzleSqliteDatabaseService.make(":memory:"),
+	).pipe(
+		Layer.provide(
+			Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, Reactivity.layer),
 		),
-		Layer.succeed(Crypto.Crypto, Crypto.make({ randomBytes, digest: vi.fn() })),
 	),
 );
 
 const insertAccount = Effect.fn(function* (displayName: string) {
-	const crypto = yield* Crypto.Crypto;
 	const db = yield* DrizzleSqliteDatabaseService;
 	return yield* db
 		.insert(accounts)
 		.values({
-			id: AccountId.make(yield* crypto.randomUUIDv7()),
+			id: AccountId.make(nextId()),
 			displayName,
 			createdAt: 0,
 		})
@@ -52,9 +47,9 @@ describe("retryOnIdCollision", () => {
 		"inserts under a fresh id when the generated id is taken",
 		Effect.gen(function* () {
 			const db = yield* DrizzleSqliteDatabaseService;
-			randomBytes.mockReturnValueOnce(new Uint8Array(16).fill(1));
+			nextId.mockReturnValueOnce("taken");
 			const alice = yield* insertAccount("Alice");
-			randomBytes.mockReturnValueOnce(new Uint8Array(16).fill(1));
+			nextId.mockReturnValueOnce("taken");
 
 			const bob = yield* insertAccount("Bob");
 
@@ -73,15 +68,15 @@ describe("retryOnIdCollision", () => {
 	test(
 		"fails after two retries that each drew a taken id",
 		Effect.gen(function* () {
-			randomBytes.mockReturnValueOnce(new Uint8Array(16).fill(1));
+			nextId.mockReturnValueOnce("taken");
 			yield* insertAccount("Alice");
-			randomBytes.mockReset();
-			randomBytes.mockImplementation(() => new Uint8Array(16).fill(1));
+			nextId.mockReset();
+			nextId.mockImplementation(() => "taken");
 
 			const error = yield* insertAccount("Bob").pipe(Effect.flip);
 
 			expect(error).toBeInstanceOf(EffectDrizzleQueryError);
-			expect(randomBytes).toHaveBeenCalledTimes(3);
+			expect(nextId).toHaveBeenCalledTimes(3);
 		}),
 	);
 
@@ -94,7 +89,7 @@ describe("retryOnIdCollision", () => {
 			const error = yield* insertAccount("Alice").pipe(Effect.flip);
 
 			expect(error).toBeInstanceOf(EffectDrizzleQueryError);
-			expect(randomBytes).toHaveBeenCalledOnce();
+			expect(nextId).toHaveBeenCalledOnce();
 		}),
 	);
 });

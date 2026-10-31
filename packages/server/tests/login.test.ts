@@ -1,14 +1,7 @@
 import { Authentication, sessionCookieName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import {
-	Config,
-	ConfigProvider,
-	Crypto,
-	Effect,
-	HashMap,
-	Layer,
-	Option,
-} from "effect";
+import { Config, ConfigProvider, Effect, HashMap, Layer, Option } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { Cookies } from "effect/http";
 import { assert, describe, expect } from "vitest";
 
@@ -222,8 +215,8 @@ describe("callback", () => {
 		"clears the cookie of an unknown login attempt",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const attempt = yield* crypto.randomUUIDv7();
+			const random = yield* SecureRandom.SecureRandom;
+			const attempt = yield* random.uuidV7();
 
 			const res = yield* client.get(callbackUrl, {
 				headers: { cookie: `nodecg.login_attempt=${attempt}` },

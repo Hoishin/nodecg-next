@@ -1,5 +1,6 @@
 import { on } from "node:events";
 
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
@@ -353,6 +354,9 @@ export const loadNodeCGEffect = Effect.fn(
 					),
 				),
 				Layer.provide(httpServer),
+				Layer.provide(
+					Layer.merge(NodeCrypto.layerDigest, NodeCrypto.layerSecureRandom),
+				),
 				Layer.provide(Layer.succeed(UrlParams.CurrentRedactedNames, [/.*/])),
 			);
 			const contextForServer =
@@ -434,6 +438,7 @@ export const loadNodeCG = <
 			Layer.provide(
 				Layer.mergeAll(
 					NodeServices.layer,
+					NodeCrypto.layerSecureRandom,
 					OperatingSystemService.layer,
 					Reactivity.layer,
 				),

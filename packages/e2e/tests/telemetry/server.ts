@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -79,6 +80,7 @@ Effect.gen(function* () {
 			Layer.provide(
 				Layer.mergeAll(
 					NodeServices.layer,
+					NodeCrypto.layerSecureRandom,
 					OperatingSystemService.layer,
 					Reactivity.layer,
 				),

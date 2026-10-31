@@ -4,7 +4,8 @@ import {
 	UserId,
 } from "@nodecg-next/internal";
 import { and, eq, sql } from "drizzle-orm";
-import { Array, Crypto, DateTime, Effect, Layer, Option } from "effect";
+import { Array, DateTime, Effect, Layer, Option } from "effect";
+import { SecureRandom } from "effect/crypto";
 
 import { DrizzleSqliteDatabaseService } from "../../database/drizzle-sqlite/drizzle-sqlite-database.ts";
 import { retryOnIdCollision } from "../../database/drizzle-sqlite/retry-on-id-collision.ts";
@@ -20,7 +21,7 @@ import { AuthenticationRepositoryService } from "./authentication-repository.ts"
 export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 	AuthenticationRepositoryService,
 	Effect.gen(function* () {
-		const crypto = yield* Crypto.Crypto;
+		const random = yield* SecureRandom.SecureRandom;
 		const db = yield* DrizzleSqliteDatabaseService;
 
 		const insertMissing = Effect.fn(function* (
@@ -41,8 +42,8 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 								displayName,
 							}) {
 								return {
-									id: AuthenticationId.make(yield* crypto.randomUUIDv7()),
-									userId: UserId.make(yield* crypto.randomUUIDv7()),
+									id: AuthenticationId.make(yield* random.uuidV7()),
+									userId: UserId.make(yield* random.uuidV7()),
 									issuer,
 									subject,
 									displayName,
@@ -87,7 +88,7 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 									authenticationId,
 									userId,
 									displayName,
-									accountId: AccountId.make(yield* crypto.randomUUIDv7()),
+									accountId: AccountId.make(yield* random.uuidV7()),
 								};
 							}),
 						);
@@ -141,12 +142,7 @@ export const DrizzleSqliteAuthenticationRepository = Layer.effect(
 						.pipe(Effect.head);
 				},
 				Effect.catchTag(
-					[
-						"EffectDrizzleQueryError",
-						"SqlError",
-						"PlatformError",
-						"NoSuchElementError",
-					],
+					["EffectDrizzleQueryError", "SqlError", "NoSuchElementError"],
 					(cause) => BackendError.make({ cause }),
 				),
 			),

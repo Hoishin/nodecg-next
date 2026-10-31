@@ -1,5 +1,6 @@
 import { Authentication } from "@nodecg-next/internal";
-import { Crypto, Effect } from "effect";
+import { Effect } from "effect";
+import { Digest } from "effect/crypto";
 import { Base64Url } from "effect/encoding";
 import {
 	allowInsecureRequests,
@@ -93,11 +94,11 @@ export const makeOAuth2Provider = (
 		name: config.name,
 		issuer: config.issuer,
 		authorize: Effect.fn("OAuth2Provider.authorize")(function* (input) {
-			const crypto = yield* Crypto.Crypto;
+			const digest = yield* Digest.Digest;
 			const codeVerifier = randomPKCECodeVerifier();
 			const state = randomState();
-			const codeChallenge = yield* crypto.digest(
-				"SHA-256",
+			const codeChallenge = yield* digest.digest(
+				Digest.sha256,
 				new TextEncoder().encode(codeVerifier),
 			);
 			const parameters: Record<string, string> = {

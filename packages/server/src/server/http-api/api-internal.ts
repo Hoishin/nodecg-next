@@ -16,7 +16,6 @@ import {
 	Array,
 	Clock,
 	type Config,
-	Crypto,
 	type Duration,
 	Effect,
 	HashMap,
@@ -30,6 +29,7 @@ import {
 	Result,
 	Semaphore,
 } from "effect";
+import { Digest } from "effect/crypto";
 import { HttpServerRequest, HttpServerResponse, Url } from "effect/http";
 import { HttpApiBuilder, HttpApiError } from "effect/http-api";
 
@@ -121,14 +121,14 @@ const tokenEquals = Effect.fnUntraced(function* (
 	expected: Redacted.Redacted<string>,
 	provided: Redacted.Redacted<string>,
 ) {
-	const crypto = yield* Crypto.Crypto;
+	const digest = yield* Digest.Digest;
 	const encoder = new TextEncoder();
-	const expectedDigest = yield* crypto.digest(
-		"SHA-256",
+	const expectedDigest = yield* digest.digest(
+		Digest.sha256,
 		encoder.encode(Redacted.value(expected)),
 	);
-	const providedDigest = yield* crypto.digest(
-		"SHA-256",
+	const providedDigest = yield* digest.digest(
+		Digest.sha256,
 		encoder.encode(Redacted.value(provided)),
 	);
 	return timingSafeEqual(expectedDigest, providedDigest);
@@ -339,7 +339,7 @@ const AuthenticationGroupLive = HttpApiBuilder.group(
 								Effect.tapCause((cause) =>
 									Effect.logError("Logout failed", cause),
 								),
-								Effect.catchTag(["BackendError", "PlatformError"], () =>
+								Effect.catchTag("BackendError", () =>
 									HttpApiError.InternalServerError.make(),
 								),
 							);

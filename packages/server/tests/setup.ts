@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
 	type Authentication,
@@ -73,6 +74,8 @@ export const services = Layer.mergeAll(
 	Layer.provideMerge(
 		Layer.mergeAll(
 			NodeServices.layer,
+			NodeCrypto.layerDigest,
+			NodeCrypto.layerSecureRandom,
 			OperatingSystemService.layer,
 			Reactivity.layer,
 		),

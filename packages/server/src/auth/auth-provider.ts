@@ -1,12 +1,12 @@
 import type { LoginAttempt, Authentication } from "@nodecg-next/internal";
 import {
 	Context,
-	type Crypto,
 	type Effect,
 	HashMap,
 	type PlatformError,
 	Schema,
 } from "effect";
+import type { Digest } from "effect/crypto";
 import type { HttpClient } from "effect/http";
 
 export class ProviderStateMismatch extends Schema.TaggedError<ProviderStateMismatch>()(
@@ -65,7 +65,7 @@ export interface AuthProvider {
 			readonly loginAttempt: Omit<LoginAttempt, "returnTo">;
 		},
 		AuthorizeError,
-		Crypto.Crypto
+		Digest.Digest
 	>;
 	readonly callback: (input: {
 		readonly redirectUri: string;

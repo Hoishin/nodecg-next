@@ -1,6 +1,7 @@
 import { Authentication, RoleNameSchema } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Crypto, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { HttpBody } from "effect/http";
 import { describe, expect } from "vitest";
 
@@ -108,8 +109,8 @@ describe("delete", () => {
 		"404 when deleting an unknown id",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7();
+			const random = yield* SecureRandom.SecureRandom;
+			const unknownId = yield* random.uuidV7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.del(`${serviceAccountsUrl}/${unknownId}`);
@@ -146,8 +147,8 @@ describe("refresh", () => {
 		"404 when refreshing an unknown id",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7();
+			const random = yield* SecureRandom.SecureRandom;
+			const unknownId = yield* random.uuidV7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.post(
@@ -241,8 +242,8 @@ describe("grant role", () => {
 		"404 when granting a role to an unknown id",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7();
+			const random = yield* SecureRandom.SecureRandom;
+			const unknownId = yield* random.uuidV7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.post(
@@ -299,8 +300,8 @@ describe("revoke role", () => {
 		"404 when revoking a role from an unknown id",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const unknownId = yield* crypto.randomUUIDv7();
+			const random = yield* SecureRandom.SecureRandom;
+			const unknownId = yield* random.uuidV7();
 			const asAdmin = yield* loginAdmin(client, admin);
 
 			const res = yield* asAdmin.post(

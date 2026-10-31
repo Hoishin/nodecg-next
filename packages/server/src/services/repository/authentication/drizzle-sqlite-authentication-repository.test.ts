@@ -3,7 +3,8 @@ import * as NodePath from "@effect/platform-node/NodePath";
 import { type Authentication, UserId } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
 import { eq, sql } from "drizzle-orm";
-import { Crypto, Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { Reactivity } from "effect/reactivity";
 import { TestClock } from "effect/testing";
 import { afterEach, assert, describe, expect, vi } from "vitest";
@@ -19,12 +20,13 @@ import { DrizzleSqliteSessionRepository } from "../session/drizzle-sqlite-sessio
 import { AuthenticationRepositoryService } from "./authentication-repository.ts";
 import { DrizzleSqliteAuthenticationRepository } from "./drizzle-sqlite-authentication-repository.ts";
 
-const randomBytes = vi.fn((size: number) =>
+const random = SecureRandom.make((size) =>
 	crypto.getRandomValues(new Uint8Array(size)),
 );
+const uuidV7 = vi.spyOn(random, "uuidV7");
 
 afterEach(() => {
-	randomBytes.mockReset();
+	uuidV7.mockReset();
 });
 
 const test = testLayer(
@@ -42,10 +44,7 @@ const test = testLayer(
 			Layer.mergeAll(
 				NodeFileSystem.layer,
 				NodePath.layer,
-				Layer.succeed(
-					Crypto.Crypto,
-					Crypto.make({ randomBytes, digest: vi.fn() }),
-				),
+				Layer.succeed(SecureRandom.SecureRandom, random),
 				Reactivity.layer,
 			),
 		),
@@ -149,23 +148,21 @@ describe("findOrCreateAuthentication", () => {
 		Effect.gen(function* () {
 			const repository = yield* AuthenticationRepositoryService;
 			const db = yield* DrizzleSqliteDatabaseService;
-			const authenticationId = new Uint8Array(16).fill(1);
-			const userId = new Uint8Array(16).fill(2);
-			randomBytes
-				.mockReturnValueOnce(authenticationId)
-				.mockReturnValueOnce(userId);
+			uuidV7
+				.mockReturnValueOnce(Effect.succeed("alice-authentication"))
+				.mockReturnValueOnce(Effect.succeed("taken"));
 			const aliceIds = yield* repository.findOrCreateAuthentication(
 				alice,
 				"Alice",
 			);
-			randomBytes
-				.mockReturnValueOnce(new Uint8Array(16).fill(3))
-				.mockReturnValueOnce(userId);
+			uuidV7
+				.mockReturnValueOnce(Effect.succeed("bob-authentication"))
+				.mockReturnValueOnce(Effect.succeed("taken"));
 
 			const bobIds = yield* repository.findOrCreateAuthentication(bob, "Bob");
 
 			// 3 ids times 3 attempts
-			expect(randomBytes).toHaveBeenCalledTimes(9);
+			expect(uuidV7).toHaveBeenCalledTimes(9);
 			const userRows = yield* db
 				.select({
 					userId: users.id,

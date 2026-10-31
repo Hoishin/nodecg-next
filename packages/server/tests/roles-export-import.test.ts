@@ -8,7 +8,8 @@ import {
 	UserDocumentEntry,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Effect, HashSet, Layer, Crypto } from "effect";
+import { Effect, HashSet, Layer } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { HttpBody } from "effect/http";
 import { describe, expect } from "vitest";
 
@@ -227,10 +228,8 @@ describe("merge", () => {
 		"a merge import adds roles to the service account an earlier import created",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const serviceAccountId = ServiceAccountId.make(
-				yield* crypto.randomUUIDv7(),
-			);
+			const random = yield* SecureRandom.SecureRandom;
+			const serviceAccountId = ServiceAccountId.make(yield* random.uuidV7());
 
 			const asAdmin = yield* loginAdmin(client, admin);
 			yield* asAdmin.post(importUrl, {
@@ -460,10 +459,8 @@ describe("account creation", () => {
 		"creates a service account for an unknown id and merges repeated items",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const serviceAccountId = ServiceAccountId.make(
-				yield* crypto.randomUUIDv7(),
-			);
+			const random = yield* SecureRandom.SecureRandom;
+			const serviceAccountId = ServiceAccountId.make(yield* random.uuidV7());
 
 			const asAdmin = yield* loginAdmin(client, admin);
 			const importRes = yield* asAdmin.post(importUrl, {

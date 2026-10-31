@@ -1,6 +1,7 @@
 import { Authentication, sessionCookieName } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { ConfigProvider, Crypto, Effect, Layer } from "effect";
+import { ConfigProvider, Effect, Layer } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { TestClock } from "effect/testing";
 import { describe, expect } from "vitest";
 
@@ -55,8 +56,8 @@ describe("renewal", () => {
 		"no cookie for an unknown session",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const token = yield* crypto.randomUUIDv7();
+			const random = yield* SecureRandom.SecureRandom;
+			const token = yield* random.uuidV7();
 
 			const res = yield* client.get(meUrl, {
 				headers: { cookie: `${sessionCookieName}=${token}` },

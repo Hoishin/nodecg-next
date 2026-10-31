@@ -5,15 +5,8 @@ import {
 	type UserId,
 } from "@nodecg-next/internal";
 import { and, eq, inArray } from "drizzle-orm";
-import {
-	Array,
-	Crypto,
-	DateTime,
-	Effect,
-	type HashSet,
-	Layer,
-	Option,
-} from "effect";
+import { Array, DateTime, Effect, type HashSet, Layer, Option } from "effect";
+import { SecureRandom } from "effect/crypto";
 
 import {
 	DrizzleSqliteDatabaseService,
@@ -37,7 +30,7 @@ import {
 export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 	ServiceAccountRepositoryService,
 	Effect.gen(function* () {
-		const crypto = yield* Crypto.Crypto;
+		const random = yield* SecureRandom.SecureRandom;
 		const db = yield* DrizzleSqliteDatabaseService;
 		const queryInChunks = yield* makeQueryInChunks;
 
@@ -59,7 +52,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 		) {
 			const now = yield* DateTime.now;
 			yield* db.insert(apiKeys).values({
-				id: ApiKeyId.make(yield* crypto.randomUUIDv7()),
+				id: ApiKeyId.make(yield* random.uuidV7()),
 				serviceAccountId,
 				keyHash: key.hash,
 				label: key.label,
@@ -69,7 +62,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 
 		const insertAccount = Effect.fn(function* (displayName: string) {
 			const now = yield* DateTime.now;
-			const uuid = yield* crypto.randomUUIDv7();
+			const uuid = yield* random.uuidV7();
 			const id = AccountId.make(uuid);
 			yield* db.insert(accounts).values({
 				id,
@@ -83,7 +76,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			accountId: AccountId,
 			createdBy: UserId,
 		) {
-			const uuid = yield* crypto.randomUUIDv7();
+			const uuid = yield* random.uuidV7();
 			const id = ServiceAccountId.make(uuid);
 			yield* db.insert(serviceAccounts).values({ id, accountId, createdBy });
 			return id;
@@ -101,9 +94,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					}),
 				);
 			},
-			Effect.catchTag(
-				["EffectDrizzleQueryError", "SqlError", "PlatformError"],
-				(cause) => BackendError.make({ cause }),
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
+				BackendError.make({ cause }),
 			),
 		);
 
@@ -124,9 +116,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					}),
 				);
 			},
-			Effect.catchTag(
-				["EffectDrizzleQueryError", "SqlError", "PlatformError"],
-				(cause) => BackendError.make({ cause }),
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
+				BackendError.make({ cause }),
 			),
 		);
 
@@ -231,7 +222,7 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 			function* (id: ServiceAccountId, key: NewApiKey) {
 				yield* insertKey(id, key);
 			},
-			Effect.catchTag(["EffectDrizzleQueryError", "PlatformError"], (cause) =>
+			Effect.catchTag("EffectDrizzleQueryError", (cause) =>
 				BackendError.make({ cause }),
 			),
 		);
@@ -256,9 +247,8 @@ export const DrizzleSqliteServiceAccountRepository = Layer.effect(
 					}),
 				);
 			},
-			Effect.catchTag(
-				["EffectDrizzleQueryError", "SqlError", "PlatformError"],
-				(cause) => BackendError.make({ cause }),
+			Effect.catchTag(["EffectDrizzleQueryError", "SqlError"], (cause) =>
+				BackendError.make({ cause }),
 			),
 		);
 

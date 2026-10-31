@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 import { Reactivity } from "effect/reactivity";
@@ -26,6 +27,7 @@ test("loads and starts with exported layers only", () => {
 				Layer.provide(
 					Layer.mergeAll(
 						NodeServices.layer,
+						NodeCrypto.layerSecureRandom,
 						Reactivity.layer,
 						OperatingSystemService.layer,
 					),

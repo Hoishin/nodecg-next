@@ -8,7 +8,8 @@ import {
 	ServiceAccountAuthenticationMiddleware,
 	SuperadminMiddleware,
 } from "@nodecg-next/internal";
-import { type Crypto, Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
+import type { Digest } from "effect/crypto";
 import { HttpApiError } from "effect/http-api";
 
 import { ConfiguredSuperadmins } from "../configured-superadmins.ts";
@@ -32,7 +33,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 			| SessionRepositoryService
 			| ConfiguredSuperadmins
 			| RoleLinks
-			| Crypto.Crypto
+			| Digest.Digest
 		>();
 
 		return {
@@ -46,7 +47,7 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 									Effect.tapCause((cause) =>
 										Effect.logError("Session lookup failed", cause),
 									),
-									Effect.catchTag(["BackendError", "PlatformError"], () =>
+									Effect.catchTag("BackendError", () =>
 										HttpApiError.InternalServerError.make(),
 									),
 								)
@@ -60,9 +61,8 @@ export const UserAuthenticationMiddlewareLive = Layer.effect(
 							Effect.tapCause((cause) =>
 								Effect.logError("Session renewal failed", cause),
 							),
-							Effect.catchTag(
-								["BackendError", "ConfigError", "PlatformError"],
-								() => HttpApiError.InternalServerError.make(),
+							Effect.catchTag(["BackendError", "ConfigError"], () =>
+								HttpApiError.InternalServerError.make(),
 							),
 						);
 						if (isRenewed) {
@@ -118,7 +118,7 @@ export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 	ServiceAccountAuthenticationMiddleware,
 	Effect.gen(function* () {
 		const context = yield* Effect.context<
-			ServiceAccountRepositoryService | RoleLinks | Crypto.Crypto
+			ServiceAccountRepositoryService | RoleLinks | Digest.Digest
 		>();
 
 		return {
@@ -132,7 +132,7 @@ export const ServiceAccountAuthenticationMiddlewareLive = Layer.effect(
 									Effect.tapCause((cause) =>
 										Effect.logError("API key lookup failed", cause),
 									),
-									Effect.catchTag(["BackendError", "PlatformError"], () =>
+									Effect.catchTag("BackendError", () =>
 										HttpApiError.InternalServerError.make(),
 									),
 								)

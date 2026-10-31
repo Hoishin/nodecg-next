@@ -5,7 +5,8 @@ import {
 	UserId,
 } from "@nodecg-next/internal";
 import { testLayer } from "@nodecg-next/test-utils";
-import { Crypto, Effect, HashSet, Layer } from "effect";
+import { Effect, HashSet, Layer } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { HttpBody } from "effect/http";
 import { describe, expect } from "vitest";
 
@@ -74,8 +75,8 @@ describe("unknown user", () => {
 		"404 for an unknown user",
 		Effect.gen(function* () {
 			const client = yield* buildClient;
-			const crypto = yield* Crypto.Crypto;
-			const userId = UserId.make(yield* crypto.randomUUIDv7());
+			const random = yield* SecureRandom.SecureRandom;
+			const userId = UserId.make(yield* random.uuidV7());
 
 			const asAdmin = yield* loginAdmin(client, admin);
 

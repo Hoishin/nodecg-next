@@ -1,22 +1,23 @@
 import type { UserId } from "@nodecg-next/internal";
-import { Crypto, Effect, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
+import { Digest, SecureRandom } from "effect/crypto";
 import { Base64Url } from "effect/encoding";
 
 import { ServiceAccountRepositoryService } from "../services/repository/service-account/service-account-repository.ts";
 import { TransactionService } from "../services/transaction/transaction.ts";
 
 export const hashApiKey = Effect.fnUntraced(function* (token: string) {
-	const crypto = yield* Crypto.Crypto;
-	const digest = yield* crypto.digest(
-		"SHA-256",
+	const digest = yield* Digest.Digest;
+	const hash = yield* digest.digest(
+		Digest.sha256,
 		new TextEncoder().encode(token),
 	);
-	return Base64Url.encode(digest);
+	return Base64Url.encode(hash);
 });
 
 export const newApiKey = Effect.fnUntraced(function* () {
-	const crypto = yield* Crypto.Crypto;
-	const bytes = yield* crypto.randomBytes(32);
+	const random = yield* SecureRandom.SecureRandom;
+	const bytes = yield* random.randomBytes(32);
 	return Redacted.make(Base64Url.encode(bytes));
 });
 

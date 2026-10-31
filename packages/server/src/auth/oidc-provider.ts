@@ -1,5 +1,6 @@
 import { Authentication } from "@nodecg-next/internal";
-import { Crypto, Effect } from "effect";
+import { Effect } from "effect";
+import { Digest } from "effect/crypto";
 import { Base64Url } from "effect/encoding";
 import {
 	allowInsecureRequests,
@@ -82,12 +83,12 @@ export const makeOidcProvider = async (
 		name: config.name,
 		issuer: configuration.serverMetadata().issuer,
 		authorize: Effect.fn("OidcProvider.authorize")(function* (input) {
-			const crypto = yield* Crypto.Crypto;
+			const digest = yield* Digest.Digest;
 			const codeVerifier = randomPKCECodeVerifier();
 			const state = randomState();
 			const nonce = randomNonce();
-			const codeChallenge = yield* crypto.digest(
-				"SHA-256",
+			const codeChallenge = yield* digest.digest(
+				Digest.sha256,
 				new TextEncoder().encode(codeVerifier),
 			);
 			const url = buildAuthorizationUrl(configuration, {
