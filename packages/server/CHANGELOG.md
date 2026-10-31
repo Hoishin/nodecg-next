@@ -1,5 +1,12 @@
 # @nodecg-next/server
 
+## 0.1.6
+
+### Patch Changes
+
+- support OpenTelemetry traces and logs ([`43bb497`](https://github.com/Hoishin/nodecg-next/commit/43bb4971ce73dc0b90d26e09420bd2b37974e201))
+- update effect to 4.1 ([`5beb598`](https://github.com/Hoishin/nodecg-next/commit/5beb598f26f36693180966b0a453f4a31da50553))
+
 ## 0.1.5
 
 ### Patch Changes
