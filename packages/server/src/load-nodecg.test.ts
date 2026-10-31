@@ -5,7 +5,15 @@ import { join } from "node:path";
 import { defineNamespace, extendNamespace } from "@nodecg-next/core";
 import { testLayer } from "@nodecg-next/test-utils";
 import { Cause, ConfigProvider, Effect, Layer, Result, Schema } from "effect";
-import { assert, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+	assert,
+	beforeEach,
+	describe,
+	expect,
+	onTestFinished,
+	test,
+	vi,
+} from "vitest";
 
 import {
 	implementExtendedNamespace,
@@ -509,6 +517,31 @@ describe("loadNodeCG", () => {
 
 		expect(storage.write).toHaveBeenCalledWith("settings", "multiplier", "3");
 		expect(nodecg.namespaces.settings.replicant.multiplier.get()).toBe(3);
+	});
+
+	test("exports a failed load before rejecting", async () => {
+		const fetch = vi.fn<typeof globalThis.fetch>(
+			async () => new Response(null),
+		);
+		vi.stubGlobal("fetch", fetch);
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+		});
+		vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318");
+		const first = implementNamespace(defineNamespace("twin", {}), {});
+		const second = implementNamespace(defineNamespace("twin", {}), {});
+
+		await expect(loadNodeCG({ namespaces: { first, second } })).rejects.toThrow(
+			'Namespace "twin" was loaded twice',
+		);
+
+		const traces = fetch.mock.calls.find(
+			([input]) => new Request(input).url === "http://collector:4318/v1/traces",
+		);
+		assert(typeof traces !== "undefined");
+		const [, init] = traces;
+		assert(init?.body instanceof Uint8Array);
+		expect(Buffer.from(init.body).includes("was loaded twice")).toBe(true);
 	});
 
 	test("persists a write made after loading returns", async () => {

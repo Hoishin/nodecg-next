@@ -16,6 +16,7 @@ import {
 } from "@nodecg-next/internal/utils";
 import {
 	ConfigProvider,
+	Context,
 	Effect,
 	Exit,
 	Formatter,
@@ -30,8 +31,9 @@ import {
 	Schema,
 	Scope,
 	Stream,
+	Tracer,
 } from "effect";
-import { HttpRouter } from "effect/http";
+import { HttpRouter, UrlParams } from "effect/http";
 import { Reactivity } from "effect/reactivity";
 
 import {
@@ -68,6 +70,7 @@ import {
 } from "./services/repository/replicant/replicant-repository.ts";
 import { InMemoryTopicBroker } from "./services/topic-broker/in-memory-topic-broker.ts";
 import type { TopicBrokerService } from "./services/topic-broker/topic-broker.ts";
+import { OtlpTelemetry } from "./telemetry.ts";
 
 export type StorageOption =
 	| ReplicantRepository
@@ -176,9 +179,9 @@ const validateComputedFields = (fields: RegisteredNamespace["fields"]) =>
 const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 	S extends WidestNamespaceFields,
 >(implemented: ImplementedNamespace<S>) {
-	const context = yield* Effect.context<
+	const contextForUse = yield* Effect.context<
 		TopicBrokerService | ReplicantStoreService | BuiltNamespaceRegistry
-	>();
+	>().pipe(Effect.map(Context.omit(Tracer.ParentSpan)));
 	const registry = yield* BuiltNamespaceRegistry;
 	const loaded = yield* Effect.serviceOption(LoadedNamespacesService);
 	const built = yield* buildNamespace(implemented);
@@ -193,7 +196,12 @@ const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 							onLoad({
 								...handle,
 								use: (cross) =>
-									makeCrossNamespaceHandle(context, registry, loaded, cross),
+									makeCrossNamespaceHandle(
+										contextForUse,
+										registry,
+										loaded,
+										cross,
+									),
 							}),
 						catch: (error) =>
 							OnLoadError.make({
@@ -215,7 +223,11 @@ const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 							),
 						);
 					}
-				});
+				}).pipe(
+					Effect.withSpan("onLoad", {
+						attributes: { namespace: implemented.manifest.namespace },
+					}),
+				);
 	const prepared: PreparedNamespace<S> = {
 		registered: {
 			namespace: built.namespace,
@@ -231,143 +243,157 @@ const prepareNamespace = Effect.fn("prepareNamespace")(function* <
 	return prepared;
 });
 
-export const loadNodeCGEffect = Effect.fn("loadNodeCGEffect")(function* <
-	Shapes extends Record<string, WidestNamespaceFields>,
->(options: LoadNodeCGOptions<Shapes>) {
-	const namespaces = new Set(
-		Record.values<string, WidenedImplementedNamespace>(options.namespaces),
-	);
-	const childNamespaces = new Set<ImplementedNamespace<EmptyNamespaceFields>>();
-	const walkChildren = (
-		children: ImplementedChildren<WidestChildManifests> | undefined,
-	) => {
-		for (const child of Object.values(children ?? {})) {
-			if (!namespaces.has(child)) {
-				namespaces.add(child);
-				childNamespaces.add(child);
+export const loadNodeCGEffect = Effect.fn(
+	function* <Shapes extends Record<string, WidestNamespaceFields>>(
+		options: LoadNodeCGOptions<Shapes>,
+	) {
+		const namespaces = new Set(
+			Record.values<string, WidenedImplementedNamespace>(options.namespaces),
+		);
+		const childNamespaces = new Set<
+			ImplementedNamespace<EmptyNamespaceFields>
+		>();
+		const walkChildren = (
+			children: ImplementedChildren<WidestChildManifests> | undefined,
+		) => {
+			for (const child of Object.values(children ?? {})) {
+				if (!namespaces.has(child)) {
+					namespaces.add(child);
+					childNamespaces.add(child);
+				}
+				walkChildren(child.impl?.children);
 			}
-			walkChildren(child.impl?.children);
+		};
+		for (const { impl } of namespaces) {
+			walkChildren(impl?.children);
 		}
-	};
-	for (const { impl } of namespaces) {
-		walkChildren(impl?.children);
-	}
 
-	yield* Effect.forEach(namespaces, checkChildren, { discard: true });
+		yield* Effect.forEach(namespaces, checkChildren, { discard: true });
 
-	const roleLinks = normalizeRoleLinks(
-		[...namespaces].map(({ manifest }) => manifest),
-	);
+		const roleLinks = normalizeRoleLinks(
+			[...namespaces].map(({ manifest }) => manifest),
+		);
 
-	// Check duplicate namespace names
-	const loaded = new Set<string>();
-	for (const { manifest } of [
-		...Record.values<string, WidenedImplementedNamespace>(options.namespaces),
-		...childNamespaces,
-	]) {
-		if (loaded.has(manifest.namespace)) {
+		// Check duplicate namespace names
+		const loaded = new Set<string>();
+		for (const { manifest } of [
+			...Record.values<string, WidenedImplementedNamespace>(options.namespaces),
+			...childNamespaces,
+		]) {
+			if (loaded.has(manifest.namespace)) {
+				return yield* Effect.die(
+					new Error(`Namespace "${manifest.namespace}" was loaded twice`),
+				);
+			}
+			loaded.add(manifest.namespace);
+		}
+		const clash = findCaseClash(loaded, []);
+		if (Option.isSome(clash)) {
 			return yield* Effect.die(
-				new Error(`Namespace "${manifest.namespace}" was loaded twice`),
+				new Error(
+					`Namespace "${clash.value.name}" differs from "${clash.value.clash}" only in case`,
+				),
 			);
 		}
-		loaded.add(manifest.namespace);
-	}
-	const clash = findCaseClash(loaded, []);
-	if (Option.isSome(clash)) {
-		return yield* Effect.die(
-			new Error(
-				`Namespace "${clash.value.name}" differs from "${clash.value.clash}" only in case`,
-			),
-		);
-	}
 
-	const internalServices = yield* Layer.build(
-		Layer.merge(ReplicantStoreService.layer, BuiltNamespaceRegistry.layer),
-	);
-
-	return yield* Effect.gen(function* () {
-		const store = yield* ReplicantStoreService;
-
-		const prepared = yield* mapEffectValues<
-			ImplementedNamespaceLambda,
-			PreparedNamespaceLambda
-		>()(prepareNamespace)<Shapes>(options.namespaces);
-
-		const preparedChildNamespaces = yield* Effect.forEach(
-			childNamespaces,
-			(child) => prepareNamespace(child),
-		);
-		const preparedNamespaces = [
-			...preparedChildNamespaces,
-			...Record.values(prepared),
-		];
-		const registered = preparedNamespaces.map(({ registered }) => registered);
-
-		yield* Effect.forEach(
-			registered,
-			({ fields }) => validateComputedFields(fields),
-			{ concurrency: "unbounded", discard: true },
+		const internalServices = yield* Layer.build(
+			Layer.merge(ReplicantStoreService.layer, BuiltNamespaceRegistry.layer),
 		);
 
-		yield* Effect.forEach(preparedNamespaces, ({ runOnLoad }) => runOnLoad, {
-			discard: true,
-		});
+		return yield* Effect.gen(function* () {
+			const store = yield* ReplicantStoreService;
 
-		const namespaces: LoadedNamespaces<Shapes> = mapValues<
-			PreparedNamespaceLambda,
-			LoadedNamespaceLambda
-		>((preparedNamespace) => preparedNamespace.loaded)<Shapes>(prepared);
+			const prepared = yield* mapEffectValues<
+				ImplementedNamespaceLambda,
+				PreparedNamespaceLambda
+			>()(prepareNamespace)<Shapes>(options.namespaces);
 
-		const httpServer = yield* makeNodeHttpServer({
-			onReady: options.onReady,
-		});
-		const ServerLive = HttpRouter.serve(routes).pipe(
-			Layer.provide(NamespaceRegistryService.layer(registered)),
-			Layer.provide(Layer.succeed(RoleLinks, roleLinks)),
-			Layer.provide(Layer.succeed(ReplicantStoreService, store)),
-			Layer.provide(
-				Layer.succeed(
-					AuthProviderRegistry,
-					// TODO: check duplicate names
-					HashMap.fromIterable(
-						(options.authProviders ?? []).map((provider) => [
-							provider.name,
-							provider,
-						]),
+			const preparedChildNamespaces = yield* Effect.forEach(
+				childNamespaces,
+				(child) => prepareNamespace(child),
+			);
+			const preparedNamespaces = [
+				...preparedChildNamespaces,
+				...Record.values(prepared),
+			];
+			const registered = preparedNamespaces.map(({ registered }) => registered);
+
+			yield* Effect.forEach(
+				registered,
+				({ fields }) => validateComputedFields(fields),
+				{ concurrency: "unbounded", discard: true },
+			);
+
+			yield* Effect.forEach(preparedNamespaces, ({ runOnLoad }) => runOnLoad, {
+				discard: true,
+			});
+
+			const namespaces: LoadedNamespaces<Shapes> = mapValues<
+				PreparedNamespaceLambda,
+				LoadedNamespaceLambda
+			>((preparedNamespace) => preparedNamespace.loaded)<Shapes>(prepared);
+
+			const httpServer = yield* makeNodeHttpServer({
+				onReady: options.onReady,
+			});
+			const ServerLive = HttpRouter.serve(routes).pipe(
+				Layer.provide(NamespaceRegistryService.layer(registered)),
+				Layer.provide(Layer.succeed(RoleLinks, roleLinks)),
+				Layer.provide(Layer.succeed(ReplicantStoreService, store)),
+				Layer.provide(
+					Layer.succeed(
+						AuthProviderRegistry,
+						// TODO: check duplicate names
+						HashMap.fromIterable(
+							(options.authProviders ?? []).map((provider) => [
+								provider.name,
+								provider,
+							]),
+						),
 					),
 				),
-			),
-			Layer.provide(httpServer),
-		);
-		const serverRequirement =
-			yield* Effect.context<Layer.Services<typeof ServerLive>>();
-
-		const shutdownMessage = Effect.gen(function* () {
-			const processMessages = Stream.fromAsyncIterable(
-				on(process, "message"),
-				(cause) => ShutdownMessageError.make({ cause }),
+				Layer.provide(httpServer),
+				Layer.provide(Layer.succeed(UrlParams.CurrentRedactedNames, [/.*/])),
 			);
-			yield* Stream.runDrain(
-				processMessages.pipe(Stream.filter(isShutdownMessage), Stream.take(1)),
+			const contextForServer =
+				yield* Effect.context<Layer.Services<typeof ServerLive>>();
+
+			const shutdownMessage = Effect.gen(function* () {
+				const processMessages = Stream.fromAsyncIterable(
+					on(process, "message"),
+					(cause) => ShutdownMessageError.make({ cause }),
+				);
+				yield* Stream.runDrain(
+					processMessages.pipe(
+						Stream.filter(isShutdownMessage),
+						Stream.take(1),
+					),
+				);
+				if (process.connected) {
+					process.disconnect();
+				}
+				process.emit("SIGINT");
+			});
+
+			const start = Layer.launch(ServerLive).pipe(
+				Effect.provide(contextForServer),
+				Effect.raceFirst(shutdownMessage),
+				Effect.satisfiesServicesType<never>(),
 			);
-			if (process.connected) {
-				process.disconnect();
-			}
-			process.emit("SIGINT");
-		});
 
-		const start = Layer.launch(ServerLive).pipe(
-			Effect.provide(serverRequirement),
-			Effect.raceFirst(shutdownMessage),
-			Effect.satisfiesServicesType<never>(),
+			return { namespaces, start };
+		}).pipe(
+			Effect.provideService(LoadedNamespacesService, loaded),
+			Effect.provide(internalServices),
 		);
-
-		return { namespaces, start };
-	}).pipe(
-		Effect.provideService(LoadedNamespacesService, loaded),
-		Effect.provide(internalServices),
-	);
-});
+	},
+	Effect.tapCause((cause) =>
+		Effect.failCause(cause).pipe(
+			Effect.withSpan("loadNodeCGEffect"),
+			Effect.exit,
+		),
+	),
+);
 
 export interface LoadedNodeCG<
 	Shapes extends Record<string, WidestNamespaceFields>,
@@ -388,6 +414,12 @@ export const loadNodeCG = <
 			DrizzleSqliteRepositories,
 			Layer.effect(Scope.Scope, Effect.scope),
 		).pipe(
+			// Skip NODECG_ prefix for standard OTEL variables
+			Layer.provideMerge(
+				OtlpTelemetry.pipe(
+					Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv())),
+				),
+			),
 			Layer.provideMerge(
 				Layer.merge(
 					Logger.layer([Logger.consolePretty()]),
@@ -409,7 +441,11 @@ export const loadNodeCG = <
 		),
 	);
 	return runtime
-		.runPromise(loadNodeCGEffect(options))
+		.runPromise(
+			loadNodeCGEffect(options).pipe(
+				Effect.onError(() => runtime.disposeEffect),
+			),
+		)
 		.then(({ namespaces, start }) => ({
 			namespaces,
 			start: () =>

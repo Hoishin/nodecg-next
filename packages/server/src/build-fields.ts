@@ -9,7 +9,7 @@ import {
 	toError,
 	zipEffectValues,
 } from "@nodecg-next/internal/utils";
-import { Context, Effect, Layer, Option, Result, Schema } from "effect";
+import { Context, Effect, Layer, Option, Result, Schema, Tracer } from "effect";
 
 import {
 	buildComputed,
@@ -213,7 +213,9 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	const computeFns = options?.implementComputed;
 	const rpcHandlers = options?.implementRpc;
 
-	const context = yield* Effect.context<FieldOps>();
+	const contextForField = yield* Effect.context<FieldOps>().pipe(
+		Effect.map(Context.omit(Tracer.ParentSpan)),
+	);
 	const loaded = yield* Effect.serviceOption(LoadedNamespacesService);
 
 	const replicant = yield* zipEffectValues<
@@ -248,7 +250,7 @@ export const buildFields = Effect.fn("buildFields")(function* <
 			makeCrossComputeView(
 				Result.getOrThrow(
 					lookupLoaded(
-						Context.get(context, BuiltNamespaceRegistry),
+						Context.get(contextForField, BuiltNamespaceRegistry),
 						loaded,
 						implemented,
 					),
@@ -292,11 +294,11 @@ export const buildFields = Effect.fn("buildFields")(function* <
 	);
 
 	const rpcContext: RpcContext<S> = {
-		...fieldAccessors(context)({ replicant, computed, topic }),
+		...fieldAccessors(contextForField)({ replicant, computed, topic }),
 		use: (implemented) =>
 			makeCrossNamespaceHandle(
-				context,
-				Context.get(context, BuiltNamespaceRegistry),
+				contextForField,
+				Context.get(contextForField, BuiltNamespaceRegistry),
 				loaded,
 				implemented,
 			),

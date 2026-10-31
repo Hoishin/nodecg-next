@@ -1,7 +1,17 @@
 import type { WidestNamespaceFields } from "@nodecg-next/core";
 import { CurrentIdentity, ServerIdentity } from "@nodecg-next/internal";
 import { mapValues } from "@nodecg-next/internal/utils";
-import { Effect, Exit, Option, Result, Schema, Scope, Stream } from "effect";
+import {
+	Context,
+	Effect,
+	Exit,
+	Option,
+	Result,
+	Schema,
+	Scope,
+	Stream,
+	Tracer,
+} from "effect";
 import type { Promisable } from "type-fest";
 
 import {
@@ -63,10 +73,10 @@ export const buildNamespace = Effect.fn("buildNamespace")(function* <
 export const adaptNamespace = Effect.fn("adaptNamespace")(function* <
 	S extends WidestNamespaceFields,
 >(built: BuiltNamespace<S>) {
-	const context = yield* Effect.context<
+	const contextForField = yield* Effect.context<
 		TopicBrokerService | ReplicantStoreService
-	>();
-	const runPromise = Effect.runPromiseWith(context);
+	>().pipe(Effect.map(Context.omit(Tracer.ParentSpan)));
+	const runPromise = Effect.runPromiseWith(contextForField);
 
 	const subscribeAdapter =
 		<Decoded, E>(

@@ -297,6 +297,9 @@ export const websocketRoute = HttpRouter.use((router) =>
 					Effect.forEach((data) => handleData(data), { discard: true }),
 				),
 				Effect.forever,
+				Effect.catchReason("SocketError", "SocketCloseError", () =>
+					Effect.succeed(HttpServerResponse.empty()),
+				),
 			);
 		});
 

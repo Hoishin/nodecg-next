@@ -17,6 +17,7 @@ export default defineConfig({
 			{
 				test: {
 					name: "node-unit",
+					env: { OTEL_EXPORTER_OTLP_ENDPOINT: "" },
 					sequence: {
 						groupOrder: 0,
 					},
