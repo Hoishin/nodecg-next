@@ -1,7 +1,6 @@
 {
 	"private": true,
 	"license": "MIT",
-	"author": "Keiichiro Amemiya",
 	"type": "module",
 	"scripts": {
 		"build": "tsdown",
