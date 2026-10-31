@@ -1,5 +1,14 @@
 # @nodecg-next/server
 
+## 0.1.5
+
+### Patch Changes
+
+- replicant set and update return `Promise` ([`dea0bd2`](https://github.com/Hoishin/nodecg-next/commit/dea0bd2907af76f29e8ca754a410db14acc584a4))
+- automatically load child namespaces ([`f805f38`](https://github.com/Hoishin/nodecg-next/commit/f805f38bc9bcd3c5a045bd7fa8d442dbc6cf3bd2))
+- Allow linking roles to child namespaces' roles ([`65dafb4`](https://github.com/Hoishin/nodecg-next/commit/65dafb4b55f10428c84d47eb9dfe810ab74d8615))
+- WebSocket answers ping with pong ([`7c47ce8`](https://github.com/Hoishin/nodecg-next/commit/7c47ce8bf531659ca5cd4667302b04123267ff2c))
+
 ## 0.1.4
 
 ### Patch Changes

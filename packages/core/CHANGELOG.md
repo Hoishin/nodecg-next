@@ -1,5 +1,12 @@
 # @nodecg-next/core
 
+## 0.1.5
+
+### Patch Changes
+
+- automatically load child namespaces ([`f805f38`](https://github.com/Hoishin/nodecg-next/commit/f805f38bc9bcd3c5a045bd7fa8d442dbc6cf3bd2))
+- Allow linking roles to child namespaces' roles ([`65dafb4`](https://github.com/Hoishin/nodecg-next/commit/65dafb4b55f10428c84d47eb9dfe810ab74d8615))
+
 ## 0.1.4
 
 ### Patch Changes
