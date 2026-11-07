@@ -1,5 +1,13 @@
 # @nodecg-next/browser
 
+## 3.0.0-alpha.0
+
+### Patch Changes
+
+- report browser telemetry through the server ([`9b4ed4e`](https://github.com/Hoishin/nodecg-next/commit/9b4ed4ef7b929d6720341786acd6ee4f00fba017))
+- load a namespace and its children with one loadNamespace ([`da3243d`](https://github.com/Hoishin/nodecg-next/commit/da3243d2524d488ed1f2f4e301bf71bb1b4f80bd))
+- update effect to 4.1 ([`5beb598`](https://github.com/Hoishin/nodecg-next/commit/5beb598f26f36693180966b0a453f4a31da50553))
+
 ## 0.1.5
 
 No changes in this release.

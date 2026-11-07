@@ -1,5 +1,15 @@
 # @nodecg-next/client
 
+## 3.0.0-alpha.0
+
+### Patch Changes
+
+- report browser telemetry through the server ([`9b4ed4e`](https://github.com/Hoishin/nodecg-next/commit/9b4ed4ef7b929d6720341786acd6ee4f00fba017))
+- load a namespace and its children with one loadNamespace ([`da3243d`](https://github.com/Hoishin/nodecg-next/commit/da3243d2524d488ed1f2f4e301bf71bb1b4f80bd))
+- add custom HTTP routes ([`539b78b`](https://github.com/Hoishin/nodecg-next/commit/539b78b8dd29b1f34953c5d25ca2914551ae2903))
+- drop message that failed to send ([`1cf0300`](https://github.com/Hoishin/nodecg-next/commit/1cf03003954cc818b82dde8f7d541690018fed93))
+- update effect to 4.1 ([`5beb598`](https://github.com/Hoishin/nodecg-next/commit/5beb598f26f36693180966b0a453f4a31da50553))
+
 ## 0.1.5
 
 ### Patch Changes

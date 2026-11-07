@@ -1,5 +1,17 @@
 # @nodecg-next/server
 
+## 3.0.0-alpha.0
+
+### Patch Changes
+
+- report browser telemetry through the server ([`9b4ed4e`](https://github.com/Hoishin/nodecg-next/commit/9b4ed4ef7b929d6720341786acd6ee4f00fba017))
+- add custom HTTP routes ([`539b78b`](https://github.com/Hoishin/nodecg-next/commit/539b78b8dd29b1f34953c5d25ca2914551ae2903))
+- update supported Node.js version to 22.19 and LTS 24 and 26 ([`b0cbaa6`](https://github.com/Hoishin/nodecg-next/commit/b0cbaa6fc559073c035896af8abdf77930c1e0a0))
+- support OpenTelemetry traces and logs ([`43bb497`](https://github.com/Hoishin/nodecg-next/commit/43bb4971ce73dc0b90d26e09420bd2b37974e201))
+- load one namespace at root entrypoint ([`9a2c95a`](https://github.com/Hoishin/nodecg-next/commit/9a2c95a89e334106df519a71455a9093cc36a67f))
+- remove ctx.use and provide `.children` instead ([`c6a8797`](https://github.com/Hoishin/nodecg-next/commit/c6a8797497fa77515d36cb3ec3f51645c69194b1))
+- update effect to 4.1 ([`5beb598`](https://github.com/Hoishin/nodecg-next/commit/5beb598f26f36693180966b0a453f4a31da50553))
+
 ## 0.1.5
 
 ### Patch Changes

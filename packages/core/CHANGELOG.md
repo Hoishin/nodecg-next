@@ -1,5 +1,12 @@
 # @nodecg-next/core
 
+## 3.0.0-alpha.0
+
+### Patch Changes
+
+- add custom HTTP routes ([`539b78b`](https://github.com/Hoishin/nodecg-next/commit/539b78b8dd29b1f34953c5d25ca2914551ae2903))
+- update effect to 4.1 ([`5beb598`](https://github.com/Hoishin/nodecg-next/commit/5beb598f26f36693180966b0a453f4a31da50553))
+
 ## 0.1.5
 
 ### Patch Changes
