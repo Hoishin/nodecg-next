@@ -1,3 +1,5 @@
+# ⚠️ This repository has landed on [next branch in nodecg/nodecg](https://github.com/nodecg/nodecg/tree/next)
+
 # NodeCG
 
 [![NodeCG](https://raw.githubusercontent.com/nodecg/nodecg/main/media/splash.png)](https://nodecg.dev/)
